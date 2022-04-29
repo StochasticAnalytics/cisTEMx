@@ -75,6 +75,9 @@ class TemplateMatchingCore {
     cudaGraphExec_t graphExec;
     bool            is_graph_allocated = false;
 
+#ifdef ENABLE_FastFFT
+    GpuImage d_fft_input;
+#endif
     // These are assumed to be empty containers at the outset, so xfer host-->device is skipped
     GpuImage d_max_intensity_projection;
     GpuImage d_best_psi;
@@ -118,6 +121,7 @@ class TemplateMatchingCore {
     long total_correlation_positions;
 
     bool is_running_locally;
+    bool use_FastFFT;
 
     Histogram histogram;
 
@@ -163,7 +167,8 @@ class TemplateMatchingCore {
               int              last_search_position,
               ProgressBar*     my_progress,
               long             total_correlation_positions,
-              bool             is_running_locally);
+              bool             is_running_locally,
+              bool             use_FastFFT);
 
     void RunInnerLoop(Image& projection_filter, float pixel_i, float defocus_i, int threadIDX, long& current_correlation_position);
 

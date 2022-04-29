@@ -134,6 +134,7 @@ class GpuImage {
     void QuickAndDirtyWriteSlices(std::string filename, int first_slice, int last_slice); /**CPU_eq**/
     void PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift); /**CPU_eq**/
     void MultiplyByConstant(float scale_factor); /**CPU_eq**/
+    void MultiplyByConstantAndRecordOutOfPlace(GpuImage& destination_image, float scale_factor); // Multiply one GpuImage by a constant and record the result in another GpuImage.
     void SetToConstant(float val);
     void SetToConstant(Npp32fc val);
     void Conj( ); // FIXME
@@ -170,6 +171,7 @@ class GpuImage {
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
     void  ConvertToHalfPrecision(bool deallocate_single_precision = true);
+    void  ConvertToHalfPrecision(GpuImage& src_image);
     void  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
 
     void Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };

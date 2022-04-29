@@ -1360,6 +1360,20 @@ void GpuImage::MultiplyByConstant(float scale_factor) {
     }
 }
 
+void GpuImage::MultiplyByConstantAndRecordOutOfPlace(GpuImage& destination_image, float scale_factor) {
+    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyAssertTrue(destination_image.is_in_memory_gpu, "Memory not allocated");
+    MyAssertTrue(is_in_real_space, "Image is not in real space");
+
+    NppInit( );
+    // if ( is_in_real_space ) {
+    nppErr(nppiMulC_32f_C1R_Ctx((Npp32f*)real_values_gpu, pitch, (Npp32f)scale_factor, (Npp32f*)destination_image.real_values_gpu, pitch, npp_ROI, nppStream));
+    // }
+    // else {
+    //     nppErr(nppiMulC_32f_C1IR_Ctx((Npp32f)scale_factor, (Npp32f*)real_values_gpu, pitch, npp_ROI_fourier_with_real_functor, nppStream));
+    // }
+}
+
 void GpuImage::SetToConstant(float scale_factor) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 
@@ -2319,6 +2333,19 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
         cudaErr(cudaFree(real_values_gpu));
         is_in_memory_gpu = false;
     }
+}
+
+void GpuImage::ConvertToHalfPrecision(float* src_image_values) {
+
+    MyAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
+    MyAssertTrue(src_image.is_in_memory_gpu, "Src Image is in not on the GPU!");
+
+    BufferInit(b_16f);
+
+    ReturnLaunchParamters(dims, true);
+    ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(src_image_values, real_values_16f, this->dims);
+
+    postcheck
 }
 
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {

@@ -377,6 +377,12 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool     use_gpu                         = my_current_job.arguments[40].ReturnBoolArgument( );
     int      max_threads                     = my_current_job.arguments[41].ReturnIntegerArgument( );
 
+    // For intial testing, we will turn this on if:
+    // a) the project is configured and built with FastFFT
+    // b) the search image is 4096x4096
+    // c) the template is a power of 2 size
+    bool use_FastFFT = false;
+
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
 
@@ -781,6 +787,21 @@ bool MatchTemplateApp::DoCalculation( ) {
         my_progress = new ProgressBar(total_correlation_positions_per_thread);
     }
 
+#ifdef ENABLE_FastFFT
+    if ( use_gpu && input_image.logical_x_dimension == 4096 && input_image.logical_y_dimension == 4096 && myroundint(pixel_size_search_range) == 0 &&
+         is_power_of_two(template_reconstruction.logical_x_dimension) && is_power_of_two(template_reconstruction.logical_y_dimension) ) {
+
+        wxPrintf("\n\tUsing GPU accelerated with the FastFFT library for template matching\n");
+        use_FastFFT = true;
+
+        // The implicit zero padding of the template does not pad on both sides, rather the original image is left in the top left corner (zeros are added from the end.)
+        // So we need to phase shift the input so its center matches the center of the template.
+        input_image.PhaseShift(template_reconstruction.physical_address_of_box_center_x - input_image.physical_address_of_box_center_x,
+                               template_reconstruction.physical_address_of_box_center_y - input_image.physical_address_of_box_center_y,
+                               0);
+    }
+#endif
+
     //    wxPrintf("Starting job\n");
     for ( size_i = -myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i <= myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i++ ) {
 
@@ -815,7 +836,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                    angles, global_euler_search,
                                    histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
                                    max_padding, t_first_search_position, t_last_search_position,
-                                   my_progress, total_correlation_positions_per_thread, is_running_locally);
+                                   my_progress, total_correlation_positions_per_thread, is_running_locally, use_FastFFT);
 
                     wxPrintf("%d\n", tIDX);
                     wxPrintf("%d\n", t_first_search_position);
@@ -1090,7 +1111,22 @@ bool MatchTemplateApp::DoCalculation( ) {
     }
 
     if ( is_rotated_by_90 ) {
-        // swap back all the images prior to re-sizing
+        // swap back all the rotated images prior to re-sizing
+
+        if ( use_FastFFT ) {
+            // First we need to shift everything back to the center
+            int shift_x = input_image.physical_address_of_box_center_x - template_reconstruction.physical_address_of_box_center_x;
+            int shift_y = input_image.physical_address_of_box_center_y - template_reconstruction.physical_address_of_box_center_y;
+            input_image.PhaseShift(shift_x, shift, y, 0);
+            max_intensity_projection.PhaseShift(shift_x, shift, y, 0);
+            best_psi.PhaseShift(shift_x, shift, y, 0);
+            best_theta.PhaseShift(shift_x, shift, y, 0);
+            best_phi.PhaseShift(shift_x, shift, y, 0);
+            best_defocus.PhaseShift(shift_x, shift, y, 0);
+            best_pixel_size.PhaseShift(shift_x, shift, y, 0);
+            correlation_pixel_sum_image.PhaseShift(shift_x, shift, y, 0);
+            correlation_pixel_sum_of_squares_image.PhaseShift(shift_x, shift, y, 0);
+        }
         input_image.BackwardFFT( );
         input_image.RotateInPlaceAboutZBy90Degrees(false);
         max_intensity_projection.RotateInPlaceAboutZBy90Degrees(false);

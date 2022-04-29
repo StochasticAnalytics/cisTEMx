@@ -55,10 +55,12 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
                                 int              last_search_position,
                                 ProgressBar*     my_progress,
                                 long             total_correlation_positions,
-                                bool             is_running_locally)
+                                bool             is_running_locally,
+                                bool             use_FastFFT)
 
 {
 
+    this->use_FastFFT           = use_FastFFT;
     this->first_search_position = first_search_position;
     this->last_search_position  = last_search_position;
     this->angles                = angles;
@@ -77,6 +79,14 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     d_input_image.CopyHostToDevice( );
 
     d_current_projection.Init(this->current_projection);
+
+// We also want another GpuImage for the template size to avoid race conditions not present when using
+// ClipInto in the non FastFFT method.
+#ifdef ENABLE_FastFFT
+    if ( use_FastFFT ) {
+        d_fft_input.Allocate(d_current_projection.dims.x, d_current_projection.dims.y, 1, true)
+    }
+#endif
 
     d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
     d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
@@ -114,6 +124,31 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 
 void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel, float c_defocus, int threadIDX, long& current_correlation_position) {
 
+#ifdef ENABLE_FastFFT
+    // We need these to call an integrated Forward/Inverse Xform.
+    FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NONE>     noop;
+    FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::CONJ_MUL> conj_mul;
+    FastFFT::FourierTransformer<float, float, float, 2>                              FT;
+
+    FT.SetForwardFFTPlan(input_size.x, input_size.y, input_size.z, output_size.x, output_size.y, output_size.z, true, false);
+    FT.SetInverseFFTPlan(output_size.x, output_size.y, output_size.z, output_size.x, output_size.y, output_size.z, true);
+    short4 fwd_dims_in;
+    short4 fwd_dims_out;
+    short4 inv_dims_in;
+    short4 inv_dims_out;
+    if ( use_FastFFT ) {
+        FT.SetForwardFFTPlan(d_current_projection.dims.x, d_current_projection.dims.y, d_current_projection.dims.z,
+                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true, false);
+        FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z,
+                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
+        fwd_dims_in  = FT.ReturnFwdInputDimensions( );
+        fwd_dims_out = FT.ReturnFwdOutputDimensions( );
+        inv_dims_in  = FT.ReturnInvInputDimensions( );
+        inv_dims_out = FT.ReturnInvOutputDimensions( );
+        FT.SetInputPointer(d_fft_input.real_values_gpu, true);
+    }
+    // FT.Generic_Fwd_Image_Inv(targetFT.d_ptr.momentum_space, noop, conj_mul, noop)
+#endif
     // Make sure we are starting with zeros
     d_max_intensity_projection.Zeros( );
     d_best_psi.Zeros( );
@@ -132,10 +167,13 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     this->c_pixel                   = c_pixel;
     total_number_of_cccs_calculated = 0;
 
-    // Either do not delete the single precision, or add in a copy here so that each loop over defocus vals
-    // have a copy to work with. Otherwise this will not exist on the second loop
-    d_input_image.ConvertToHalfPrecision(false);
-    d_padded_reference.ConvertToHalfPrecision(false);
+    // TODO: FastFFT should easily handle input/output conversion for 1/2 precision (and really the FFT too.)
+    if ( ! use_FastFFT ) {
+        // Either do not delete the single precision, or add in a copy here so that each loop over defocus vals
+        // have a copy to work with. Otherwise this will not exist on the second loop
+        d_input_image.ConvertToHalfPrecision(false);
+        d_padded_reference.ConvertToHalfPrecision(false);
+    }
 
     cudaErr(cudaMalloc((void**)&my_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
     cudaErr(cudaMalloc((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
@@ -191,21 +229,31 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             // The average in the full padded image will be different;
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+            float scale_factor = rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
+            if ( use_FastFFT ) {
+                d_current_projection.MultiplyByConstantAndRecordOutOfPlace(d_fft_input, scale_factor);
+                cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
 
-            d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
-            d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
-            cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+                FT.Generic_Fwd_Image_Inv(d_input_image.complex_values_gpu, noop, conj_mul, noop);
 
-            // For the cpu code (MKL and FFTW) the image is multiplied by N on the forward xform, and subsequently normalized by 1/N
-            // cuFFT multiplies by 1/root(N) forward and then 1/root(N) on the inverse. The input image is done on the cpu, and so has no scaling.
-            // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
-            d_padded_reference.ForwardFFT(false);
+                // TODO: write a post op that converts to half precision
+                // TODO: also point d_padded_reference real_values_gpu to FT.momentm_space
+                // Until above TODO is done, we will have to do this manually.
+                d_padded_reference.ConvertToHalfPrecision(FT.momentum_space);
+            }
+            else {
+                d_current_projection.MultiplyByConstant(scale_factor);
+                d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
+                cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
 
-            //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
-            d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_16f, true);
+                // For the cpu code (MKL and FFTW) the image is multiplied by N on the forward xform, and subsequently normalized by 1/N
+                // cuFFT multiplies by 1/root(N) forward and then 1/root(N) on the inverse. The input image is done on the cpu, and so has no scaling.
+                // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
+                d_padded_reference.ForwardFFT(false);
 
-            //			d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_gpu, false);
-            //			d_padded_reference.ConvertToHalfPrecision(false);
+                //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
+                d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_16f, true);
+            }
 
             if ( DO_HISTOGRAM ) {
                 if ( ! histogram.is_allocated_histogram ) {

@@ -151,6 +151,7 @@ void GpuUtilTest::TemplateMatchingStandalone(int nThreads, int nGPUs) {
         histogram_min_scaled  = histogram_min / double(sqrt(input_image.logical_x_dimension * input_image.logical_y_dimension));
         histogram_step_scaled = histogram_step / double(sqrt(input_image.logical_x_dimension * input_image.logical_y_dimension));
 
+        bool use_FastFFT = false;
         GPU[tIDX].Init(this, template_reconstruction, input_image, current_projection,
                        pixel_size_search_range, pixel_size_step, pixel_size,
                        defocus_search_range, defocus_step, defocus1, defocus2,
@@ -158,7 +159,7 @@ void GpuUtilTest::TemplateMatchingStandalone(int nThreads, int nGPUs) {
                        angles, global_euler_search,
                        histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
                        max_padding, first_search_position, last_search_position,
-                       my_progress, total_correlation_positions, is_running_locally);
+                       my_progress, total_correlation_positions, is_running_locally, use_FastFFT);
 
         int size_i    = 0;
         int defocus_i = 0;

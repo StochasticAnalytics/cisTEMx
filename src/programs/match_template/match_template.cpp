@@ -1117,15 +1117,15 @@ bool MatchTemplateApp::DoCalculation( ) {
             // First we need to shift everything back to the center
             int shift_x = input_image.physical_address_of_box_center_x - template_reconstruction.physical_address_of_box_center_x;
             int shift_y = input_image.physical_address_of_box_center_y - template_reconstruction.physical_address_of_box_center_y;
-            input_image.PhaseShift(shift_x, shift, y, 0);
-            max_intensity_projection.PhaseShift(shift_x, shift, y, 0);
-            best_psi.PhaseShift(shift_x, shift, y, 0);
-            best_theta.PhaseShift(shift_x, shift, y, 0);
-            best_phi.PhaseShift(shift_x, shift, y, 0);
-            best_defocus.PhaseShift(shift_x, shift, y, 0);
-            best_pixel_size.PhaseShift(shift_x, shift, y, 0);
-            correlation_pixel_sum_image.PhaseShift(shift_x, shift, y, 0);
-            correlation_pixel_sum_of_squares_image.PhaseShift(shift_x, shift, y, 0);
+            input_image.PhaseShift(shift_x, shift_y, 0);
+            max_intensity_projection.PhaseShift(shift_x, shift_y, 0);
+            best_psi.PhaseShift(shift_x, shift_y, 0);
+            best_theta.PhaseShift(shift_x, shift_y, 0);
+            best_phi.PhaseShift(shift_x, shift_y, 0);
+            best_defocus.PhaseShift(shift_x, shift_y, 0);
+            best_pixel_size.PhaseShift(shift_x, shift_y, 0);
+            correlation_pixel_sum_image.PhaseShift(shift_x, shift_y, 0);
+            correlation_pixel_sum_of_squares_image.PhaseShift(shift_x, shift_y, 0);
         }
         input_image.BackwardFFT( );
         input_image.RotateInPlaceAboutZBy90Degrees(false);

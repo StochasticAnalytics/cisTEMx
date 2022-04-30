@@ -1,5 +1,9 @@
 #include "gpu_core_headers.h"
 
+#ifdef ENABLE_FastFFT
+    #include <FastFFT.cuh>
+#endif
+
 #define DO_HISTOGRAM true
 
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
@@ -84,7 +88,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 // ClipInto in the non FastFFT method.
 #ifdef ENABLE_FastFFT
     if ( use_FastFFT ) {
-        d_fft_input.Allocate(d_current_projection.dims.x, d_current_projection.dims.y, 1, true)
+        d_fft_input.Allocate(d_current_projection.dims.x, d_current_projection.dims.y, 1, true);
     }
 #endif
 

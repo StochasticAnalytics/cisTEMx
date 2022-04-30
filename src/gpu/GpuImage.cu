@@ -2338,7 +2338,6 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
 void GpuImage::ConvertToHalfPrecision(float* src_image_values) {
 
     MyAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
-    MyAssertTrue(src_image.is_in_memory_gpu, "Src Image is in not on the GPU!");
 
     BufferInit(b_16f);
 

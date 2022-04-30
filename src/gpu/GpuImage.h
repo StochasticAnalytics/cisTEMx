@@ -171,7 +171,7 @@ class GpuImage {
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
     void  ConvertToHalfPrecision(bool deallocate_single_precision = true);
-    void  ConvertToHalfPrecision(GpuImage& src_image);
+    void  ConvertToHalfPrecision(float* src_image_values);
     void  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
 
     void Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };

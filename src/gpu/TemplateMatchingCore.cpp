@@ -1,1 +1,0 @@
-TemplateMatchingCore.cu

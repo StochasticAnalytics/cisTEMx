@@ -130,12 +130,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
 #ifdef ENABLE_FastFFT
     // We need these to call an integrated Forward/Inverse Xform.
-    FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NONE>     noop;
+    FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NOOP>     noop;
     FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::CONJ_MUL> conj_mul;
     FastFFT::FourierTransformer<float, float, float, 2>                              FT;
 
-    FT.SetForwardFFTPlan(input_size.x, input_size.y, input_size.z, output_size.x, output_size.y, output_size.z, true, false);
-    FT.SetInverseFFTPlan(output_size.x, output_size.y, output_size.z, output_size.x, output_size.y, output_size.z, true);
+    FT.SetForwardFFTPlan(projection_filter.logical_x_dimension, projection_filter.logical_y_dimension, 1, 
+                         input_image.logical_x_dimension, input_image.logical_y_dimension, 1, true, false);
+    FT.SetInverseFFTPlan(input_image.logical_x_dimension, input_image.logical_y_dimension, 1, 
+                         input_image.logical_x_dimension, input_image.logical_y_dimension, 1, true);
     short4 fwd_dims_in;
     short4 fwd_dims_out;
     short4 inv_dims_in;
@@ -243,7 +245,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // TODO: write a post op that converts to half precision
                 // TODO: also point d_padded_reference real_values_gpu to FT.momentm_space
                 // Until above TODO is done, we will have to do this manually.
-                d_padded_reference.ConvertToHalfPrecision(FT.momentum_space);
+                d_padded_reference.ConvertToHalfPrecision(FT.d_ptr.momentum_space);
             }
             else {
                 d_current_projection.MultiplyByConstant(scale_factor);

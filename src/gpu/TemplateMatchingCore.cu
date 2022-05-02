@@ -130,8 +130,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
 #ifdef ENABLE_FastFFT
     // We need these to call an integrated Forward/Inverse Xform.
-    FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NOOP>     noop;
-    FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::CONJ_MUL> conj_mul;
+    FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::IKF_t::NOOP>     noop;
+    FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::IKF_t::CONJ_MUL> conj_mul;
     FastFFT::FourierTransformer<float, float, float, 2>                              FT;
 
     FT.SetForwardFFTPlan(projection_filter.logical_x_dimension, projection_filter.logical_y_dimension, 1, 

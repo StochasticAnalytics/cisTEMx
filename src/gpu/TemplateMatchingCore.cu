@@ -1,7 +1,7 @@
 #include "gpu_core_headers.h"
 
 #ifdef ENABLE_FastFFT
-    #include <FastFFT.cuh>
+#include <FastFFT.cuh>
 #endif
 
 #define DO_HISTOGRAM true
@@ -122,7 +122,21 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     // At the outset these are all empty cpu images, so don't xfer, just allocate on gpuDev
 
     // Transfer the input image_memory_should_not_be_deallocated
-
+    std::cerr << "Allocating memory for the template reconstruction\n";
+#ifdef ENABLE_FastFFT
+    if ( use_FastFFT ) {
+        std::cerr << "Seting forward fft plan with dims " << d_current_projection.dims.x << " " << d_current_projection.dims.y << " " << d_current_projection.dims.z << "\n";
+        FT.SetForwardFFTPlan(d_current_projection.dims.x, d_current_projection.dims.y, d_current_projection.dims.z,
+                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true, false);
+        FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z,
+                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
+        FT.ReturnFwdInputDimensions( );
+        FT.ReturnFwdOutputDimensions( );
+        FT.ReturnInvInputDimensions( );
+        FT.ReturnInvOutputDimensions( );
+        FT.SetInputPointer(this->current_projection.real_values, false);
+    }
+#endif
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 };
 
@@ -132,27 +146,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     // We need these to call an integrated Forward/Inverse Xform.
     FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::IKF_t::NOOP>     noop;
     FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::IKF_t::CONJ_MUL> conj_mul;
-    FastFFT::FourierTransformer<float, float, float, 2>                              FT;
-
-    FT.SetForwardFFTPlan(projection_filter.logical_x_dimension, projection_filter.logical_y_dimension, 1, 
-                         input_image.logical_x_dimension, input_image.logical_y_dimension, 1, true, false);
-    FT.SetInverseFFTPlan(input_image.logical_x_dimension, input_image.logical_y_dimension, 1, 
-                         input_image.logical_x_dimension, input_image.logical_y_dimension, 1, true);
-    short4 fwd_dims_in;
-    short4 fwd_dims_out;
-    short4 inv_dims_in;
-    short4 inv_dims_out;
-    if ( use_FastFFT ) {
-        FT.SetForwardFFTPlan(d_current_projection.dims.x, d_current_projection.dims.y, d_current_projection.dims.z,
-                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true, false);
-        FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z,
-                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
-        fwd_dims_in  = FT.ReturnFwdInputDimensions( );
-        fwd_dims_out = FT.ReturnFwdOutputDimensions( );
-        inv_dims_in  = FT.ReturnInvInputDimensions( );
-        inv_dims_out = FT.ReturnInvOutputDimensions( );
-        FT.SetInputPointer(d_fft_input.real_values_gpu, true);
-    }
     // FT.Generic_Fwd_Image_Inv(targetFT.d_ptr.momentum_space, noop, conj_mul, noop)
 #endif
     // Make sure we are starting with zeros
@@ -175,6 +168,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     // TODO: FastFFT should easily handle input/output conversion for 1/2 precision (and really the FFT too.)
     if ( ! use_FastFFT ) {
+
         // Either do not delete the single precision, or add in a copy here so that each loop over defocus vals
         // have a copy to work with. Otherwise this will not exist on the second loop
         d_input_image.ConvertToHalfPrecision(false);
@@ -228,26 +222,47 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // Make sure the device has moved on to the padded projection
             cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
 
-            //// TO THE GPU ////
-            d_current_projection.CopyHostToDevice( );
-
-            d_current_projection.AddConstant(-average_on_edge);
-
-            // The average in the full padded image will be different;
-            average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
-            float scale_factor = rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
             if ( use_FastFFT ) {
-                d_current_projection.MultiplyByConstantAndRecordOutOfPlace(d_fft_input, scale_factor);
+                current_projection.AddConstant(-average_on_edge);
+                // The average in the full padded image will be different;
+                average_of_reals *= ((float)current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+                float scale_factor = rsqrtf(current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
+                current_projection.MultiplyByConstant(scale_factor);
+                current_projection.QuickAndDirtyWriteSlice("/tmp/current_projection.mrc", 1, true);
+                wxPrintf("memalloc %i, memcopy %i \n", FT.compute_memory_allocated, FT.memory_size_to_copy);
+                FT.CopyHostToDevice( );
+                wxPrintf("memalloc %i, after copy memcopy %i \n", FT.compute_memory_allocated, FT.memory_size_to_copy);
+                wxPrintf("host pionter %p, device pointer %p \n", current_projection.real_values, FT.host_pointer);
+                FT.Wait( );
+                wxPrintf("The pointers are %p and %p\n", FT.d_ptr.position_space, d_padded_reference.real_values_gpu);
+                // d_current_projection.MultiplyByConstantAndRecordOutOfPlace(d_fft_input, scale_factor);
                 cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+                d_padded_reference.real_values_gpu = FT.d_ptr.position_space;
+                wxPrintf("The pointers are again %p and %p\n", FT.d_ptr.position_space, d_padded_reference.real_values_gpu);
+
+                d_padded_reference.QuickAndDirtyWriteSlices("/tmp/ref_pre.mrc", 1, 1);
 
                 FT.Generic_Fwd_Image_Inv(d_input_image.complex_values_gpu, noop, conj_mul, noop);
-
                 // TODO: write a post op that converts to half precision
                 // TODO: also point d_padded_reference real_values_gpu to FT.momentm_space
                 // Until above TODO is done, we will have to do this manually.
-                d_padded_reference.ConvertToHalfPrecision(FT.d_ptr.momentum_space);
+                wxPrintf("Memory in padded ref %i\n", d_padded_reference.real_memory_allocated);
+                d_padded_reference.real_values_gpu = FT.d_ptr.position_space;
+                // d_padded_reference.ConvertToHalfPrecision(FT.d_ptr.position_space);
+                d_input_image.QuickAndDirtyWriteSlices("/tmp/input_post.mrc", 1, 1);
+                d_padded_reference.QuickAndDirtyWriteSlices("/tmp/ref_post.mrc", 1, 1);
+                exit(1);
             }
             else {
+                //// TO THE GPU ////
+                d_current_projection.CopyHostToDevice( );
+
+                d_current_projection.AddConstant(-average_on_edge);
+
+                // The average in the full padded image will be different;
+                average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+                float scale_factor = rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
+
                 d_current_projection.MultiplyByConstant(scale_factor);
                 d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
                 cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);

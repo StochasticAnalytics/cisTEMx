@@ -10,6 +10,7 @@
 #include "gpu_core_headers.h"
 
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
+__global__ void ConvertToSinglePrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 
 __global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, int4 dims, int3 physical_upper_bound_complex);
@@ -2335,15 +2336,39 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
     }
 }
 
+void GpuImage::ConvertToSinglePrecision(__half* src_image_values) {
+
+    MyAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
+
+    precheck
+            ReturnLaunchParamters(dims, true);
+    ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values, src_image_values, this->dims);
+    postcheck
+}
+
+__global__ void ConvertToSinglePrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
+
+    int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
+                            blockIdx.y * blockDim.y + threadIdx.y,
+                            blockIdx.z);
+
+    if ( coords.x < dims.w && coords.y < dims.y && coords.z < dims.z ) {
+
+        int address = d_ReturnReal1DAddressFromPhysicalCoord(coords, dims);
+
+        real_32f_values[address] = __half2float(real_16f_values[address]);
+    }
+}
+
 void GpuImage::ConvertToHalfPrecision(float* src_image_values) {
 
     MyAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
 
     BufferInit(b_16f);
 
-    ReturnLaunchParamters(dims, true);
+    precheck
+            ReturnLaunchParamters(dims, true);
     ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(src_image_values, real_values_16f, this->dims);
-
     postcheck
 }
 

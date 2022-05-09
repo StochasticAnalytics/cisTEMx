@@ -35,7 +35,7 @@ AC_ARG_ENABLE(FastFFT, AS_HELP_STRING([--disable-FastFFT],[Do not use the FastFF
         AC_DEFINE([CUFFTDX_DISABLE_RUNTIME_ASSERTS], [], [Define the CUFFTDX_DISABLE_RUNTIME_ASSERTS flag])
         # Generally, you probably shouldn't need to use these through cisTEM, but they do need to be defined.
         # TODO send these as a flag only where needed.
-        FastFFT_FLAGS="-DFFT_DEBUG_LEVEL=0 -DDEBUG_FFT_STAGE=8" #-DHEAVYERRORCHECKING_FFT        
+        FastFFT_FLAGS="-DFFT_DEBUG_LEVEL=4 -DDEBUG_FFT_STAGE=8 -DHEAVYERRORCHECKING_FFT -DHEAVYERRORCHECKING"      
     else
         AC_MSG_NOTICE([Not using the FastFFT Library b/c $TOPSRCDIR/src/ext/FastFFT/include/FastFFT.h was not found.])
     fi   

@@ -20,6 +20,7 @@
     },
     "C_Cpp.dimInactiveRegions": true,
     "files.associations": {
+        "*.cu": "cpp",
         "string": "cpp",
         "filesystem": "cpp",
         "iostream": "cpp",
@@ -28,5 +29,6 @@
     "C_Cpp.clang_format_path": "/usr/bin/clang-format-14",
     "editor.formatOnSave": true,
     "DockerRun.DisableDockerrc": true,
-    "html.format.endWithNewline": true
+    "html.format.endWithNewline": true,
+    "C_Cpp.intelliSenseEngineFallback": "Disabled"
 }

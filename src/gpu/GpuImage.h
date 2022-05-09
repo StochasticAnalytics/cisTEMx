@@ -171,6 +171,7 @@ class GpuImage {
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
     void  ConvertToHalfPrecision(bool deallocate_single_precision = true);
+    void  ConvertToSinglePrecision(__half* src_image_values); // These should probably have more verbnose names and checks on current precision.
     void  ConvertToHalfPrecision(float* src_image_values);
     void  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
 

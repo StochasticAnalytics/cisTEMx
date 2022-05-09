@@ -1,6 +1,9 @@
 #ifndef TemplateMatchingCore_H_
 #define TemplateMatchingCore_H_
 
+#ifdef ENABLE_FastFFT
+#include <FastFFT.h>
+#endif
 //typedef
 //struct __align__(8) _Peaks {
 //	// This should be 128 byte words, so good for read access?
@@ -142,6 +145,9 @@ class TemplateMatchingCore {
     void     MipPixelWise(__half psi, __half theta, __half phi);
     void     MipToImage( );
     void     AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
+#ifdef ENABLE_FastFFT
+    FastFFT::FourierTransformer<float, float, float, 2> FT;
+#endif
 
     void Init(MyApp*           parent_pointer,
               Image&           template_reconstruction,

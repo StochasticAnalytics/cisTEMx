@@ -799,6 +799,17 @@ bool MatchTemplateApp::DoCalculation( ) {
         input_image.PhaseShift(template_reconstruction.physical_address_of_box_center_x - input_image.physical_address_of_box_center_x,
                                template_reconstruction.physical_address_of_box_center_y - input_image.physical_address_of_box_center_y,
                                0);
+
+        // To make sure all the normalization is still good, let's just transpose rather than using FastFFT for the xform.
+        // TODO: add this as an image method
+        Image temp_image;
+        temp_image = input_image;
+        for ( int j = 0; j <= input_image.physical_upper_bound_complex_y; j++ ) {
+            for ( int i = 0; i <= input_image.physical_upper_bound_complex_x; i++ ) {
+                temp_image.complex_values[j + i * input_image.physical_upper_bound_complex_y] = input_image.complex_values[i + j * input_image.physical_upper_bound_complex_x];
+            }
+        }
+        input_image.Consume(&temp_image);
     }
 #endif
 
@@ -868,11 +879,14 @@ bool MatchTemplateApp::DoCalculation( ) {
                 {
                     int tIDX = ReturnThreadNumberOfCurrentThread( );
                     gpuDev.SetGpu(tIDX);
+                    MyPrintWithDetails("");
 
                     GPU[tIDX].RunInnerLoop(projection_filter, size_i, defocus_i, tIDX, current_correlation_position);
+                    MyPrintWithDetails("");
 
 #pragma omp critical
                     {
+                        MyPrintWithDetails("");
 
                         Image mip_buffer;
                         mip_buffer.CopyFrom(&max_intensity_projection);
@@ -882,28 +896,33 @@ bool MatchTemplateApp::DoCalculation( ) {
                         phi_buffer.CopyFrom(&max_intensity_projection);
                         Image theta_buffer;
                         theta_buffer.CopyFrom(&max_intensity_projection);
+                        MyPrintWithDetails("");
 
                         GPU[tIDX].d_max_intensity_projection.CopyDeviceToHost(mip_buffer, true, false);
                         GPU[tIDX].d_best_psi.CopyDeviceToHost(psi_buffer, true, false);
                         GPU[tIDX].d_best_phi.CopyDeviceToHost(phi_buffer, true, false);
                         GPU[tIDX].d_best_theta.CopyDeviceToHost(theta_buffer, true, false);
+                        MyPrintWithDetails("");
 
                         //                    mip_buffer.QuickAndDirtyWriteSlice("/tmp/tmpMipBuffer.mrc",1,1);
                         // TODO should prob aggregate these across all workers
                         // TODO add a copySum method that allocates a pinned buffer, copies there then sumes into the wanted image.
                         Image sum;
                         Image sumSq;
+                        MyPrintWithDetails("");
 
                         sum.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
                         sumSq.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
 
                         sum.SetToConstant(0.0f);
                         sumSq.SetToConstant(0.0f);
+                        MyPrintWithDetails("");
 
                         GPU[tIDX].d_sum3.CopyDeviceToHost(sum, true, false);
                         GPU[tIDX].d_sumSq3.CopyDeviceToHost(sumSq, true, false);
 
                         GPU[tIDX].d_max_intensity_projection.Wait( );
+                        MyPrintWithDetails("");
 
                         // TODO swap max_padding for explicit padding in x/y and limit calcs to that region.
                         pixel_counter = 0;
@@ -928,14 +947,19 @@ bool MatchTemplateApp::DoCalculation( ) {
 
                             pixel_counter += max_intensity_projection.padding_jump_value;
                         }
+                        MyPrintWithDetails("");
 
-                        GPU[tIDX].histogram.CopyToHostAndAdd(histogram_data);
+                        // GPU[tIDX].histogram.CopyToHostAndAdd(histogram_data);
+                        MyPrintWithDetails("");
 
                         //                    current_correlation_position += GPU[tIDX].total_number_of_cccs_calculated;
                         actual_number_of_ccs_calculated += GPU[tIDX].total_number_of_cccs_calculated;
 
                     } // end of omp critical block
+                    MyPrintWithDetails("");
+
                 } // end of parallel block
+                MyPrintWithDetails("");
 
                 continue;
 

@@ -1,5 +1,13 @@
 #include "../core/gui_core_headers.h"
 
+// Rather than re-write the blocks that add rounds of global alignment after round 1, we override the booleans they set to true,
+// when cisTEM is configured to do so by --disable-multiple-global-refinements
+#ifndef DISABLE_MUTLI_GLOBAL_REFINEMENTS
+constexpr bool true_if_not_configured_as_disabled = true;
+#else
+constexpr bool true_if_not_configured_as_disabled = false;
+#endif
+
 extern MyRefinementPackageAssetPanel* refinement_package_asset_panel;
 extern MyRunProfilesPanel*            run_profiles_panel;
 extern MyVolumeAssetPanel*            volume_asset_panel;
@@ -351,6 +359,7 @@ void AutoRefine3DPanel::SetDefaults( ) {
         SearchRangeYTextCtrl->SetValue(wxString::Format("%.2f", search_range));
 
         InnerMaskRadiusTextCtrl->SetValue("0.00");
+        TargetResolutionTextCtrl->SetValue("0.00");
 
         AutoCropYesRadioButton->SetValue(false);
         AutoCropNoRadioButton->SetValue(true);
@@ -770,6 +779,7 @@ void AutoRefinementManager::BeginRefinementCycle( ) {
     active_mask_radius              = my_parent->MaskRadiusTextCtrl->ReturnValue( );
     active_global_mask_radius       = my_parent->GlobalMaskRadiusTextCtrl->ReturnValue( );
     active_inner_mask_radius        = my_parent->InnerMaskRadiusTextCtrl->ReturnValue( );
+    active_target_resolution        = my_parent->TargetResolutionTextCtrl->ReturnValue( );
     active_number_results_to_refine = my_parent->NumberToRefineSpinCtrl->GetValue( );
     active_search_range_x           = my_parent->SearchRangeXTextCtrl->ReturnValue( );
     active_search_range_y           = my_parent->SearchRangeYTextCtrl->ReturnValue( );
@@ -1297,6 +1307,13 @@ void AutoRefinementManager::SetupRefinementJob( ) {
     float likelihood_to_global;
     bool  do_global_for_this_particle;
 
+    // Just to make sure it is working
+    if ( true_if_not_configured_as_disabled ) {
+        wxPrintf("Allowing multiple global refinements\n");
+    }
+    else {
+        wxPrintf("Disallowing multiple global refinements\n");
+    }
     // get the last refinement for the currently selected refinement package..
 
     wxArrayString written_parameter_files;
@@ -1316,7 +1333,7 @@ void AutoRefinementManager::SetupRefinementJob( ) {
         if ( number_of_rounds_run == 0 )
             do_global_for_this_particle = true;
         else if ( resolution_per_round[resolution_per_round.GetCount( ) - 1] < 5.0f && lowest_alignment_res <= 8.0f && resolution_of_last_global_alignment[particle_counter] > 9.0f && reference_3d_contains_all_particles == true && number_of_rounds_run > 2 )
-            do_global_for_this_particle = true;
+            do_global_for_this_particle = true_if_not_configured_as_disabled;
         else {
 
             // should we do local or global? Randonly decide..
@@ -1336,7 +1353,7 @@ void AutoRefinementManager::SetupRefinementJob( ) {
                 likelihood_to_global = powf(lowest_alignment_res, 2) / ((1000.0f / res_adjust) * round_adjust); // very arbritrary
 
             if ( fabsf(global_random_number_generator.GetUniformRandom( )) < likelihood_to_global )
-                do_global_for_this_particle = true;
+                do_global_for_this_particle = true_if_not_configured_as_disabled;
             else
                 do_global_for_this_particle = false;
         }

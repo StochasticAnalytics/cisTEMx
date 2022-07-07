@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version 3.10.0-4761b0c)
+// C++ code generated with wxFormBuilder (version 3.10.1-0-g8feb16b)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO *NOT* EDIT THIS FILE!
@@ -8976,15 +8976,6 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 	bSizer441->Fit( InputParamsPanel );
 	bSizer364->Add( InputParamsPanel, 1, wxEXPAND | wxALL, 5 );
 
-
-	bSizer451->Add( bSizer364, 1, wxEXPAND, 5 );
-
-
-	bSizer43->Add( bSizer451, 0, wxEXPAND, 5 );
-
-	wxBoxSizer* bSizer46;
-	bSizer46 = new wxBoxSizer( wxHORIZONTAL );
-
 	ExpertPanel = new wxScrolledWindow( this, wxID_ANY, wxDefaultPosition, wxSize( -1,-1 ), wxVSCROLL );
 	ExpertPanel->SetScrollRate( 5, 5 );
 	ExpertPanel->Hide();
@@ -9043,6 +9034,13 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 
 	InnerMaskRadiusTextCtrl = new NumericTextCtrl( ExpertPanel, wxID_ANY, wxT("0.00"), wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER );
 	fgSizer1->Add( InnerMaskRadiusTextCtrl, 0, wxALL|wxEXPAND, 5 );
+
+	m_staticText3301 = new wxStaticText( ExpertPanel, wxID_ANY, wxT("Target Resolution (Å) :"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText3301->Wrap( -1 );
+	fgSizer1->Add( m_staticText3301, 0, wxALL, 5 );
+
+	TargetResolutionTextCtrl = new NumericTextCtrl( ExpertPanel, wxID_ANY, wxT("0.00"), wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER );
+	fgSizer1->Add( TargetResolutionTextCtrl, 0, wxALL|wxEXPAND, 5 );
 
 	m_staticText201 = new wxStaticText( ExpertPanel, wxID_ANY, wxT("Global Search"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText201->Wrap( -1 );
@@ -9214,7 +9212,16 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 	ExpertPanel->SetSizer( InputSizer );
 	ExpertPanel->Layout();
 	InputSizer->Fit( ExpertPanel );
-	bSizer46->Add( ExpertPanel, 0, wxALL|wxEXPAND, 5 );
+	bSizer364->Add( ExpertPanel, 0, wxALL|wxEXPAND, 5 );
+
+
+	bSizer451->Add( bSizer364, 1, wxEXPAND, 5 );
+
+
+	bSizer43->Add( bSizer451, 0, wxEXPAND, 5 );
+
+	wxBoxSizer* bSizer46;
+	bSizer46 = new wxBoxSizer( wxHORIZONTAL );
 
 	OutputTextPanel = new wxPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	OutputTextPanel->Hide();

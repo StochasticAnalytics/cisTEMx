@@ -72,7 +72,7 @@ CUDA_CPP_STANDARD=17
 AC_ARG_ENABLE([warnings], AS_HELP_STRING([--disable compiler warnings], [Default=false]), 
 [
 	# If flag do this
-	if test "x$enableval" = "no" ; then
+	if test "x$enableval" = "xno" ; then
 		WARNINGS_ON="-w"		
 	else
 		if test "x$CXX" = "xicpc"; then		
@@ -90,6 +90,12 @@ AC_ARG_ENABLE([warnings], AS_HELP_STRING([--disable compiler warnings], [Default
 			WARNINGS_ON="-Wall"	
 		fi	
 ])
+
+AC_ARG_ENABLE(multiple-global-refinements, AS_HELP_STRING([--disable-multiple-global-refinements],[Only do one global search in AutoRefine3d [default=no]]),[
+	if test "x$enableval" = "xno" ; then
+		AC_DEFINE([DISABLE_MUTLI_GLOBAL_REFINEMENTS], [ ], [Disable multiple rounds of global refinement in AutoRefine3d])
+  fi
+]) # No action needed if flag is not present as multiple global refinements is the default.
 
 
 # The cpp std is currently diffent between cuda and gcc so we set this at the end

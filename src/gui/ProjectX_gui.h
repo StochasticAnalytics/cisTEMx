@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version 3.10.0-4761b0c)
+// C++ code generated with wxFormBuilder (version 3.10.1-0-g8feb16b)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO *NOT* EDIT THIS FILE!
@@ -2320,6 +2320,8 @@ class AutoRefine3DPanelParent : public JobPanel
 		NumericTextCtrl* MaskRadiusTextCtrl;
 		wxStaticText* m_staticText330;
 		NumericTextCtrl* InnerMaskRadiusTextCtrl;
+		wxStaticText* m_staticText3301;
+		NumericTextCtrl* TargetResolutionTextCtrl;
 		wxStaticText* m_staticText201;
 		wxStaticText* GlobalMaskRadiusStaticText;
 		NumericTextCtrl* GlobalMaskRadiusTextCtrl;

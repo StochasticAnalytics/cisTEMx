@@ -30,6 +30,7 @@ class AutoRefinementManager {
     float active_search_range_x;
     float active_search_range_y;
     float active_inner_mask_radius;
+    float active_target_resolution;
     bool  active_should_apply_blurring;
     float active_smoothing_factor;
     bool  active_auto_crop;

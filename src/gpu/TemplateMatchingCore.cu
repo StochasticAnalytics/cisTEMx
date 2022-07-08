@@ -1,4 +1,5 @@
 #include "gpu_core_headers.h"
+#include "TemplateMatchingCore.h"
 
 #define DO_HISTOGRAM true
 

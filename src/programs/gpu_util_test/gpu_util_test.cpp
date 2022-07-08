@@ -1,4 +1,7 @@
 #include "../../core/core_headers.h"
+#include "DeviceManager.h"
+#include "../../gpu/GpuImage.h"
+#include "../../gpu/TemplateMatchingCore.h"
 
 class
         GpuUtilTest : public MyApp {

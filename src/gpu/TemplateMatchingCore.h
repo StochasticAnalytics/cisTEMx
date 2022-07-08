@@ -1,55 +1,9 @@
 #ifndef TemplateMatchingCore_H_
 #define TemplateMatchingCore_H_
 
-//typedef
-//struct __align__(8) _Peaks {
-//	// This should be 128 byte words, so good for read access?
-//	__half mip;
-//	__half psi;
-//	__half theta;
-//	__half phi;
-//
-//} Peaks;
-
-//typedef
-//struct __align__(8) _Peaks {
-//	// This should be 128 byte words, so good for read access?
-//	__half mip;
-//	__half psi;
-//	__half theta;
-//	__half phi;
-//
-//} Peaks;
-//typedef
-//struct __align__(16) _Peaks {
-//	// This should be 128 byte words, so good for read access?
-//	float mip;
-//	float psi;
-//	float theta;
-//	float phi;
-//
-//} Peaks;
-
-//typedef
-//struct __align__(16)_Stats{
-//	__half mip;
-//	__half psi;
-//	__half theta;
-//	__half phi;
-//	__half mean;
-//	__half sum_sq_diff;
-//	int N;
-//} Stats;
-//typedef
-//struct __align__(8) _Stats{
-//	cufftReal sum;
-//	cufftReal sq_sum;
-//} Stats;
-//typedef
-//	struct __align__(4) _Stats{
-//__half sum;
-//__half sq_sum;
-//} Stats;
+#include "GpuImage.h"
+#include "DeviceManager.h"
+#include "Histogram.h"
 
 class TemplateMatchingCore {
 

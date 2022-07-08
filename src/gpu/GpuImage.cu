@@ -8,6 +8,7 @@
 //#include "gpu_core_headers.h"
 
 #include "gpu_core_headers.h"
+#include "GpuImage.h"
 
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
@@ -298,9 +299,9 @@ void GpuImage::SetupInitialValues( ) {
     insert_into_which_reconstruction = 0;
     hostImage                        = NULL;
 
-    cudaErr(cudaEventCreateWithFlags(&nppCalcEvent, cudaEventDisableTiming);)
+    cudaErr(cudaEventCreateWithFlags(&nppCalcEvent, cudaEventDisableTiming));
 
-            cudaErr(cudaGetDevice(&device_idx));
+    cudaErr(cudaGetDevice(&device_idx));
     cudaErr(cudaDeviceGetAttribute(&number_of_streaming_multiprocessors, cudaDevAttrMultiProcessorCount, device_idx));
     limit_SMs_by_threads = 1;
 

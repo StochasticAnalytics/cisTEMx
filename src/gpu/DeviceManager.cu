@@ -1,4 +1,5 @@
 #include "gpu_core_headers.h"
+#include "DeviceManager.h"
 
 DeviceManager::DeviceManager( ){
 
@@ -152,6 +153,7 @@ void DeviceManager::ListDevices( ) {
         wxPrintf("  Memory bandwidth (GB/s): %f\n", 2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6);
         wxPrintf("  Number of multiprocessors: %d\n", prop.multiProcessorCount);
         wxPrintf("  Threads per multiprocessor: %d\n", prop.maxThreadsPerMultiProcessor);
+        wxPrintf("  Maximum 3dArray size: %i, %i, %i\n", prop.maxSurface3D[0], prop.maxSurface3D[1], prop.maxSurface3D[2]); // for texture cache
         // wxPrintf("  Memory per multiprocessor (GB): %f\n", float(prop.sharedMemPerMultiprocessor) / 1024 / 1024 / 1024);
         wxPrintf("  Memory on device (GB): %f\n", float(prop.totalGlobalMem) / 1024 / 1024 / 1024);
         wxPrintf("  Free memory (GB): %f\n", float(free_mem) / 1024 / 1024 / 1024);

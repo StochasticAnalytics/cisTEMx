@@ -1,4 +1,5 @@
-
+#ifndef _SRC_GPU_DEVICEMANAGER_H_
+#define _SRC_GPU_DEVICEMANAGER_H_
 
 class DeviceManager {
 
@@ -18,3 +19,5 @@ class DeviceManager {
 
   private:
 };
+
+#endif // _SRC_GPU_DEVICEMANAGER_H_

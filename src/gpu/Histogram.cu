@@ -6,6 +6,8 @@
  */
 
 #include "gpu_core_headers.h"
+#include "GpuImage.h"
+#include "Histogram.h"
 
 __global__ void histogram_smem_atomics(const __half* in, int4 dims, float* out, int n_bins, const __half bin_min, const __half bin_inc, const int max_padding);
 

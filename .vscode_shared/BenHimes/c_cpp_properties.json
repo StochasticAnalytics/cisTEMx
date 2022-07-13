@@ -16,7 +16,7 @@
                 "__WXGTK__",
                 "DEBUG"
             ],
-            "compilerPath": "/groups/himesb/intel/compilers_and_libraries_2020.2.254/linux/bin/intel64/icpc",
+            "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
             "cStandard": "c17",
             "cppStandard": "c++17",
             "browse": {

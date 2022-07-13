@@ -27,8 +27,12 @@ RUN apt-get --allow-releaseinfo-change update && apt-get install -y libgtk2.0-de
     fftw3-dev libtiff-dev software-properties-common libffi-dev \
     libbz2-dev libsqlite3-dev zlib1g-dev libjpeg-dev libtiff-dev \
     libreadline-dev liblzma-dev libssl-dev libncursesw5-dev wget \
-    build-essential git xauth zip unzip parallel sqlite3 python3 python3-pip curl  \
+    build-essential git xauth zip unzip parallel sqlite3 python3 python3-pip curl gdb  \
     && rm -rf /var/lib/apt/lists/*
+
+# Get reference images for testing and debugging
+RUN pip3 install gdown && cd / && gdown https://drive.google.com/drive/folders/1PO9tBU7lKqKUuSb8qdEPvlEk7xeektXv?usp --folder
+ENV CISTEM_REF_IMAGES /cistem_reference_images
 
 # Install newest gcc
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
@@ -120,10 +124,12 @@ ENV LD_RUN_PATH=/opt/libtorch/lib:${LD_RUN_PATH}
 
 
 # Install cuda (when the web is live)
-RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/11.7.0/local_installers/cuda_11.7.0_515.43.04_linux.run && \
-    sh cuda_11.7.0_515.43.04_linux.run --silent --toolkit && \
-    rm cuda_11.7.0_515.43.04_linux.run && \
-    # We currently don't need a bunch of things in the cuda toolkit, which installed is something like ~6.4Gb, this reduces to 1.9
+ARG CUDA_VER=11.7.0
+ARG DRIVER_VER=515.43.04
+# Install cuda (when the web is live)
+RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/11.3.0/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
+    sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit && \
+    rm cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
     cd /usr/local/cuda && rm -rf nsight* extras && \
     cd lib64 && rm libcublas* libcuspars* libcusolver*
 

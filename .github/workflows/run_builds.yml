@@ -37,21 +37,22 @@ jobs:
       run: ./regenerate_project.b
     - name: configure
       env:
-        CC: icc
-        CXX: icpc
+        CC: ${{ inputs.CC }}
+        CXX: ${{ inputs.CXX }}
       run: |
         . /opt/intel/oneapi/setvars.sh
         mkdir -p build/${{ inputs.build_type }} 
         cd build/${{ inputs.build_type }} 
         echo $CC
         echo $CXX
-        ../../configure  --enable-experimental ${{ inputs.configure_options }} --with-wx-config=wx-config  --enable-samples
+        ../../configure  --enable-experimental ${{ inputs.configure_options }} --with-wx-config=/opt/WX/intel-dynamic/bin/wx-config  --enable-samples
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "::set-output name=version::$VERSION" 
     - uses: ammaraskar/gcc-problem-matcher@master
     - name: make 
       run: |
-        scripts/cistem_make.sh build/${{ inputs.build_type }} 2
+        . /opt/intel/oneapi/setvars.sh
+        scripts/cistem_make.sh build/${{ inputs.build_type }} ${{ inputs.cppstandard }} 2
         cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
     - name: clean up
       run: |

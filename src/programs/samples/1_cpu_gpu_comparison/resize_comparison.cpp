@@ -9,9 +9,11 @@
  *
  *
  */
+#include <cistem_config.h>
 
 #ifdef ENABLEGPU
 #include "../../../gpu/gpu_core_headers.h"
+#include "../../../gpu/GpuImage.h"
 #else
 #include "../../../core/core_headers.h"
 #endif

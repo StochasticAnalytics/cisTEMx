@@ -521,6 +521,11 @@ inline std::complex<float> Return3DPhaseFromIndividualDimensions(float phase_x, 
     return cosf(temp_phase) + sinf(temp_phase) * I;
 }
 
+inline std::complex<float> MakeComplex(const float& real, const float& imag) {
+    std::complex<float> ret_val(real, imag);
+    return ret_val;
+}
+
 inline bool DoublesAreAlmostTheSame(double a, double b) {
     return (fabs(a - b) < 0.000001);
 }

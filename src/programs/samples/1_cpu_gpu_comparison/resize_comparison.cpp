@@ -16,8 +16,6 @@
 #include "../../../core/core_headers.h"
 #endif
 
-#include "../../../gpu/GpuImage.h"
-
 #include "../common/common.h"
 #include "resize_comparison.h"
 

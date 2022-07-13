@@ -48,7 +48,7 @@ jobs:
         ../../configure  --enable-experimental ${{ inputs.configure_options }} --with-wx-config=wx-config  --enable-samples
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "::set-output name=version::$VERSION" 
-    - uses: ammaraskar/icc-problem-matcher@master
+    - uses: ammaraskar/gcc-problem-matcher@master
     - name: make 
       run: |
         scripts/cistem_make.sh build/${{ inputs.build_type }} 2

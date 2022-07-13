@@ -27,8 +27,8 @@ const int MAX_GPU_COUNT = 32;
 // For now, you have to look up NPP error codes here https://docs.nvidia.com/cuda/npp/nppdefs_8h_source.html
 #define nppErr(npp_stat)  {if (npp_stat != NPP_SUCCESS) { wxPrintf("NPP_CHECK_NPP - npp_stat = %s at line %d in file %s\n", (npp_stat), __LINE__,__FILE__); DEBUG_ABORT} }
 #define cudaErr(error) { auto status = static_cast<cudaError_t>(error); if (status != cudaSuccess) { std::cerr << cudaGetErrorString(status) << " :-> "; MyPrintWithDetails(""); DEBUG_ABORT} }
-#define postcheck { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaStreamSynchronize(cudaStreamPerThread); cudaErr(error); };
-#define precheck { cudaErr(cudaGetLastError()); }
+#define postcheck { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaStreamSynchronize(cudaStreamPerThread); cudaErr(error); }
+#define precheck { cudaErr(cudaGetLastError()) }
 #endif
 
 // clang-format on

@@ -140,16 +140,16 @@ void Histogram::AddToHistogram(GpuImage& input_image) {
 
     MyAssertTrue(input_image.is_in_memory_gpu, "The image to add to the histogram is not in gpu memory.");
 
-    precheck
-            histogram_smem_atomics<<<gridDims_img, threadsPerBlock_img, (histogram_n_bins) * sizeof(int), input_image.nppStream.hStream>>>((const __half*)input_image.real_values_16f, input_image.dims, histogram, histogram_n_bins, histogram_min, histogram_step, max_padding);
-    postcheck
+    precheck;
+    histogram_smem_atomics<<<gridDims_img, threadsPerBlock_img, (histogram_n_bins) * sizeof(int), input_image.nppStream.hStream>>>((const __half*)input_image.real_values_16f, input_image.dims, histogram, histogram_n_bins, histogram_min, histogram_step, max_padding);
+    postcheck;
 }
 
 void Histogram::Accumulate(GpuImage& input_image) {
     cudaErr(cudaStreamSynchronize(input_image.nppStream.hStream));
-    precheck
-            histogram_final_accum<<<gridDims_accum_array, threadsPerBlock_accum_array, 0, input_image.nppStream.hStream>>>(histogram, cummulative_histogram, histogram_n_bins, gridDims_img.x * gridDims_img.y);
-    postcheck
+    precheck;
+    histogram_final_accum<<<gridDims_accum_array, threadsPerBlock_accum_array, 0, input_image.nppStream.hStream>>>(histogram, cummulative_histogram, histogram_n_bins, gridDims_img.x * gridDims_img.y);
+    postcheck;
 }
 
 void Histogram::CopyToHostAndAdd(long* array_to_add_to) {

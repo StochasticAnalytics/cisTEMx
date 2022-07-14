@@ -435,7 +435,11 @@ project3d_LDADD = libcore.a $(WX_LIBS_BASE)
 refine3d_SOURCES = programs/refine3d/refine3d.cpp
 refine3d_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 refine3d_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+if ENABLEGPU_AM 
+refine3d_LDADD = libgpucore.a libcore.a $(WX_LIBS_BASE) $(CUDA_LIBS)
+else
 refine3d_LDADD = libcore.a $(WX_LIBS_BASE)
+endif
 
 remove_outlier_pixels_SOURCES = programs/remove_outlier_pixels/remove_outlier_pixels.cpp
 remove_outlier_pixels_CXXFLAGS = $(WX_CPPFLAGS_BASE)

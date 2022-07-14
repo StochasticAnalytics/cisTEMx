@@ -9,7 +9,7 @@
             "wx_dir_static": "/opt/WX/intel-static/bin/wx-config",
             "wx_dir_dynamic_gcc:": "/opt/WX/gcc-dynamic/bin/wx-config",
             "build_dir": "${workspaceFolder}/build",
-            "compile_cores": "6"
+            "compile_cores": "12"
         }
     },
     "tasks": [
@@ -72,6 +72,26 @@
             "label": "BUILD intel,dynamic",
             "type": "shell",
             "command": "cd ${build_dir}/intel-dynamic && make -j${compile_cores}"
+        },
+        {
+            "label": "CONFIG intel,gpu,debug,dynamic,profile",
+            "type": "shell",
+            "command": "mkdir -p ${build_dir}/intel-gpu-debug-dynamic-profile && cd ${build_dir}/intel-gpu-debug-dynamic-profile && CC=icc CXX=icpc ../../configure --enable-profiling --disable-multiple-global-refinements --enable-gpu-debug --enable-debugmode  --with-cuda=${cuda_dir} --enable-samples --enable-experimental --enable-openmp --with-wx-config=${wx_dir_dynamic}"
+        },
+        {
+            "label": "BUILD intel,gpu,debug,dynamic,profile",
+            "type": "shell",
+            "command": "cd ${build_dir}/intel-gpu-debug-dynamic-profile && make -j${compile_cores}"
+        },
+        {
+            "label": "CONFIG intel,gpu,dynamic,profile",
+            "type": "shell",
+            "command": "mkdir -p ${build_dir}/intel-gpu-dynamic-profile && cd ${build_dir}/intel-gpu-dynamic-profile && CC=icc CXX=icpc ../../configure --enable-profiling --disable-multiple-global-refinements  --with-cuda=${cuda_dir} --enable-samples --enable-experimental --enable-openmp --with-wx-config=${wx_dir_dynamic}"
+        },
+        {
+            "label": "BUILD intel,gpu,dynamic,profile",
+            "type": "shell",
+            "command": "cd ${build_dir}/intel-gpu-dynamic-profile && make -j${compile_cores}"
         },
         {
             "label": "CONFIG intel,gpu,debug,dynamic",

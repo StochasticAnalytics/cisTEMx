@@ -383,14 +383,17 @@ void GpuImage::CopyFromCpuImage(Image& cpu_image) {
 
     ft_normalization_factor = cpu_image.ft_normalization_factor;
 
-    // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
-    cudaHostRegister(real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault);
+    if ( is_host_memory_pinned ) {
+        cudaErr(cudaHostUnregister(real_values));
+        is_host_memory_pinned = false;
+    }
+    cudaErr(cudaHostRegister(real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault));
     is_host_memory_pinned    = true;
     is_meta_data_initialized = true;
-    cudaHostGetDevicePointer(&pinnedPtr, real_values, 0);
+    cudaErr(cudaHostGetDevicePointer(&pinnedPtr, real_values, 0));
 
-    cudaMallocManaged(&tmpVal, sizeof(float));
-    cudaMallocManaged(&tmpValComplex, sizeof(double));
+    cudaErr(cudaMallocManaged(&tmpVal, sizeof(float)));
+    cudaErr(cudaMallocManaged(&tmpValComplex, sizeof(double)));
 
     is_in_memory_managed_tmp_vals = true;
 
@@ -410,7 +413,7 @@ void GpuImage::printVal(std::string msg, int idx) {
     float h_printVal = -9999.0f;
 
     cudaErr(cudaMemcpy(&h_printVal, &real_values_gpu[idx], sizeof(float), cudaMemcpyDeviceToHost));
-    cudaStreamSynchronize(cudaStreamPerThread);
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     wxPrintf("%s %6.6e\n", msg, h_printVal);
 };
 
@@ -1536,7 +1539,7 @@ void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
         Deallocate( );
     }
     if ( unpin_host_memory && is_host_memory_pinned ) {
-        cudaHostUnregister(real_values);
+        cudaErr(cudaHostUnregister(real_values));
         is_host_memory_pinned = false;
     }
 }
@@ -1548,8 +1551,8 @@ void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_comple
 
     float* tmpPinnedPtr;
     // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
-    cudaHostRegister(cpu_image.real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault);
-    cudaHostGetDevicePointer(&tmpPinnedPtr, cpu_image.real_values, 0);
+    cudaErr(cudaHostRegister(cpu_image.real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault));
+    cudaErr(cudaHostGetDevicePointer(&tmpPinnedPtr, cpu_image.real_values, 0));
 
     precheck;
     cudaErr(cudaMemcpyAsync(tmpPinnedPtr, real_values_gpu, real_memory_allocated * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
@@ -1559,10 +1562,10 @@ void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_comple
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     // TODO add asserts etc.
     if ( free_gpu_memory ) {
-        cudaFree(real_values_gpu);
+        cudaErr(cudaFree(real_values_gpu));
     } // FIXME what about the other structures
 
-    cudaHostUnregister(tmpPinnedPtr);
+    cudaErr(cudaHostUnregister(tmpPinnedPtr));
 }
 
 void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory) {
@@ -2407,6 +2410,13 @@ void GpuImage::Deallocate( ) {
         cudaErr(cudaFree(clip_into_mask));
         delete clip_into_mask;
     }
+
+    if ( is_allocated_texture_cache ) {
+        cudaErr(cudaDestroyTextureObject(tex_real));
+        cudaErr(cudaDestroyTextureObject(tex_imag));
+    }
+
+    UpdateBoolsToDefault( );
 }
 
 void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {

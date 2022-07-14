@@ -321,7 +321,7 @@ AC_ARG_ENABLE(wx-webview, AS_HELP_STRING([--enable-wx-webview],[Compile with exp
   	AC_MSG_NOTICE([Compiling with webview enabled])	
   fi
   ]) 
-AM_CONDITIONAL([ENABLE_WEBVIEW_AM], [test x$want_profiling = xtrue])
+AM_CONDITIONAL([ENABLE_WEBVIEW_AM], [test x$want_webview = xtrue])
 
 
 

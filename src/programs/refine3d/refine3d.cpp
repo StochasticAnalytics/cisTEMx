@@ -1,10 +1,30 @@
+
+#include <cistem_config.h>
+
+#ifdef ENABLEGPU
+#warning "GPU enabled in refine3d"
+#include "../../gpu/gpu_core_headers.h"
+#include "../../gpu/GpuImage.h"
+#else
 #include "../../core/core_headers.h"
+#endif
+
+#ifdef PROFILING
+using namespace cistem_timer;
+#else
+using namespace cistem_timer_noop;
+#endif
+
+StopWatch global_timer;
 
 class
         Refine3DApp : public MyApp {
   public:
     bool DoCalculation( );
     void DoInteractiveUserInput( );
+
+    // Depends on compilation mode --enable-profiling
+    StopWatch timer;
 
   private:
 };
@@ -19,6 +39,46 @@ class ImageProjectionComparison {
     Particle*            particle;
     ReconstructedVolume* reference_volume;
     Image*               projection_image;
+
+#ifdef ENABLEGPU
+    GpuImage* gpu_density_map;
+    GpuImage* gpu_projection;
+    int       nproj = 0;
+
+    void PrepareGpuProjection(ReconstructedVolume& input_density) {
+        // Make a copy since we cannot take a back fft after FourierSpaceQuadrant Swap
+        Image temp_image;
+        temp_image = input_density.density_map;
+        temp_image.BackwardFFT( );
+
+        // Realspace quadrants should already be swapped. TODO: just add a check inside the method and don't bother with the argument passing
+        temp_image.SwapFourierSpaceQuadrants(false);
+        gpu_density_map->CopyFromCpuImage(temp_image);
+        gpu_density_map->CopyHostToDeviceTextureComplex3d( );
+        gpu_density_map->RecordAndWait( );
+        // wxPrintf("Allocating texture cache was (%d)\n", gpu_density_map->is_allocated_texture_cache);
+
+        return;
+    };
+
+    void DoGpuProjection( ) {
+        MyDebugAssertTrue(gpu_density_map->is_allocated_texture_cache, "gpu_density_map is not allocated");
+        if ( ! gpu_projection->is_meta_data_initialized ) {
+            // Note this is not copying any image data, just the meta data
+            gpu_projection->CopyFromCpuImage(*projection_image);
+            gpu_projection->CopyHostToDevice( );
+        }
+
+        // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
+        // FIXME: resolution limit is not implemented on the GPU
+        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, particle->pixel_size / particle->filter_radius_high, true);
+        gpu_projection->CopyDeviceToHost(false, false);
+        gpu_projection->RecordAndWait( );
+
+        return;
+    };
+
+#endif
 
     float x_shift_limit;
     float y_shift_limit;
@@ -40,31 +100,43 @@ ImageProjectionComparison::ImageProjectionComparison( ) {
 
 // This is the function which will be minimized
 float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values) {
+    global_timer.start("re_cast");
     ImageProjectionComparison* comparison_object = reinterpret_cast<ImageProjectionComparison*>(scoring_parameters);
+    global_timer.lap("re_cast");
     //for (int i = 0; i < comparison_object->particle->number_of_parameters; i++) {comparison_object->particle->temp_float[i] = comparison_object->particle->current_parameters[i];}
+    global_timer.start("copy_params");
     comparison_object->particle->temp_parameters = comparison_object->particle->current_parameters;
-
+    global_timer.lap("copy_params");
+    global_timer.start("update_params");
     comparison_object->particle->UnmapParameters(array_of_values);
-
+    global_timer.lap("update_params");
     //	comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image, *comparison_object->particle->ctf_image,
     //			comparison_object->particle->alignment_parameters, 0.0, 0.0,
     //			comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true);
+    global_timer.start("calc_proj");
+
+    bool calculate_projection = true;
+#ifdef ENABLEGPU
+    // We will pass in the projection to tthe cpu CalculateProjection method, for it to do all the other fun stuff like whitening, res limts etc.
+    calculate_projection = false;
+    comparison_object->DoGpuProjection( );
+#endif
 
     if ( comparison_object->particle->no_ctf_weighting )
         comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
                                                                  *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, false, false, false, false);
+                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, false, false, false, false, calculate_projection);
     // Case for normal parameter refinement with weighting applied to particle images and 3D reference
     else if ( comparison_object->particle->includes_reference_ssnr_weighting )
         comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
                                                                  *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, true, false, false);
+                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, true, false, false, calculate_projection);
     // Case for normal parameter refinement with weighting applied only to particle images
     else
         comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
                                                                  *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true);
-
+                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true, calculate_projection);
+    global_timer.lap("calc_proj");
     //	if (comparison_object->particle->origin_micrograph < 0) comparison_object->particle->origin_micrograph = 0;
     //	comparison_object->particle->origin_micrograph++;
     //	for (int i = 0; i < comparison_object->projection_image->real_memory_allocated; i++) {comparison_object->projection_image->real_values[i] *= fabs(comparison_object->projection_image->real_values[i]);}
@@ -200,9 +272,15 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     //		temp_image.WriteSlice(&input_stack1, z + 1);
     //	}
 
-    float tmp_corr    = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
-                                                                                                     comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
+    global_timer.start("ReturnScore");
+    float tmp_corr = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
+                                                                                                  comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
+    global_timer.lap("ReturnScore");
+
+    global_timer.start("ReturnPenalty");
+
     float tmp_penalty = comparison_object->particle->ReturnParameterPenalty(comparison_object->particle->temp_parameters);
+    global_timer.lap("ReturnPenalty");
 
 #ifdef DEBUG
     if ( isnan(tmp_corr) || isnan(tmp_penalty) ) {
@@ -377,6 +455,8 @@ void Refine3DApp::DoInteractiveUserInput( ) {
 // override the do calculation method which will be what is actually run..
 
 bool Refine3DApp::DoCalculation( ) {
+
+    timer.start("refine3d setup");
     Particle refine_particle;
     Particle refine_particle_local;
     Particle search_particle;
@@ -450,6 +530,10 @@ bool Refine3DApp::DoCalculation( ) {
     refine_particle.constraints_used.psi     = false;
     refine_particle.constraints_used.x_shift = true;
     refine_particle.constraints_used.y_shift = true;
+
+#ifdef ENABLEGPU
+    GpuImage gpu_density_map;
+#endif
 
     Image                     input_image_local;
     Image                     projection_image_local;
@@ -828,6 +912,8 @@ bool Refine3DApp::DoCalculation( ) {
 
     //	input_3d.PrepareForProjections(high_resolution_limit);
     input_3d.PrepareForProjections(low_resolution_limit, high_resolution_limit);
+    // So we can share the global pointer
+
     binning_factor_refine = input_3d.pixel_size / pixel_size;
     binned_image_box_size = myroundint(input_stack.ReturnXSize( ) / binning_factor_refine);
     //Scale to make projections compatible with images for ML calculation
@@ -870,7 +956,7 @@ bool Refine3DApp::DoCalculation( ) {
         current_line         = 0;
         random_reset_counter = 0;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(input_star_file, first_particle, last_particle, my_progress, percentage, exclude_blank_edges, input_stack,                                                                                                                                                                                                                                  \
+#pragma omp parallel num_threads(max_threads) default(none) shared(timer, input_star_file, first_particle, last_particle, my_progress, percentage, exclude_blank_edges, input_stack,                                                                                                                                                                                                                           \
                                                                    outer_mask_radius, mask_falloff, number_of_blank_edges, sum_power, current_line, global_random_number_generator, random_reset_count, random_reset_counter) private(current_line_local, input_parameters, image_counter, number_of_blank_edges_local, variance, temp_image_local, sum_power_local, input_image_local, temp_float, file_read, \
                                                                                                                                                                                                                                       mask_radius_for_noise)
         {
@@ -956,7 +1042,10 @@ bool Refine3DApp::DoCalculation( ) {
         }
     }
 
+    timer.lap("refine3d setup");
+
     if ( global_search ) {
+        timer.start("generate projection cache for global search");
         //for (i = 0; i < search_particle.number_of_parameters; i++) {search_particle.parameter_map[i] = refine_particle.parameter_map[i];}
         search_particle.parameter_map = refine_particle.parameter_map;
         // Set parameter_map for x,y translations to true since they will always be searched and refined in a global search
@@ -989,6 +1078,7 @@ bool Refine3DApp::DoCalculation( ) {
             global_euler_search.max_search_y = max_search_y;
         else
             global_euler_search.max_search_y = 0.0;
+        timer.lap("generate projection cache for global search");
     }
 
     wxPrintf("\nAverage sigma noise = %f, average LogP = %f\nAverage ShiftX = %f, average ShiftY = %f\nSigma ShiftX = %f, sigma ShiftY = %f\n\nNumber of particles to refine = %i\n\n",
@@ -999,7 +1089,7 @@ bool Refine3DApp::DoCalculation( ) {
 
     current_projection = 0;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                              \
+#pragma omp parallel num_threads(max_threads) default(none) shared(timer, parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                       \
                                                                    first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, ctf_refinement, defocus_search_range, defocus_step, normalize_input_3d,                                                                                           \
                                                                    refine_statistics, pixel_size, my_progress, outer_mask_radius, mask_falloff, high_resolution_limit, molecular_mass_kDa, percent_used, output_shifts_file, local_refinement,                                                                                           \
                                                                    binning_factor_refine, low_resolution_limit, input_statistics, output_star_file, current_projection, local_global_refine, signed_CC_limit, defocus_bias,                                                                                                              \
@@ -1012,9 +1102,15 @@ bool Refine3DApp::DoCalculation( ) {
                                                                                                                                                                     temp_image_local, search_parameters, istart, parameter_to_keep, conjugate_gradient_minimizer, i, final_image, input_3d_local, euler_search_local, frealign_score_local)
     { // for omp
 
+        timer.start("omp copy to local variables");
         //	input_3d_local = input_3d;
         input_3d_local.CopyAllButVolume(&input_3d);
         input_3d_local.density_map = input_3d.density_map;
+
+#ifdef ENABLEGPU
+        GpuImage gpu_projection_local;
+        GpuImage gpu_density_map_local;
+#endif
 
         bool global_search_local    = global_search;
         bool local_refinement_local = local_refinement;
@@ -1043,7 +1139,7 @@ bool Refine3DApp::DoCalculation( ) {
             final_image.Allocate(input_stack.ReturnXSize( ), input_stack.ReturnYSize( ), true);
 
         image_counter = 0;
-
+        timer.lap("omp copy to local variables");
 #pragma omp for schedule(dynamic, 1)
         for ( current_line_local = 0; current_line_local < input_star_file.ReturnNumberofLines( ); current_line_local++ ) {
             input_parameters = input_star_file.ReturnLine(current_line_local);
@@ -1178,6 +1274,7 @@ bool Refine3DApp::DoCalculation( ) {
             //		refine_particle_local.is_phase_flipped = true;
 
             //		input_image_local.ReadSlice(&input_stack, int(input_parameters.position_in_stack + 0.5));
+            timer.start("normalize particles");
             input_image_local.ReplaceOutliersWithMean(5.0);
             if ( invert_contrast )
                 input_image_local.InvertRealValues( );
@@ -1203,6 +1300,7 @@ bool Refine3DApp::DoCalculation( ) {
             else
                 input_image_local.ChangePixelSize(&input_image_local, pixel_size / input_parameters.pixel_size, 0.001f);
 
+            timer.lap("normalize particles");
             // Option to add noise to images to get out of local optima
             //		input_image_local.AddGaussianNoise(sqrtf(2.0 * input_image_local.ReturnVarianceOfRealValues()));
 
@@ -1215,10 +1313,19 @@ bool Refine3DApp::DoCalculation( ) {
             comparison_object.projection_image = &projection_image_local;
             comparison_object.particle         = &refine_particle_local;
 
+#ifdef ENABLEGPU
+            comparison_object.gpu_projection  = &gpu_projection_local;
+            comparison_object.gpu_density_map = &gpu_density_map_local;
+            comparison_object.gpu_projection->Deallocate( );
+            comparison_object.gpu_density_map->Deallocate( );
+            comparison_object.PrepareGpuProjection(input_3d_local);
+#endif
+
             refine_particle_local.MapParameters(cg_starting_point);
             refine_particle_local.PhaseShiftInverse( );
 
             if ( ctf_refinement && high_resolution_limit <= 20.0 ) {
+                timer.start("refining ctf");
                 //			wxPrintf("\nRefining defocus for parameter line %i\n", current_line);
                 refine_particle_local.filter_radius_low = 30.0;
                 refine_particle_local.SetIndexForWeightedCorrelation( );
@@ -1257,12 +1364,15 @@ bool Refine3DApp::DoCalculation( ) {
                 output_parameters.defocus_2 = input_parameters.defocus_2 + best_defocus_i * defocus_step;
                 refine_particle_local.SetDefocus(output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift);
                 refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+                timer.lap("refining ctf");
             }
             else {
                 //			wxPrintf("tx, ty, sx, sy = %g %g %g %g\n", input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
                 refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
             }
             //		refine_particle_local.SetLowResolutionContrast(low_resolution_contrast);
+
+            timer.start("weight and prep particle");
             refine_particle_local.filter_radius_low = low_resolution_limit;
             refine_particle_local.SetIndexForWeightedCorrelation( );
             if ( normalize_input_3d )
@@ -1276,14 +1386,18 @@ bool Refine3DApp::DoCalculation( ) {
             refine_particle_local.CosineMask( );
             refine_particle_local.PhaseShift( );
             refine_particle_local.CenterInCorner( );
+            timer.lap("weight and prep particle");
             //		refine_particle_local.WeightBySSNR(input_3d_local.statistics.part_SSNR, 1);
 
             //		input_parameters[15] = 10.0;
             //		input_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
 
             if ( (refine_particle_local.number_of_search_dimensions > 0) && (global_search_local || local_refinement_local) ) {
+                timer.start("refining search FrealignObjFunct 1");
                 input_parameters.score = -100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
+                timer.lap("refining search FrealignObjFunct 1");
                 if ( global_search_local ) {
+                    timer.start("global search local");
                     //				my_time_in = wxDateTime::UNow();
                     search_particle_local.ResetImageFlags( );
                     search_particle_local.pixel_size = search_reference_3d_local.pixel_size;
@@ -1383,6 +1497,11 @@ bool Refine3DApp::DoCalculation( ) {
                     comparison_object.reference_volume = &search_reference_3d_local;
                     comparison_object.projection_image = &search_projection_image;
                     comparison_object.particle         = &search_particle_local;
+#ifdef ENABLEGPU
+                    comparison_object.gpu_projection->Deallocate( );
+                    comparison_object.gpu_density_map->Deallocate( );
+                    comparison_object.PrepareGpuProjection(search_reference_3d_local);
+#endif
                     search_particle_local.CenterInCorner( );
                     search_particle_local.SetIndexForWeightedCorrelation( );
                     search_particle_local.SetParameters(input_parameters);
@@ -1494,13 +1613,20 @@ bool Refine3DApp::DoCalculation( ) {
                     refine_particle_local.SetParameters(output_parameters, true);
                     output_parameters.score_change = output_parameters.score - input_parameters.score;
                     //				my_time_out = wxDateTime::UNow(); wxPrintf("global search done: ms taken = %li\n", my_time_out.Subtract(my_time_in).GetMilliseconds());
+                    timer.lap("global search local");
                 }
 
                 if ( local_refinement_local ) {
+                    timer.start("local refinement local");
                     //				my_time_in = wxDateTime::UNow();
                     comparison_object.reference_volume = &input_3d_local;
                     comparison_object.projection_image = &projection_image_local;
                     comparison_object.particle         = &refine_particle_local;
+#ifdef ENABLEGPU
+                    comparison_object.gpu_projection->Deallocate( );
+                    comparison_object.gpu_density_map->Deallocate( );
+                    comparison_object.PrepareGpuProjection(input_3d_local);
+#endif
                     refine_particle_local.MapParameters(cg_starting_point);
 
                     temp_float = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, refine_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
@@ -1508,7 +1634,7 @@ bool Refine3DApp::DoCalculation( ) {
                     output_parameters.score = -100.0 * conjugate_gradient_minimizer.Run(50);
 
                     refine_particle_local.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
-
+                    timer.lap("local refinement local");
                     //				my_time_out = wxDateTime::UNow(); wxPrintf("local refinement done: ms taken = %li\n", my_time_out.Subtract(my_time_in).GetMilliseconds());
                 }
                 //			log_diff = input_parameters[15] - output_parameters[15];
@@ -1546,6 +1672,7 @@ bool Refine3DApp::DoCalculation( ) {
             //		unbinned_image.ClipInto(&final_image);
             //		logp = refine_particle_local.ReturnLogLikelihood(input_image_local, final_image, pixel_size, classification_resolution_limit, alpha, sigma);
 
+            timer.start("return log likelihood");
             if ( (refine_particle_local.number_of_search_dimensions > 0) && (global_search_local || local_refinement_local) ) {
                 output_parameters.logp = refine_particle_local.ReturnLogLikelihood(input_image_local, input_ctf, input_3d_local, input_statistics, classification_resolution_limit);
             }
@@ -1554,7 +1681,7 @@ bool Refine3DApp::DoCalculation( ) {
                 output_parameters.score        = -100.0f * frealign_score_local;
                 output_parameters.score_change = output_parameters.score - input_parameters.score;
             }
-
+            timer.lap("return log likelihood");
             //		logp = refine_particle_local.ReturnLogLikelihood(input_3d_local, refine_statistics, classification_resolution_limit);
             //		output_parameters[14] = sigma * binning_factor_refine;
 
@@ -1572,6 +1699,7 @@ bool Refine3DApp::DoCalculation( ) {
             //				/ refine_particle_local.mask_volume / projection_image_local.ReturnVarianceOfRealValues()) * binning_factor_refine;
 
             if ( calculate_matching_projections ) {
+                timer.start("calculate matching projections");
                 refine_particle_local.SetAlignmentParameters(output_parameters.phi, output_parameters.theta, output_parameters.psi, 0.0, 0.0);
                 current_projection++;
                 refine_particle_local.CalculateProjection(projection_image_local, input_3d_local);
@@ -1579,6 +1707,7 @@ bool Refine3DApp::DoCalculation( ) {
                 final_image.PhaseShift(output_parameters.x_shift / pixel_size, output_parameters.y_shift / pixel_size);
                 final_image.BackwardFFT( );
                 final_image.WriteSlice(output_file, current_projection);
+                timer.lap("calculate matching projections");
             }
 
             //temp_float = input_parameters[1]; input_parameters[1] = input_parameters[3]; input_parameters[3] = temp_float;
@@ -1606,6 +1735,7 @@ bool Refine3DApp::DoCalculation( ) {
 
             if ( is_running_locally == false ) // send results back to the gui..
             {
+                timer.start("writing results to the gui");
                 intermediate_result             = new JobResult;
                 intermediate_result->job_number = my_current_job.job_number;
 
@@ -1639,6 +1769,7 @@ bool Refine3DApp::DoCalculation( ) {
 
                 intermediate_result->SetResult(26, gui_result_parameters);
                 AddJobToResultQueue(intermediate_result);
+                timer.lap("writing results to the gui");
             }
 
             //for (i = 1; i < refine_particle_local.number_of_parameters; i++) {output_parameters[i] -= input_parameters[i];}
@@ -1657,6 +1788,7 @@ bool Refine3DApp::DoCalculation( ) {
                 my_progress->Update(image_counter);
         }
 
+        timer.start("clean up");
         input_image_local.Deallocate( );
         temp_image_local.Deallocate( );
         projection_image_local.Deallocate( );
@@ -1670,16 +1802,18 @@ bool Refine3DApp::DoCalculation( ) {
         }
         if ( calculate_matching_projections )
             final_image.Deallocate( );
-
+        timer.lap("clean up");
     } // end omp section
 
     if ( is_running_locally == true )
         delete my_progress;
 
+    timer.start("write out star files");
     // write the files..
 
     output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, first_particle, last_particle);
     output_shifts_file.WriteTocisTEMStarFile(output_shift_filename, -1, -1, first_particle, last_particle);
+    timer.lap("write out star files");
     //	delete global_euler_search;
     if ( global_search ) {
         delete[] projection_cache;
@@ -1689,6 +1823,9 @@ bool Refine3DApp::DoCalculation( ) {
         delete output_file;
 
     wxPrintf("\nRefine3D: Normal termination\n\n");
+
+    timer.print_times( );
+    global_timer.print_times( );
 
     return true;
 }

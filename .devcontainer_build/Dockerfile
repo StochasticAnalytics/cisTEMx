@@ -24,7 +24,7 @@ RUN echo "cisTEMx:cisTEMx" | chpasswd && adduser cisTEMx sudo
 # Install useful ubuntu packages
 RUN apt-get --allow-releaseinfo-change update && apt-get install -y libgtk2.0-dev \
     libtool autoconf autotools-dev nano gedit meld cmake \
-    fftw3-dev libtiff-dev software-properties-common libffi-dev \
+    libfftw3-dev libtiff-dev software-properties-common libffi-dev \
     libbz2-dev libsqlite3-dev zlib1g-dev libjpeg-dev libtiff-dev \
     libreadline-dev liblzma-dev libssl-dev libncursesw5-dev wget \
     build-essential git xauth zip unzip parallel sqlite3 python3 python3-pip curl gdb  \

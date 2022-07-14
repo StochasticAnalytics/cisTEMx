@@ -7,12 +7,14 @@ From: ubuntu:20.04
 # /groups/himesb/.config/Code\ -\ Insiders/User/globalStorage/ms-vscode-remote.remote-containers/cli-bin/code-insiders build --image-name bhimesbhimes/cistem_build_env:latest ./.devcontainer_build
 
 
-DEBIAN_FRONTEND=noninteractive
-TZ=America/New_York
-GCC_VER=11
-n_threads=6
+export DEBIAN_FRONTEND=noninteractive
+export GCC_VER=11
+export n_threads=6
 
-apt-get update && apt-get -y install tzdata
+unset TZ
+
+echo 'America/New_York' | tee /etc/timezone
+apt-get update &&  apt-get -y install tzdata &&  dpkg-reconfigure --frontend noninteractive tzdata
 
 apt-get install -y locales && rm -rf /var/lib/apt/lists/* \
 && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
@@ -21,20 +23,20 @@ LANG=en_US.utf8
 
 apt-get update && apt-get install -y sudo
 
-echo 'export LD_PRELOAD=/opt/intel/libfakeIntel.so' >> $SINGULARITY_ENVIRONMENT
+echo 'export LD_PRELOAD=/opt/intel/libfakeIntel.so' >> $APPTAINER_ENVIRONMENT
 
 # Install useful ubuntu packages
 apt-get --allow-releaseinfo-change update && apt-get install -y libgtk2.0-dev \
 nano gedit meld cmake \
-fftw3-dev software-properties-common libffi-dev \
+libfftw3-dev software-properties-common libffi-dev \
 libbz2-dev libsqlite3-dev zlib1g-dev libjpeg-dev libtiff-dev \
 libreadline-dev liblzma-dev libssl-dev libncursesw5-dev wget \
-git xauth zip unzip parallel sqlite3 python3 python3-pip curl libncurses5-dev gdb  \
+git xauth zip unzip parallel sqlite3 python3 python3-pip curl gdb \
 && rm -rf /var/lib/apt/lists/*
 
 # Get reference images for testing and debugging
 pip3 install gdown && cd / && gdown https://drive.google.com/drive/folders/1PO9tBU7lKqKUuSb8qdEPvlEk7xeektXv?usp --folder
-echo 'export CISTEM_REF_IMAGES=/cistem_reference_images' >>$SINGULARITY_ENVIRONMENT
+echo 'export CISTEM_REF_IMAGES=/cistem_reference_images' >>$APPTAINER_ENVIRONMENT
 
 # Get the MKL and intel compiler: note, this is 19G by default, will try to determine minimal set needed huge waste but works well enough for now, final size is ~5gb
 wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
@@ -55,8 +57,8 @@ mkdir /opt/WX
     --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
     --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
     make -j$n_threads && \
-    make install && \
-    rm -rf /tmp/wxWidgets-3.0.5 /tmp/wxwidgets.tar.bz2
+    make install 
+    # && \ rm -rf /tmp/wxWidgets-3.0.5 /tmp/wxwidgets.tar.bz2
 
 
 # Install wxWidgets 3.1.5
@@ -139,12 +141,12 @@ chmod a+r /opt/WX/intel-dynamic/include/wx-3.0/wx/longlong.h
 # # Add a script that should be called when the container goes live
 # echo 'alias lt="ls -lrth"' >> /.singularity.d/env/99_ZZ-cistem.sh
 # echo '. /opt/intel/oneapi/setvars.sh intel64' >> /.singularity.d/env/99_ZZ-cistem.sh
-echo 'export MKLROOT=/opt/intel/oneapi/mkl/2021.4.0/' >>$SINGULARITY_ENVIRONMENT
-echo 'export NLSPATH=/opt/intel/oneapi/mkl/2021.4.0/lib/intel64/locale/%l_%t/%N' >>$SINGULARITY_ENVIRONMENT
-echo 'export CPATH=/opt/intel/oneapi/tbb/2021.4.0/env/../include:/opt/intel/oneapi/mkl/2021.4.0/include:/opt/intel/oneapi/compiler/2021.4.0/linux/include' >>$SINGULARITY_ENVIRONMENT
-echo 'export LIBRARY_PATH=/opt/intel/oneapi/tbb/2021.4.0/env/../lib/intel64/gcc4.8:/opt/intel/oneapi/mkl/2021.4.0/lib/intel64:/opt/intel/oneapi/compiler/2021.4.0/linux/compiler/lib/intel64_lin:/opt/intel/oneapi/compiler/2021.4.0/linux/lib' >>$SINGULARITY_ENVIRONMENT
+echo 'export MKLROOT=/opt/intel/oneapi/mkl/2021.4.0/' >>$APPTAINER_ENVIRONMENT
+echo 'export NLSPATH=/opt/intel/oneapi/mkl/2021.4.0/lib/intel64/locale/%l_%t/%N' >>$APPTAINER_ENVIRONMENT
+echo 'export CPATH=/opt/intel/oneapi/tbb/2021.4.0/env/../include:/opt/intel/oneapi/mkl/2021.4.0/include:/opt/intel/oneapi/compiler/2021.4.0/linux/include' >>$APPTAINER_ENVIRONMENT
+echo 'export LIBRARY_PATH=/opt/intel/oneapi/tbb/2021.4.0/env/../lib/intel64/gcc4.8:/opt/intel/oneapi/mkl/2021.4.0/lib/intel64:/opt/intel/oneapi/compiler/2021.4.0/linux/compiler/lib/intel64_lin:/opt/intel/oneapi/compiler/2021.4.0/linux/lib' >>$APPTAINER_ENVIRONMENT
 # NOTE: this also has the wx dynamic in it
-echo 'export LD_LIBRARY_PATH=/opt/WX/intel-dynamic/lib/:/opt/intel/oneapi/tbb/2021.4.0/env/../lib/intel64/gcc4.8:/opt/intel/oneapi/mkl/2021.4.0/lib/intel64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/x64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/emu:/opt/intel/oneapi/compiler/2021.4.0/linux/compiler/lib/intel64_lin:/.singularity.d/libs' >>$SINGULARITY_ENVIRONMENT
+echo 'export LD_LIBRARY_PATH=/opt/WX/intel-dynamic/lib/:/opt/intel/oneapi/tbb/2021.4.0/env/../lib/intel64/gcc4.8:/opt/intel/oneapi/mkl/2021.4.0/lib/intel64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/x64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/emu:/opt/intel/oneapi/compiler/2021.4.0/linux/compiler/lib/intel64_lin:/.singularity.d/libs' >>$APPTAINER_ENVIRONMENT
 
 
 # Hack to make intel play nice with AMD

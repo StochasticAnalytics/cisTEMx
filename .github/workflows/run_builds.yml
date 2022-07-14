@@ -15,6 +15,18 @@ on:
         description: 'The OS to run on'
         required: true 
         type: string
+      CC:
+        description: 'The precompiler to use'
+        required: true
+        type: string
+      CXX: 
+        description: 'The c++ compiler to use'
+        required: true
+        type: string   
+      cppstandard:
+        description: 'The c++ standard to use = 17 or 20'
+        required: true 
+        type: string
 
 jobs:
   build:
@@ -23,11 +35,14 @@ jobs:
       fail-fast: true
     runs-on: ${{ inputs.runs_on_os }}
     container: 
-      image: bhimesbhimes/cistem_build_env:v1.3.8
+      image: bhimesbhimes/cistem_build_env:v1.4.0
       options: --user root
     outputs:
       version: ${{ steps.configure.outputs.version }}
     steps:
+    - name: okay the repo   
+      run: git config --global --add safe.directory /__w/quick-lint-js/quick-lint-js
+
     - uses: actions/checkout@v2
       # the macro for CISTEM_VERSION_TEXT needs access to the history.
       with:
@@ -37,21 +52,22 @@ jobs:
       run: ./regenerate_project.b
     - name: configure
       env:
-        CC: gcc
-        CXX: g++
+        CC: ${{ inputs.CC }}
+        CXX: ${{ inputs.CXX }}
       run: |
         . /opt/intel/oneapi/setvars.sh
         mkdir -p build/${{ inputs.build_type }} 
         cd build/${{ inputs.build_type }} 
         echo $CC
         echo $CXX
-        ../../configure  --enable-experimental ${{ inputs.configure_options }} --with-wx-config=wx-config  --enable-samples
+        ../../configure  --enable-experimental ${{ inputs.configure_options }} --with-wx-config=/opt/WX/intel-dynamic/bin/wx-config  --enable-samples
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "::set-output name=version::$VERSION" 
     - uses: ammaraskar/gcc-problem-matcher@master
     - name: make 
       run: |
-        scripts/cistem_make.sh build/${{ inputs.build_type }} 2
+        . /opt/intel/oneapi/setvars.sh
+        scripts/cistem_make.sh build/${{ inputs.build_type }} ${{ inputs.cppstandard }} 2
         cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
     - name: clean up
       run: |

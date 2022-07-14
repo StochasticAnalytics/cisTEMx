@@ -9,14 +9,14 @@
  *
  *
  */
+#include <cistem_config.h>
 
 #ifdef ENABLEGPU
 #include "../../../gpu/gpu_core_headers.h"
+#include "../../../gpu/GpuImage.h"
 #else
 #include "../../../core/core_headers.h"
 #endif
-
-#include "../../../gpu/GpuImage.h"
 
 #include "../common/common.h"
 #include "resize_comparison.h"

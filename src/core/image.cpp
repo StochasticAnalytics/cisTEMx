@@ -13,6 +13,7 @@ void Image::SetupInitialValues( ) {
 
     is_in_real_space         = true;
     object_is_centred_in_box = true;
+    is_fft_centered_in_box   = false;
 
     physical_upper_bound_complex_x = 0;
     physical_upper_bound_complex_y = 0;
@@ -4282,6 +4283,7 @@ Image& Image::operator=(const Image* other_image) {
 
         is_in_real_space         = other_image->is_in_real_space;
         object_is_centred_in_box = other_image->object_is_centred_in_box;
+        is_fft_centered_in_box   = other_image->is_fft_centered_in_box;
 
         for ( long pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter++ ) {
             real_values[pixel_counter] = other_image->real_values[pixel_counter];
@@ -4624,6 +4626,7 @@ void Image::ForwardFFT(bool should_scale) {
 void Image::BackwardFFT( ) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image already in real space");
+    MyDebugAssertFalse(is_fft_centered_in_box, "A centered and shifted FFT cannot be back transformed as it would require a complex real-space image.");
 
     fftwf_execute_dft_c2r(plan_bwd, reinterpret_cast<fftwf_complex*>(complex_values), real_values);
 
@@ -8742,6 +8745,63 @@ bool Image::HasSameDimensionsAs(Image* other_image) {
 }
 
 //END_FOR_STAND_ALONE_CTFFIND
+
+void Image::SwapFourierSpaceQuadrants(bool also_swap_real_space_quadrants) {
+    MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Image is not in real space");
+
+    if ( also_swap_real_space_quadrants ) {
+        // For convenience, just do the real space swap here. This is of course inefficient, and could be implemented at the end of this method, but
+        // the price of an extra round of FFTs seems to be low, given the assumed low frequency use of this method, relative to projection.
+        ForwardFFT( );
+        SwapRealSpaceQuadrants( );
+        BackwardFFT( );
+    }
+
+    // To also add the single shift means we'll have a complex input image, handle as two reals.
+    Image       tmp_real;
+    Image       tmp_imag;
+    float       tmp_real_value;
+    float       tmp_imag_value;
+    float       yz_shift;
+    const float lead_term = 2.f * pi_v<float> / float(logical_x_dimension);
+    int         address   = 0;
+
+    tmp_real.Allocate(logical_x_dimension, logical_y_dimension, logical_z_dimension, true);
+    tmp_imag.Allocate(logical_x_dimension, logical_y_dimension, logical_z_dimension, true);
+
+    for ( int k = 0; k < logical_z_dimension; k++ ) {
+        for ( int j = 0; j < logical_y_dimension; j++ ) {
+            // separating the exponents in the 3d phase shift with magnitue of NY/2 and NZ/2 the phases become become -1^(y+z)
+            yz_shift = powf(-1.f, float(k + j));
+            for ( int i = 0; i < logical_x_dimension; i++ ) {
+                // To add the x = -1 term to avoid padding for 3d interpolation in GPU texture memory, where spatial locality is important, we need to shift the image by 1 pixel.
+                // Additionally, to get the positive half and not the negative, we need an extra NX/2, so we have exp(i*2*pi*x / NX (NX + 1)) which reduces to exp(i*2*pi*x/NX)
+                sincosf(lead_term * float(i), &tmp_imag_value, &tmp_real_value);
+                tmp_real.real_values[address] = real_values[address] * yz_shift * tmp_real_value;
+                tmp_imag.real_values[address] = real_values[address] * yz_shift * tmp_imag_value;
+
+                address++;
+            }
+            address += padding_jump_value;
+        }
+    }
+
+    // Now to get a complex FFT, we use FFT(a + bi) = FFT(a) + iFFT(b)
+    // Ar +iAc + i(Br + iBc) = (Ar - Bc) + i(Ac + Br)
+    tmp_real.ForwardFFT( );
+    tmp_imag.ForwardFFT( );
+
+    for ( int complex_address = 0; complex_address < real_memory_allocated / 2; complex_address++ ) {
+        complex_values[complex_address] = MakeComplex(
+                real(tmp_real.complex_values[complex_address]) - imag(tmp_imag.complex_values[complex_address]),
+                imag(tmp_real.complex_values[complex_address]) + real(tmp_imag.complex_values[complex_address]));
+    }
+
+    // Since the FFT was out of place, update the meta data
+    is_in_real_space       = false;
+    is_fft_centered_in_box = true;
+}
 
 void Image::SwapRealSpaceQuadrants( ) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");

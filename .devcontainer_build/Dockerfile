@@ -27,8 +27,12 @@ RUN apt-get --allow-releaseinfo-change update && apt-get install -y libgtk2.0-de
     fftw3-dev libtiff-dev software-properties-common libffi-dev \
     libbz2-dev libsqlite3-dev zlib1g-dev libjpeg-dev libtiff-dev \
     libreadline-dev liblzma-dev libssl-dev libncursesw5-dev wget \
-    build-essential git xauth zip unzip parallel sqlite3 python3 python3-pip curl  \
+    build-essential git xauth zip unzip parallel sqlite3 python3 python3-pip curl gdb  \
     && rm -rf /var/lib/apt/lists/*
+
+# Get reference images for testing and debugging
+RUN pip3 install gdown && cd / && gdown https://drive.google.com/drive/folders/1PO9tBU7lKqKUuSb8qdEPvlEk7xeektXv?usp --folder
+ENV CISTEM_REF_IMAGES /cistem_reference_images
 
 # Install newest gcc
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
@@ -53,19 +57,26 @@ RUN wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWi
     mkdir /opt/WX 
 
 # Here for the record if you want to build and link static binaries to avoid the cointainerized distribution
-RUN . /opt/intel/oneapi/setvars.sh  &&  cd /tmp/wxWidgets-3.0.5 && CXX=icpc CC=icc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/intel-static --with-libnotify=no --disable-shared \
+# RUN . /opt/intel/oneapi/setvars.sh  &&  cd /tmp/wxWidgets-3.0.5 && CXX=icpc CC=icc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/intel-static --with-libnotify=no --disable-shared \
+#     --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
+#     --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
+#     make -j$n_threads && \
+#     make install && make clean 
+
+# Now build with out static intel
+RUN . /opt/intel/oneapi/setvars.sh  && cd /tmp/wxWidgets-3.0.5 && CXX=icpc CC=icc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/intel-dynamic --with-libnotify=no \
     --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
     --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
     make -j$n_threads && \
-    make install && make clean 
+    make install 
 
-# Now build with out static
-RUN . /opt/intel/oneapi/setvars.sh  && cd /tmp/wxWidgets-3.0.5 && CXX=icpc CC=icc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/intel-dynamic --with-libnotify=no  \
+# Now build with out static gcc
+RUN cd /tmp/wxWidgets-3.0.5 && CXX=g++ CC=gcc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/gnu-dynamic --with-libnotify=no \
     --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
     --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
     make -j$n_threads && \
     make install && \
-    rm -rf /tmp/wxWidgets-3.0.5 /tmp/wxwidgets.tar.bz2
+    rm -rf /tmp/wxWidgets-3.0.5 /tmp/wxwidgets.tar.bz2    
 
 
 # Install wxWidgets 3.1.5 - this is used when webview is built (and must be configured as such TODO add check)
@@ -120,31 +131,21 @@ ENV LD_RUN_PATH=/opt/libtorch/lib:${LD_RUN_PATH}
 
 
 # Install cuda (when the web is live)
-RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/11.7.0/local_installers/cuda_11.7.0_515.43.04_linux.run && \
-    sh cuda_11.7.0_515.43.04_linux.run --silent --toolkit && \
-    rm cuda_11.7.0_515.43.04_linux.run && \
-    # We currently don't need a bunch of things in the cuda toolkit, which installed is something like ~6.4Gb, this reduces to 1.9
+ARG CUDA_VER=11.7.0
+ARG DRIVER_VER=515.43.04
+# Install cuda (when the web is live)
+RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
+    sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit && \
+    rm cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
     cd /usr/local/cuda && rm -rf nsight* extras && \
     cd lib64 && rm libcublas* libcuspars* libcusolver*
 
-# # Install CUDA
-# RUN cd /tmp && wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1uNiD5k9fkMiC6JfR6Gqi5LthMe0VA_h0' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1uNiD5k9fkMiC6JfR6Gqi5LthMe0VA_h0" -O cuda_11.6.0_510.39.01_linux.run && rm -rf /tmp/cookies.txt && \
-#     sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit && \
-#     rm cuda_11.6.0_510.39.01_linux.run && \
-#     # We currently don't need a bunch of things in the cuda toolkit, which installed is something like ~6.4Gb, this reduces to 1.9
-#     cd /usr/local/cuda && rm -rf nsight* extras && \
-#     cd lib64 && rm libcublas* libcuspars* libcusolver*
 
 RUN echo 'alias lt="ls -lrth"' >> /home/cisTEMx/.bashrc && \
     echo 'alias dU="du -ch --max-depth=1 | sort -h"' >> /home/cisTEMx/.bashrc && \
     echo 'source /opt/intel/oneapi/setvars.sh' >> /home/cisTEMx/.bashrc && \
     echo 'bind "set bell-style none"' >> /home/cisTEMx/.bashrc
 
-# # First noticed outside container with g++9, several errors in longlong.h seem to be fixed by this extra include  /usr/include/wx-3.1-unofficial
-# RUN tf=`tempfile` && cp /usr/include/wx-3.1-unofficial/wx/longlong.h /usr/include/wx-3.1-unofficial/wx/longlong.h.orig && \
-#     awk '{if(/#include "wx\/defs.h"/){ print $0 ;print "#include <wx/txtstrm.h>"} else print $0}' /usr/include/wx-3.1-unofficial/wx/longlong.h.orig > $tf && \
-#     mv $tf /usr/include/wx-3.1-unofficial/wx/longlong.h && \
-#     chmod a+r /usr/include/wx-3.1-unofficial/wx/longlong.h
 
 # First noticed outside container with g++9, several errors in longlong.h seem to be fixed by this extra include  /usr/include/wx-3.1-unofficial
 RUN tf=`tempfile` && cp /opt/WX/intel-dynamic/include/wx-3.0/wx/longlong.h /opt/WX/intel-dynamic/include/wx-3.0/wx/longlong.h.orig && \
@@ -152,10 +153,10 @@ RUN tf=`tempfile` && cp /opt/WX/intel-dynamic/include/wx-3.0/wx/longlong.h /opt/
     mv $tf /opt/WX/intel-dynamic/include/wx-3.0/wx/longlong.h && \
     chmod a+r /opt/WX/intel-dynamic/include/wx-3.0/wx/longlong.h
 
-RUN tf=`tempfile` && cp /opt/WX/intel-static/include/wx-3.0/wx/longlong.h /opt/WX/intel-static/include/wx-3.0/wx/longlong.h.orig && \
-    awk '{if(/#include "wx\/defs.h"/){ print $0 ;print "#include <wx/txtstrm.h>"} else print $0}' /opt/WX/intel-static/include/wx-3.0/wx/longlong.h.orig > $tf && \
-    mv $tf /opt/WX/intel-static/include/wx-3.0/wx/longlong.h && \
-    chmod a+r /opt/WX/intel-static/include/wx-3.0/wx/longlong.h
+# RUN tf=`tempfile` && cp /opt/WX/intel-static/include/wx-3.0/wx/longlong.h /opt/WX/intel-static/include/wx-3.0/wx/longlong.h.orig && \
+#     awk '{if(/#include "wx\/defs.h"/){ print $0 ;print "#include <wx/txtstrm.h>"} else print $0}' /opt/WX/intel-static/include/wx-3.0/wx/longlong.h.orig > $tf && \
+#     mv $tf /opt/WX/intel-static/include/wx-3.0/wx/longlong.h && \
+#     chmod a+r /opt/WX/intel-static/include/wx-3.0/wx/longlong.h
 
 # First noticed outside container with g++9, several errors in longlong.h seem to be fixed by this extra include  /usr/include/wx-3.1-unofficial
 RUN tf=`tempfile` && cp /usr/include/wx-3.1-unofficial/wx/longlong.h /usr/include/wx-3.1-unofficial/wx/longlong.h.orig && \

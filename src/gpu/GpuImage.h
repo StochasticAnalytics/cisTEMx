@@ -28,6 +28,7 @@ class GpuImage {
     int  logical_x_dimension, logical_y_dimension, logical_z_dimension;
     bool is_in_real_space; // !< Whether the image is in real or Fourier space
     bool object_is_centred_in_box; //!<  Whether the object or region of interest is near the center of the box (as opposed to near the corners and wrapped around). This refers to real space and is meaningless in Fourier space.
+    bool is_fft_centered_in_box;
     int3 physical_upper_bound_complex;
     int3 physical_address_of_box_center;
     int3 physical_index_of_first_negative_frequency;
@@ -67,6 +68,14 @@ class GpuImage {
     __half*  real_values_16f;
     __half2* complex_values_16f;
 
+    // We want to be able to re-use the texture object, so only set it up once.
+    cudaTextureObject_t tex_real;
+    cudaTextureObject_t tex_imag;
+    cudaArray*          cuArray_real = 0;
+    cudaArray*          cuArray_imag = 0;
+
+    bool is_allocated_texture_cache;
+
     enum ImageType : size_t { real16f    = sizeof(__half),
                               complex16f = sizeof(__half2),
                               real32f    = sizeof(float),
@@ -79,6 +88,7 @@ class GpuImage {
     bool   is_in_memory_gpu; // !<  Whether image values are in-memory, in other words whether the image has memory space allocated to its data array. Default = .FALSE.
     bool   is_host_memory_pinned; // !<  Is the host memory already page locked (2x bandwith and required for asynchronous xfer);
     float* pinnedPtr;
+    Image* hostImagePtr; // Primarily for access to host image methods for preprocessing.
 
     cudaMemcpy3DParms h_3dparams = {0};
     cudaExtent        h_extent;
@@ -98,6 +108,7 @@ class GpuImage {
     bool    is_meta_data_initialized;
     float*  tmpVal;
     double* tmpValComplex;
+    bool    is_in_memory_managed_tmp_vals;
 
     ////////////////////////////////////////////////////////
 
@@ -140,6 +151,7 @@ class GpuImage {
     void MultiplyPixelWise(GpuImage& other_image); /**CPU_eq**/
     void MultiplyPixelWiseComplexConjugate(GpuImage& other_image);
 
+    void SwapFourierSpaceQuadrants( );
     void SwapRealSpaceQuadrants( ); /**CPU_eq**/
     void ClipInto(GpuImage* other_image, float wanted_padding_value, /**CPU_eq**/
                   bool fill_with_noise, float wanted_noise_sigma,
@@ -182,6 +194,7 @@ class GpuImage {
     ////////////////////////////////////////////////////////////////////////
 
     void CopyHostToDevice( );
+    void CopyHostToDeviceTextureComplex3d( );
     void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true);
 
@@ -244,6 +257,8 @@ class GpuImage {
     void printVal(std::string msg, int idx);
     bool HasSameDimensionsAs(GpuImage* other_image);
     void Zeros( );
+
+    void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit, float3 xtra_shifts = make_float3(0.0f, 0.0f, 0.0f));
 
     void Abs( );
     void AbsDiff(GpuImage& other_image); // inplace

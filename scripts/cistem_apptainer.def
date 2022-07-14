@@ -10,7 +10,7 @@ From: ubuntu:20.04
 DEBIAN_FRONTEND=noninteractive
 TZ=America/New_York
 GCC_VER=11
-n_threads=12
+n_threads=6
 
 apt-get update && apt-get -y install tzdata
 
@@ -29,9 +29,12 @@ nano gedit meld cmake \
 fftw3-dev software-properties-common libffi-dev \
 libbz2-dev libsqlite3-dev zlib1g-dev libjpeg-dev libtiff-dev \
 libreadline-dev liblzma-dev libssl-dev libncursesw5-dev wget \
-git xauth zip unzip parallel sqlite3 python3 python3-pip curl gdb \
+git xauth zip unzip parallel sqlite3 python3 python3-pip curl libncurses5-dev gdb  \
 && rm -rf /var/lib/apt/lists/*
 
+# Get reference images for testing and debugging
+pip3 install gdown && cd / && gdown https://drive.google.com/drive/folders/1PO9tBU7lKqKUuSb8qdEPvlEk7xeektXv?usp --folder
+echo 'export CISTEM_REF_IMAGES=/cistem_reference_images' >>$SINGULARITY_ENVIRONMENT
 
 # Get the MKL and intel compiler: note, this is 19G by default, will try to determine minimal set needed huge waste but works well enough for now, final size is ~5gb
 wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
@@ -96,10 +99,14 @@ apt-get update && apt-get install -y nodejs && \
 rm -rf /var/lib/apt/lists/*  && \
 npm install -g pnpm
 
+
+export CUDA_VER=11.7.0
+export DRIVER_VER=515.43.04
 # Install cuda (when the web is live)
-cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/11.7.0/local_installers/cuda_11.7.0_515.43.04_linux.run && \
-sh cuda_11.7.0_515.43.04_linux.run --silent --toolkit && \
-rm cuda_11.7.0_515.43.04_linux.run && \
+
+cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
+sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit && \
+rm cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
 # We currently don't need a bunch of things in the cuda toolkit, which installed is something like ~6.4Gb, this reduces to 1.9
 cd /usr/local/cuda && rm -rf nsight* extras && \
 cd lib64 && rm libcublas* libcuspars* libcusolver*

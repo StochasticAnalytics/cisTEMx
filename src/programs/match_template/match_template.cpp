@@ -1,7 +1,15 @@
-#include "../../core/core_headers.h"
-#include "../../core/cistem_constants.h"
+#include <cistem_config.h>
+
+#ifdef ENABLEGPU
+#include "../../gpu/gpu_core_headers.h"
 #include "../../gpu/DeviceManager.h"
 #include "../../gpu/TemplateMatchingCore.h"
+#else
+#include "../../core/core_headers.h"
+#endif
+
+#include "../../core/cistem_constants.h"
+
 
 #ifdef ENABLE_FastFFT
 #include <FastFFT.h>

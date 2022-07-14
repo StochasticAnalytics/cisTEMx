@@ -21,6 +21,7 @@ class Image {
 
     bool is_in_real_space; // !< Whether the image is in real or Fourier space
     bool object_is_centred_in_box; //!<  Whether the object or region of interest is near the center of the box (as opposed to near the corners and wrapped around). This refers to real space and is meaningless in Fourier space.
+    bool is_fft_centered_in_box; //!< Whether the image is centered in the box (as opposed to near the corners and wrapped around). This refers to Fourier space and is meaningless in real space.
 
     int physical_upper_bound_complex_x; // !< In each dimension, the upper bound of the complex image's physical addresses
     int physical_upper_bound_complex_y; // !< In each dimension, the upper bound of the complex image's physical addresses
@@ -418,6 +419,7 @@ class Image {
     void  MaskCentralCross(int vertical_half_width = 1, int horizontal_half_width = 1);
     void  ZeroCentralPixel( );
     void  CalculateCrossCorrelationImageWith(Image* other_image);
+    void  SwapFourierSpaceQuadrants(bool also_swap_real_space_quadrants = true);
     void  SwapRealSpaceQuadrants( );
     void  ComputeAmplitudeSpectrumFull2D(Image* other_image, bool calculate_phases = false, float phase_multiplier = 1.0f);
     void  ComputeFilteredAmplitudeSpectrumFull2D(Image* average_spectrum_masked, Image* current_power_spectrum, float& average, float& sigma, float minimum_resolution, float maximum_resolution, float pixel_size_for_fitting);

@@ -5,7 +5,7 @@ build_dir=${1}
 cpp_standard=${2}
 
 if [ $3 ] ; then
-    n_threads=${2}
+    n_threads=${3}
 else
     n_threads=$(($(nproc) / 2))
 fi 

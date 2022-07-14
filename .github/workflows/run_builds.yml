@@ -40,6 +40,9 @@ jobs:
     outputs:
       version: ${{ steps.configure.outputs.version }}
     steps:
+    - name: okay the repo   
+      run: git config --global --add safe.directory /__w/quick-lint-js/quick-lint-js
+
     - uses: actions/checkout@v2
       # the macro for CISTEM_VERSION_TEXT needs access to the history.
       with:

@@ -7,6 +7,7 @@
             "cuda_dir": "/usr/local/cuda",
             "wx_dir_dynamic": "/opt/WX/intel-dynamic/bin/wx-config",
             "wx_dir_static": "/opt/WX/intel-static/bin/wx-config",
+            "wx_dir_dynamic_gcc:": "/opt/WX/gcc-dynamic/bin/wx-config",
             "build_dir": "${workspaceFolder}/build",
             "compile_cores": "6"
         }
@@ -80,7 +81,7 @@
         {
             "label": "BUILD intel,gpu,debug,dynamic",
             "type": "shell",
-            "command": "cd ${build_dir}/intel-gpu-debug-dynamic && export LD_LIBRARY_PATH=/opt/WX/intel-dynamic/include/wx-3.0/:$LD_LIBRARY_PATH && make -j${compile_cores}"
+            "command": "cd ${build_dir}/intel-gpu-debug-dynamic && make -j${compile_cores}"
         },
         {
             "label": "CONFIG intel,gpu,dynamic",
@@ -95,22 +96,22 @@
         {
             "label": "CONFIG GNU ,gpu",
             "type": "shell",
-            "command": "mkdir -p ${build_dir}/GNU-gpu && cd ${build_dir}/GNU-gpu && CC=gcc CXX=g++ ../../configure --disable-multiple-global-refinements--enable-samples --enable-experimental --with-cuda=${cuda_dir} --disable-staticmode --enable-openmp"
+            "command": "mkdir -p ${build_dir}/GNU-gpu && cd ${build_dir}/GNU-gpu && CC=gcc CXX=g++ ../../configure ----disable-multiple-global-refinements --with-c++std=20 --enable-samples --enable-experimental --with-cuda=${cuda_dir} --disable-staticmode --enable-openmp --with-wx-config=${wx_dir_dynamic_gcc}"
         },
         {
             "label": "BUILD GNU,gpu",
             "type": "shell",
-            "command": "${workspaceFolder}/scripts/cistem_make.sh ${build_dir}/GNU-gpu ${compile_cores}"
+            "command": "${workspaceFolder}/scripts/cistem_make.sh 20 ${build_dir}/GNU-gpu ${compile_cores}"
         },
         {
             "label": "CONFIG GNU,gpu, debug",
             "type": "shell",
-            "command": "mkdir -p ${build_dir}/GNU-gpu-debug && cd ${build_dir}/GNU-gpu-debug && CC=gcc CXX=g++ ../../configure --disable-multiple-global-refinements --enable-samples --enable-debugmode --enable-experimental --with-cuda=/usr/local/cuda --disable-staticmode --enable-openmp"
+            "command": "mkdir -p ${build_dir}/GNU-gpu-debug && cd ${build_dir}/GNU-gpu-debug && CC=gcc CXX=g++ ../../configure --disable-multiple-global-refinements --with-c++std=20 --enable-samples --enable-debugmode --enable-experimental --with-cuda=/usr/local/cuda --disable-staticmode --enable-openmp --with-wx-config=${wx_dir_dynamic_gcc}"
         },
         {
             "label": "BUILD GNU,gpu, debug",
             "type": "shell",
-            "command": "${workspaceFolder}/scripts/cistem_make.sh ${build_dir}/GNU-gpu-debug ${compile_cores}"
+            "command": "${workspaceFolder}/scripts/cistem_make.sh 20 ${build_dir}/GNU-gpu-debug ${compile_cores}"
         },
         {
             // This doesn't work - spaces, ugh

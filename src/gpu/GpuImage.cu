@@ -3075,6 +3075,7 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
 __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
                                             const cudaTextureObject_t tex_imag,
                                             float2*                   outputData,
+                                            float2                    shifts,
                                             const int                 NX,
                                             const int                 NY,
                                             const float*              m,
@@ -3106,6 +3107,10 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
     else {
         v = (float)y;
     }
+
+    // Shifts are already 2*pi*dx/NX
+    shifts.x *= u;
+    shifts.y *= v;
     // logical Fourier z = 0 for a projection
 
     frequency_sq = u * u + v * v;
@@ -3165,8 +3170,10 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
                 outputData[y] = make_float2(0.f, 0.f);
             }
             else {
-                tw            = sqrtf(radial_average[x] / float(non_zero_count[x]));
-                outputData[y] = make_float2(u / tw, v / tw);
+                tw = sqrtf(float(non_zero_count[x]) / radial_average[x]);
+                __sincosf(-shifts.x - shifts.y, &tv, &tu);
+                outputData[y] = ComplexConjMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
+                // outputData[y] = make_float2(u / tw, v / tw);
             }
         }
     }
@@ -3200,10 +3207,12 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
         // For bin resolution of one pixel, uint16 should be plenty
         int shared_mem = n_bins * (sizeof(float) + sizeof(unsigned int));
         // TODO: add check on shared mem from FastFFT
+        float2 shifts = make_float2(angles_and_shifts_of_image.ReturnShiftX( ), angles_and_shifts_of_image.ReturnShiftY( ));
         precheck;
         ExtractSliceAndWhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
                                                                                                     volume_to_extract_from->tex_imag,
                                                                                                     (float2*)complex_values_gpu,
+                                                                                                    shifts,
                                                                                                     dims.w / 2,
                                                                                                     dims.y,
                                                                                                     d_m,

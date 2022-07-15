@@ -85,7 +85,8 @@ class ImageProjectionComparison {
 
         // Realspace quadrants should already be swapped. TODO: just add a check inside the method and don't bother with the argument passing
         temp_image.SwapFourierSpaceQuadrants(false);
-        gpu_density_map->CopyFromCpuImage(temp_image);
+        // This is a shared resource, and we don't copy the host real_values anyway, so DONOT pin the memory
+        gpu_density_map->CopyFromCpuImage(temp_image, false);
         gpu_density_map->CopyHostToDeviceTextureComplex3d( );
         gpu_density_map->RecordAndWait( );
         // wxPrintf("Allocating texture cache was (%d)\n", gpu_density_map->is_allocated_texture_cache);
@@ -99,6 +100,10 @@ class ImageProjectionComparison {
         // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
         global_timer.start("calc_proj gpu");
         gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, particle->pixel_size / particle->filter_radius_high, true, true);
+        // gpu_projection->PhaseShift(particle->alignment_parameters.ReturnShiftX( ) / reference_volume->pixel_size,
+        //                            particle->alignment_parameters.ReturnShiftY( ) / reference_volume->pixel_size,
+        //                            0.f);
+
         gpu_projection->RecordAndWait( );
         global_timer.lap("calc_proj gpu");
         global_timer.start("copy device to host");
@@ -154,14 +159,14 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     comparison_object->DoGpuProjection( );
 
-    if ( comparison_object->nprj < 10 ) {
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    }
+    // if ( comparison_object->nprj < 10 ) {
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    // }
     // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
     // Force it here (though better to use a flag)
-    comparison_object->reference_volume->current_psi -= 1.0;
+    // comparison_object->reference_volume->current_psi -= 1.0;
 #endif
 
     global_timer.start("calc_proj cpu");
@@ -186,12 +191,12 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     global_timer.lap("calc_proj cpu");
 
-    if ( comparison_object->nprj < 10 ) {
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->nprj++;
-    }
+    // if ( comparison_object->nprj < 10 ) {
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    //     comparison_object->nprj++;
+    // }
 
     //	if (comparison_object->particle->origin_micrograph < 0) comparison_object->particle->origin_micrograph = 0;
     //	comparison_object->particle->origin_micrograph++;
@@ -1199,7 +1204,10 @@ bool Refine3DApp::DoCalculation( ) {
         GpuImage gpu_density_map_local;
         GpuImage gpu_projection_local;
         comparison_object.projection_image = &projection_image_local;
-        comparison_object.PrepareGpuProjection(input_3d_local, &gpu_density_map_local, &gpu_projection_local);
+        // #pragma omp critical
+        {
+            comparison_object.PrepareGpuProjection(input_3d_local, &gpu_density_map_local, &gpu_projection_local);
+        }
 
 #endif
 

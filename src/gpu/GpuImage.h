@@ -252,13 +252,13 @@ class GpuImage {
     };
 
     void CopyFrom(GpuImage* other_image);
-    void CopyFromCpuImage(Image& cpu_image);
+    void CopyFromCpuImage(Image& cpu_image, bool pin_host_memory = true);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
     bool HasSameDimensionsAs(GpuImage* other_image);
     void Zeros( );
 
-    void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit, float3 xtra_shifts = make_float3(0.0f, 0.0f, 0.0f));
+    void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit = 1.f, bool apply_resolution_limit = true);
 
     void Abs( );
     void AbsDiff(GpuImage& other_image); // inplace

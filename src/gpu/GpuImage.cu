@@ -313,7 +313,7 @@ void GpuImage::CopyFrom(GpuImage* other_image) {
     *this = other_image;
 }
 
-void GpuImage::CopyFromCpuImage(Image& cpu_image) {
+void GpuImage::CopyFromCpuImage(Image& cpu_image, bool pin_host_memory) {
 
     UpdateBoolsToDefault( );
 
@@ -383,14 +383,13 @@ void GpuImage::CopyFromCpuImage(Image& cpu_image) {
 
     ft_normalization_factor = cpu_image.ft_normalization_factor;
 
-    if ( is_host_memory_pinned ) {
-        cudaErr(cudaHostUnregister(real_values));
-        is_host_memory_pinned = false;
+    if ( pin_host_memory ) {
+        cudaErr(cudaHostRegister(real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault));
+        is_host_memory_pinned = true;
+        cudaErr(cudaHostGetDevicePointer(&pinnedPtr, real_values, 0));
     }
-    cudaErr(cudaHostRegister(real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault));
-    is_host_memory_pinned    = true;
+
     is_meta_data_initialized = true;
-    cudaErr(cudaHostGetDevicePointer(&pinnedPtr, real_values, 0));
 
     cudaErr(cudaMallocManaged(&tmpVal, sizeof(float)));
     cudaErr(cudaMallocManaged(&tmpValComplex, sizeof(double)));
@@ -2412,8 +2411,12 @@ void GpuImage::Deallocate( ) {
     }
 
     if ( is_allocated_texture_cache ) {
+        // In the samples, they check directly if( tex_real ) if(cuArray_real)
         cudaErr(cudaDestroyTextureObject(tex_real));
         cudaErr(cudaDestroyTextureObject(tex_imag));
+        cudaErr(cudaFreeArray(cuArray_real));
+        cudaErr(cudaFreeArray(cuArray_imag));
+        is_allocated_texture_cache = false;
     }
 
     UpdateBoolsToDefault( );
@@ -3014,8 +3017,7 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
                                    const int                 NX,
                                    const int                 NY,
                                    const float*              m,
-                                   const float2              shifts,
-                                   const float3              xtra_shifts) {
+                                   const float               resolution_limit_sq) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -3029,46 +3031,47 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
     float u, v, tu, tv, tw;
 
     // First, convert the physical coordinate of the 2d projection to the logical Fourier coordinate (in a natural FFT layout).
-    u = (float)x + shifts.x;
+    u = (float)x;
     // First negative logical fourier component is at NY/2
     if ( y >= NY / 2 ) {
-        v = (float)y - NY + shifts.y;
+        v = (float)y - NY;
     }
     else {
-        v = (float)y + shifts.y;
+        v = (float)y;
     }
     // logical Fourier z = 0 for a projection
 
-    // Based on RotationMatrix.RotateCoords()
-    tu = u * m[0] + v * m[1] + 0.f; // + size_shift.x;
-    tv = u * m[3] + v * m[4] + 0.f; //  + size_shift.y;
-    tw = u * m[6] + v * m[7] + 0.f; //  + size_shift.z;
-
-    if ( tu < 0 ) {
-        // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
-        u  = -1.f;
-        tu = -tu;
-        tv = -tv;
-        tw = -tw;
+    if ( float(v * v + u * u) > resolution_limit_sq || (x == 0 && y == 0) ) {
+        outputData[y * NX + x] = make_float2(0.f, 0.f);
     }
-    else
-        u = 1.f;
+    else {
+        // Based on RotationMatrix.RotateCoords()
+        tu = u * m[0] + v * m[1] + 0.f; // + size_shift.x;
+        tv = u * m[3] + v * m[4] + 0.f; //  + size_shift.y;
+        tw = u * m[6] + v * m[7] + 0.f; //  + size_shift.z;
 
-    // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
-    // The logical origin is physically at X = 1, Y = Z = NY/2
-    // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
-    tu += 1.5f;
-    tv += (float(NY / 2) + 0.5f);
-    tw += (float(NY / 2) + 0.5f);
+        if ( tu < 0 ) {
+            // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
+            u  = -1.f;
+            tu = -tu;
+            tv = -tv;
+            tw = -tw;
+        }
+        else
+            u = 1.f;
 
-    tu += xtra_shifts.x;
-    tv += xtra_shifts.y;
-    tw += xtra_shifts.z;
+        // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
+        // The logical origin is physically at X = 1, Y = Z = NY/2
+        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
+        tu += 1.5f;
+        tv += (float(NY / 2) + 0.5f);
+        tw += (float(NY / 2) + 0.5f);
 
-    outputData[y * NX + x] = make_float2(tex3D<float>(tex_real, tu, tv, tw), u * tex3D<float>(tex_imag, tu, tv, tw));
+        outputData[y * NX + x] = make_float2(tex3D<float>(tex_real, tu, tv, tw), u * tex3D<float>(tex_imag, tu, tv, tw));
+    }
 }
 
-void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit, float3 xtrashifts) {
+void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit) {
     //	MyDebugAssertTrue(image_to_extract.logical_x_dimension == logical_x_dimension && image_to_extract.logical_y_dimension == logical_y_dimension, "Error: Images different sizes");
     MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
     MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
@@ -3081,17 +3084,17 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     // Get launch params for a complex non-redundant half image
     ReturnLaunchParamters(dims, false);
 
-    float2 shifts = make_float2(angles_and_shifts_of_image.ReturnShiftX( ), angles_and_shifts_of_image.ReturnShiftY( ));
-    // wxPrintf("Shifts are x (%f), y (%f)\n", shifts.x, shifts.y);
-
-    float* d_test;
-    float  test[4] = {0.f, 0.f, 0.f, 0.f};
-
-    cudaErr(cudaMalloc(&d_test, sizeof(float) * 4));
-
     float* d_m;
     cudaErr(cudaMalloc(&d_m, sizeof(float) * 9));
     cudaErr(cudaMemcpyAsync(d_m, &angles_and_shifts_of_image.euler_matrix.m[0][0], sizeof(float) * 9, cudaMemcpyHostToDevice, cudaStreamPerThread));
+
+    float resolution_limit_sq;
+    if ( apply_resolution_limit ) {
+        resolution_limit_sq = powf(resolution_limit * float(dims.x), 2);
+    }
+    else {
+        resolution_limit_sq = 0.f;
+    }
 
     precheck;
     ExtractSliceKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
@@ -3100,8 +3103,7 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
                                                                               dims.w / 2,
                                                                               dims.y,
                                                                               d_m,
-                                                                              shifts,
-                                                                              xtrashifts);
+                                                                              resolution_limit_sq);
 
     postcheck;
 
@@ -3110,5 +3112,4 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     is_in_real_space         = false;
 
     cudaErr(cudaFree(d_m));
-    cudaErr(cudaFree(d_test));
 }

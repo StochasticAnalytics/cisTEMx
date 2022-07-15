@@ -3017,7 +3017,8 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
                                    const int                 NX,
                                    const int                 NY,
                                    const float*              m,
-                                   const float               resolution_limit_sq) {
+                                   const float               resolution_limit,
+                                   const bool                apply_resolution_limit) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -3041,7 +3042,7 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
     }
     // logical Fourier z = 0 for a projection
 
-    if ( float(v * v + u * u) > resolution_limit_sq || (x == 0 && y == 0) ) {
+    if ( (apply_resolution_limit && float(v * v + u * u) > resolution_limit * resolution_limit) || (x == 0 && y == 0) ) {
         outputData[y * NX + x] = make_float2(0.f, 0.f);
     }
     else {
@@ -3071,7 +3072,107 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
     }
 }
 
-void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit) {
+__global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
+                                            const cudaTextureObject_t tex_imag,
+                                            float2*                   outputData,
+                                            const int                 NX,
+                                            const int                 NY,
+                                            const float*              m,
+                                            const float               resolution_limit,
+                                            const bool                apply_resolution_limit,
+                                            const int                 n_bins,
+                                            const int                 n_bins2) {
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    if ( x >= NX ) {
+        return;
+    }
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if ( y >= NY ) {
+        return;
+    }
+
+    extern __shared__ unsigned int non_zero_count[];
+    float*                         radial_average = (float*)&non_zero_count[n_bins];
+
+    float u, v, tu, tv, tw, frequency_sq;
+
+    // First, convert the physical coordinate of the 2d projection to the logical Fourier coordinate (in a natural FFT layout).
+    u = (float)x;
+    // First negative logical fourier component is at NY/2
+    if ( y >= NY / 2 ) {
+        v = (float)y - NY;
+    }
+    else {
+        v = (float)y;
+    }
+    // logical Fourier z = 0 for a projection
+
+    frequency_sq = u * u + v * v;
+
+    if ( (apply_resolution_limit && frequency_sq > resolution_limit * resolution_limit) || (x == 0 && y == 0) ) {
+        outputData[y * NX + x] = make_float2(0.f, 0.f);
+    }
+    else {
+
+        // Based on RotationMatrix.RotateCoords()
+        tu = u * m[0] + v * m[1] + 0.f; // + size_shift.x;
+        tv = u * m[3] + v * m[4] + 0.f; //  + size_shift.y;
+        tw = u * m[6] + v * m[7] + 0.f; //  + size_shift.z;
+
+        if ( tu < 0 ) {
+            // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
+            u  = -1.f;
+            tu = -tu;
+            tv = -tv;
+            tw = -tw;
+        }
+        else
+            u = 1.f;
+
+        // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
+        // The logical origin is physically at X = 1, Y = Z = NY/2
+        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
+        tu += 1.5f;
+        tv += (float(NY / 2) + 0.5f);
+        tw += (float(NY / 2) + 0.5f);
+
+        // reuse u and v to grab results
+        v = u * tex3D<float>(tex_imag, tu, tv, tw);
+        u = tex3D<float>(tex_real, tu, tv, tw);
+
+        // Resuse y to get the address and then x as the bin number
+        y = y * NX + x;
+
+        // Get the norm squared for the pixel
+        tw = u * u + v * v;
+        // Again, assuming NX = NY in real space
+        x = int(sqrtf(frequency_sq) / float(n_bins2 / NY));
+        // This check is from Image::Whiten, but should it really be checking a float like this?
+        if ( tw != 0.0 ) {
+            if ( x <= resolution_limit ) {
+                atomicAdd(&non_zero_count[x], 1);
+                atomicAdd(&radial_average[x], tw);
+            }
+        }
+        __syncthreads( );
+
+        if ( float(x) > resolution_limit ) {
+            outputData[y] = make_float2(0.f, 0.f);
+        }
+        else {
+            if ( non_zero_count[x] == 0 ) {
+                outputData[y] = make_float2(0.f, 0.f);
+            }
+            else {
+                tw            = sqrtf(radial_average[x] / float(non_zero_count[x]));
+                outputData[y] = make_float2(u / tw, v / tw);
+            }
+        }
+    }
+}
+
+void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit, bool whiten_spectrum) {
     //	MyDebugAssertTrue(image_to_extract.logical_x_dimension == logical_x_dimension && image_to_extract.logical_y_dimension == logical_y_dimension, "Error: Images different sizes");
     MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
     MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
@@ -3088,24 +3189,44 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     cudaErr(cudaMalloc(&d_m, sizeof(float) * 9));
     cudaErr(cudaMemcpyAsync(d_m, &angles_and_shifts_of_image.euler_matrix.m[0][0], sizeof(float) * 9, cudaMemcpyHostToDevice, cudaStreamPerThread));
 
-    float resolution_limit_sq;
-    if ( apply_resolution_limit ) {
-        resolution_limit_sq = powf(resolution_limit * float(dims.x), 2);
+    float resolution_limit_pixel = resolution_limit * float(dims.x);
+
+    if ( whiten_spectrum ) {
+        // assuming square images, otherwise this would be largest dimension
+        int number_of_bins = dims.y / 2 + 1;
+        // Extend table to include corners in 3D Fourier space
+        int n_bins  = int(number_of_bins * sqrtf(3.0)) + 1;
+        int n_bins2 = 2 * (number_of_bins - 1);
+        // For bin resolution of one pixel, uint16 should be plenty
+        int shared_mem = n_bins * (sizeof(float) + sizeof(unsigned int));
+        // TODO: add check on shared mem from FastFFT
+        precheck;
+        ExtractSliceAndWhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
+                                                                                                    volume_to_extract_from->tex_imag,
+                                                                                                    (float2*)complex_values_gpu,
+                                                                                                    dims.w / 2,
+                                                                                                    dims.y,
+                                                                                                    d_m,
+                                                                                                    resolution_limit_pixel,
+                                                                                                    apply_resolution_limit,
+                                                                                                    n_bins,
+                                                                                                    n_bins2);
+
+        postcheck;
     }
     else {
-        resolution_limit_sq = 0.f;
+        precheck;
+        ExtractSliceKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
+                                                                                  volume_to_extract_from->tex_imag,
+                                                                                  (float2*)complex_values_gpu,
+                                                                                  dims.w / 2,
+                                                                                  dims.y,
+                                                                                  d_m,
+                                                                                  resolution_limit_pixel,
+                                                                                  apply_resolution_limit);
+
+        postcheck;
     }
-
-    precheck;
-    ExtractSliceKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
-                                                                              volume_to_extract_from->tex_imag,
-                                                                              (float2*)complex_values_gpu,
-                                                                              dims.w / 2,
-                                                                              dims.y,
-                                                                              d_m,
-                                                                              resolution_limit_sq);
-
-    postcheck;
 
     object_is_centred_in_box = false;
     is_fft_centered_in_box   = false;

@@ -258,7 +258,7 @@ class GpuImage {
     bool HasSameDimensionsAs(GpuImage* other_image);
     void Zeros( );
 
-    void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit = 1.f, bool apply_resolution_limit = true);
+    void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);
 
     void Abs( );
     void AbsDiff(GpuImage& other_image); // inplace

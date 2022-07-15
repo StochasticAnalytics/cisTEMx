@@ -98,7 +98,7 @@ class ImageProjectionComparison {
         MyDebugAssertTrue(gpu_projection->is_in_memory_gpu, "gpu_projection is not allocated");
         // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
         global_timer.start("calc_proj gpu");
-        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, particle->pixel_size / particle->filter_radius_high, true);
+        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, particle->pixel_size / particle->filter_radius_high, true, true);
         gpu_projection->RecordAndWait( );
         global_timer.lap("calc_proj gpu");
         global_timer.start("copy device to host");
@@ -146,11 +146,19 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     //			comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true);
 
     bool calculate_projection = true;
+    bool use_gpu_projection   = false;
 #ifdef ENABLEGPU
     // We will pass in the projection to tthe cpu CalculateProjection method, for it to do all the other fun stuff like whitening, res limts etc.
     calculate_projection = false;
+    use_gpu_projection   = true;
 
     comparison_object->DoGpuProjection( );
+
+    if ( comparison_object->nprj < 10 ) {
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    }
     // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
     // Force it here (though better to use a flag)
     comparison_object->reference_volume->current_psi -= 1.0;
@@ -160,23 +168,30 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     if ( comparison_object->particle->no_ctf_weighting ) {
         comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
                                                                  *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, false, false, false, false, calculate_projection);
+                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, false, false, false, false, calculate_projection, use_gpu_projection);
     }
     else {
         if ( comparison_object->particle->includes_reference_ssnr_weighting ) {
             comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
                                                                      *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                     comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, true, false, false, calculate_projection);
+                                                                     comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, true, false, false, calculate_projection, use_gpu_projection);
         }
         // Case for normal parameter refinement with weighting applied only to particle images
         else {
             comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
                                                                      *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                     comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true, calculate_projection);
+                                                                     comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true, calculate_projection, use_gpu_projection);
         }
     }
 
     global_timer.lap("calc_proj cpu");
+
+    if ( comparison_object->nprj < 10 ) {
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->nprj++;
+    }
 
     //	if (comparison_object->particle->origin_micrograph < 0) comparison_object->particle->origin_micrograph = 0;
     //	comparison_object->particle->origin_micrograph++;

@@ -253,7 +253,7 @@ void ReconstructedVolume::PrepareForProjections(float low_resolution_limit, floa
 }
 
 void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, AnglesAndShifts& angles_and_shifts_of_projection,
-                                              float mask_radius, float mask_falloff, float resolution_limit, bool swap_quadrants, bool apply_shifts, bool whiten, bool apply_ctf, bool abolute_ctf, bool calculate_projection) {
+                                              float mask_radius, float mask_falloff, float resolution_limit, bool swap_quadrants, bool apply_shifts, bool whiten, bool apply_ctf, bool abolute_ctf, bool calculate_projection, bool use_gpu_projection) {
     //	MyDebugAssertTrue(projection.logical_x_dimension == density_map->logical_x_dimension && projection.logical_y_dimension == density_map->logical_y_dimension, "Error: Images have different sizes");
     MyDebugAssertTrue(CTF.logical_x_dimension == projection.logical_x_dimension && CTF.logical_y_dimension == projection.logical_y_dimension, "Error: CTF image has different size");
     MyDebugAssertTrue(projection.logical_z_dimension == 1, "Error: attempting to extract 3D image from 3D reconstruction");
@@ -262,8 +262,9 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
     MyDebugAssertTrue(! density_map->object_is_centred_in_box, "Image volume quadrants not swapped");
 
     if ( current_phi != angles_and_shifts_of_projection.ReturnPhiAngle( ) || current_theta != angles_and_shifts_of_projection.ReturnThetaAngle( ) || current_psi != angles_and_shifts_of_projection.ReturnPsiAngle( ) || current_resolution_limit != resolution_limit ) {
-        if ( calculate_projection )
+        if ( calculate_projection && ! use_gpu_projection ) {
             density_map->ExtractSlice(projection, angles_and_shifts_of_projection, resolution_limit);
+        }
         current_projection.CopyFrom(&projection);
         current_phi              = angles_and_shifts_of_projection.ReturnPhiAngle( );
         current_theta            = angles_and_shifts_of_projection.ReturnThetaAngle( );
@@ -277,7 +278,7 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
         current_swap_quadrants   = swap_quadrants;
         current_whitening        = whiten;
 
-        if ( whiten ) {
+        if ( whiten && ! use_gpu_projection ) {
             //			var_A = projection.ReturnSumOfSquares();
             //			projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
             projection.Whiten(resolution_limit);

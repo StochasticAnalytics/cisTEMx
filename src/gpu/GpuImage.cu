@@ -1451,8 +1451,6 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
     // We need a temporary host array so we can both de-interlace the real and imaginary parts as well as including x = -1 padding.
     float* host_array_real = new float[padded_x_dimension * dims.y * dims.z];
     float* host_array_imag = new float[padded_x_dimension * dims.y * dims.z];
-    ZeroFloatArray(host_array_real, padded_x_dimension * dims.y * dims.z);
-    ZeroFloatArray(host_array_imag, padded_x_dimension * dims.y * dims.z);
 
     for ( int complex_address = 0; complex_address < hostImagePtr->real_memory_allocated / 2; complex_address++ ) {
         host_array_real[complex_address] = real(hostImagePtr->complex_values[complex_address]);
@@ -3075,6 +3073,7 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
 __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
                                             const cudaTextureObject_t tex_imag,
                                             float2*                   outputData,
+                                            float2                    shifts,
                                             const int                 NX,
                                             const int                 NY,
                                             const float*              m,
@@ -3107,10 +3106,9 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
         v = (float)y;
     }
 
-    // FIXME: uncomment
-    // // Shifts are already 2*pi*dx/NX
-    // shifts.x *= u;
-    // shifts.y *= v;
+    // Shifts are already 2*pi*dx/NX
+    shifts.x *= u;
+    shifts.y *= v;
     // logical Fourier z = 0 for a projection
 
     frequency_sq = u * u + v * v;
@@ -3171,17 +3169,17 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
             }
             else {
                 // Note that this scaling factor is inverted from the CPU code so the second step is multiplication
-                tw            = sqrtf(float(non_zero_count[x]) / radial_average[x]);
-                outputData[y] = make_float2(u * tw, v * tw);
-                // __sincosf(-shifts.x - shifts.y, &tv, &tu);
-                // outputData[y] = ComplexConjMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
+                tw = sqrtf(float(non_zero_count[x]) / radial_average[x]);
+                // outputData[y] = make_float2(u * tw, v * tw);
+                __sincosf(-shifts.x - shifts.y, &tv, &tu);
+                outputData[y] = ComplexConjMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
                 // outputData[y] = make_float2(u / tw, v / tw);
             }
         }
     }
 }
 
-void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit, bool whiten_spectrum) {
+void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float pixel_size, float resolution_limit, bool apply_resolution_limit, bool whiten_spectrum) {
     //	MyDebugAssertTrue(image_to_extract.logical_x_dimension == logical_x_dimension && image_to_extract.logical_y_dimension == logical_y_dimension, "Error: Images different sizes");
     MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
     MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
@@ -3210,10 +3208,13 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
         int shared_mem = n_bins * (sizeof(float) + sizeof(unsigned int));
         // TODO: add check on shared mem from FastFFT
         float2 shifts = make_float2(angles_and_shifts_of_image.ReturnShiftX( ), angles_and_shifts_of_image.ReturnShiftY( ));
+        shifts.x      = shifts.x * pi_v<float> * 2.0f / dims.x / pixel_size;
+        shifts.y      = shifts.y * pi_v<float> * 2.0f / dims.y / pixel_size;
         precheck;
         ExtractSliceAndWhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
                                                                                                     volume_to_extract_from->tex_imag,
                                                                                                     (float2*)complex_values_gpu,
+                                                                                                    shifts,
                                                                                                     dims.w / 2,
                                                                                                     dims.y,
                                                                                                     d_m,

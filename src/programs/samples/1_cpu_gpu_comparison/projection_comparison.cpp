@@ -109,6 +109,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
 
     AnglesAndShifts my_angles_and_shifts;
     AnglesAndShifts zero_angles(0.f, 0.f, 0.f, 0.f, 0.f);
+    float           pixel_size = 1.0f;
 
     // Make a default projection to see the unrotated.
     cpu_volume.ExtractSlice(cpu_prj, zero_angles, 0.f, false);
@@ -196,7 +197,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
 
         // Make a projection the angles and shifts are set to.
         my_angles_and_shifts.Init(my_angles[iPrj][0], my_angles[iPrj][1], my_angles[iPrj][2], 0.f, 0.f);
-        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, 0.f, false);
+        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false);
 
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
@@ -234,7 +235,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     for ( int iLoop = 0; iLoop < n_loops; iLoop++ ) {
         my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), 0.f, 0.f);
         new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, 0.f, false);
-        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, 0.f, false);
+        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false);
 
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );

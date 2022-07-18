@@ -76,6 +76,14 @@ static __device__ __host__ inline Complex ComplexMul(Complex a, Complex b) {
     return c;
 }
 
+// Complex multiplication
+static __device__ __host__ inline Complex ComplexMulAndScale(Complex a, Complex b, float s) {
+    Complex c;
+    c.x = s * (a.x * b.x - a.y * b.y);
+    c.y = s * (a.x * b.y + a.y * b.x);
+    return c;
+}
+
 // Complex a * conj b multiplication
 static __device__ __host__ inline Complex ComplexConjMul(Complex a, Complex b) {
     Complex c;

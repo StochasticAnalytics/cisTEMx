@@ -44,29 +44,6 @@ class ImageProjectionComparison {
     GpuImage* gpu_density_map;
     GpuImage* gpu_projection;
 
-    // bool*     is_pinned_gpu_projection = false;
-
-    // // We need to make sure the 3d that is in memory matches the CPU volume, check the sum of a handfule of values to see if anything
-    // // has changed on the host side
-    // float* density_volume_id = std::numeric_limits<float>::max( );
-
-    // inline bool CheckDensityVolumeId( ) {
-    //     float sum = 0.0f;
-    //     for ( int k = 0; k < reference_volume->logical_z_dimension; k += reference_volume->density_map.logical_y_dimension / 4 ) {
-    //         for ( int j = 0; j < reference_volume->density_map.logical_y_dimension; j += reference_volume->density_map.logical_y_dimension / 4 ) {
-    //             for ( int i = 0; i < 16; i++ ) {
-    //                 sum += reference_volume->density_map.real_values[reference_volume->ReturnReal1DAddressFromPhysicalCoord(i, j, k)];
-    //             }
-    //         }
-    //     }
-    //     if ( fabsf(sum - *density_volume_id) > 0.0001f ) {
-    //         *density_volume_id = sum;
-    //         return false;
-    //     }
-    //     else
-    //         return true;
-    // };
-
     void PrepareGpuProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume, GpuImage* external_gpu_projection) {
 
         // We only want a pointer in the ImageComparisionObject so
@@ -99,7 +76,8 @@ class ImageProjectionComparison {
         MyDebugAssertTrue(gpu_projection->is_in_memory_gpu, "gpu_projection is not allocated");
         // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
         global_timer.start("calc_proj gpu");
-        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, particle->pixel_size / particle->filter_radius_high, true, false);
+
+        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true, true);
         // gpu_projection->PhaseShift(particle->alignment_parameters.ReturnShiftX( ) / reference_volume->pixel_size,
         //                            particle->alignment_parameters.ReturnShiftY( ) / reference_volume->pixel_size,
         //                            0.f);
@@ -154,19 +132,19 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     bool use_gpu_projection   = false;
 #ifdef ENABLEGPU
     // We will pass in the projection to tthe cpu CalculateProjection method, for it to do all the other fun stuff like whitening, res limts etc.
-    calculate_projection = true;
-    use_gpu_projection   = false;
+    calculate_projection = false;
+    use_gpu_projection   = true;
 
     comparison_object->DoGpuProjection( );
 
-    if ( comparison_object->nprj < 10 ) {
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    }
+    // if ( comparison_object->nprj < 10 ) {
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    // }
     // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
     // Force it here (though better to use a flag)
-    comparison_object->reference_volume->current_psi -= 1.0;
+    // comparison_object->reference_volume->current_psi -= 1.01;
 #endif
 
     global_timer.start("calc_proj cpu");
@@ -191,14 +169,14 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     global_timer.lap("calc_proj cpu");
 
-    if ( comparison_object->nprj < 10 ) {
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->nprj++;
-    }
-    else
-        exit(1);
+    // if ( comparison_object->nprj < 10 ) {
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    //     comparison_object->nprj++;
+    // }
+    // else
+    //     exit(1);
 
     // The minimizer sometimes tries weird values
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftX( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftX( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )

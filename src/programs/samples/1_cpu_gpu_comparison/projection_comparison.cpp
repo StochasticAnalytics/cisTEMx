@@ -204,7 +204,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
-        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
         gpu_prj.RecordAndWait( );
 
         cimg.ZeroFloatAndNormalize(1.f, mask_radius);
@@ -242,7 +242,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
-        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
         gpu_prj.RecordAndWait( );
 
         cpu_prj.SwapRealSpaceQuadrants( );
@@ -270,7 +270,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
-        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
         gpu_prj.RecordAndWait( );
 
         cpu_prj.Whiten( );
@@ -284,7 +284,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // cimg.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_gpu.mrc", 1, true);
 
         score = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
-        // wxPrintf("%f\n", score);
+        wxPrintf("%f\n", score);
         passed = passed && (score > 0.98f);
     }
 
@@ -302,7 +302,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
-        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
         gpu_prj.RecordAndWait( );
 
         cpu_prj.Whiten( );

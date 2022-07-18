@@ -96,7 +96,7 @@
         {
             "label": "CONFIG intel,gpu,dynamic,profile",
             "type": "shell",
-            "command": "mkdir -p ${build_dir}/intel-gpu-dynamic-profile && cd ${build_dir}/intel-gpu-dynamic-profile && CC=icc CXX=icpc ../../configure --enable-profiling --disable-multiple-global-refinements --enable-gpu-debug --with-cuda=${cuda_dir} --enable-samples --enable-experimental --enable-openmp --with-wx-config=${wx_dir_dynamic}"
+            "command": "mkdir -p ${build_dir}/intel-gpu-dynamic-profile && cd ${build_dir}/intel-gpu-dynamic-profile && CC=icc CXX=icpc ../../configure --enable-profiling --disable-multiple-global-refinements --with-cuda=${cuda_dir} --enable-samples --enable-experimental --enable-openmp --with-wx-config=${wx_dir_dynamic}"
         },
         {
             "label": "BUILD intel,gpu,dynamic,profile",

@@ -1523,6 +1523,11 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
     delete[] host_array_imag;
 }
 
+void GpuImage::CopyDeviceToHostAndSynchronize(bool free_gpu_memory, bool unpin_host_memory) {
+    CopyDeviceToHost(free_gpu_memory, unpin_host_memory);
+    cudaError(cudaStreamSynchronize(cudaStreamPerThread));
+}
+
 void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
 
     MyAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
@@ -3095,18 +3100,26 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
     extern __shared__ int non_zero_count[];
     float*                radial_average = (float*)&non_zero_count[n_bins];
 
+    int t = threadIdx.x + threadIdx.y * blockDim.x;
+
+    // total threads in 2D block
+    int nt = blockDim.x * blockDim.y;
+
+    // // initialize temporary accumulation array in shared memory
+    // for ( int i = t; i < n_bins; i += nt / 2 ) {
+    //     radial_average[i] = 0.f;
+    //     non_zero_count[i] = 0;
+    // }
+    // __syncthreads( );
+
     // initialize temporary accumulation array in shared memory
     //FIXME
     if ( threadIdx.x == 0 ) {
-        for ( int i = 0; i < n_bins; i++ ) {
+        for ( int i = threadIdx.y; i < n_bins; i += blockDim.y ) {
             radial_average[i] = 0.f;
             non_zero_count[i] = 0;
         }
     }
-    // for ( int i = y * NX + x; i < n_bins; i += blockDim.x * blockDim.y ) {
-    //     radial_average[i] = 0.0f;
-    //     non_zero_count[i] = 0;
-    // }
     __syncthreads( );
 
     float u, v, tu, tv, tw, frequency_sq;
@@ -3165,7 +3178,7 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
         // Get the norm squared for the pixel
         tw = u * u + v * v;
         // Again, assuming NX = NY in real space
-        x = int(sqrtf(frequency_sq) / float(NY) * n_bins);
+        x = int(sqrtf(frequency_sq) / float(NY) * float(n_bins));
         // This check is from Image::Whiten, but should it really be checking a float like this?
         if ( tw != 0.0 ) {
             if ( x <= resolution_limit ) {

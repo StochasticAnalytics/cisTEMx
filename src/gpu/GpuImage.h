@@ -195,6 +195,7 @@ class GpuImage {
 
     void CopyHostToDevice( );
     void CopyHostToDeviceTextureComplex3d( );
+    void CopyDeviceToHostAndSynchronize(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true);
 

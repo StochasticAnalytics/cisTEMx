@@ -277,8 +277,8 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
         current_mask_falloff     = mask_falloff;
         current_swap_quadrants   = swap_quadrants;
         current_whitening        = whiten;
-
-        if ( whiten && ! use_gpu_projection ) {
+        // FIXME: NOT
+        if ( whiten && use_gpu_projection ) {
             //			var_A = projection.ReturnSumOfSquares();
             //			projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
             projection.Whiten(resolution_limit);
@@ -306,7 +306,7 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
             }
         }
 
-        if ( apply_shifts && ! use_gpu_projection )
+        if ( apply_shifts )
             projection.PhaseShift(angles_and_shifts_of_projection.ReturnShiftX( ) / pixel_size, angles_and_shifts_of_projection.ReturnShiftY( ) / pixel_size);
         if ( swap_quadrants )
             projection.SwapRealSpaceQuadrants( );
@@ -323,7 +323,7 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
 
             projection.CopyFrom(&current_projection);
 
-            if ( whiten & ! use_gpu_projection ) {
+            if ( whiten && ! use_gpu_projection ) {
                 //				var_A = projection.ReturnSumOfSquares();
                 //				projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
                 projection.Whiten(resolution_limit);
@@ -332,7 +332,7 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
                 //				projection.ZeroFloatOutside(0.5 * projection.logical_x_dimension - 1.0);
                 //				projection.ForwardFFT();
             }
-            if ( apply_ctf && ! use_gpu_projection ) {
+            if ( apply_ctf ) {
                 projection.MultiplyPixelWiseReal(CTF, abolute_ctf);
 
                 if ( mask_radius > 0.0 ) {
@@ -342,7 +342,7 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
                 }
             }
 
-            if ( apply_shifts && ! use_gpu_projection )
+            if ( apply_shifts )
                 projection.PhaseShift(angles_and_shifts_of_projection.ReturnShiftX( ) / pixel_size, angles_and_shifts_of_projection.ReturnShiftY( ) / pixel_size);
             if ( swap_quadrants )
                 projection.SwapRealSpaceQuadrants( );

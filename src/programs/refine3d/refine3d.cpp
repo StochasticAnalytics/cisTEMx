@@ -99,7 +99,7 @@ class ImageProjectionComparison {
         MyDebugAssertTrue(gpu_projection->is_in_memory_gpu, "gpu_projection is not allocated");
         // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
         global_timer.start("calc_proj gpu");
-        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, particle->pixel_size / particle->filter_radius_high, true, true);
+        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, particle->pixel_size / particle->filter_radius_high, true, false);
         // gpu_projection->PhaseShift(particle->alignment_parameters.ReturnShiftX( ) / reference_volume->pixel_size,
         //                            particle->alignment_parameters.ReturnShiftY( ) / reference_volume->pixel_size,
         //                            0.f);
@@ -154,19 +154,19 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     bool use_gpu_projection   = false;
 #ifdef ENABLEGPU
     // We will pass in the projection to tthe cpu CalculateProjection method, for it to do all the other fun stuff like whitening, res limts etc.
-    calculate_projection = false;
-    use_gpu_projection   = true;
+    calculate_projection = true;
+    use_gpu_projection   = false;
 
     comparison_object->DoGpuProjection( );
 
-    // if ( comparison_object->nprj < 10 ) {
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    // }
+    if ( comparison_object->nprj < 10 ) {
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+    }
     // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
     // Force it here (though better to use a flag)
-    // comparison_object->reference_volume->current_psi -= 1.0;
+    comparison_object->reference_volume->current_psi -= 1.0;
 #endif
 
     global_timer.start("calc_proj cpu");
@@ -191,42 +191,15 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     global_timer.lap("calc_proj cpu");
 
-    // if ( comparison_object->nprj < 10 ) {
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    //     comparison_object->nprj++;
-    // }
+    if ( comparison_object->nprj < 10 ) {
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->nprj++;
+    }
+    else
+        exit(1);
 
-    //	if (comparison_object->particle->origin_micrograph < 0) comparison_object->particle->origin_micrograph = 0;
-    //	comparison_object->particle->origin_micrograph++;
-    //	for (int i = 0; i < comparison_object->projection_image->real_memory_allocated; i++) {comparison_object->projection_image->real_values[i] *= fabs(comparison_object->projection_image->real_values[i]);}
-    //	comparison_object->projection_image->ForwardFFT();
-    //	comparison_object->projection_image->CalculateCrossCorrelationImageWith(comparison_object->particle->particle_image);
-    //	comparison_object->projection_image->SwapRealSpaceQuadrants();
-    //	comparison_object->projection_image->BackwardFFT();
-    //	comparison_object->projection_image->QuickAndDirtyWriteSlice("proj.mrc", comparison_object->particle->origin_micrograph);
-    //	comparison_object->projection_image->SwapRealSpaceQuadrants();
-    //	comparison_object->particle->particle_image->SwapRealSpaceQuadrants();
-    //	comparison_object->particle->particle_image->BackwardFFT();
-    //	comparison_object->particle->particle_image->QuickAndDirtyWriteSlice("part.mrc", comparison_object->particle->origin_micrograph);
-    //	comparison_object->particle->particle_image->SwapRealSpaceQuadrants();
-    //	exit(0);
-
-    //	float score =  	- comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
-    //			  comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit)
-    //			- comparison_object->particle->ReturnParameterPenalty(comparison_object->particle->temp_float);
-    //	wxPrintf("psi, theta, phi, x, y, = %g, %g, %g, %g, %g, score = %g\n",
-    //			comparison_object->particle->alignment_parameters.ReturnPsiAngle(),
-    //			comparison_object->particle->alignment_parameters.ReturnThetaAngle(),
-    //			comparison_object->particle->alignment_parameters.ReturnPhiAngle(),
-    //			comparison_object->particle->alignment_parameters.ReturnShiftX(),
-    //			comparison_object->particle->alignment_parameters.ReturnShiftY(), score);
-    //	return score;
-    //	wxPrintf("sigma_noise, mask_volume, penalty = %g %g %g\n", comparison_object->particle->sigma_noise, comparison_object->particle->mask_volume,
-    //			comparison_object->particle->ReturnParameterPenalty(comparison_object->particle->temp_float));
-
-    //****************
     // The minimizer sometimes tries weird values
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftX( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftX( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
         return 1;
@@ -249,89 +222,6 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
         return 1;
     if ( isnan(comparison_object->particle->temp_parameters.theta) || fabsf(comparison_object->particle->temp_parameters.theta - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
         return 1;
-    /*
-	 *
-	float additional_penalty = 0;
-
-	if (fabsf(comparison_object->particle->alignment_parameters.ReturnShiftX() - comparison_object->initial_x_shift) > comparison_object->x_shift_limit)
-	{
-		additional_penalty += powf(fabsf(comparison_object->particle->alignment_parameters.ReturnShiftX() - comparison_object->initial_x_shift) / comparison_object->x_shift_limit, 20.0f) * 0.01f;
-	}
-
-	if (fabsf(comparison_object->particle->alignment_parameters.ReturnShiftY() - comparison_object->initial_y_shift) > comparison_object->y_shift_limit)
-	{
-		additional_penalty += powf(fabsf(comparison_object->particle->alignment_parameters.ReturnShiftY() - comparison_object->initial_y_shift) / comparison_object->y_shift_limit, 20.0f) * 0.01f;
-	}
-
-	if (fabsf(comparison_object->particle->alignment_parameters.ReturnPsiAngle() - comparison_object->initial_psi_angle) > comparison_object->angle_change_limit)
-	{
-		additional_penalty += powf(fabsf(comparison_object->particle->alignment_parameters.ReturnPsiAngle() - comparison_object->initial_psi_angle) / comparison_object->angle_change_limit, 20.0f) * 0.01f;
-	}
-
-	if (fabsf(comparison_object->particle->alignment_parameters.ReturnPhiAngle() - comparison_object->initial_phi_angle) > comparison_object->angle_change_limit)
-	{
-		additional_penalty += powf(fabsf(comparison_object->particle->alignment_parameters.ReturnPhiAngle() - comparison_object->initial_phi_angle) / comparison_object->angle_change_limit, 20.0f) * 0.01f;
-	}
-
-	if (fabsf(comparison_object->particle->alignment_parameters.ReturnThetaAngle() - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit)
-	{
-		additional_penalty += powf(fabsf(comparison_object->particle->alignment_parameters.ReturnThetaAngle() - comparison_object->initial_theta_angle) / comparison_object->angle_change_limit, 20.0f) * 0.01f;
-	}
-
-	 *
-	 */
-    //	comparison_object->particle->particle_image->QuickAndDirtyWriteSlice("particle_image.mrc", 1);
-    //	comparison_object->projection_image->QuickAndDirtyWriteSlice("projection_image.mrc", 1);
-    //	float temp_float = - comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
-    //			  comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit)
-    //			- comparison_object->particle->ReturnParameterPenalty(comparison_object->particle->temp_parameters);
-    //	wxPrintf("score, params = %g %g %g %g %g %g\n", temp_float, \
-//			comparison_object->particle->temp_parameters.phi, comparison_object->particle->temp_parameters.theta, comparison_object->particle->temp_parameters.psi, \
-//			comparison_object->particle->temp_parameters.x_shift, comparison_object->particle->temp_parameters.y_shift);
-    //	wxPrintf("index = %i %i %i\n", comparison_object->particle->bin_index[0], comparison_object->particle->bin_index[25], comparison_object->particle->bin_index[50]);
-    //	exit(0);
-    //	if (temp_float > -0.05f)
-    //	{
-    //		comparison_object->particle->particle_image->QuickAndDirtyWriteSlice("particle_image.mrc", 1);
-    //		comparison_object->projection_image->QuickAndDirtyWriteSlice("projection_image.mrc", 1);
-    //		exit(0);
-    //	}
-
-    //	if (ReturnThreadNumberOfCurrentThread() == 0)
-    //	{
-    //		float temp_float = - comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
-    //				  comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit)
-    //				- comparison_object->particle->ReturnParameterPenalty(comparison_object->particle->temp_parameters);
-    //		wxPrintf("score, params = %g %g %g %g %g %g\n", temp_float, \
-//				comparison_object->particle->alignment_parameters.ReturnPhiAngle(), comparison_object->particle->alignment_parameters.ReturnThetaAngle(), comparison_object->particle->alignment_parameters.ReturnPsiAngle(), \
-//				comparison_object->particle->alignment_parameters.ReturnShiftX(), comparison_object->particle->alignment_parameters.ReturnShiftY());
-    //
-    //		MRCFile input_stack("projection_images0.mrc", false);
-    //		int z = input_stack.ReturnZSize();
-    //		Image temp_image;
-    //		temp_image.CopyFrom(comparison_object->projection_image);
-    //		temp_image.SwapRealSpaceQuadrants();
-    //		temp_image.WriteSlice(&input_stack, z + 1);
-    //		MRCFile input_stack1("particle_images0.mrc", false);
-    //		z = input_stack1.ReturnZSize();
-    //		temp_image.CopyFrom(comparison_object->particle->particle_image);
-    //		temp_image.SwapRealSpaceQuadrants();
-    //		temp_image.WriteSlice(&input_stack1, z + 1);
-    //	}
-    //	if (ReturnThreadNumberOfCurrentThread() == 1)
-    //	{
-    //		MRCFile input_stack("projection_images1.mrc", false);
-    //		int z = input_stack.ReturnZSize();
-    //		Image temp_image;
-    //		temp_image.CopyFrom(comparison_object->projection_image);
-    //		temp_image.SwapRealSpaceQuadrants();
-    //		temp_image.WriteSlice(&input_stack, z + 1);
-    //		MRCFile input_stack1("particle_images1.mrc", false);
-    //		z = input_stack1.ReturnZSize();
-    //		temp_image.CopyFrom(comparison_object->particle->particle_image);
-    //		temp_image.SwapRealSpaceQuadrants();
-    //		temp_image.WriteSlice(&input_stack1, z + 1);
-    //	}
 
     global_timer.start("ReturnScore");
     float tmp_corr = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,

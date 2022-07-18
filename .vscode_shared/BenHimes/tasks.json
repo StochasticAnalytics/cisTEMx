@@ -74,6 +74,16 @@
             "command": "cd ${build_dir}/intel-dynamic && make -j${compile_cores}"
         },
         {
+            "label": "CONFIG intel,dynamic,profile",
+            "type": "shell",
+            "command": "mkdir -p ${build_dir}/intel-dynamic-profile && cd ${build_dir}/intel-dynamic-profile && CC=icc CXX=icpc ../../configure  --enable-profiling --disable-multiple-global-refinements  --enable-experimental --enable-samples  --enable-openmp --with-wx-config=${wx_dir_dynamic}"
+        },
+        {
+            "label": "BUILD intel,dynamic,profile",
+            "type": "shell",
+            "command": "cd ${build_dir}/intel-dynamic-profile && make -j${compile_cores}"
+        }
+        {
             "label": "CONFIG intel,gpu,debug,dynamic,profile",
             "type": "shell",
             "command": "mkdir -p ${build_dir}/intel-gpu-debug-dynamic-profile && cd ${build_dir}/intel-gpu-debug-dynamic-profile && CC=icc CXX=icpc ../../configure --enable-profiling --disable-multiple-global-refinements --enable-gpu-debug --enable-debugmode  --with-cuda=${cuda_dir} --enable-samples --enable-experimental --enable-openmp --with-wx-config=${wx_dir_dynamic}"

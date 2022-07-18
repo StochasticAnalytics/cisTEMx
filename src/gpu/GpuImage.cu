@@ -3075,7 +3075,6 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
 __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
                                             const cudaTextureObject_t tex_imag,
                                             float2*                   outputData,
-                                            float2                    shifts,
                                             const int                 NX,
                                             const int                 NY,
                                             const float*              m,
@@ -3108,9 +3107,10 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
         v = (float)y;
     }
 
-    // Shifts are already 2*pi*dx/NX
-    shifts.x *= u;
-    shifts.y *= v;
+    // FIXME: uncomment
+    // // Shifts are already 2*pi*dx/NX
+    // shifts.x *= u;
+    // shifts.y *= v;
     // logical Fourier z = 0 for a projection
 
     frequency_sq = u * u + v * v;
@@ -3170,9 +3170,11 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
                 outputData[y] = make_float2(0.f, 0.f);
             }
             else {
-                tw = sqrtf(float(non_zero_count[x]) / radial_average[x]);
-                __sincosf(-shifts.x - shifts.y, &tv, &tu);
-                outputData[y] = ComplexConjMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
+                // Note that this scaling factor is inverted from the CPU code so the second step is multiplication
+                tw            = sqrtf(float(non_zero_count[x]) / radial_average[x]);
+                outputData[y] = make_float2(u * tw, v * tw);
+                // __sincosf(-shifts.x - shifts.y, &tv, &tu);
+                // outputData[y] = ComplexConjMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
                 // outputData[y] = make_float2(u / tw, v / tw);
             }
         }
@@ -3212,7 +3214,6 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
         ExtractSliceAndWhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
                                                                                                     volume_to_extract_from->tex_imag,
                                                                                                     (float2*)complex_values_gpu,
-                                                                                                    shifts,
                                                                                                     dims.w / 2,
                                                                                                     dims.y,
                                                                                                     d_m,

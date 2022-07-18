@@ -144,7 +144,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     // }
     // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
     // Force it here (though better to use a flag)
-    // comparison_object->reference_volume->current_psi -= 1.01;
+    comparison_object->reference_volume->current_psi -= 1.01;
 #endif
 
     global_timer.start("calc_proj cpu");

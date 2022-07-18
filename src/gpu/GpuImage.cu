@@ -3091,19 +3091,34 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
         return;
     }
 
-    extern __shared__ unsigned int non_zero_count[];
-    float*                         radial_average = (float*)&non_zero_count[n_bins];
+    // Be carefule!! There are a lot of integer/float conversions in this function. If you change anything, make sure it is still correct.
+    extern __shared__ int non_zero_count[];
+    float*                radial_average = (float*)&non_zero_count[n_bins];
+
+    // initialize temporary accumulation array in shared memory
+    //FIXME
+    if ( threadIdx.x == 0 ) {
+        for ( int i = 0; i < n_bins; i++ ) {
+            radial_average[i] = 0.f;
+            non_zero_count[i] = 0;
+        }
+    }
+    // for ( int i = y * NX + x; i < n_bins; i += blockDim.x * blockDim.y ) {
+    //     radial_average[i] = 0.0f;
+    //     non_zero_count[i] = 0;
+    // }
+    __syncthreads( );
 
     float u, v, tu, tv, tw, frequency_sq;
 
     // First, convert the physical coordinate of the 2d projection to the logical Fourier coordinate (in a natural FFT layout).
-    u = (float)x;
+    u = float(x);
     // First negative logical fourier component is at NY/2
     if ( y >= NY / 2 ) {
-        v = (float)y - NY;
+        v = float(y) - NY;
     }
     else {
-        v = (float)y;
+        v = float(y);
     }
 
     // Shifts are already 2*pi*dx/NX
@@ -3119,9 +3134,9 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
     else {
 
         // Based on RotationMatrix.RotateCoords()
-        tu = u * m[0] + v * m[1] + 0.f; // + size_shift.x;
-        tv = u * m[3] + v * m[4] + 0.f; //  + size_shift.y;
-        tw = u * m[6] + v * m[7] + 0.f; //  + size_shift.z;
+        tu = u * m[0] + v * m[1]; // + size_shift.x;
+        tv = u * m[3] + v * m[4]; //  + size_shift.y;
+        tw = u * m[6] + v * m[7]; //  + size_shift.z;
 
         if ( tu < 0 ) {
             // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
@@ -3150,7 +3165,7 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
         // Get the norm squared for the pixel
         tw = u * u + v * v;
         // Again, assuming NX = NY in real space
-        x = int(sqrtf(frequency_sq) / float(n_bins2 / NY));
+        x = int(sqrtf(frequency_sq) / float(NY) * n_bins);
         // This check is from Image::Whiten, but should it really be checking a float like this?
         if ( tw != 0.0 ) {
             if ( x <= resolution_limit ) {
@@ -3160,21 +3175,22 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
         }
         __syncthreads( );
 
-        if ( float(x) > resolution_limit ) {
-            outputData[y] = make_float2(0.f, 0.f);
-        }
-        else {
+        if ( x <= resolution_limit ) {
             if ( non_zero_count[x] == 0 ) {
                 outputData[y] = make_float2(0.f, 0.f);
             }
             else {
                 // Note that this scaling factor is inverted from the CPU code so the second step is multiplication
-                tw = sqrtf(float(non_zero_count[x]) / radial_average[x]);
+                // tw = sqrtf(float(non_zero_count[x]) / radial_average[x]);
+                tw = rsqrtf(radial_average[x] / non_zero_count[x]);
                 // outputData[y] = make_float2(u * tw, v * tw);
                 __sincosf(-shifts.x - shifts.y, &tv, &tu);
-                outputData[y] = ComplexConjMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
+                outputData[y] = ComplexMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
                 // outputData[y] = make_float2(u / tw, v / tw);
             }
+        }
+        else {
+            outputData[y] = make_float2(0.f, 0.f);
         }
     }
 }
@@ -3196,7 +3212,12 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     cudaErr(cudaMalloc(&d_m, sizeof(float) * 9));
     cudaErr(cudaMemcpyAsync(d_m, &angles_and_shifts_of_image.euler_matrix.m[0][0], sizeof(float) * 9, cudaMemcpyHostToDevice, cudaStreamPerThread));
 
-    float resolution_limit_pixel = resolution_limit * float(dims.x);
+    float resolution_limit_pixel = resolution_limit * dims.x;
+
+    if ( whiten_spectrum && ! apply_resolution_limit ) {
+        // WE need an over-ride to reproduce the default behavior of Image;:Whiten() when no resolution limit is given
+        resolution_limit_pixel = 1.f * dims.x;
+    }
 
     if ( whiten_spectrum ) {
         // assuming square images, otherwise this would be largest dimension
@@ -3205,11 +3226,14 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
         int n_bins  = int(number_of_bins * sqrtf(3.0)) + 1;
         int n_bins2 = 2 * (number_of_bins - 1);
         // For bin resolution of one pixel, uint16 should be plenty
-        int shared_mem = n_bins * (sizeof(float) + sizeof(unsigned int));
+        int shared_mem = n_bins * (sizeof(float) + sizeof(int));
         // TODO: add check on shared mem from FastFFT
         float2 shifts = make_float2(angles_and_shifts_of_image.ReturnShiftX( ), angles_and_shifts_of_image.ReturnShiftY( ));
-        shifts.x      = shifts.x * pi_v<float> * 2.0f / dims.x / pixel_size;
-        shifts.y      = shifts.y * pi_v<float> * 2.0f / dims.y / pixel_size;
+        shifts.x      = shifts.x * pi_v<float> * 2.0f / float(dims.x) / pixel_size;
+        shifts.y      = shifts.y * pi_v<float> * 2.0f / float(dims.y) / pixel_size;
+
+        // Image::Whiten() defaults to a res limit of 1.0, so we need to match that in the event we opt to not apply a res li mit
+
         precheck;
         ExtractSliceAndWhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
                                                                                                     volume_to_extract_from->tex_imag,

@@ -169,6 +169,8 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     GpuImage gpu_prj;
 
     cpu_volume.BackwardFFT( );
+    cpu_volume.ZeroFloatAndNormalize( );
+
     cpu_volume.SwapFourierSpaceQuadrants(false);
 
     // Associate the gpu volume with the cpu volume, getting meta data and pinning the host pointer.
@@ -217,7 +219,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     all_passed = all_passed && passed;
     SamplesTestResult(passed);
 
-    int         n_loops   = 1000;
+    int         n_loops   = 100;
     std::string test_name = "Extract slice CPU vs GPU fuzzing(" + std::to_string(n_loops) + ") loops";
     SamplesBeginTest(test_name.c_str( ), passed);
 
@@ -251,6 +253,70 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
 
         score  = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
         passed = passed && (score > 0.999f);
+    }
+
+    all_passed = all_passed && passed;
+    SamplesTestResult(passed);
+
+    test_name = "Extract and whiten fuzzing(" + std::to_string(n_loops) + ") loops";
+    SamplesBeginTest(test_name.c_str( ), passed);
+
+    for ( int iLoop = 0; iLoop < n_loops; iLoop++ ) {
+        // Compared to the previous, we now pass a bool to pug Extract slice and add and extra method call for the GPU to get whitening of the PS.
+        my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), 0.f, 0.f);
+        new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, 0.f, false);
+        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false, true);
+
+        // // Prepare for real-space correlation score.
+        gpu_prj.SwapRealSpaceQuadrants( );
+        gpu_prj.BackwardFFT( );
+        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.RecordAndWait( );
+
+        cpu_prj.Whiten( );
+        cpu_prj.SwapRealSpaceQuadrants( );
+        cpu_prj.BackwardFFT( );
+
+        cpu_prj.ZeroFloatAndNormalize(1.f, mask_radius);
+        cimg.ZeroFloatAndNormalize(1.f, mask_radius);
+
+        // cpu_prj.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_cpu.mrc", 1, true);
+        // cimg.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_gpu.mrc", 1, true);
+
+        score = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
+        // wxPrintf("%f\n", score);
+        passed = passed && (score > 0.98f);
+    }
+
+    all_passed = all_passed && passed;
+    SamplesTestResult(passed);
+
+    test_name = "Extract, whiten and shift fuzzing(" + std::to_string(n_loops) + ") loops";
+    SamplesBeginTest(test_name.c_str( ), passed);
+
+    for ( int iLoop = 0; iLoop < n_loops; iLoop++ ) {
+        my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), my_rand.GetUniformRandomSTD(-2.f, 2.f), my_rand.GetUniformRandomSTD(-2.f, 2.f));
+        new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, 0.f, false);
+        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false, true);
+
+        // Prepare for real-space correlation score.
+        gpu_prj.SwapRealSpaceQuadrants( );
+        gpu_prj.BackwardFFT( );
+        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.RecordAndWait( );
+
+        cpu_prj.Whiten( );
+        cpu_prj.PhaseShift(my_angles_and_shifts.ReturnShiftX( ) / pixel_size, my_angles_and_shifts.ReturnShiftY( ) / pixel_size, 0.f);
+        cpu_prj.SwapRealSpaceQuadrants( );
+        cpu_prj.BackwardFFT( );
+
+        cpu_prj.ZeroFloatAndNormalize(1.f, mask_radius);
+        cimg.ZeroFloatAndNormalize(1.f, mask_radius);
+
+        score = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
+        // wxPrintf("%f\n", score);
+
+        passed = passed && (score > 0.98f);
     }
 
     all_passed = all_passed && passed;

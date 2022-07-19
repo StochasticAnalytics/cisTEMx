@@ -216,6 +216,7 @@ class GpuImage {
     // FIXME: These are added for the unblur refinement but are untested.
     void ApplyBFactor(float bfactor);
     void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
+    void Whiten(float resolution_limit = 1.f);
 
     inline void MaskCentralCross(float vertical_mask_size, float horizontal_mask_size) { return; }; // noop
 
@@ -257,6 +258,7 @@ class GpuImage {
     void Zeros( );
 
     void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);
+    void ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true);
 
     void Abs( );
     void AbsDiff(GpuImage& other_image); // inplace

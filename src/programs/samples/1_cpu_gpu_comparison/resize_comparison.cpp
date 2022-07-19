@@ -28,10 +28,8 @@ bool DoCPUvsGPUResize(wxString hiv_image_80x80x1_filename, wxString temp_directo
     SamplesPrintTestStartMessage("Starting CPU vs GPU resize tests:", false);
 
     all_passed = all_passed && DoCPUvsGPURealSpaceResize(hiv_image_80x80x1_filename, temp_directory);
-    // all_passed = all_passed && DoCPUvsGPUFourierResize(hiv_image_80x80x1_filename, temp_directory);
+    all_passed = all_passed && DoCPUvsGPUFourierResize(hiv_image_80x80x1_filename, temp_directory);
 
-    SamplesBeginTest("CPU vs GPU overall", passed);
-    SamplesPrintResult(all_passed, __LINE__);
     wxPrintf("\n\n");
     return all_passed;
 }

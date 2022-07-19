@@ -731,7 +731,7 @@ samples_functional_testing_SOURCES  = programs/samples/samples_functional_testin
 samples_functional_testing_SOURCES += programs/samples/common/helper_functions.cpp programs/samples/common/embedded_test_file.cpp programs/samples/common/numeric_test_file.cpp
 samples_functional_testing_SOURCES += programs/samples/0_simple/disk_io_image.cpp  
 if ENABLEGPU_AM
-samples_functional_testing_SOURCES += programs/samples/1_cpu_gpu_comparison/resize_comparison.cpp programs/samples/1_cpu_gpu_comparison/projection_comparison.cpp 
+samples_functional_testing_SOURCES += programs/samples/1_cpu_gpu_comparison/resize_comparison.cpp programs/samples/1_cpu_gpu_comparison/projection_comparison.cpp programs/samples/1_cpu_gpu_comparison/masking.cpp
 endif
 samples_functional_testing_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 samples_functional_testing_CPPFLAGS = $(WX_CPPFLAGS_BASE)

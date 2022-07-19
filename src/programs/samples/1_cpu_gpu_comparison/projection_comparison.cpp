@@ -29,7 +29,7 @@ bool CPUvsGPUProjectionTest(const wxString& temp_directory) {
         all_passed = all_passed && DoCPUvsGPUProjectionTest(cistem_ref_dir, temp_directory);
 
         // SamplesPrintResult(all_passed, __LINE__);
-        // wxPrintf("\n\n");
+        wxPrintf("\n\n");
     }
     else {
         // If we are not in the dev container, we can't do the tests.
@@ -243,6 +243,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // Compared to the previous, we now pass a bool to pug Extract slice and add and extra method call for the GPU to get whitening of the PS.
         my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), 0.f, 0.f);
         new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, 0.f, false);
+        // gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false, true);
         gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false, true);
 
         // // Prepare for real-space correlation score.
@@ -261,7 +262,8 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // cpu_prj.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_cpu.mrc", 1, true);
         // cimg.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_gpu.mrc", 1, true);
 
-        score  = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
+        score = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
+        wxPrintf("Score is %f\n", score);
         passed = passed && (score > 0.98f);
     }
 

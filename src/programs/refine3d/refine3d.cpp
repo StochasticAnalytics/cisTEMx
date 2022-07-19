@@ -43,6 +43,8 @@ class ImageProjectionComparison {
 #ifdef ENABLEGPU
     GpuImage* gpu_density_map;
     GpuImage* gpu_projection;
+    GpuImage* gpu_ctf_image;
+    bool      is_set_gpu_ctf_image = false;
 
     void PrepareGpuProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume, GpuImage* external_gpu_projection) {
 
@@ -77,10 +79,7 @@ class ImageProjectionComparison {
         // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
         global_timer.start("calc_proj gpu");
 
-        gpu_projection->ExtractSlice(gpu_density_map, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true, true);
-        // gpu_projection->PhaseShift(particle->alignment_parameters.ReturnShiftX( ) / reference_volume->pixel_size,
-        //                            particle->alignment_parameters.ReturnShiftY( ) / reference_volume->pixel_size,
-        //                            0.f);
+        gpu_projection->ExtractSliceShiftAndCtf(gpu_density_map, gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true);
 
         gpu_projection->RecordAndWait( );
         global_timer.lap("calc_proj gpu");
@@ -133,7 +132,6 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     // We will pass in the projection to tthe cpu CalculateProjection method, for it to do all the other fun stuff like whitening, res limts etc.
     calculate_projection = false;
     use_gpu_projection   = true;
-
     comparison_object->DoGpuProjection( );
 
     // if ( comparison_object->nprj < 10 ) {
@@ -144,7 +142,13 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
     // Force it here (though better to use a flag)
     // comparison_object->reference_volume->current_psi -= 1.01;
-#endif
+    global_timer.start("calc_proj cpu");
+    comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
+                                                             *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
+                                                             comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true, calculate_projection, use_gpu_projection);
+    global_timer.lap("calc_proj cpu");
+
+#else
 
     global_timer.start("calc_proj cpu");
     if ( comparison_object->particle->no_ctf_weighting ) {
@@ -167,7 +171,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     }
 
     global_timer.lap("calc_proj cpu");
-
+#endif
     // if ( comparison_object->nprj < 10 ) {
     //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
     //     comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
@@ -1066,10 +1070,12 @@ bool Refine3DApp::DoCalculation( ) {
         // Maybe a cheap enough alternative would be to comput the sum of a small subset of the ReconstructedVolume density map and use that as a weak hash.
         GpuImage gpu_search_density_map_local;
         GpuImage gpu_search_projection_local;
+        GpuImage gpu_search_ctf_image_local;
         bool     is_set_gpu_search_density_map = false;
 
         GpuImage gpu_density_map_local;
         GpuImage gpu_projection_local;
+        GpuImage gpu_ctf_image_local;
         comparison_object.projection_image = &projection_image_local;
         // #pragma omp critical
         {
@@ -1324,7 +1330,12 @@ bool Refine3DApp::DoCalculation( ) {
 
             //		input_parameters[15] = 10.0;
             //		input_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
-
+#ifdef ENABLEGPU
+            gpu_ctf_image_local.Init(*refine_particle_local.ctf_image);
+            gpu_ctf_image_local.CopyHostToDevice( );
+            gpu_ctf_image_local.Abs( );
+            comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
+#endif
             if ( (refine_particle_local.number_of_search_dimensions > 0) && (global_search_local || local_refinement_local) ) {
                 timer.start("refining search FrealignObjFunct 1");
                 input_parameters.score = -100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
@@ -1480,11 +1491,16 @@ bool Refine3DApp::DoCalculation( ) {
                         search_particle_local.SetParameters(search_parameters);
                         search_particle_local.MapParameters(cg_starting_point);
 #ifdef ENABLEGPU
+
+                        gpu_search_ctf_image_local.Init(*search_particle_local.ctf_image);
+                        gpu_search_ctf_image_local.CopyHostToDevice( );
+                        gpu_search_ctf_image_local.Abs( );
+                        comparison_object.gpu_ctf_image = &gpu_search_ctf_image_local;
+                        // The memory for these was already setup outside the loop, but inside the omp sections
+                        comparison_object.gpu_projection   = &gpu_search_projection_local;
+                        comparison_object.gpu_density_map  = &gpu_search_density_map_local;
+                        comparison_object.projection_image = &search_projection_image;
                         if ( ! is_set_gpu_search_density_map ) {
-                            // The memory for these was already setup outside the loop, but inside the omp sections
-                            comparison_object.gpu_projection   = &gpu_search_projection_local;
-                            comparison_object.gpu_density_map  = &gpu_search_density_map_local;
-                            comparison_object.projection_image = &search_projection_image;
                             comparison_object.PrepareGpuProjection(search_reference_3d_local, &gpu_search_density_map_local, &gpu_search_projection_local);
                             is_set_gpu_search_density_map = true;
                         }
@@ -1571,6 +1587,10 @@ bool Refine3DApp::DoCalculation( ) {
                     // The memory for these was already setup outside the loop, but inside the omp sections
                     comparison_object.gpu_projection  = &gpu_projection_local;
                     comparison_object.gpu_density_map = &gpu_density_map_local;
+                    gpu_ctf_image_local.Init(*refine_particle_local.ctf_image);
+                    gpu_ctf_image_local.CopyHostToDevice( );
+                    gpu_ctf_image_local.Abs( );
+                    comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
 #endif
                     refine_particle_local.MapParameters(cg_starting_point);
 

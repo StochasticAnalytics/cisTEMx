@@ -1025,6 +1025,170 @@ __global__ void ApplyBFactorKernel(cufftComplex* d_input,
     }
 }
 
+__global__ void RotationalAveragePSKernel(const __restrict__ cufftComplex* input_values,
+                                          int*                             rotational_average_ps,
+                                          const int                        NX,
+                                          const int                        NY,
+                                          const int                        n_bins,
+                                          const float                      resolution_limit) {
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    if ( x >= NX ) {
+        return;
+    }
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if ( y >= NY ) {
+        return;
+    }
+
+    extern __shared__ int non_zero_count[];
+    float*                radial_average = (float*)&non_zero_count[n_bins];
+
+    // initialize temporary accumulation array in shared memory
+    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
+        radial_average[i] = 0.f;
+        non_zero_count[i] = 0;
+    }
+    __syncthreads( );
+
+    float u, v;
+
+    // First, convert the physical coordinate of the 2d projection to the logical Fourier coordinate (in a natural FFT layout).
+    u = float(x);
+    // First negative logical fourier component is at NY/2
+    if ( y >= NY / 2 ) {
+        v = float(y) - NY;
+    }
+    else {
+        v = float(y);
+    }
+
+    float abs_value = ComplexModulusSquared(input_values[y * NX + x]);
+    int   bin       = int(sqrtf(u * u + v * v) / float(NY) * float(n_bins));
+    // This check is from Image::Whiten, but should it really be checking a float like this?
+    if ( abs_value != 0.0 && bin <= resolution_limit ) {
+        atomicAdd(&non_zero_count[bin], 1);
+        atomicAdd(&radial_average[bin], abs_value);
+    }
+    __syncthreads( );
+
+    // Now write out the partial PS to global memory
+    int*   output_non_zero_count = &rotational_average_ps[n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
+    float* output_radial_average = (float*)&output_non_zero_count[n_bins * gridDim.x * gridDim.y];
+
+    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
+        output_radial_average[i] = radial_average[i];
+        output_non_zero_count[i] = non_zero_count[i];
+    }
+};
+
+__global__ void WhitenKernel(cufftComplex* input_values,
+                             int*          input_non_zero_count,
+                             const int     NX,
+                             const int     NY,
+                             const int     n_bins,
+                             const float   resolution_limit) {
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    if ( x >= NX ) {
+        return;
+    }
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if ( y >= NY ) {
+        return;
+    }
+
+    extern __shared__ int non_zero_count[];
+    float*                radial_average = (float*)&non_zero_count[n_bins];
+
+    // initialize temporary accumulation array in shared memory
+    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
+        radial_average[i] = 0.f;
+        non_zero_count[i] = 0;
+    }
+    __syncthreads( );
+
+    // Now aggregate out the partial PS to global memory
+
+    const float* input_radial_average = (float*)&input_non_zero_count[n_bins * gridDim.x * gridDim.y];
+    int          offset;
+    for ( int iBlock = 0; iBlock < gridDim.x * gridDim.y; iBlock++ ) {
+        offset = n_bins * iBlock;
+        for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
+            radial_average[i] += input_radial_average[i + offset];
+            non_zero_count[i] += input_non_zero_count[i + offset];
+        }
+    }
+    __syncthreads( );
+
+    int v;
+
+    // First negative logical fourier component is at NY/2
+    if ( y >= NY / 2 ) {
+        v = y - NY;
+    }
+    else {
+        v = y;
+    }
+
+    int   bin       = int(sqrtf(float((x * x + v * v) / NY * n_bins)));
+    float min_value = radial_average[1] / float(non_zero_count[1]) * 10e-4f;
+    if ( bin <= resolution_limit && non_zero_count[bin] != 0 && radial_average[bin] > min_value ) {
+        // We already checked that radial_average is non-zero in preparing
+        float norm = sqrtf(float(non_zero_count[bin]) / radial_average[bin]);
+        input_values[y * NX + x].x *= norm;
+        input_values[y * NX + x].y *= norm;
+    }
+    else {
+        input_values[y * NX + x].x = 0.f;
+        input_values[y * NX + x].y = 0.f;
+    }
+}
+
+void GpuImage::Whiten(float resolution_limit) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
+    MyAssertTrue(dims.z == 1, "Whitening is only setup to work in 2D");
+
+    // First we need to get the rotationally averaged PS, which we'll store in global memory
+    ReturnLaunchParamters(dims, false);
+
+    // assuming square images, otherwise this would be largest dimension
+    int number_of_bins = dims.y / 2 + 1;
+    // Extend table to include corners in 3D Fourier space
+    int n_bins  = int(number_of_bins * sqrtf(3.0)) + 1;
+    int n_bins2 = 2 * (number_of_bins - 1);
+    // For bin resolution of one pixel, uint16 should be plenty
+    int shared_mem = n_bins * (sizeof(float) + sizeof(int));
+    // For coalescing in global memory (2d grid)
+    int   n_blocks               = gridDims.x * gridDims.y;
+    float resolution_limit_pixel = resolution_limit * dims.x;
+
+    int* rotational_average_ps;
+
+    cudaErr(cudaMallocAsync(&rotational_average_ps, shared_mem * n_blocks, cudaStreamPerThread));
+
+    precheck;
+    RotationalAveragePSKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
+                                                                                              rotational_average_ps,
+                                                                                              dims.w / 2,
+                                                                                              dims.y,
+                                                                                              n_bins,
+                                                                                              resolution_limit_pixel);
+    postcheck;
+
+    precheck;
+    WhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
+                                                                                 rotational_average_ps,
+                                                                                 dims.w / 2,
+                                                                                 dims.y,
+                                                                                 n_bins,
+                                                                                 resolution_limit_pixel);
+    postcheck;
+
+    cudaErr(cudaFreeAsync(rotational_average_ps, cudaStreamPerThread));
+}
+
 void GpuImage::CalculateCrossCorrelationImageWith(GpuImage* other_image) {
 
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
@@ -2791,9 +2955,6 @@ void GpuImage::Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(wanted_x_dimension != 0 && wanted_y_dimension != 0 && wanted_z_dimension != 0, "Resize dimension is zero");
 
-    // this is never called for some reason?
-    MyDebugAssertTrue(is_in_real_space, "Resize is only set up for real space on the gpu currently");
-
     if ( dims.x == wanted_x_dimension && dims.y == wanted_y_dimension && dims.z == wanted_z_dimension ) {
         wxPrintf("Wanted dimensions are the same as current dimensions.\n");
         return;
@@ -3258,6 +3419,131 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     object_is_centred_in_box = false;
     is_fft_centered_in_box   = false;
     is_in_real_space         = false;
+    cudaErr(cudaFree(d_m));
+}
 
+__global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t  tex_real,
+                                              const cudaTextureObject_t  tex_imag,
+                                              float2*                    outputData,
+                                              const __restrict__ float2* ctf_image,
+                                              float2                     shifts,
+                                              const int                  NX,
+                                              const int                  NY,
+                                              const float*               m,
+                                              const float                resolution_limit,
+                                              const bool                 apply_resolution_limit) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    if ( x >= NX ) {
+        return;
+    }
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if ( y >= NY ) {
+        return;
+    }
+
+    float u, v, tu, tv, tw, frequency_sq;
+
+    // First, convert the physical coordinate of the 2d projection to the logical Fourier coordinate (in a natural FFT layout).
+    u = float(x);
+    // First negative logical fourier component is at NY/2
+    if ( y >= NY / 2 ) {
+        v = float(y) - NY;
+    }
+    else {
+        v = float(y);
+    }
+
+    // Shifts are already 2*pi*dx/NX
+    shifts.x *= u;
+    shifts.y *= v;
+    // logical Fourier z = 0 for a projection
+
+    frequency_sq = u * u + v * v;
+
+    if ( (apply_resolution_limit && frequency_sq > resolution_limit * resolution_limit) || (x == 0 && y == 0) ) {
+        outputData[y * NX + x] = make_float2(0.f, 0.f);
+    }
+    else {
+
+        // Based on RotationMatrix.RotateCoords()
+        tu = u * m[0] + v * m[1]; // + size_shift.x;
+        tv = u * m[3] + v * m[4]; //  + size_shift.y;
+        tw = u * m[6] + v * m[7]; //  + size_shift.z;
+
+        if ( tu < 0 ) {
+            // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
+            u  = -1.f;
+            tu = -tu;
+            tv = -tv;
+            tw = -tw;
+        }
+        else
+            u = 1.f;
+
+        // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
+        // The logical origin is physically at X = 1, Y = Z = NY/2
+        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
+        tu += 1.5f;
+        tv += (float(NY / 2) + 0.5f);
+        tw += (float(NY / 2) + 0.5f);
+
+        // reuse u and v to grab results
+        v = u * tex3D<float>(tex_imag, tu, tv, tw);
+        u = tex3D<float>(tex_real, tu, tv, tw);
+
+        // Resuse y to get the address and then x as the bin number
+        y = y * NX + x;
+
+        // outputData[y] = make_float2(u * tw, v * tw);
+        __sincosf(-shifts.x - shifts.y, &tv, &tu);
+        outputData[y] = ComplexMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), float(ctf_image[y].x));
+        // outputData[y] = make_float2(u / tw, v / tw);
+    }
+}
+
+void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit) {
+    MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
+    MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
+    MyAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
+    MyAssertTrue(volume_to_extract_from->is_allocated_texture_cache, "3d volume not allocated in the texture cache");
+    // MyAssertTrue(IsCubic( ), "Image volume to project is not cubic"); // This is checked on call to CopyHostToDeviceTextureComplex3d
+    MyAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
+    MyAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
+    MyAssertTrue(ctf_image->is_in_memory_gpu, "Error: gpu memory not allocated");
+
+    // Get launch params for a complex non-redundant half image
+    ReturnLaunchParamters(dims, false);
+
+    float* d_m;
+    cudaErr(cudaMalloc(&d_m, sizeof(float) * 9));
+    cudaErr(cudaMemcpyAsync(d_m, &angles_and_shifts.euler_matrix.m[0][0], sizeof(float) * 9, cudaMemcpyHostToDevice, cudaStreamPerThread));
+
+    float resolution_limit_pixel = resolution_limit * dims.x;
+
+    // For bin resolution of one pixel, uint16 should be plenty
+    // TODO: add check on shared mem from FastFFT
+    float2 shifts = make_float2(angles_and_shifts.ReturnShiftX( ), angles_and_shifts.ReturnShiftY( ));
+    shifts.x      = shifts.x * pi_v<float> * 2.0f / float(dims.x) / pixel_size;
+    shifts.y      = shifts.y * pi_v<float> * 2.0f / float(dims.y) / pixel_size;
+
+    // Image::Whiten() defaults to a res limit of 1.0, so we need to match that in the event we opt to not apply a res li mit
+
+    precheck;
+    ExtractSliceShiftAndCtfKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
+                                                                                         volume_to_extract_from->tex_imag,
+                                                                                         (float2*)complex_values_gpu,
+                                                                                         (float2*)ctf_image->complex_values_gpu,
+                                                                                         shifts,
+                                                                                         dims.w / 2,
+                                                                                         dims.y,
+                                                                                         d_m,
+                                                                                         resolution_limit_pixel,
+                                                                                         apply_resolution_limit);
+
+    postcheck;
+
+    object_is_centred_in_box = false;
+    is_fft_centered_in_box   = false;
+    is_in_real_space         = false;
     cudaErr(cudaFree(d_m));
 }

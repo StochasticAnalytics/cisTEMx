@@ -51,7 +51,7 @@ class ImageProjectionComparison {
         gpu_projection  = external_gpu_projection;
         if ( ! gpu_projection->is_meta_data_initialized ) {
             // Note this is not copying any image data, just the meta data
-            gpu_projection->CopyFromCpuImage(*projection_image);
+            gpu_projection->Init(*projection_image);
             gpu_projection->CopyHostToDevice( );
         }
 
@@ -63,7 +63,7 @@ class ImageProjectionComparison {
         // Realspace quadrants should already be swapped. TODO: just add a check inside the method and don't bother with the argument passing
         temp_image.SwapFourierSpaceQuadrants(false);
         // This is a shared resource, and we don't copy the host real_values anyway, so DONOT pin the memory
-        gpu_density_map->CopyFromCpuImage(temp_image, false);
+        gpu_density_map->Init(temp_image, false);
         gpu_density_map->CopyHostToDeviceTextureComplex3d( );
         gpu_density_map->RecordAndWait( );
         // wxPrintf("Allocating texture cache was (%d)\n", gpu_density_map->is_allocated_texture_cache);

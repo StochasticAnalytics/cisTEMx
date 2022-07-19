@@ -495,7 +495,7 @@ void GpuUtilTest::createImageAddOne( ) {
         //	GpuImage d_zeros;
         //
         //	wxPrintf("Set up a GpuImage with size %d\n", d_zeros.logical_x_dimension);
-        //	d_zeros.CopyFromCpuImage(zeros);
+        //	d_zeros.Init(zeros);
         //
         //
         //	wxPrintf("copied the Image into the GpuImage with size %d\n", d_zeros.logical_x_dimension);

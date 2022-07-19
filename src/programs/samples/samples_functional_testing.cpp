@@ -38,7 +38,7 @@ bool SamplesTestingApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
     // These are broken, I'm not quite sure where, seems to be allocation issues related to consme that Shiran wrote. Revisit.
-    // all_tests_passed = all_tests_passed && DoCPUvsGPUResize(hiv_image_80x80x1_filename, temp_directory);
+    all_tests_passed = all_tests_passed && DoCPUvsGPUResize(hiv_image_80x80x1_filename, temp_directory);
     all_tests_passed = all_tests_passed && CPUvsGPUProjectionTest(temp_directory);
 #else
     wxPrintf("GPU support disabled. skipping GPU tests.\n");

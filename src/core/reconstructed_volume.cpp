@@ -264,7 +264,10 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
     if ( current_phi != angles_and_shifts_of_projection.ReturnPhiAngle( ) || current_theta != angles_and_shifts_of_projection.ReturnThetaAngle( ) || current_psi != angles_and_shifts_of_projection.ReturnPsiAngle( ) || current_resolution_limit != resolution_limit ) {
         if ( calculate_projection && ! use_gpu_projection ) {
             density_map->ExtractSlice(projection, angles_and_shifts_of_projection, resolution_limit);
+            MyPrintWithDetails(" ");
         }
+        MyPrintWithDetails(" ");
+
         current_projection.CopyFrom(&projection);
         current_phi              = angles_and_shifts_of_projection.ReturnPhiAngle( );
         current_theta            = angles_and_shifts_of_projection.ReturnThetaAngle( );
@@ -278,6 +281,8 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
         current_swap_quadrants   = swap_quadrants;
         current_whitening        = whiten;
         if ( whiten && ! use_gpu_projection ) {
+            MyPrintWithDetails(" ");
+
             //			var_A = projection.ReturnSumOfSquares();
             //			projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
             projection.Whiten(resolution_limit);
@@ -287,6 +292,8 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
             //			projection.ForwardFFT();
         }
         if ( apply_ctf ) {
+            MyPrintWithDetails(" ");
+
             //			projection.BackwardFFT();
             //			projection.SetToConstant(1.0);
             //			projection.real_values[0] = 1.0;
@@ -299,14 +306,20 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
             projection.MultiplyPixelWiseReal(CTF, abolute_ctf);
 
             if ( mask_radius > 0.0 ) {
+                MyPrintWithDetails(" ");
+
                 projection.BackwardFFT( );
                 projection.CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size);
                 projection.ForwardFFT( );
             }
         }
 
+        MyPrintWithDetails(" ");
+
         if ( apply_shifts && ! use_gpu_projection )
             projection.PhaseShift(angles_and_shifts_of_projection.ReturnShiftX( ) / pixel_size, angles_and_shifts_of_projection.ReturnShiftY( ) / pixel_size);
+        MyPrintWithDetails(" ");
+
         if ( swap_quadrants )
             projection.SwapRealSpaceQuadrants( );
     }
@@ -319,10 +332,14 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
             current_mask_falloff   = mask_falloff;
             current_swap_quadrants = swap_quadrants;
             current_whitening      = whiten;
+            MyPrintWithDetails(" ");
 
             projection.CopyFrom(&current_projection);
+            MyPrintWithDetails(" ");
 
             if ( whiten && ! use_gpu_projection ) {
+                MyPrintWithDetails(" ");
+
                 //				var_A = projection.ReturnSumOfSquares();
                 //				projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
                 projection.Whiten(resolution_limit);
@@ -332,6 +349,8 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
                 //				projection.ForwardFFT();
             }
             if ( apply_ctf ) {
+                MyPrintWithDetails(" ");
+
                 projection.MultiplyPixelWiseReal(CTF, abolute_ctf);
 
                 if ( mask_radius > 0.0 ) {
@@ -340,9 +359,12 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
                     projection.ForwardFFT( );
                 }
             }
+            MyPrintWithDetails(" ");
 
             if ( apply_shifts && ! use_gpu_projection )
                 projection.PhaseShift(angles_and_shifts_of_projection.ReturnShiftX( ) / pixel_size, angles_and_shifts_of_projection.ReturnShiftY( ) / pixel_size);
+            MyPrintWithDetails(" ");
+
             if ( swap_quadrants )
                 projection.SwapRealSpaceQuadrants( );
         }

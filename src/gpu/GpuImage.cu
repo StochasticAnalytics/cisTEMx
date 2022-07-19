@@ -201,23 +201,24 @@ typedef struct
 ////////////////////////
 
 GpuImage::GpuImage( ) {
+    is_meta_data_initialized = false;
     SetupInitialValues( );
 }
 
 GpuImage::GpuImage(Image& cpu_image) {
-
+    is_meta_data_initialized = false;
     SetupInitialValues( );
     Init(cpu_image);
 }
 
-GpuImage::GpuImage(const GpuImage& other_gpu_image) // copy constructor
-{
-
+GpuImage::GpuImage(const GpuImage& other_gpu_image) {
+    is_meta_data_initialized = false;
     SetupInitialValues( );
     *this = other_gpu_image;
 }
 
 GpuImage& GpuImage::operator=(const GpuImage& other_gpu_image) {
+
     *this = &other_gpu_image;
     return *this;
 }
@@ -232,18 +233,14 @@ GpuImage& GpuImage::operator=(const GpuImage* other_gpu_image) {
 
             if ( dims.x != other_gpu_image->dims.x || dims.y != other_gpu_image->dims.y || dims.z != other_gpu_image->dims.z ) {
                 Deallocate( );
+                CopyGpuImageMetaData(other_gpu_image);
                 Allocate(other_gpu_image->dims.x, other_gpu_image->dims.y, other_gpu_image->dims.z, other_gpu_image->is_in_real_space);
             }
         }
         else {
+            CopyGpuImageMetaData(other_gpu_image);
             Allocate(other_gpu_image->dims.x, other_gpu_image->dims.y, other_gpu_image->dims.z, other_gpu_image->is_in_real_space);
         }
-
-        // by here the memory allocation should be ok..
-
-        is_in_real_space         = other_gpu_image->is_in_real_space;
-        object_is_centred_in_box = other_gpu_image->object_is_centred_in_box;
-        is_fft_centered_in_box   = other_gpu_image->is_fft_centered_in_box;
 
         precheck;
         cudaErr(cudaMemcpyAsync(real_values_gpu, other_gpu_image->real_values_gpu, sizeof(cufftReal) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
@@ -255,12 +252,17 @@ GpuImage& GpuImage::operator=(const GpuImage* other_gpu_image) {
 
 GpuImage::~GpuImage( ) {
     Deallocate( );
-    // cudaErr(cudaFree(tmpVal));
-    // cudaErr(cudaFree(tmpValComplex));
 }
 
-void GpuImage::Init(Image& cpu_image) {
-    CopyFromCpuImage(cpu_image);
+/**
+ * @brief allocate_real_values defaults to true, because (at the time) we generally want the single precision image buffer in most cases.
+ * particularly when interacting with a CPU image, which only supports single precision. At times, deffering allocation may be preferable.
+ * @param cpu_image 
+ * @param allocate_real_values 
+ */
+void GpuImage::Init(Image& cpu_image, bool allocate_real_values) {
+
+    InitializeBasedOnCpuImage(cpu_image, allocate_real_values);
 }
 
 void GpuImage::SetupInitialValues( ) {
@@ -298,14 +300,13 @@ void GpuImage::SetupInitialValues( ) {
     gpu_plan_id = -1;
 
     insert_into_which_reconstruction = 0;
-    hostImage                        = NULL;
-
-    cudaErr(cudaEventCreateWithFlags(&nppCalcEvent, cudaEventDisableTiming));
+    host_image_ptr                   = NULL;
 
     cudaErr(cudaGetDevice(&device_idx));
     cudaErr(cudaDeviceGetAttribute(&number_of_streaming_multiprocessors, cudaDevAttrMultiProcessorCount, device_idx));
     limit_SMs_by_threads = 1;
 
+    AllocateTmpVarsAndEvents( );
     UpdateBoolsToDefault( );
 }
 
@@ -313,98 +314,36 @@ void GpuImage::CopyFrom(GpuImage* other_image) {
     *this = other_image;
 }
 
-void GpuImage::CopyFromCpuImage(Image& cpu_image, bool pin_host_memory) {
+void GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values) {
 
-    UpdateBoolsToDefault( );
+    // First check to see if we have existed before
+    if ( is_meta_data_initialized ) {
+        // Okay, the GpuImage has existed, see if it is already pointing at the cpu
+        if ( real_memory_allocated != cpu_image.real_memory_allocated && cpu_image.real_memory_allocated > 0 ) {
+            Deallocate( );
+        }
+    }
 
-    hostImagePtr = &cpu_image;
+    CopyCpuImageMetaData(cpu_image);
 
-    dims = make_int4(cpu_image.logical_x_dimension,
-                     cpu_image.logical_y_dimension,
-                     cpu_image.logical_z_dimension,
-                     cpu_image.logical_x_dimension + cpu_image.padding_jump_value);
+    if ( allocate_real_values ) {
+        // This will also check to ensure we are not allocated
+        Allocate(dims.x, dims.y, dims.z, is_in_real_space);
+    }
 
-    logical_x_dimension = cpu_image.logical_x_dimension;
-    logical_y_dimension = cpu_image.logical_y_dimension;
-    logical_z_dimension = cpu_image.logical_z_dimension;
-
-    pitch = dims.w * sizeof(float);
-
-    physical_upper_bound_complex = make_int3(cpu_image.physical_upper_bound_complex_x,
-                                             cpu_image.physical_upper_bound_complex_y,
-                                             cpu_image.physical_upper_bound_complex_z);
-
-    physical_address_of_box_center = make_int3(cpu_image.physical_address_of_box_center_x,
-                                               cpu_image.physical_address_of_box_center_y,
-                                               cpu_image.physical_address_of_box_center_z);
-
-    physical_index_of_first_negative_frequency = make_int3(0,
-                                                           cpu_image.physical_index_of_first_negative_frequency_y,
-                                                           cpu_image.physical_index_of_first_negative_frequency_z);
-
-    logical_upper_bound_complex = make_int3(cpu_image.logical_upper_bound_complex_x,
-                                            cpu_image.logical_upper_bound_complex_y,
-                                            cpu_image.logical_upper_bound_complex_z);
-
-    logical_lower_bound_complex = make_int3(cpu_image.logical_lower_bound_complex_x,
-                                            cpu_image.logical_lower_bound_complex_y,
-                                            cpu_image.logical_lower_bound_complex_z);
-
-    logical_upper_bound_real = make_int3(cpu_image.logical_upper_bound_real_x,
-                                         cpu_image.logical_upper_bound_real_y,
-                                         cpu_image.logical_upper_bound_real_z);
-
-    logical_lower_bound_real = make_int3(cpu_image.logical_lower_bound_real_x,
-                                         cpu_image.logical_lower_bound_real_y,
-                                         cpu_image.logical_lower_bound_real_z);
-
-    is_in_real_space            = cpu_image.is_in_real_space;
-    number_of_real_space_pixels = cpu_image.number_of_real_space_pixels;
-    object_is_centred_in_box    = cpu_image.object_is_centred_in_box;
-    is_fft_centered_in_box      = cpu_image.is_fft_centered_in_box;
-
-    fourier_voxel_size = make_float3(cpu_image.fourier_voxel_size_x,
-                                     cpu_image.fourier_voxel_size_y,
-                                     cpu_image.fourier_voxel_size_z);
-
-    insert_into_which_reconstruction = cpu_image.insert_into_which_reconstruction;
-    real_values                      = cpu_image.real_values;
-    complex_values                   = cpu_image.complex_values;
-
-    is_in_memory = cpu_image.is_in_memory;
-
-    padding_jump_value                     = cpu_image.padding_jump_value;
-    image_memory_should_not_be_deallocated = cpu_image.image_memory_should_not_be_deallocated; // TODO what is this for?
-
-    real_values_gpu       = NULL; // !<  Real array to hold values for REAL images.
-    complex_values_gpu    = NULL; // !<  Complex array to hold values for COMP images.
-    is_in_memory_gpu      = false;
-    real_memory_allocated = cpu_image.real_memory_allocated;
-
-    ft_normalization_factor = cpu_image.ft_normalization_factor;
-
-    if ( pin_host_memory ) {
+    if ( pin_host_memory && ! is_host_memory_pinned ) {
         cudaErr(cudaHostRegister(real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault));
         is_host_memory_pinned = true;
         cudaErr(cudaHostGetDevicePointer(&pinnedPtr, real_values, 0));
     }
-
-    is_meta_data_initialized = true;
-
-    cudaErr(cudaMallocManaged(&tmpVal, sizeof(float)));
-    cudaErr(cudaMallocManaged(&tmpValComplex, sizeof(double)));
-
-    is_in_memory_managed_tmp_vals = true;
-
-    hostImage = &cpu_image;
 }
 
 void GpuImage::UpdateCpuFlags( ) {
 
     // Call after re-copying. The main image properites are all assumed to be static.
-    is_in_real_space         = hostImage->is_in_real_space;
-    object_is_centred_in_box = hostImage->object_is_centred_in_box;
-    is_fft_centered_in_box   = hostImage->is_fft_centered_in_box;
+    is_in_real_space         = host_image_ptr->is_in_real_space;
+    object_is_centred_in_box = host_image_ptr->object_is_centred_in_box;
+    is_fft_centered_in_box   = host_image_ptr->is_fft_centered_in_box;
 }
 
 void GpuImage::printVal(std::string msg, int idx) {
@@ -681,12 +620,6 @@ void GpuImage::BufferInit(BufferType bt) {
 
 void GpuImage::BufferDestroy( ) {
 
-    if ( is_allocated_image_buffer ) {
-        image_buffer->Deallocate( );
-        cudaErr(cudaFree(image_buffer));
-        is_allocated_image_buffer = false;
-    }
-
     if ( is_allocated_16f_buffer ) {
         cudaErr(cudaFree(real_values_16f));
         is_allocated_16f_buffer = false;
@@ -750,6 +683,21 @@ void GpuImage::BufferDestroy( ) {
     if ( is_allocated_dotproduct_buffer ) {
         cudaErr(cudaFree(dotproduct_buffer));
         is_allocated_dotproduct_buffer = false;
+    }
+
+    if ( is_allocated_mask_CSOS ) {
+        mask_CSOS->Deallocate( );
+        delete mask_CSOS;
+    }
+
+    if ( is_allocated_image_buffer ) {
+        image_buffer->Deallocate( );
+        delete image_buffer;
+    }
+
+    if ( is_allocated_clip_into_mask ) {
+        cudaErr(cudaFree(clip_into_mask));
+        delete clip_into_mask;
     }
 }
 
@@ -1120,7 +1068,7 @@ Peak GpuImage::FindPeakWithParabolaFit(float inner_radius_for_peak_search, float
     if ( size % 2 != 0 )
         size++;
     buffer.Allocate(size, size, true);
-    ClipIntoRealSpace(&buffer, 0.f, false, 0.f, 0, 0, 0);
+    ClipInto(&buffer, 0.f, false, 0.f, 0, 0, 0);
     // Since we free the GPU memory after the copy, we have to make sure the kernel is complete.
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
@@ -1422,16 +1370,14 @@ void GpuImage::CopyHostToDevice( ) {
     MyAssertTrue(is_in_memory, "Host memory not allocated");
 
     if ( ! is_in_memory_gpu ) {
-        cudaErr(cudaMalloc(&real_values_gpu, real_memory_allocated * sizeof(float)));
-        complex_values_gpu = (cufftComplex*)real_values_gpu;
-        is_in_memory_gpu   = true;
+        Allocate(dims.x, dims.y, dims.z, host_image_ptr->is_in_real_space);
     }
 
     precheck;
     cudaErr(cudaMemcpyAsync(real_values_gpu, pinnedPtr, real_memory_allocated * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
     postcheck;
 
-    UpdateCpuFlags( );
+    CopyCpuImageMetaData(*host_image_ptr);
 }
 
 void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
@@ -1452,9 +1398,9 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
     float* host_array_real = new float[padded_x_dimension * dims.y * dims.z];
     float* host_array_imag = new float[padded_x_dimension * dims.y * dims.z];
 
-    for ( int complex_address = 0; complex_address < hostImagePtr->real_memory_allocated / 2; complex_address++ ) {
-        host_array_real[complex_address] = real(hostImagePtr->complex_values[complex_address]);
-        host_array_imag[complex_address] = imag(hostImagePtr->complex_values[complex_address]);
+    for ( int complex_address = 0; complex_address < host_image_ptr->real_memory_allocated / 2; complex_address++ ) {
+        host_array_real[complex_address] = real(host_image_ptr->complex_values[complex_address]);
+        host_array_imag[complex_address] = imag(host_image_ptr->complex_values[complex_address]);
     }
 
     // cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
@@ -1540,13 +1486,14 @@ void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
     if ( free_gpu_memory ) {
         Deallocate( );
     }
+    // If we ran Deallocate, this the memory is already unpinned.
     if ( unpin_host_memory && is_host_memory_pinned ) {
         cudaErr(cudaHostUnregister(real_values));
         is_host_memory_pinned = false;
     }
 }
 
-void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory) {
+void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
 
     MyAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
     // TODO other asserts on size etc.
@@ -1564,13 +1511,19 @@ void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_comple
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     // TODO add asserts etc.
     if ( free_gpu_memory ) {
-        cudaErr(cudaFree(real_values_gpu));
-    } // FIXME what about the other structures
+        Deallocate( );
+    }
+    // If we ran Deallocate, this the memory is already unpinned.
+    if ( unpin_host_memory && is_host_memory_pinned ) {
+        cudaErr(cudaHostUnregister(real_values));
+        is_host_memory_pinned = false;
+    }
 
+    // always unregister the temporary pointer as it is not associated with a GpuImage
     cudaErr(cudaHostUnregister(tmpPinnedPtr));
 }
 
-void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory) {
+void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
     cpu_image.logical_x_dimension = dims.x;
     cpu_image.logical_y_dimension = dims.y;
     cpu_image.logical_z_dimension = dims.z;
@@ -1628,13 +1581,13 @@ void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_com
     //cpu_image.real_memory_allocated = real_memory_allocated;
     cpu_image.ft_normalization_factor = ft_normalization_factor;
 
-    CopyDeviceToHost(cpu_image, should_block_until_complete, free_gpu_memory);
+    CopyDeviceToHost(cpu_image, should_block_until_complete, free_gpu_memory, unpin_host_memory);
 
     cpu_image.is_in_memory     = true;
     cpu_image.is_in_real_space = is_in_real_space;
 }
 
-Image GpuImage::CopyDeviceToNewHost(bool should_block_until_complete, bool free_gpu_memory) {
+Image GpuImage::CopyDeviceToNewHost(bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
     Image new_cpu_image;
     new_cpu_image.Allocate(dims.x, dims.y, dims.z, true, false);
 
@@ -1854,11 +1807,11 @@ template void GpuImage::BackwardFFTAfterComplexConjMul(__half2* image_to_multipl
 template void GpuImage::BackwardFFTAfterComplexConjMul(cufftComplex* image_to_multiply, bool load_half_precision);
 
 void GpuImage::Record( ) {
-    cudaErr(cudaEventRecord(nppCalcEvent, cudaStreamPerThread));
+    cudaErr(cudaEventRecord(npp_calc_event, cudaStreamPerThread));
 }
 
 void GpuImage::Wait( ) {
-    cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, nppCalcEvent, 0));
+    cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, npp_calc_event, 0));
     //  cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 }
 
@@ -2066,6 +2019,7 @@ __global__ void ClipIntoRealKernel(cufftReal* real_values_gpu,
                                    int3       other_physical_address_of_box_center,
                                    int3       wanted_coordinate_of_box_center,
                                    float      wanted_padding_value) {
+
     int3 other_coord = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                                  blockIdx.y * blockDim.y + threadIdx.y,
                                  blockIdx.z);
@@ -2193,7 +2147,6 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
 
     MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Clip into is only set up for real space on the gpu currently");
 
     int3 wanted_coordinate_of_box_center = make_int3(wanted_coordinate_of_box_center_x,
                                                      wanted_coordinate_of_box_center_y,
@@ -2383,6 +2336,12 @@ void GpuImage::Deallocate( ) {
         is_in_memory_managed_tmp_vals = false;
     }
 
+    if ( is_npp_calc_event_initialized ) {
+        cudaErr(cudaEventDestroy(npp_calc_event));
+        is_npp_calc_event_initialized = false;
+    }
+
+    // Separat method for all the buffer memory spaces, not sure it this makes sense
     BufferDestroy( );
 
     if ( is_fft_planned ) {
@@ -2398,21 +2357,6 @@ void GpuImage::Deallocate( ) {
     //    is_cublas_loaded = false;
     //  }
 
-    if ( is_allocated_mask_CSOS ) {
-        mask_CSOS->Deallocate( );
-        delete mask_CSOS;
-    }
-
-    if ( is_allocated_image_buffer ) {
-        image_buffer->Deallocate( );
-        delete image_buffer;
-    }
-
-    if ( is_allocated_clip_into_mask ) {
-        cudaErr(cudaFree(clip_into_mask));
-        delete clip_into_mask;
-    }
-
     if ( is_allocated_texture_cache ) {
         // In the samples, they check directly if( tex_real ) if(cuArray_real)
         cudaErr(cudaDestroyTextureObject(tex_real));
@@ -2421,8 +2365,6 @@ void GpuImage::Deallocate( ) {
         cudaErr(cudaFreeArray(cuArray_imag));
         is_allocated_texture_cache = false;
     }
-
-    UpdateBoolsToDefault( );
 }
 
 void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
@@ -2478,6 +2420,19 @@ __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_va
     }
 }
 
+void GpuImage::AllocateTmpVarsAndEvents( ) {
+
+    if ( ! is_in_memory_managed_tmp_vals ) {
+        cudaErr(cudaMallocManaged(&tmpVal, sizeof(float)));
+        cudaErr(cudaMallocManaged(&tmpValComplex, sizeof(double)));
+        is_in_memory_managed_tmp_vals = true;
+    }
+    if ( ! is_npp_calc_event_initialized ) {
+        cudaErr(cudaEventCreate(&npp_calc_event));
+        is_npp_calc_event_initialized = true;
+    }
+}
+
 void GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space) {
 
     MyAssertTrue(wanted_x_size > 0 && wanted_y_size > 0 && wanted_z_size > 0, "Bad dimensions: %i %i %i\n", wanted_x_size, wanted_y_size, wanted_z_size);
@@ -2497,13 +2452,11 @@ void GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
         }
     }
 
-    SetupInitialValues( );
+    // Update existing values with the wanted values
     this->is_in_real_space = should_be_in_real_space;
     dims.x                 = wanted_x_size;
     dims.y                 = wanted_y_size;
     dims.z                 = wanted_z_size;
-
-    // if we got here we need to do allocation..
 
     // first_x_dimension
     if ( IsEven(wanted_x_size) == true )
@@ -2537,16 +2490,18 @@ void GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
     number_of_real_space_pixels = int(dims.x) * int(dims.y) * int(dims.z);
     ft_normalization_factor     = 1.0 / sqrtf(float(number_of_real_space_pixels));
 
-    // Set other gpu vals
-
-    is_host_memory_pinned    = false;
-    is_meta_data_initialized = true;
+    AllocateTmpVarsAndEvents( );
 }
 
 void GpuImage::UpdateBoolsToDefault( ) {
 
+    // The main purpose for all of this meta data is to ensure we don't have any issues with memory allocations on the device.
+    // This should only be called on a newly created image.
+    MyAssertFalse(is_meta_data_initialized, "GpuImage::UpdateBoolsToDefault() Should not be called on a non-initialized image");
+
     is_meta_data_initialized      = false;
     is_in_memory_managed_tmp_vals = false;
+    is_npp_calc_event_initialized = false;
 
     is_in_memory                           = false;
     is_in_real_space                       = true;
@@ -2673,14 +2628,14 @@ void GpuImage::UpdateLoopingAndAddressing(int wanted_x_size, int wanted_y_size, 
 GPU resize from here:
 /////////////////////////////////////// */
 
-__global__ void ClipIntoRealSpaceKernel(cufftReal* real_values_gpu,
-                                        cufftReal* other_image_real_values_gpu,
-                                        int4       dims,
-                                        int4       other_dims,
-                                        int3       physical_address_of_box_center,
-                                        int3       other_physical_address_of_box_center,
-                                        int3       wanted_coordinate_of_box_center,
-                                        float      wanted_padding_value);
+// __global__ void ClipIntoRealSpaceKernel(cufftReal* real_values_gpu,
+//                                         cufftReal* other_image_real_values_gpu,
+//                                         int4       dims,
+//                                         int4       other_dims,
+//                                         int3       physical_address_of_box_center,
+//                                         int3       other_physical_address_of_box_center,
+//                                         int3       wanted_coordinate_of_box_center,
+//                                         float      wanted_padding_value);
 
 __global__ void ClipIntoRealSpaceKernel(cufftReal* real_values_gpu,
                                         cufftReal* other_image_real_values_gpu,
@@ -2690,6 +2645,7 @@ __global__ void ClipIntoRealSpaceKernel(cufftReal* real_values_gpu,
                                         int3       other_physical_address_of_box_center,
                                         int3       wanted_coordinate_of_box_center,
                                         float      wanted_padding_value) {
+
     int3 other_coord = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                                  blockIdx.y * blockDim.y + threadIdx.y,
                                  blockIdx.z);
@@ -2843,148 +2799,171 @@ void GpuImage::Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted
         return;
     }
 
-    // wxPrintf("Init temp GPUImage.\n");
     GpuImage temp_image;
 
-    // wxPrintf("Allocating memory.\n");
     temp_image.Allocate(wanted_x_dimension, wanted_y_dimension, wanted_z_dimension, is_in_real_space);
 
-    // wxPrintf("Clipping temp image.\n");
-    precheck;
     if ( is_in_real_space ) {
-        // wxPrintf("Clipping real space.\n");
-        ClipIntoRealSpace(&temp_image, wanted_padding_value, false, 1.0, 0, 0, 0);
+        ClipInto(&temp_image, wanted_padding_value, false, 1.0, 0, 0, 0);
     }
     else {
-        // wxPrintf("Clipping Fourier space.\n");
         ClipIntoFourierSpace(&temp_image, wanted_padding_value);
     }
-    //ClipInto(&temp_image, wanted_padding_value, false, 1.0, 0, 0, 0);
-    postcheck;
 
     // wxPrintf("Consuming temp image\n");
-    Consume(temp_image);
+    Consume(&temp_image);
+}
+
+void GpuImage::CopyCpuImageMetaData(Image& cpu_image) {
+
+    host_image_ptr = &cpu_image;
+
+    dims = make_int4(cpu_image.logical_x_dimension,
+                     cpu_image.logical_y_dimension,
+                     cpu_image.logical_z_dimension,
+                     cpu_image.logical_x_dimension + cpu_image.padding_jump_value);
+
+    logical_x_dimension = cpu_image.logical_x_dimension;
+    logical_y_dimension = cpu_image.logical_y_dimension;
+    logical_z_dimension = cpu_image.logical_z_dimension;
+
+    pitch = dims.w * sizeof(float);
+
+    physical_upper_bound_complex = make_int3(cpu_image.physical_upper_bound_complex_x,
+                                             cpu_image.physical_upper_bound_complex_y,
+                                             cpu_image.physical_upper_bound_complex_z);
+
+    physical_address_of_box_center = make_int3(cpu_image.physical_address_of_box_center_x,
+                                               cpu_image.physical_address_of_box_center_y,
+                                               cpu_image.physical_address_of_box_center_z);
+
+    physical_index_of_first_negative_frequency = make_int3(0,
+                                                           cpu_image.physical_index_of_first_negative_frequency_y,
+                                                           cpu_image.physical_index_of_first_negative_frequency_z);
+
+    logical_upper_bound_complex = make_int3(cpu_image.logical_upper_bound_complex_x,
+                                            cpu_image.logical_upper_bound_complex_y,
+                                            cpu_image.logical_upper_bound_complex_z);
+
+    logical_lower_bound_complex = make_int3(cpu_image.logical_lower_bound_complex_x,
+                                            cpu_image.logical_lower_bound_complex_y,
+                                            cpu_image.logical_lower_bound_complex_z);
+
+    logical_upper_bound_real = make_int3(cpu_image.logical_upper_bound_real_x,
+                                         cpu_image.logical_upper_bound_real_y,
+                                         cpu_image.logical_upper_bound_real_z);
+
+    logical_lower_bound_real = make_int3(cpu_image.logical_lower_bound_real_x,
+                                         cpu_image.logical_lower_bound_real_y,
+                                         cpu_image.logical_lower_bound_real_z);
+
+    is_in_real_space            = cpu_image.is_in_real_space;
+    number_of_real_space_pixels = cpu_image.number_of_real_space_pixels;
+    object_is_centred_in_box    = cpu_image.object_is_centred_in_box;
+    is_fft_centered_in_box      = cpu_image.is_fft_centered_in_box;
+
+    fourier_voxel_size = make_float3(cpu_image.fourier_voxel_size_x,
+                                     cpu_image.fourier_voxel_size_y,
+                                     cpu_image.fourier_voxel_size_z);
+
+    insert_into_which_reconstruction = cpu_image.insert_into_which_reconstruction;
+    real_values                      = cpu_image.real_values;
+    complex_values                   = cpu_image.complex_values;
+
+    is_in_memory = cpu_image.is_in_memory;
+
+    padding_jump_value                     = cpu_image.padding_jump_value;
+    image_memory_should_not_be_deallocated = cpu_image.image_memory_should_not_be_deallocated; // TODO what is this for?
+
+    // real_values_gpu       = NULL; // !<  Real array to hold values for REAL images.
+    // complex_values_gpu    = NULL; // !<  Complex array to hold values for COMP images.
+    // is_in_memory_gpu      = false;
+    real_memory_allocated = cpu_image.real_memory_allocated;
+
+    ft_normalization_factor = cpu_image.ft_normalization_factor;
+}
+
+void GpuImage::CopyGpuImageMetaData(const GpuImage* other_image) {
+
+    is_in_real_space = other_image->is_in_real_space;
+
+    number_of_real_space_pixels = other_image->number_of_real_space_pixels;
+
+    insert_into_which_reconstruction = other_image->insert_into_which_reconstruction;
+
+    object_is_centred_in_box = other_image->object_is_centred_in_box;
+    is_fft_centered_in_box   = other_image->is_fft_centered_in_box;
+
+    dims = other_image->dims;
+
+    // FIXME: temp for comp
+    logical_x_dimension = other_image->dims.x;
+    logical_y_dimension = other_image->dims.y;
+    logical_z_dimension = other_image->dims.z;
+
+    pitch = other_image->pitch;
+
+    physical_upper_bound_complex = other_image->physical_upper_bound_complex;
+
+    physical_address_of_box_center = other_image->physical_address_of_box_center;
+
+    physical_index_of_first_negative_frequency = other_image->physical_index_of_first_negative_frequency;
+
+    fourier_voxel_size = other_image->fourier_voxel_size;
+
+    logical_upper_bound_complex = other_image->logical_upper_bound_complex;
+
+    logical_lower_bound_complex = other_image->logical_lower_bound_complex;
+
+    logical_upper_bound_real = other_image->logical_upper_bound_real;
+
+    logical_lower_bound_real = other_image->logical_lower_bound_real;
+
+    padding_jump_value = other_image->padding_jump_value;
+
+    ft_normalization_factor = other_image->ft_normalization_factor;
+
+    real_memory_allocated = other_image->real_memory_allocated;
+
+    is_in_memory             = other_image->is_in_memory;
+    is_meta_data_initialized = other_image->is_meta_data_initialized;
 }
 
 /*
  Overwrite current GpuImage with a new image, then deallocate new image.
 */
-void GpuImage::Consume(GpuImage& temp_image) // copy the parameters then directly steal the memory of another image, leaving it an empty shell
+void GpuImage::Consume(GpuImage* other_image) // copy the parameters then directly steal the memory of another image, leaving it an empty shell
 {
-    MyDebugAssertTrue(temp_image.is_in_memory_gpu, "Other image Memory not allocated");
+    MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
 
-    if ( this == &temp_image ) { // no need to consume, its the same image.
+    if ( this == other_image ) { // no need to consume, its the same image.
         return;
     }
-    UpdateBoolsToDefault( );
 
-    is_in_real_space = temp_image.is_in_real_space;
-
-    number_of_real_space_pixels = temp_image.number_of_real_space_pixels;
-
-    insert_into_which_reconstruction = temp_image.insert_into_which_reconstruction;
-
-    object_is_centred_in_box = temp_image.object_is_centred_in_box;
-    is_fft_centered_in_box   = temp_image.is_fft_centered_in_box;
-
-    dims = temp_image.dims;
-
-    // FIXME: temp for comp
-    logical_x_dimension = temp_image.dims.x;
-    logical_y_dimension = temp_image.dims.y;
-    logical_z_dimension = temp_image.dims.z;
-
-    pitch = temp_image.pitch;
-
-    physical_upper_bound_complex = temp_image.physical_upper_bound_complex;
-
-    physical_address_of_box_center = temp_image.physical_address_of_box_center;
-
-    physical_index_of_first_negative_frequency = temp_image.physical_index_of_first_negative_frequency;
-
-    fourier_voxel_size = temp_image.fourier_voxel_size;
-
-    logical_upper_bound_complex = temp_image.logical_upper_bound_complex;
-
-    logical_lower_bound_complex = temp_image.logical_lower_bound_complex;
-
-    logical_upper_bound_real = temp_image.logical_upper_bound_real;
-
-    logical_lower_bound_real = temp_image.logical_lower_bound_real;
-
-    padding_jump_value = temp_image.padding_jump_value;
-
-    ft_normalization_factor = temp_image.ft_normalization_factor;
-
-    real_values    = NULL;
-    complex_values = NULL;
-    //   cudaErr(cudaFree(real_values_gpu));
-    //   cudaErr(cudaFree(complex_values_gpu));
-    real_memory_allocated = temp_image.real_memory_allocated;
-
-    is_in_memory             = false; //temp_image.is_in_memory;
-    is_meta_data_initialized = true;
     Deallocate( );
-    //Allocate(dims.x, dims.y, dims.z, is_in_real_space);
+    // Normally, we don't want to overwrite existing metadata, but in this case we do, so set this flag to override runtime checks resulting from SetupINitialValues - > UpdateBoolsToDefault
+    is_meta_data_initialized = false;
+    SetupInitialValues( );
+    CopyGpuImageMetaData(other_image);
 
-    // temp_image.printVal("Value 1:", 1);
+    real_values_gpu    = other_image->real_values_gpu;
+    complex_values_gpu = other_image->complex_values_gpu;
+    is_in_memory_gpu   = other_image->is_in_memory_gpu;
 
-    if ( is_in_real_space ) {
-        Zeros( );
-        cudaErr(cudaMemcpyAsync(real_values_gpu, temp_image.real_values_gpu, sizeof(cufftReal) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-    }
-    else {
-        // why doesn't this work?? ---> //cudaErr(cudaMemcpyAsync(complex_values_gpu, temp_image.complex_values_gpu, sizeof(cufftComplex) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-        cudaErr(cudaMemcpyAsync(complex_values_gpu, temp_image.complex_values_gpu, sizeof(cufftReal) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-    }
+    cuda_plan_forward = other_image->cuda_plan_forward;
+    cuda_plan_inverse = other_image->cuda_plan_inverse;
+    is_fft_planned    = other_image->is_fft_planned;
 
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    // We neeed to override the other image pointers so that it doesn't deallocate the memory.
+    other_image->real_values_gpu    = NULL;
+    other_image->complex_values_gpu = NULL;
+    other_image->is_in_memory_gpu   = false;
 
-    // this results in core dump...
-    //wxPrintf(" After copy [0] = %s %s\n", std::to_string(real_values_gpu[0]), std::to_string(temp_image.real_values_gpu[0]));
+    other_image->cuda_plan_forward = NULL;
+    other_image->cuda_plan_inverse = NULL;
+    other_image->is_fft_planned    = false;
 
-    is_in_memory_gpu = true;
-
-    cudaErr(cudaMallocManaged(&tmpVal, sizeof(float)));
-    cudaErr(cudaMallocManaged(&tmpValComplex, sizeof(double)));
-
-    is_in_memory_managed_tmp_vals = true;
-
-    temp_image.Deallocate( );
-}
-
-void GpuImage::ClipIntoRealSpace(GpuImage* other_image, float wanted_padding_value,
-                                 bool fill_with_noise, float wanted_noise_sigma,
-                                 int wanted_coordinate_of_box_center_x,
-                                 int wanted_coordinate_of_box_center_y,
-                                 int wanted_coordinate_of_box_center_z) {
-
-    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
-    MyDebugAssertTrue(is_in_real_space, "Clip into is only set up for real space on the gpu currently");
-
-    int3 wanted_coordinate_of_box_center = make_int3(wanted_coordinate_of_box_center_x,
-                                                     wanted_coordinate_of_box_center_y,
-                                                     wanted_coordinate_of_box_center_z);
-
-    other_image->is_in_real_space         = is_in_real_space;
-    other_image->object_is_centred_in_box = object_is_centred_in_box;
-    other_image->is_fft_centered_in_box   = is_fft_centered_in_box;
-
-    MyDebugAssertTrue(object_is_centred_in_box, "real space image, not centred in box");
-
-    ReturnLaunchParamters(other_image->dims, true);
-
-    precheck;
-    ClipIntoRealKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu,
-                                                                              other_image->real_values_gpu,
-                                                                              dims,
-                                                                              other_image->dims,
-                                                                              physical_address_of_box_center,
-                                                                              other_image->physical_address_of_box_center,
-                                                                              wanted_coordinate_of_box_center,
-                                                                              wanted_padding_value);
-    postcheck;
+    return;
 }
 
 void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value) {

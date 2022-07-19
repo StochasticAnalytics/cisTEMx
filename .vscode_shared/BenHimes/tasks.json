@@ -9,7 +9,7 @@
             "wx_dir_static": "/opt/WX/intel-static/bin/wx-config",
             "wx_dir_dynamic_gcc:": "/opt/WX/gcc-dynamic/bin/wx-config",
             "build_dir": "${workspaceFolder}/build",
-            "compile_cores": "12"
+            "compile_cores": "8"
         }
     },
     "tasks": [

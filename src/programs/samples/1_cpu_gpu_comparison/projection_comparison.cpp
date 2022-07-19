@@ -12,28 +12,6 @@
 #include "../common/common.h"
 #include "projection_comparison.h"
 
-// Convenience function to return the abs(complex) in a real valued image that can be saved for inspection
-Image GetAbsAsReal(Image& input_image) {
-
-    Image tmp_img;
-    int   pixel_pitch = (input_image.logical_x_dimension + input_image.padding_jump_value) / 2;
-    tmp_img.Allocate(pixel_pitch, input_image.logical_y_dimension, input_image.logical_z_dimension, true, true);
-
-    int address_complex = 0;
-    int address_real    = 0;
-    for ( int k = 0; k < input_image.logical_z_dimension; k++ ) {
-        for ( int j = 0; j < input_image.logical_y_dimension; j++ ) {
-            for ( int i = 0; i < pixel_pitch; i++ ) {
-                tmp_img.real_values[address_real] = abs(input_image.complex_values[address_complex]);
-                address_complex++;
-                address_real++;
-            }
-            address_real += tmp_img.padding_jump_value;
-        }
-    }
-    return tmp_img;
-}
-
 bool CPUvsGPUProjectionTest(const wxString& temp_directory) {
 
     bool passed;
@@ -174,7 +152,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     cpu_volume.SwapFourierSpaceQuadrants(false);
 
     // Associate the gpu volume with the cpu volume, getting meta data and pinning the host pointer.
-    gpu_volume.CopyFromCpuImage(cpu_volume);
+    gpu_volume.Init(cpu_volume);
 
     // The volume is already in Fourier space, so we can copy it to texture cache for interpolation.
     gpu_volume.CopyHostToDeviceTextureComplex3d( );
@@ -283,8 +261,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // cpu_prj.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_cpu.mrc", 1, true);
         // cimg.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_gpu.mrc", 1, true);
 
-        score = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
-        wxPrintf("%f\n", score);
+        score  = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
         passed = passed && (score > 0.98f);
     }
 

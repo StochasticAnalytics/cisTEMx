@@ -10,6 +10,8 @@
 #include "gpu_core_headers.h"
 #include "GpuImage.h"
 
+// #define USE_ASYNC_MALLOC_FREE
+
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 
@@ -453,7 +455,8 @@ void GpuImage::NppInit( ) {
     if ( ! is_npp_loaded ) {
 
         int sharedMem;
-        nppStream.hStream = cudaStreamPerThread; // FIXME to use member stream
+        // Used for calls to npp buffer functions, but memory alloc/free is synced using cudaStreamPerThread as it does not recognize the nppStreamContext
+        nppStream.hStream = cudaStreamPerThread;
         cudaGetDevice(&nppStream.nCudaDeviceId);
         cudaDeviceGetAttribute(&nppStream.nMultiProcessorCount, cudaDevAttrMultiProcessorCount, nppStream.nCudaDeviceId);
         cudaDeviceGetAttribute(&nppStream.nMaxThreadsPerMultiProcessor, cudaDevAttrMaxThreadsPerMultiProcessor, nppStream.nCudaDeviceId);
@@ -501,7 +504,11 @@ void GpuImage::BufferInit(BufferType bt) {
 
         case b_16f:
             if ( ! is_allocated_16f_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&real_values_16f, sizeof(__half) * real_memory_allocated, cudaStreamPerThread));
+#else
                 cudaErr(cudaMalloc(&real_values_16f, sizeof(__half) * real_memory_allocated));
+#endif
                 complex_values_16f      = (__half2*)real_values_16f;
                 is_allocated_16f_buffer = true;
             }
@@ -511,7 +518,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_sum_buffer ) {
                 int n_elem;
                 nppiSumGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->sum_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->sum_buffer, n_elem));
+#endif
                 is_allocated_sum_buffer = true;
             }
             break;
@@ -520,7 +531,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_min_buffer ) {
                 int n_elem;
                 nppiMinGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->min_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->min_buffer, n_elem));
+#endif
                 is_allocated_min_buffer = true;
             }
             break;
@@ -529,7 +544,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_minIDX_buffer ) {
                 int n_elem;
                 nppiMinIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->minIDX_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->minIDX_buffer, n_elem));
+#endif
                 is_allocated_minIDX_buffer = true;
             }
             break;
@@ -538,7 +557,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_max_buffer ) {
                 int n_elem;
                 nppiMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->max_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->max_buffer, n_elem));
+#endif
                 is_allocated_max_buffer = true;
             }
             break;
@@ -547,7 +570,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_maxIDX_buffer ) {
                 int n_elem;
                 nppiMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->maxIDX_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->maxIDX_buffer, n_elem));
+#endif
                 is_allocated_maxIDX_buffer = true;
             }
             break;
@@ -556,7 +583,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_minmax_buffer ) {
                 int n_elem;
                 nppiMinMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->minmax_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->minmax_buffer, n_elem));
+#endif
                 is_allocated_minmax_buffer = true;
             }
             break;
@@ -565,7 +596,12 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_minmaxIDX_buffer ) {
                 int n_elem;
                 nppiMinMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->minmaxIDX_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->minmaxIDX_buffer, n_elem));
+#endif
+
                 is_allocated_minmaxIDX_buffer = true;
             }
             break;
@@ -574,7 +610,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_mean_buffer ) {
                 int n_elem;
                 nppiMeanGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->mean_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->mean_buffer, n_elem));
+#endif
                 is_allocated_mean_buffer = true;
             }
             break;
@@ -583,7 +623,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_meanstddev_buffer ) {
                 int n_elem;
                 nppiMeanGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->meanstddev_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->meanstddev_buffer, n_elem));
+#endif
                 is_allocated_meanstddev_buffer = true;
             }
             break;
@@ -592,7 +636,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_countinrange_buffer ) {
                 int n_elem;
                 nppiCountInRangeGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->countinrange_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->countinrange_buffer, n_elem));
+#endif
                 is_allocated_countinrange_buffer = true;
             }
             break;
@@ -601,7 +649,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_l2norm_buffer ) {
                 int n_elem;
                 nppiNormL2GetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->l2norm_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->l2norm_buffer, n_elem));
+#endif
 
                 is_allocated_l2norm_buffer = true;
             }
@@ -611,7 +663,11 @@ void GpuImage::BufferInit(BufferType bt) {
             if ( ! is_allocated_dotproduct_buffer ) {
                 int n_elem;
                 nppiDotProdGetBufferHostSize_32f64f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+#ifdef USE_ASYNC_MALLOC_FREE
+                cudaErr(cudaMallocAsync(&this->dotproduct_buffer, n_elem, nppStream.hStream));
+#else
                 cudaErr(cudaMalloc(&this->dotproduct_buffer, n_elem));
+#endif
                 is_allocated_dotproduct_buffer = true;
             }
             break;
@@ -621,67 +677,122 @@ void GpuImage::BufferInit(BufferType bt) {
 void GpuImage::BufferDestroy( ) {
 
     if ( is_allocated_16f_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(real_values_16f, cudaStreamPerThread));
+#else
         cudaErr(cudaFree(real_values_16f));
+#endif
         is_allocated_16f_buffer = false;
     }
 
     if ( is_allocated_sum_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->sum_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(sum_buffer));
+#endif
         is_allocated_sum_buffer = false;
     }
 
     if ( is_allocated_min_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->min_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(min_buffer));
+#endif
+
         is_allocated_min_buffer = false;
     }
 
     if ( is_allocated_minIDX_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->minIDX_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(minIDX_buffer));
+#endif
         is_allocated_minIDX_buffer = false;
     }
 
     if ( is_allocated_max_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->max_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(max_buffer));
+#endif
         is_allocated_max_buffer = false;
     }
 
     if ( is_allocated_maxIDX_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->maxIDX_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(maxIDX_buffer));
+#endif
+
         is_allocated_maxIDX_buffer = false;
     }
 
     if ( is_allocated_minmax_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->minmax_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(minmax_buffer));
+#endif
+
         is_allocated_minmax_buffer = false;
     }
 
     if ( is_allocated_minmaxIDX_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->minmaxIDX_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(minmaxIDX_buffer));
+#endif
         is_allocated_minmaxIDX_buffer = false;
     }
 
     if ( is_allocated_mean_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->mean_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(mean_buffer));
+#endif
         is_allocated_mean_buffer = false;
     }
 
     if ( is_allocated_meanstddev_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->meanstddev_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(meanstddev_buffer));
+#endif
         is_allocated_meanstddev_buffer = false;
     }
 
     if ( is_allocated_countinrange_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->countinrange_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(countinrange_buffer));
+#endif
         is_allocated_countinrange_buffer = false;
     }
 
     if ( is_allocated_l2norm_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->l2norm_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(l2norm_buffer));
+#endif
         is_allocated_l2norm_buffer = false;
     }
 
     if ( is_allocated_dotproduct_buffer ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->dotproduct_buffer, nppStream.hStream));
+#else
         cudaErr(cudaFree(dotproduct_buffer));
+#endif
         is_allocated_dotproduct_buffer = false;
     }
 
@@ -696,7 +807,11 @@ void GpuImage::BufferDestroy( ) {
     }
 
     if ( is_allocated_clip_into_mask ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(this->clip_into_mask, cudaStreamPerThread));
+#else
         cudaErr(cudaFree(clip_into_mask));
+#endif
         delete clip_into_mask;
     }
 }
@@ -1030,6 +1145,7 @@ __global__ void RotationalAveragePSKernel(const __restrict__ cufftComplex* input
                                           const int                        NX,
                                           const int                        NY,
                                           const int                        n_bins,
+                                          const int                        n_bins2,
                                           const float                      resolution_limit) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1064,7 +1180,7 @@ __global__ void RotationalAveragePSKernel(const __restrict__ cufftComplex* input
     }
 
     float abs_value = ComplexModulusSquared(input_values[y * NX + x]);
-    int   bin       = int(sqrtf(u * u + v * v) / float(NY) * float(n_bins));
+    int   bin       = int(sqrtf(u * u + v * v) / float(NY) * n_bins2);
     // This check is from Image::Whiten, but should it really be checking a float like this?
     if ( abs_value != 0.0 && bin <= resolution_limit ) {
         atomicAdd(&non_zero_count[bin], 1);
@@ -1087,6 +1203,7 @@ __global__ void WhitenKernel(cufftComplex* input_values,
                              const int     NX,
                              const int     NY,
                              const int     n_bins,
+                             const int     n_bins2,
                              const float   resolution_limit) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1131,13 +1248,18 @@ __global__ void WhitenKernel(cufftComplex* input_values,
         v = y;
     }
 
-    int   bin       = int(sqrtf(float((x * x + v * v) / NY * n_bins)));
-    float min_value = radial_average[1] / float(non_zero_count[1]) * 10e-4f;
-    if ( bin <= resolution_limit && non_zero_count[bin] != 0 && radial_average[bin] > min_value ) {
-        // We already checked that radial_average is non-zero in preparing
-        float norm = sqrtf(float(non_zero_count[bin]) / radial_average[bin]);
-        input_values[y * NX + x].x *= norm;
-        input_values[y * NX + x].y *= norm;
+    int bin = int(sqrtf(float(x * x + v * v) / float(NY) * n_bins2));
+    // float min_value = sqrtf(radial_average[1] / float(non_zero_count[1]) * 10e-2f);
+    if ( bin <= resolution_limit && non_zero_count[bin] != 0 ) {
+        float norm = sqrtf(non_zero_count[bin] / radial_average[bin]);
+        if ( isfinite(norm) ) {
+            input_values[y * NX + x].x *= norm;
+            input_values[y * NX + x].y *= norm;
+        }
+        else {
+            input_values[y * NX + x].x = 0.f;
+            input_values[y * NX + x].y = 0.f;
+        }
     }
     else {
         input_values[y * NX + x].x = 0.f;
@@ -1166,7 +1288,11 @@ void GpuImage::Whiten(float resolution_limit) {
 
     int* rotational_average_ps;
 
+#ifdef USE_ASYNC_MALLOC_FREE
     cudaErr(cudaMallocAsync(&rotational_average_ps, shared_mem * n_blocks, cudaStreamPerThread));
+#else
+    cudaErr(cudaMalloc(&rotational_average_ps, shared_mem * n_blocks));
+#endif
 
     precheck;
     RotationalAveragePSKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
@@ -1174,6 +1300,7 @@ void GpuImage::Whiten(float resolution_limit) {
                                                                                               dims.w / 2,
                                                                                               dims.y,
                                                                                               n_bins,
+                                                                                              n_bins2,
                                                                                               resolution_limit_pixel);
     postcheck;
 
@@ -1183,6 +1310,7 @@ void GpuImage::Whiten(float resolution_limit) {
                                                                                  dims.w / 2,
                                                                                  dims.y,
                                                                                  n_bins,
+                                                                                 n_bins2,
                                                                                  resolution_limit_pixel);
     postcheck;
 
@@ -1519,7 +1647,11 @@ void GpuImage::Zeros( ) {
     MyAssertTrue(is_meta_data_initialized, "Host meta data has not been copied");
 
     if ( ! is_in_memory_gpu ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaMallocAsync(&real_values_gpu, real_memory_allocated * sizeof(float), cudaStreamPerThread));
+#else
         cudaErr(cudaMalloc(&real_values_gpu, real_memory_allocated * sizeof(float)));
+#endif
         complex_values_gpu = (cufftComplex*)real_values_gpu;
         is_in_memory_gpu   = true;
     }
@@ -1571,7 +1703,8 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
     cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>( );
     cudaExtent            extent      = make_cudaExtent(padded_x_dimension, dims.y, dims.z);
 
-    // Allocate the texture arrays including the padded negative frequency
+    // Allocate the texture arrays including the padded negative frequency. It seems like this is not part of the Stream ordered allocation yet.
+    // TODO: Try fp16 to reduce memory footprint
     cudaErr(cudaMalloc3DArray(&cuArray_real, &channelDesc, extent, cudaArrayDefault));
     cudaErr(cudaMalloc3DArray(&cuArray_imag, &channelDesc, extent, cudaArrayDefault));
 
@@ -1801,7 +1934,11 @@ void GpuImage::CopyVolumeDeviceToHost(bool free_gpu_memory, bool unpin_host_memo
 
     // TODO add asserts etc.
     if ( free_gpu_memory ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(d_pitchedPtr.ptr, cudaStreamPerThread));
+#else
         cudaFree(d_pitchedPtr.ptr);
+#endif
     } // FIXME what about the other structures
     if ( unpin_host_memory && is_host_memory_pinned ) {
         cudaHostUnregister(real_values);
@@ -1879,8 +2016,12 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
 
         h_params.target = (cufftReal*)image_to_insert.real_values_gpu;
         h_params.mask   = (int*)clip_into_mask;
-
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaMallocAsync((void**)&d_params, sizeof(CB_realLoadAndClipInto_params), cudaStreamPerThread));
+#else
         cudaErr(cudaMalloc((void**)&d_params, sizeof(CB_realLoadAndClipInto_params)));
+#endif
+
         cudaErr(cudaMemcpyAsync(d_params, &h_params, sizeof(CB_realLoadAndClipInto_params), cudaMemcpyHostToDevice, cudaStreamPerThread));
         cudaErr(cudaMemcpyFromSymbol(&h_realLoadAndClipInto, d_realLoadAndClipInto, sizeof(h_realLoadAndClipInto)));
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
@@ -1939,7 +2080,11 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
         CB_complexConjMulLoad_params<T>  h_params;
         h_params.scale  = ft_normalization_factor * ft_normalization_factor;
         h_params.target = (T*)image_to_multiply;
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaMallocAsync((void**)&d_params, sizeof(CB_complexConjMulLoad_params<T>), cudaStreamPerThread));
+#else
         cudaErr(cudaMalloc((void**)&d_params, sizeof(CB_complexConjMulLoad_params<T>)));
+#endif
         cudaErr(cudaMemcpyAsync(d_params, &h_params, sizeof(CB_complexConjMulLoad_params<T>), cudaMemcpyHostToDevice, cudaStreamPerThread));
         if ( load_half_precision ) {
             cudaErr(cudaMemcpyFromSymbol(&h_complexConjMulLoad, d_complexConjMulLoad_16f, sizeof(h_complexConjMulLoad)));
@@ -2349,8 +2494,11 @@ void GpuImage::ClipIntoReturnMask(GpuImage* other_image) {
     other_image->is_in_real_space         = is_in_real_space;
     other_image->object_is_centred_in_box = object_is_centred_in_box;
     other_image->is_fft_centered_in_box   = is_fft_centered_in_box;
-
+#ifdef USE_ASYNC_MALLOC_FREE
+    cudaErr(cudaMallocAsync(&other_image->clip_into_mask, sizeof(int) * other_image->real_memory_allocated, cudaStreamPerThread));
+#else
     cudaErr(cudaMalloc(&other_image->clip_into_mask, sizeof(int) * other_image->real_memory_allocated));
+#endif
     other_image->is_allocated_clip_into_mask = true;
 
     if ( is_in_real_space == true ) {
@@ -2490,11 +2638,16 @@ void GpuImage::Deallocate( ) {
         is_host_memory_pinned = false;
     }
     if ( is_in_memory_gpu ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(real_values_gpu, cudaStreamPerThread));
+#else
         cudaErr(cudaFree(real_values_gpu));
+#endif
         is_in_memory_gpu = false;
     }
 
     if ( is_in_memory_managed_tmp_vals ) {
+        // These are allocated as managed memory which isn't part of the async api TODO: confirm true
         cudaErr(cudaFree(tmpVal));
         cudaErr(cudaFree(tmpValComplex));
         is_in_memory_managed_tmp_vals = false;
@@ -2631,11 +2784,15 @@ void GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
     real_memory_allocated *= wanted_y_size * wanted_z_size; // other dimensions
     real_memory_allocated *= 2; // room for complex
 
-    // TODO consider option to add host mem here. For now, just do gpu mem.
-    //////	real_values = (float *) fftwf_malloc(sizeof(float) * real_memory_allocated);
-    //////	complex_values = (std::complex<float>*) real_values;  // Set the complex_values to point at the newly allocated real values;
-    //	wxPrintf("\n\n\tAllocating mem\t\n\n");
+// TODO consider option to add host mem here. For now, just do gpu mem.
+//////	real_values = (float *) fftwf_malloc(sizeof(float) * real_memory_allocated);
+//////	complex_values = (std::complex<float>*) real_values;  // Set the complex_values to point at the newly allocated real values;
+//	wxPrintf("\n\n\tAllocating mem\t\n\n");
+#ifdef USE_ASYNC_MALLOC_FREE
+    cudaErr(cudaMallocAsync(&real_values_gpu, real_memory_allocated * sizeof(cufftReal), cudaStreamPerThread));
+#else
     cudaErr(cudaMalloc(&real_values_gpu, real_memory_allocated * sizeof(cufftReal)));
+#endif
     complex_values_gpu = (cufftComplex*)real_values_gpu;
     is_in_memory_gpu   = true;
 
@@ -3159,7 +3316,8 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
                                    float2*                   outputData,
                                    const int                 NX,
                                    const int                 NY,
-                                   const float*              m,
+                                   const float3              col1,
+                                   const float3              col2,
                                    const float               resolution_limit,
                                    const bool                apply_resolution_limit) {
 
@@ -3190,9 +3348,10 @@ __global__ void ExtractSliceKernel(const cudaTextureObject_t tex_real,
     }
     else {
         // Based on RotationMatrix.RotateCoords()
-        tu = u * m[0] + v * m[1] + 0.f; // + size_shift.x;
-        tv = u * m[3] + v * m[4] + 0.f; //  + size_shift.y;
-        tw = u * m[6] + v * m[7] + 0.f; //  + size_shift.z;
+        // Based on RotationMatrix.RotateCoords()
+        tu = u * col1.x + v * col2.x;
+        tv = u * col1.y + v * col2.y;
+        tw = u * col1.z + v * col2.z;
 
         if ( tu < 0 ) {
             // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
@@ -3221,7 +3380,8 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
                                             float2                    shifts,
                                             const int                 NX,
                                             const int                 NY,
-                                            const float*              m,
+                                            const float3              col1,
+                                            const float3              col2,
                                             const float               resolution_limit,
                                             const bool                apply_resolution_limit,
                                             const int                 n_bins,
@@ -3287,9 +3447,10 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
     else {
 
         // Based on RotationMatrix.RotateCoords()
-        tu = u * m[0] + v * m[1]; // + size_shift.x;
-        tv = u * m[3] + v * m[4]; //  + size_shift.y;
-        tw = u * m[6] + v * m[7]; //  + size_shift.z;
+        // Based on RotationMatrix.RotateCoords()
+        tu = u * col1.x + v * col2.x;
+        tv = u * col1.y + v * col2.y;
+        tw = u * col1.z + v * col2.z;
 
         if ( tu < 0 ) {
             // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
@@ -3318,7 +3479,7 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
         // Get the norm squared for the pixel
         tw = u * u + v * v;
         // Again, assuming NX = NY in real space
-        x = int(sqrtf(frequency_sq) / float(NY) * float(n_bins));
+        x = int(sqrtf(frequency_sq) / float(NY) * float(n_bins2));
         // This check is from Image::Whiten, but should it really be checking a float like this?
         if ( tw != 0.0 ) {
             if ( x <= resolution_limit ) {
@@ -3348,7 +3509,7 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
     }
 }
 
-void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float pixel_size, float resolution_limit, bool apply_resolution_limit, bool whiten_spectrum) {
+void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit, bool whiten_spectrum) {
     //	MyDebugAssertTrue(image_to_extract.logical_x_dimension == logical_x_dimension && image_to_extract.logical_y_dimension == logical_y_dimension, "Error: Images different sizes");
     MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
     MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
@@ -3361,9 +3522,15 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     // Get launch params for a complex non-redundant half image
     ReturnLaunchParamters(dims, false);
 
-    float* d_m;
-    cudaErr(cudaMalloc(&d_m, sizeof(float) * 9));
-    cudaErr(cudaMemcpyAsync(d_m, &angles_and_shifts_of_image.euler_matrix.m[0][0], sizeof(float) * 9, cudaMemcpyHostToDevice, cudaStreamPerThread));
+    /*
+    Since we only rotate 2d coords, we only need 6 floats from the rotation matrix. Reduce register pressure.
+        tu = u * m[0] + v * m[1]; 
+        tv = u * m[3] + v * m[4]; 
+        tw = u * m[6] + v * m[7];
+    */
+    float*       m    = &angles_and_shifts.euler_matrix.m[0][0];
+    const float3 col1 = make_float3(m[0], m[3], m[6]);
+    const float3 col2 = make_float3(m[1], m[4], m[7]);
 
     float resolution_limit_pixel = resolution_limit * dims.x;
 
@@ -3381,7 +3548,7 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
         // For bin resolution of one pixel, uint16 should be plenty
         int shared_mem = n_bins * (sizeof(float) + sizeof(int));
         // TODO: add check on shared mem from FastFFT
-        float2 shifts = make_float2(angles_and_shifts_of_image.ReturnShiftX( ), angles_and_shifts_of_image.ReturnShiftY( ));
+        float2 shifts = make_float2(angles_and_shifts.ReturnShiftX( ), angles_and_shifts.ReturnShiftY( ));
         shifts.x      = shifts.x * pi_v<float> * 2.0f / float(dims.x) / pixel_size;
         shifts.y      = shifts.y * pi_v<float> * 2.0f / float(dims.y) / pixel_size;
 
@@ -3394,7 +3561,8 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
                                                                                                     shifts,
                                                                                                     dims.w / 2,
                                                                                                     dims.y,
-                                                                                                    d_m,
+                                                                                                    col1,
+                                                                                                    col2,
                                                                                                     resolution_limit_pixel,
                                                                                                     apply_resolution_limit,
                                                                                                     n_bins,
@@ -3409,7 +3577,8 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
                                                                                   (float2*)complex_values_gpu,
                                                                                   dims.w / 2,
                                                                                   dims.y,
-                                                                                  d_m,
+                                                                                  col1,
+                                                                                  col2,
                                                                                   resolution_limit_pixel,
                                                                                   apply_resolution_limit);
 
@@ -3419,7 +3588,6 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     object_is_centred_in_box = false;
     is_fft_centered_in_box   = false;
     is_in_real_space         = false;
-    cudaErr(cudaFree(d_m));
 }
 
 __global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t  tex_real,
@@ -3429,9 +3597,11 @@ __global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t  tex_rea
                                               float2                     shifts,
                                               const int                  NX,
                                               const int                  NY,
-                                              const float*               m,
+                                              const float3               col1,
+                                              const float3               col2,
                                               const float                resolution_limit,
                                               const bool                 apply_resolution_limit) {
+
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
         return;
@@ -3466,9 +3636,9 @@ __global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t  tex_rea
     else {
 
         // Based on RotationMatrix.RotateCoords()
-        tu = u * m[0] + v * m[1]; // + size_shift.x;
-        tv = u * m[3] + v * m[4]; //  + size_shift.y;
-        tw = u * m[6] + v * m[7]; //  + size_shift.z;
+        tu = u * col1.x + v * col2.x;
+        tv = u * col1.y + v * col2.y;
+        tw = u * col1.z + v * col2.z;
 
         if ( tu < 0 ) {
             // We have only the positive X half of the FFT, re-use variable u here to return the complex conjugate
@@ -3514,9 +3684,15 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
     // Get launch params for a complex non-redundant half image
     ReturnLaunchParamters(dims, false);
 
-    float* d_m;
-    cudaErr(cudaMalloc(&d_m, sizeof(float) * 9));
-    cudaErr(cudaMemcpyAsync(d_m, &angles_and_shifts.euler_matrix.m[0][0], sizeof(float) * 9, cudaMemcpyHostToDevice, cudaStreamPerThread));
+    /*
+    Since we only rotate 2d coords, we only need 6 floats from the rotation matrix. Reduce register pressure.
+        tu = u * m[0] + v * m[1]; 
+        tv = u * m[3] + v * m[4]; 
+        tw = u * m[6] + v * m[7];
+    */
+    float*       m    = &angles_and_shifts.euler_matrix.m[0][0];
+    const float3 col1 = make_float3(m[0], m[3], m[6]);
+    const float3 col2 = make_float3(m[1], m[4], m[7]);
 
     float resolution_limit_pixel = resolution_limit * dims.x;
 
@@ -3536,7 +3712,8 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
                                                                                          shifts,
                                                                                          dims.w / 2,
                                                                                          dims.y,
-                                                                                         d_m,
+                                                                                         col1,
+                                                                                         col2,
                                                                                          resolution_limit_pixel,
                                                                                          apply_resolution_limit);
 
@@ -3545,5 +3722,4 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
     object_is_centred_in_box = false;
     is_fft_centered_in_box   = false;
     is_in_real_space         = false;
-    cudaErr(cudaFree(d_m));
 }

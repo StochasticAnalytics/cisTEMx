@@ -236,21 +236,23 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     all_passed = all_passed && passed;
     SamplesTestResult(passed);
 
-    test_name = "Extract and whiten fuzzing(" + std::to_string(n_loops) + ") loops";
+    test_name = "Extract and whiten w/Fuzzing(" + std::to_string(n_loops) + ") loops";
     SamplesBeginTest(test_name.c_str( ), passed);
 
+    // For particle alignment, the res-limit defaults to 0.5 (nyquist).
+    // This means this testing is not strictly valid for the corners in Fourier space, which are used in TM i think.
+    float res_limit = 0.5f;
+    bool  limit_res = true;
     for ( int iLoop = 0; iLoop < n_loops; iLoop++ ) {
         // Compared to the previous, we now pass a bool to pug Extract slice and add and extra method call for the GPU to get whitening of the PS.
         my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), 0.f, 0.f);
-        new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, 0.f, false);
-        // gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false, true);
-        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false, true);
+        new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, res_limit, limit_res);
+        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, res_limit, limit_res, false);
+        gpu_prj.Whiten( );
 
-        // // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
         gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
-        gpu_prj.RecordAndWait( );
 
         cpu_prj.Whiten( );
         cpu_prj.SwapRealSpaceQuadrants( );
@@ -259,32 +261,30 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         cpu_prj.ZeroFloatAndNormalize(1.f, mask_radius);
         cimg.ZeroFloatAndNormalize(1.f, mask_radius);
 
-        // cpu_prj.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_cpu.mrc", 1, true);
-        // cimg.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iLoop) + "_gpu.mrc", 1, true);
-
-        score = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
-        wxPrintf("Score is %f\n", score);
-        passed = passed && (score > 0.98f);
+        passed = CompareRealValues(cpu_prj, cimg, 0.999f, mask_radius);
     }
 
     all_passed = all_passed && passed;
     SamplesTestResult(passed);
 
-    test_name = "Extract, whiten and shift fuzzing(" + std::to_string(n_loops) + ") loops";
+    test_name = "Extract and phase shift w/Fuzzing(" + std::to_string(n_loops) + ") loops";
     SamplesBeginTest(test_name.c_str( ), passed);
+
+    // Dummy ctf imag;
+    GpuImage ctf_img;
+    ctf_img.CopyFrom(&gpu_prj);
+    ctf_img.SetToConstant(1.f);
 
     for ( int iLoop = 0; iLoop < n_loops; iLoop++ ) {
         my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), my_rand.GetUniformRandomSTD(-2.f, 2.f), my_rand.GetUniformRandomSTD(-2.f, 2.f));
         new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, 0.f, false);
-        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false, true);
+        gpu_prj.ExtractSliceShiftAndCtf(&gpu_volume, &ctf_img, my_angles_and_shifts, pixel_size, res_limit, limit_res);
 
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
         gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
-        gpu_prj.RecordAndWait( );
 
-        cpu_prj.Whiten( );
         cpu_prj.PhaseShift(my_angles_and_shifts.ReturnShiftX( ) / pixel_size, my_angles_and_shifts.ReturnShiftY( ) / pixel_size, 0.f);
         cpu_prj.SwapRealSpaceQuadrants( );
         cpu_prj.BackwardFFT( );
@@ -292,10 +292,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         cpu_prj.ZeroFloatAndNormalize(1.f, mask_radius);
         cimg.ZeroFloatAndNormalize(1.f, mask_radius);
 
-        score = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
-        // wxPrintf("%f\n", score);
-
-        passed = passed && (score > 0.98f);
+        passed = CompareRealValues(cpu_prj, cimg, 0.999f, mask_radius);
     }
 
     all_passed = all_passed && passed;

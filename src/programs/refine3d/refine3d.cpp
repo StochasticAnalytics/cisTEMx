@@ -15,6 +15,7 @@ using namespace cistem_timer;
 using namespace cistem_timer_noop;
 #endif
 
+// #define SAVE_DEBUG_IMAGES
 StopWatch global_timer;
 
 class
@@ -134,14 +135,22 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     use_gpu_projection   = true;
     comparison_object->DoGpuProjection( );
 
-    // if ( comparison_object->nprj < 10 ) {
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    // }
+#ifdef SAVE_DEBUG_IMAGES
+    if ( comparison_object->nprj < 10 ) {
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->nprj++;
+        if ( comparison_object->nprj == 10 ) {
+            wxPrintf("GPU projection is done\n");
+            exit(0);
+        }
+    }
+#endif
     // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
     // Force it here (though better to use a flag)
     // comparison_object->reference_volume->current_psi -= 1.01;
+    // wxPrintf("vals are %d, %d \n", comparison_object->particle->no_ctf_weighting, comparison_object->particle->includes_reference_ssnr_weighting);
     global_timer.start("calc_proj cpu");
     comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
                                                              *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
@@ -149,6 +158,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     global_timer.lap("calc_proj cpu");
 
 #else
+    // wxPrintf("vals are %d, %d \n", comparison_object->particle->no_ctf_weighting, comparison_object->particle->includes_reference_ssnr_weighting);
 
     global_timer.start("calc_proj cpu");
     if ( comparison_object->particle->no_ctf_weighting ) {
@@ -169,17 +179,22 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
                                                                      comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true, calculate_projection, use_gpu_projection);
         }
     }
-
     global_timer.lap("calc_proj cpu");
+
+#ifdef SAVE_DEBUG_IMAGES
+    if ( comparison_object->nprj < 10 ) {
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
+        comparison_object->projection_image->SwapRealSpaceQuadrants( );
+        comparison_object->nprj++;
+        if ( comparison_object->nprj == 10 ) {
+            wxPrintf("GPU projection is done\n");
+            exit(0);
+        }
+    }
 #endif
-    // if ( comparison_object->nprj < 10 ) {
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    //     comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-    //     comparison_object->projection_image->SwapRealSpaceQuadrants( );
-    //     comparison_object->nprj++;
-    // }
-    // else
-    //     exit(1);
+
+#endif
 
     // The minimizer sometimes tries weird values
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftX( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftX( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )

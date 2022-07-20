@@ -98,7 +98,9 @@
         "variant": "cpp",
         "__nullptr": "cpp",
         "__config": "cpp",
-        "ios": "cpp"
+        "ios": "cpp",
+        "__locale": "cpp",
+        "__string": "cpp"
     },
     "C_Cpp.clang_format_path": "/usr/bin/clang-format-14",
     "editor.formatOnSave": true,

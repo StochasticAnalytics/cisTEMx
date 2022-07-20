@@ -1766,6 +1766,32 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
     delete[] host_array_imag;
 }
 
+void GpuImage::CopyHostRealPartToDevice( ) {
+    MyAssertTrue(is_in_memory, "Host memory not allocated");
+    MyAssertFalse(host_image_ptr->is_in_real_space, "CopyHostRealPartToDevice should only be called for complex images");
+
+    if ( ! is_in_memory_gpu ) {
+        // Still allocate the full address space, even though we'll only use half of it.
+        Allocate(dims.x, dims.y, dims.z, host_image_ptr->is_in_real_space);
+    }
+
+    float* tmp_real_values = new float[host_image_ptr->real_memory_allocated / 2];
+
+    for ( int address = 0; address < host_image_ptr->real_memory_allocated / 2; address++ ) {
+        tmp_real_values[address] = std::real(host_image_ptr->complex_values[address]);
+    }
+
+    precheck;
+    cudaErr(cudaMemcpyAsync(real_values_gpu, tmp_real_values, real_memory_allocated / 2 * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+    postcheck;
+
+    CopyCpuImageMetaData(*host_image_ptr);
+
+    // Syncronize the stream so that the copy is complete before we return.
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    delete[] tmp_real_values;
+}
+
 void GpuImage::CopyDeviceToHostAndSynchronize(bool free_gpu_memory, bool unpin_host_memory) {
     CopyDeviceToHost(free_gpu_memory, unpin_host_memory);
     cudaError(cudaStreamSynchronize(cudaStreamPerThread));
@@ -3590,17 +3616,19 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     is_in_real_space         = false;
 }
 
-__global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t  tex_real,
-                                              const cudaTextureObject_t  tex_imag,
-                                              float2*                    outputData,
-                                              const __restrict__ float2* ctf_image,
-                                              float2                     shifts,
-                                              const int                  NX,
-                                              const int                  NY,
-                                              const float3               col1,
-                                              const float3               col2,
-                                              const float                resolution_limit,
-                                              const bool                 apply_resolution_limit) {
+__global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t tex_real,
+                                              const cudaTextureObject_t tex_imag,
+                                              float2*                   outputData,
+                                              const float* __restrict__ ctf_image,
+                                              float2       shifts,
+                                              const int    NX,
+                                              const int    NY,
+                                              const float3 col1,
+                                              const float3 col2,
+                                              const float  resolution_limit,
+                                              const bool   apply_resolution_limit,
+                                              const bool   apply_ctf,
+                                              const bool   abs_ctf) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -3666,12 +3694,27 @@ __global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t  tex_rea
 
         // outputData[y] = make_float2(u * tw, v * tw);
         __sincosf(-shifts.x - shifts.y, &tv, &tu);
-        outputData[y] = ComplexMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), float(ctf_image[y].x));
+
+        // reuse tw for our CTF value
+        if ( apply_ctf && abs_ctf ) {
+            tw = fabsf(ctf_image[y]);
+        }
+        else {
+            if ( apply_ctf ) {
+                tw = ctf_image[y];
+            }
+            else {
+                tw = 1.f;
+            }
+        }
+
+        outputData[y] = ComplexMulAndScale((Complex)make_float2(tu, tv), (Complex)make_float2(u, v), tw);
         // outputData[y] = make_float2(u / tw, v / tw);
     }
 }
 
-void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit) {
+void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit,
+                                       bool swap_quadrants, bool apply_shifts, bool apply_ctf, bool absolute_ctf) {
     MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
     MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
     MyAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
@@ -3696,11 +3739,19 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
 
     float resolution_limit_pixel = resolution_limit * dims.x;
 
-    // For bin resolution of one pixel, uint16 should be plenty
-    // TODO: add check on shared mem from FastFFT
     float2 shifts = make_float2(angles_and_shifts.ReturnShiftX( ), angles_and_shifts.ReturnShiftY( ));
-    shifts.x      = shifts.x * pi_v<float> * 2.0f / float(dims.x) / pixel_size;
-    shifts.y      = shifts.y * pi_v<float> * 2.0f / float(dims.y) / pixel_size;
+    if ( ! apply_shifts ) {
+        shifts.x = 0.f;
+        shifts.y = 0.f;
+    }
+    if ( swap_quadrants ) {
+        // We apply the real space quadrant swap (if any) at the same time as any wanted shifts.
+        // Again, we are assuming an even sized image
+        shifts.x += float(physical_address_of_box_center.x);
+        shifts.y += float(physical_address_of_box_center.y);
+    }
+    shifts.x = shifts.x * pi_v<float> * 2.0f / float(dims.x) / pixel_size;
+    shifts.y = shifts.y * pi_v<float> * 2.0f / float(dims.y) / pixel_size;
 
     // Image::Whiten() defaults to a res limit of 1.0, so we need to match that in the event we opt to not apply a res li mit
 
@@ -3708,18 +3759,24 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
     ExtractSliceShiftAndCtfKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
                                                                                          volume_to_extract_from->tex_imag,
                                                                                          (float2*)complex_values_gpu,
-                                                                                         (float2*)ctf_image->complex_values_gpu,
+                                                                                         (float*)ctf_image->real_values_gpu,
                                                                                          shifts,
                                                                                          dims.w / 2,
                                                                                          dims.y,
                                                                                          col1,
                                                                                          col2,
                                                                                          resolution_limit_pixel,
-                                                                                         apply_resolution_limit);
+                                                                                         apply_resolution_limit,
+                                                                                         apply_ctf,
+                                                                                         absolute_ctf);
 
     postcheck;
 
-    object_is_centred_in_box = false;
-    is_fft_centered_in_box   = false;
-    is_in_real_space         = false;
+    if ( swap_quadrants )
+        object_is_centred_in_box = true;
+    else
+        object_is_centred_in_box = false;
+
+    is_fft_centered_in_box = false;
+    is_in_real_space       = false;
 }

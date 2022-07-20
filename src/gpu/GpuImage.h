@@ -192,6 +192,7 @@ class GpuImage {
 
     void CopyHostToDevice( );
     void CopyHostToDeviceTextureComplex3d( );
+    void CopyHostRealPartToDevice( ); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
     void CopyDeviceToHostAndSynchronize(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true, bool unpin_host_memory = true);
@@ -258,7 +259,9 @@ class GpuImage {
     void Zeros( );
 
     void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);
-    void ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true);
+
+    void ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit,
+                                 bool swap_quadrants, bool apply_shifts, bool apply_ctf, bool absolute_ctf);
 
     void Abs( );
     void AbsDiff(GpuImage& other_image); // inplace

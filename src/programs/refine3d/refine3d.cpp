@@ -16,6 +16,7 @@ using namespace cistem_timer_noop;
 #endif
 
 // #define SAVE_DEBUG_IMAGES
+// #define PRINT_SCORES
 StopWatch global_timer;
 
 class
@@ -46,6 +47,10 @@ class ImageProjectionComparison {
     GpuImage* gpu_projection;
     GpuImage* gpu_ctf_image;
     bool      is_set_gpu_ctf_image = false;
+    // These are used in the projection step
+    float mask_radius  = 0.0f; // normal default for cpu refinement,
+    float mask_falloff = 0.0f; // normal default for cpu refinement,
+    bool  swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
 
     void PrepareGpuProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume, GpuImage* external_gpu_projection) {
 
@@ -80,10 +85,18 @@ class ImageProjectionComparison {
         // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
         global_timer.start("calc_proj gpu");
 
-        gpu_projection->ExtractSliceShiftAndCtf(gpu_density_map, gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true);
-
+        gpu_projection->ExtractSliceShiftAndCtf(gpu_density_map, gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
+                                                swap_quadrants, apply_shifts, apply_ctf, absolute_ctf);
+        if ( whiten ) {
+            gpu_projection->Whiten(particle->pixel_size / particle->filter_radius_high);
+        }
+        if ( mask_radius > 0.f ) {
+            // CosineMask is not implemented yet, but we can at least do the backFFT
+            gpu_projection->BackwardFFT( );
+        }
         gpu_projection->RecordAndWait( );
         global_timer.lap("calc_proj gpu");
+
         global_timer.start("copy device to host");
         gpu_projection->CopyDeviceToHostAndSynchronize(false, false);
         global_timer.lap("copy device to host");
@@ -123,62 +136,56 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     global_timer.start("update_params");
     comparison_object->particle->UnmapParameters(array_of_values);
     global_timer.lap("update_params");
-    //	comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image, *comparison_object->particle->ctf_image,
-    //			comparison_object->particle->alignment_parameters, 0.0, 0.0,
-    //			comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true);
 
-    bool calculate_projection = true;
-    bool use_gpu_projection   = false;
-#ifdef ENABLEGPU
-    // We will pass in the projection to tthe cpu CalculateProjection method, for it to do all the other fun stuff like whitening, res limts etc.
-    calculate_projection = false;
-    use_gpu_projection   = true;
-    comparison_object->DoGpuProjection( );
+    bool calculate_projection = true; // normal default for cpu refinement, over-ride when calculating gpu projection
+    bool use_gpu_projection   = false; // normal default for cpu refinement, used to selectivley override image methods in the comparison_object->reference_volume->CalculateProjection() method
 
-#ifdef SAVE_DEBUG_IMAGES
-    if ( comparison_object->nprj < 10 ) {
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
-        comparison_object->projection_image->SwapRealSpaceQuadrants( );
-        comparison_object->nprj++;
-        if ( comparison_object->nprj == 10 ) {
-            wxPrintf("GPU projection is done\n");
-            exit(0);
-        }
-    }
-#endif
-    // Smething is not updating properly and in the first iteration the else clause in CalculateProjection is getting hit, and there is no whitening happening
-    // Force it here (though better to use a flag)
-    // comparison_object->reference_volume->current_psi -= 1.01;
-    // wxPrintf("vals are %d, %d \n", comparison_object->particle->no_ctf_weighting, comparison_object->particle->includes_reference_ssnr_weighting);
-    global_timer.start("calc_proj cpu");
-    comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
-                                                             *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                             comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true, calculate_projection, use_gpu_projection);
-    global_timer.lap("calc_proj cpu");
-
-#else
-    // wxPrintf("vals are %d, %d \n", comparison_object->particle->no_ctf_weighting, comparison_object->particle->includes_reference_ssnr_weighting);
-
-    global_timer.start("calc_proj cpu");
     if ( comparison_object->particle->no_ctf_weighting ) {
-        comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
-                                                                 *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                 comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, false, false, false, false, calculate_projection, use_gpu_projection);
+        comparison_object->swap_quadrants = false;
+        comparison_object->apply_shifts   = false;
+        comparison_object->whiten         = false;
+        comparison_object->apply_ctf      = false;
+        comparison_object->absolute_ctf   = false;
     }
     else {
         if ( comparison_object->particle->includes_reference_ssnr_weighting ) {
-            comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
-                                                                     *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                     comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, true, false, false, calculate_projection, use_gpu_projection);
+            comparison_object->swap_quadrants = false;
+            comparison_object->apply_shifts   = true;
+            comparison_object->whiten         = true;
+            comparison_object->apply_ctf      = false;
+            comparison_object->absolute_ctf   = false;
         }
         // Case for normal parameter refinement with weighting applied only to particle images
         else {
-            comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
-                                                                     *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters, 0.0, 0.0,
-                                                                     comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, false, true, false, true, true, calculate_projection, use_gpu_projection);
+            comparison_object->swap_quadrants = false;
+            comparison_object->apply_shifts   = true;
+            comparison_object->whiten         = false;
+            comparison_object->apply_ctf      = true;
+            comparison_object->absolute_ctf   = true;
         }
     }
+
+#ifdef ENABLEGPU
+    // Flip the overrides;
+    calculate_projection = false;
+    use_gpu_projection   = true;
+    // First get the projection, optionally shifted and multiplied by the CTF
+    comparison_object->DoGpuProjection( );
+#endif
+
+    global_timer.start("calc_proj cpu");
+    comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
+                                                             *comparison_object->particle->ctf_image, comparison_object->particle->alignment_parameters,
+                                                             comparison_object->mask_radius, comparison_object->mask_falloff,
+                                                             comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high,
+                                                             comparison_object->swap_quadrants,
+                                                             comparison_object->apply_shifts,
+                                                             comparison_object->whiten,
+                                                             comparison_object->apply_ctf,
+                                                             comparison_object->absolute_ctf,
+                                                             calculate_projection,
+                                                             use_gpu_projection);
+
     global_timer.lap("calc_proj cpu");
 
 #ifdef SAVE_DEBUG_IMAGES
@@ -192,8 +199,6 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
             exit(0);
         }
     }
-#endif
-
 #endif
 
     // The minimizer sometimes tries weird values
@@ -243,7 +248,9 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     MyDebugAssertFalse(isnan(tmp_penalty), "Frealign score function: penalty term is NaN");
 #endif
 
-    // wxPrintf("Current score is %g, from line %i\n", -100.f * (-tmp_corr - tmp_penalty), __LINE__);
+#ifdef PRINT_SCORES
+    wxPrintf("Current score is %g, from line %i\n", -100.f * (-tmp_corr - tmp_penalty), __LINE__);
+#endif
 
     return -tmp_corr - tmp_penalty;
 
@@ -1347,14 +1354,15 @@ bool Refine3DApp::DoCalculation( ) {
             //		input_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
 #ifdef ENABLEGPU
             gpu_ctf_image_local.Init(*refine_particle_local.ctf_image);
-            gpu_ctf_image_local.CopyHostToDevice( );
-            gpu_ctf_image_local.Abs( );
+            gpu_ctf_image_local.CopyHostRealPartToDevice( );
             comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
 #endif
             if ( (refine_particle_local.number_of_search_dimensions > 0) && (global_search_local || local_refinement_local) ) {
                 timer.start("refining search FrealignObjFunct 1");
                 input_parameters.score = -100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
-                // wxPrintf("Starting score is %g\n", input_parameters.score);
+#ifdef PRINT_SCORES
+                wxPrintf("Starting score is %g\n", input_parameters.score);
+#endif
                 timer.lap("refining search FrealignObjFunct 1");
                 if ( global_search_local ) {
                     timer.start("global search local");
@@ -1508,8 +1516,7 @@ bool Refine3DApp::DoCalculation( ) {
 #ifdef ENABLEGPU
 
                         gpu_search_ctf_image_local.Init(*search_particle_local.ctf_image);
-                        gpu_search_ctf_image_local.CopyHostToDevice( );
-                        gpu_search_ctf_image_local.Abs( );
+                        gpu_search_ctf_image_local.CopyHostRealPartToDevice( );
                         comparison_object.gpu_ctf_image = &gpu_search_ctf_image_local;
                         // The memory for these was already setup outside the loop, but inside the omp sections
                         comparison_object.gpu_projection   = &gpu_search_projection_local;
@@ -1527,7 +1534,9 @@ bool Refine3DApp::DoCalculation( ) {
                             input_parameters.score = output_parameters.score;
 
                         temp_float = -100.0 * conjugate_gradient_minimizer.Run(50);
-                        // wxPrintf("Current score is %g, from line %i\n", temp_float, __LINE__);
+#ifdef PRINT_SCORES
+                        wxPrintf("Current score is %g, from line %i\n", temp_float, __LINE__);
+#endif
 
                         search_particle_local.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
                         output_parameters.score = temp_float;
@@ -1560,7 +1569,9 @@ bool Refine3DApp::DoCalculation( ) {
                                 temp_float = search_parameters.score;
                             else
                                 temp_float = -100.0 * conjugate_gradient_minimizer.Run(50);
-                            // wxPrintf("Current score is %g, from line %i\n", temp_float, __LINE__);
+#ifdef PRINT_SCORES
+                            wxPrintf("Current score is %g, from line %i\n", temp_float, __LINE__);
+#endif
 
                             // Uncomment the following line to skip local refinement.
                             //					temp_float = search_parameters[15];
@@ -1603,8 +1614,7 @@ bool Refine3DApp::DoCalculation( ) {
                     comparison_object.gpu_projection  = &gpu_projection_local;
                     comparison_object.gpu_density_map = &gpu_density_map_local;
                     gpu_ctf_image_local.Init(*refine_particle_local.ctf_image);
-                    gpu_ctf_image_local.CopyHostToDevice( );
-                    gpu_ctf_image_local.Abs( );
+                    gpu_ctf_image_local.CopyHostRealPartToDevice( );
                     comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
 #endif
                     refine_particle_local.MapParameters(cg_starting_point);
@@ -1612,7 +1622,9 @@ bool Refine3DApp::DoCalculation( ) {
                     temp_float = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, refine_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
                     //???				if (! global_search) input_parameters[15] = temp_float;
                     output_parameters.score = -100.0 * conjugate_gradient_minimizer.Run(50);
-                    // wxPrintf("Current score is %g, from line %i\n", output_parameters.score, __LINE__);
+#ifdef PRINT_SCORES
+                    wxPrintf("Current score is %g, from line %i\n", output_parameters.score, __LINE__);
+#endif
                     // wxPrintf("Output, input = %g, %g from line %i\n", output_parameters.score, input_parameters.score, __LINE__);
 
                     refine_particle_local.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));

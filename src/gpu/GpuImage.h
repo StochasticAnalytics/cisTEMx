@@ -224,7 +224,7 @@ class GpuImage {
     void CalculateCrossCorrelationImageWith(GpuImage* other_image);
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
 
-    void Init(Image& cpu_image, bool allocate_real_values = true);
+    void Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void SetCufftPlan(bool use_half_precision = false);
     void SetupInitialValues( );
     void UpdateBoolsToDefault( );
@@ -252,7 +252,7 @@ class GpuImage {
     };
 
     void CopyFrom(GpuImage* other_image);
-    void InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
+    void InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
     bool HasSameDimensionsAs(GpuImage* other_image);

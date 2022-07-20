@@ -42,15 +42,16 @@ class ImageProjectionComparison {
     ReconstructedVolume* reference_volume;
     Image*               projection_image;
 
+    // These are used in the projection step
+    float mask_radius  = 0.0f; // normal default for cpu refinement,
+    float mask_falloff = 0.0f; // normal default for cpu refinement,
+    bool  swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
+
 #ifdef ENABLEGPU
     GpuImage* gpu_density_map;
     GpuImage* gpu_projection;
     GpuImage* gpu_ctf_image;
     bool      is_set_gpu_ctf_image = false;
-    // These are used in the projection step
-    float mask_radius  = 0.0f; // normal default for cpu refinement,
-    float mask_falloff = 0.0f; // normal default for cpu refinement,
-    bool  swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
 
     void PrepareGpuProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume, GpuImage* external_gpu_projection) {
 
@@ -71,10 +72,9 @@ class ImageProjectionComparison {
         // Realspace quadrants should already be swapped. TODO: just add a check inside the method and don't bother with the argument passing
         temp_image.SwapFourierSpaceQuadrants(false);
         // This is a shared resource, and we don't copy the host real_values anyway, so DONOT pin the memory
-        gpu_density_map->Init(temp_image, false);
+        gpu_density_map->Init(temp_image, false, false);
         gpu_density_map->CopyHostToDeviceTextureComplex3d( );
         gpu_density_map->RecordAndWait( );
-        // wxPrintf("Allocating texture cache was (%d)\n", gpu_density_map->is_allocated_texture_cache);
 
         return;
     };
@@ -94,6 +94,7 @@ class ImageProjectionComparison {
             // CosineMask is not implemented yet, but we can at least do the backFFT
             gpu_projection->BackwardFFT( );
         }
+        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         gpu_projection->RecordAndWait( );
         global_timer.lap("calc_proj gpu");
 

@@ -262,9 +262,8 @@ GpuImage::~GpuImage( ) {
  * @param cpu_image 
  * @param allocate_real_values 
  */
-void GpuImage::Init(Image& cpu_image, bool allocate_real_values) {
-
-    InitializeBasedOnCpuImage(cpu_image, allocate_real_values);
+void GpuImage::Init(Image& cpu_image, bool pin_host_memory, bool allocate_real_values) {
+    InitializeBasedOnCpuImage(cpu_image, pin_host_memory, allocate_real_values);
 }
 
 void GpuImage::SetupInitialValues( ) {

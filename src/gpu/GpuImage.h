@@ -217,10 +217,11 @@ class GpuImage {
                       float c_psi, float c_phi, float c_theta, float c_defocus, float c_pixel);
 
     // FIXME: These are added for the unblur refinement but are untested.
-    void  ApplyBFactor(float bfactor);
-    void  ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
-    void  Whiten(float resolution_limit = 1.f);
-    float GetWeightedCorrelationWithImage(GpuImage& projection_image, float*, int*, float filter_radius_low, float filter_radius_high, float signed_CC_limit);
+    void ApplyBFactor(float bfactor);
+    void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
+    void Whiten(float resolution_limit = 1.f);
+
+    float GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int* old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
 
     inline void MaskCentralCross(float vertical_mask_size, float horizontal_mask_size) { return; }; // noop
 

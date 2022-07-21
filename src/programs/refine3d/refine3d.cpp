@@ -1609,10 +1609,8 @@ bool Refine3DApp::DoCalculation( ) {
                         comparison_object.gpu_density_map    = &gpu_search_density_map_local;
                         comparison_object.gpu_projection     = &gpu_search_projection_local;
                         comparison_object.gpu_particle_image = &gpu_search_particle_image_local;
-                        if ( ! is_set_gpu_search_density_map ) {
-                            comparison_object.PrepareGpuImagesProjection(&gpu_search_projection_local, &gpu_search_particle_image_local);
-                            is_set_gpu_search_density_map = true;
-                        }
+                        comparison_object.PrepareGpuImagesProjection(&gpu_search_projection_local, &gpu_search_particle_image_local);
+
 #endif
 
                         search_parameters.score = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);

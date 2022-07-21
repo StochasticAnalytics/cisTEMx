@@ -1338,13 +1338,15 @@ void GpuImage::Whiten(float resolution_limit) {
     cudaErr(cudaFreeAsync(rotational_average_ps, cudaStreamPerThread));
 }
 
-__global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cufftComplex* input_values,
-                                                           int*                             rotational_average_ps,
+__global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cufftComplex* image_values,
+                                                           const __restrict__ cufftComplex* projection_values,
+                                                           float*                           rotational_average,
                                                            const int                        NX,
                                                            const int                        NY,
                                                            const int                        n_bins,
                                                            const int                        n_bins2,
-                                                           const float                      resolution_limit) {
+                                                           const float                      filter_radius_low_sq,
+                                                           const float                      filter_radius_high_sq) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -1355,17 +1357,16 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
         return;
     }
 
-    extern __shared__ int non_zero_count[];
-    float*                radial_average = (float*)&non_zero_count[n_bins];
+    extern __shared__ float sum1[];
 
     // initialize temporary accumulation array in shared memory
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        radial_average[i] = 0.f;
-        non_zero_count[i] = 0;
+    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < 3 * n_bins; i += blockDim.x * blockDim.y / 3 ) {
+        sum1[i] = 0.f;
     }
     __syncthreads( );
 
     float u, v;
+    // low_limit2 = powf(pixel_size / filter_radius_low, 2);
 
     // First, convert the physical coordinate of the 2d projection to the logical Fourier coordinate (in a natural FFT layout).
     u = float(x);
@@ -1377,95 +1378,127 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
         v = float(y);
     }
 
-    float abs_value = ComplexModulusSquared(input_values[y * NX + x]);
-    int   bin       = int(sqrtf(u * u + v * v) / float(NY) * n_bins2);
-    // This check is from Image::Whiten, but should it really be checking a float like this?
-    if ( abs_value != 0.0 && bin <= resolution_limit ) {
-        atomicAdd(&non_zero_count[bin], 1);
-        atomicAdd(&radial_average[bin], abs_value);
+    u = u * u + v * v;
+    y = y * NX + x;
+    if ( u >= filter_radius_low_sq && u <= filter_radius_high_sq ) {
+        int bin = int(sqrtf(u) / float(NY) * n_bins2);
+        // This check is from Image::Whiten, but should it really be checking a float like this?
+        if ( bin >= 1 ) {
+            Complex temp_c = ComplexConjMul(image_values[y], projection_values[y]);
+            if ( temp_c.x != 0.f && temp_c.y != 0.f ) {
+                atomicAdd(&sum1[bin], temp_c.x);
+                atomicAdd(&sum1[bin + n_bins], ComplexModulusSquared(image_values[y]));
+                atomicAdd(&sum1[bin + n_bins * 2], ComplexModulusSquared(projection_values[y]));
+            }
+        }
     }
     __syncthreads( );
 
-    // Now write out the partial PS to global memory
-    int*   output_non_zero_count = &rotational_average_ps[n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
-    float* output_radial_average = (float*)&output_non_zero_count[n_bins * gridDim.x * gridDim.y];
+    // Now write out the partial sums to global memory
+    // all the sum1s for every block are contiguous in memory
+    // threadIdx.x + threadIdx.y * blockDim.x = linear index in a 2d block of threads
+    // blockIdx.x + blockIdx.y * gridDim.x = linear index in 2d grid of blocks
+    float* output_rotational_average = &rotational_average[3 * n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
 
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        output_radial_average[i] = radial_average[i];
-        output_non_zero_count[i] = non_zero_count[i];
+    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < 3 * n_bins; i += blockDim.x * blockDim.y / 3 ) {
+        output_rotational_average[i] = sum1[i];
     }
 };
 
-__global__ void GetWeightedCorrelationWithImageKernel(cufftComplex* input_values,
-                                                      int*          input_non_zero_count,
-                                                      const int     NX,
-                                                      const int     NY,
-                                                      const int     n_bins,
-                                                      const int     n_bins2,
-                                                      const float   resolution_limit) {
+float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int* old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(projection_image.is_in_memory_gpu, "Projection Image Memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
+    MyAssertTrue(dims.z == 1, "Get Weighted Correlation is only setup to work in 2D");
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    if ( x >= NX ) {
-        return;
-    }
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if ( y >= NY ) {
-        return;
-    }
+    // First we need to get the rotationally averaged PS, which we'll store in global memory
+    ReturnLaunchParamters(dims, false);
 
-    extern __shared__ int non_zero_count[];
-    float*                radial_average = (float*)&non_zero_count[n_bins];
+    int n_bins  = dims.y / 2 + 1;
+    int n_bins2 = 2 * (n_bins - 1);
+    // For bin resolution of one pixel, uint16 should be plenty
+    int shared_mem = n_bins * 3 * sizeof(float);
+    // For coalescing in global memory (2d grid)
+    int    n_blocks        = gridDims.x * gridDims.y;
+    int    new_buffer_size = n_bins * 3 * n_blocks;
+    float* rotational_average;
 
-    // initialize temporary accumulation array in shared memory
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        radial_average[i] = 0.f;
-        non_zero_count[i] = 0;
-    }
-    __syncthreads( );
+#ifdef USE_ASYNC_MALLOC_FREE
+    cudaErr(cudaMallocAsync(&rotational_average, shared_mem * n_blocks, cudaStreamPerThread));
+#else
+    cudaErr(cudaMalloc(&rotational_average, shared_mem * n_blocks));
+#endif
 
-    // Now aggregate out the partial PS to global memory
+    precheck;
+    _pre_GetWeightedCorrelationWithImageKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
+                                                                                                               projection_image.complex_values_gpu,
+                                                                                                               rotational_average,
+                                                                                                               dims.w / 2,
+                                                                                                               dims.y,
+                                                                                                               n_bins,
+                                                                                                               n_bins2,
+                                                                                                               filter_radius_low_sq,
+                                                                                                               filter_radius_high_sq);
+    postcheck;
 
-    const float* input_radial_average = (float*)&input_non_zero_count[n_bins * gridDim.x * gridDim.y];
-    int          offset;
-    for ( int iBlock = 0; iBlock < gridDim.x * gridDim.y; iBlock++ ) {
-        offset = n_bins * iBlock;
-        for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-            radial_average[i] += input_radial_average[i + offset];
-            non_zero_count[i] += input_non_zero_count[i + offset];
-        }
-    }
-    __syncthreads( );
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-    int v;
-
-    // First negative logical fourier component is at NY/2
-    if ( y >= NY / 2 ) {
-        v = y - NY;
-    }
-    else {
-        v = y;
-    }
-
-    int bin = int(sqrtf(float(x * x + v * v) / float(NY) * n_bins2));
-    // float min_value = sqrtf(radial_average[1] / float(non_zero_count[1]) * 10e-2f);
-    if ( bin <= resolution_limit && non_zero_count[bin] != 0 ) {
-        float norm = sqrtf(non_zero_count[bin] / radial_average[bin]);
-        if ( isfinite(norm) ) {
-            input_values[y * NX + x].x *= norm;
-            input_values[y * NX + x].y *= norm;
-        }
-        else {
-            input_values[y * NX + x].x = 0.f;
-            input_values[y * NX + x].y = 0.f;
+    // Reuse to avoid tons of allocation
+    bool allocate_new_buffer = false;
+    if ( rotational_average_host != nullptr ) {
+        if ( *old_buffer_size != new_buffer_size ) {
+            delete[] rotational_average_host;
+            allocate_new_buffer = true;
         }
     }
     else {
-        input_values[y * NX + x].x = 0.f;
-        input_values[y * NX + x].y = 0.f;
+        allocate_new_buffer = true;
     }
-}
+    if ( allocate_new_buffer ) {
+        *old_buffer_size        = new_buffer_size;
+        rotational_average_host = new float[n_bins * 3 * n_blocks];
+    }
 
-void GetWeightedCorrelationWithImage(GpuImage& projection_image, int* bins, float signed_CC_limit) {
+    cudaErr(cudaMemcpyAsync(rotational_average_host, rotational_average, shared_mem * n_blocks, cudaMemcpyDeviceToHost, cudaStreamPerThread));
+
+    // Wait until we've copied to free the data, but start reduction while freeing up the memory
+    cudaErr(cudaFreeAsync(rotational_average, cudaStreamPerThread));
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    double sum1             = 0.0;
+    double sum2             = 0.0;
+    double sum3             = 0.0;
+    int    bin_limit_signed = signed_CC_limit * n_bins2;
+
+    float* cross_terms;
+    float* image_norm;
+    float* projection_norm;
+
+    for ( int iBlock = 0; iBlock < n_blocks; iBlock++ ) {
+        cross_terms     = &rotational_average_host[3 * n_bins * iBlock];
+        image_norm      = &cross_terms[n_bins];
+        projection_norm = &image_norm[n_bins];
+        // Exclude last resolution bin since it may contain some incompletely calculated terms
+        for ( int i = 1; i < n_bins - 1; i++ ) {
+            if ( projection_norm[i] != 0.0 ) { // I think this check is no longer needed because we don't de
+                if ( i <= bin_limit_signed ) {
+                    sum3 += cross_terms[i];
+                }
+                else {
+                    sum3 += fabsf(cross_terms[i]);
+                }
+                sum1 += image_norm[i];
+                sum2 += projection_norm[i];
+                //			sum1 += 1.0;
+                //			sum2 += sum_a[i];
+                //			sum3 += r;
+            }
+        }
+    }
+    sum1 *= sum2;
+    if ( sum1 != 0.0 )
+        sum3 /= sqrtf(sum1);
+
+    return float(sum3);
 }
 
 void GpuImage::CalculateCrossCorrelationImageWith(GpuImage* other_image) {
@@ -1926,22 +1959,20 @@ void GpuImage::CopyHostToDevice16f( ) {
     CopyCpuImageMetaData(*host_image_ptr);
 
     BufferInit(b_ctf_16f, real_memory_allocated);
-    // wxPrintf("host device %d %d %d %d\n", is_allocated_ctf_16f_buffer, host_image_ptr->is_in_memory_16f, real_memory_allocated, host_image_ptr->real_memory_allocated_16f);
-    // half_float::half* tmpPinnedPtr;
+    half_float::half* tmpPinnedPtr;
+
     // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
-    // cudaErr(cudaHostRegister(host_image_ptr->real_values_16f, sizeof(half_float::half*) * real_memory_allocated, cudaHostRegisterDefault));
-    // cudaErr(cudaHostGetDevicePointer(&tmpPinnedPtr, host_image_ptr->real_values_16f, 0));
+    cudaErr(cudaHostRegister(host_image_ptr->real_values_16f, sizeof(half_float::half) * real_memory_allocated, cudaHostRegisterDefault));
+    cudaErr(cudaHostGetDevicePointer(&tmpPinnedPtr, host_image_ptr->real_values_16f, 0));
 
     // always unregister the temporary pointer as it is not associated with a GpuImage
     precheck;
-    cudaErr(cudaMemcpyAsync((void*)ctf_buffer_16f, host_image_ptr->real_values_16f, real_memory_allocated * sizeof(half_float::half), cudaMemcpyHostToDevice, cudaStreamPerThread));
-
-    // cudaErr(cudaMemcpyAsync((void*)ctf_buffer_16f, tmpPinnedPtr, real_memory_allocated * sizeof(half_float::half), cudaMemcpyHostToDevice, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync((void*)ctf_buffer_16f, tmpPinnedPtr, real_memory_allocated * sizeof(half_float::half), cudaMemcpyHostToDevice, cudaStreamPerThread));
     Record( );
     postcheck;
 
     Wait( );
-    // cudaErr(cudaHostUnregister(tmpPinnedPtr));
+    cudaErr(cudaHostUnregister(tmpPinnedPtr));
 }
 
 void GpuImage::CopyDeviceToHostAndSynchronize(bool free_gpu_memory, bool unpin_host_memory) {

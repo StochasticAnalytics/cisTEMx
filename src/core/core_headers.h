@@ -173,14 +173,15 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 #include "stopwatch.h"
 #include "ccl3d.h"
 
-#ifdef EXPERIMENTAL
-#include "../../include/ieee-754-half/half.hpp"
+// TODO: can these be more local to their usage?
 #include "../../include/gemmi/model.hpp"
 #include "../../include/gemmi/elem.hpp"
 #include "../../include/gemmi/mmread.hpp"
 #include "../../include/gemmi/gz.hpp"
 #include "../../include/gemmi/resinfo.hpp"
 #include "../../include/gemmi/calculate.hpp"
+
+#ifdef EXPERIMENTAL
 #include "pdb.h"
 #include "water.h"
 #endif

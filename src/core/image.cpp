@@ -51,8 +51,10 @@ void Image::SetupInitialValues( ) {
     real_values                      = NULL;
     complex_values                   = NULL;
 
-    is_in_memory          = false;
-    real_memory_allocated = 0;
+    is_in_memory              = false;
+    is_in_memory_16f          = false;
+    real_memory_allocated     = 0;
+    real_memory_allocated_16f = 0;
 
     plan_fwd = NULL;
     plan_bwd = NULL;
@@ -591,7 +593,7 @@ void Image::MultiplyPixelWiseReal(Image& other_image, bool absolute) {
     MyDebugAssertTrue(! other_image.is_in_real_space, "Other image is in real space");
     MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
     MyDebugAssertTrue(other_image.is_in_memory, "Other image memory not allocated");
-        MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
 
     int  i;
     long pixel_counter;
@@ -2848,17 +2850,22 @@ void Image::AddByLinearInterpolationFourier2D(float& wanted_logical_x_coordinate
     }
 }
 
-void Image::CalculateCTFImage(CTF& ctf_of_image, bool calculate_complex_ctf, bool apply_coherence_envelope) {
+void Image::CalculateCTFImage(CTF& ctf_of_image, bool calculate_complex_ctf, bool apply_coherence_envelope, bool use_half_precision) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated for CTF image");
     if ( apply_coherence_envelope ) {
         MyDebugAssertFalse(calculate_complex_ctf, "calculating a complex CTF and a coherence envelope is not supported.");
+    }
+    if ( use_half_precision ) {
+        // If already allocated and the same number of pixels as real_values, this will just return
+        Allocate16fBuffer( );
     }
     //	MyDebugAssertTrue(is_in_real_space == false, "CTF image not in Fourier space");
 
     int i;
     int j;
 
-    long pixel_counter = 0;
+    long pixel_counter      = 0;
+    long pixel_counter_fp16 = 0;
 
     float x_coordinate_2d;
     float y_coordinate_2d;
@@ -2893,6 +2900,16 @@ void Image::CalculateCTFImage(CTF& ctf_of_image, bool calculate_complex_ctf, boo
                 else
                     complex_values[pixel_counter] = ctf_of_image.Evaluate(frequency_squared, azimuth) + I * 0.0f;
             }
+
+            if ( use_half_precision ) {
+                // On the cpu half library, we don't have vector types, to manually interleave the real and imag parts
+                // real_values_16f[pixel_counter_fp16]     = half_float::half_cast<half>(real(ctf_value));
+                // real_values_16f[pixel_counter_fp16 + 1] = half_float::half_cast<half>(imag(ctf_value));
+                real_values_16f[pixel_counter_fp16]     = half_float::half(real(complex_values[pixel_counter]));
+                real_values_16f[pixel_counter_fp16 + 1] = half_float::half(imag(complex_values[pixel_counter]));
+                pixel_counter_fp16 += 2;
+            }
+
             pixel_counter++;
         }
     }
@@ -4302,6 +4319,11 @@ void Image::Deallocate( ) {
     if ( is_in_memory == true && image_memory_should_not_be_deallocated == false ) {
         fftwf_free(real_values);
         is_in_memory = false;
+
+        if ( is_in_memory_16f ) {
+            delete[] real_values_16f;
+            is_in_memory_16f = false;
+        }
     }
 
     if ( planned == true ) {
@@ -4411,6 +4433,25 @@ void Image::Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_rea
 
 void Image::Allocate(Image* image_to_copy_size_and_space_from) {
     Allocate(image_to_copy_size_and_space_from->logical_x_dimension, image_to_copy_size_and_space_from->logical_y_dimension, image_to_copy_size_and_space_from->logical_z_dimension, image_to_copy_size_and_space_from->is_in_real_space);
+}
+
+void Image::Allocate16fBuffer( ) {
+    MyDebugAssertTrue(is_in_memory, "Image is not in memory");
+
+    if ( is_in_memory_16f == true ) {
+        if ( real_memory_allocated == real_memory_allocated_16f && real_memory_allocated_16f > 0 ) {
+            // nothing to do
+            return;
+        }
+        else {
+            delete[] real_values_16f;
+            is_in_memory_16f = false;
+        }
+    }
+
+    real_memory_allocated_16f = real_memory_allocated;
+    real_values_16f           = new half_float::half[real_memory_allocated_16f];
+    is_in_memory_16f          = true;
 }
 
 void Image::AllocateAsPointingToSliceIn3D(Image* wanted3d, long wanted_slice) {
@@ -5927,7 +5968,7 @@ float Image::GetCorrelationWithCTF(CTF ctf) {
     const int   central_cross_half_width = 10;
     float       astigmatism_penalty;
 
-    // Loop over half of the image (ignore Friedel mates)
+    // Loop over half_float::half of the image (ignore Friedel mates)
     for ( j = 0; j < logical_y_dimension; j++ ) {
         // DNM: Moved test on j out of inner loop, loop i only as far as needed, use an address computed for each line (speeds up ~13%)
         if ( j < physical_address_of_box_center_y - central_cross_half_width || j > physical_address_of_box_center_y + central_cross_half_width ) {
@@ -5995,7 +6036,7 @@ void Image::SetupQuickCorrelationWithCTF(CTF ctf, int& number_of_values, double&
     norm_image       = 0;
     image_mean       = 0.;
 
-    // Loop over half of the image (ignore Friedel mates)
+    // Loop over half_float::half of the image (ignore Friedel mates)
     for ( j = 0; j < logical_y_dimension; j++ ) {
         if ( j < physical_address_of_box_center_y - central_cross_half_width || j > physical_address_of_box_center_y + central_cross_half_width ) {
             address   = j * (padding_jump_value + 2 * physical_address_of_box_center_x);
@@ -6714,7 +6755,7 @@ void Image::ApplyLocalResolutionFilter(Image& local_resolution_map, float pixel_
     }
 }
 
-// The output image will be allocated to the correct dimensions (half-volume, a la FFTW)
+// The output image will be allocated to the correct dimensions (half_float::half-volume, a la FFTW)
 void Image::ComputeAmplitudeSpectrum(Image* amplitude_spectrum, bool signed_values) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
@@ -6959,7 +7000,7 @@ void Image::ComputeLocalMeanAndVarianceMaps(Image* local_mean_map, Image* local_
  * Real-space box convolution meant for 2D amplitude spectra
  *
  * This is adapted from the MSMOOTH subroutine from CTFFIND3, with a different wrap-around behaviour.
- * Also, in this version, we loop over the full 2D, rather than just half - this runs faster because less logic within the loop
+ * Also, in this version, we loop over the full 2D, rather than just half_float::half - this runs faster because less logic within the loop
  * DNM rewrote this to be vastly faster
  */
 void Image::SpectrumBoxConvolution(Image* output_image, int box_size, float minimum_radius) {
@@ -7149,7 +7190,7 @@ void Image::SpectrumBoxConvolution(Image *output_image, int box_size, float mini
 	long address_within_output = 0;
 	long address_within_input;
 
-	// Loop over the output image. To save time, we only loop over one half of the image [BUG: actually this is looping over the full image!
+	// Loop over the output image. To save time, we only loop over one half_float::half of the image [BUG: actually this is looping over the full image!
 	for (j = 0; j < logical_y_dimension; j++)
 	{
 		j_friedel = 2 * physical_address_of_box_center_y - j;
@@ -7717,7 +7758,7 @@ void Image::ClipInto(Image* other_image, float wanted_padding_value, bool fill_w
             }
         }
 
-        // When we are clipping into a larger volume in Fourier space, there is a half-plane (vol) or half-line (2D image) at Nyquist for which FFTW
+        // When we are clipping into a larger volume in Fourier space, there is a half_float::half-plane (vol) or half_float::half-line (2D image) at Nyquist for which FFTW
         // does not explicitly tell us the values. We need to fill them in.
         if ( logical_y_dimension < other_image->logical_y_dimension || logical_z_dimension < other_image->logical_z_dimension ) {
             // For a 2D image
@@ -8776,7 +8817,7 @@ void Image::SwapFourierSpaceQuadrants(bool also_swap_real_space_quadrants) {
             yz_shift = powf(-1.f, float(k + j));
             for ( int i = 0; i < logical_x_dimension; i++ ) {
                 // To add the x = -1 term to avoid padding for 3d interpolation in GPU texture memory, where spatial locality is important, we need to shift the image by 1 pixel.
-                // Additionally, to get the positive half and not the negative, we need an extra NX/2, so we have exp(i*2*pi*x / NX (NX + 1)) which reduces to exp(i*2*pi*x/NX)
+                // Additionally, to get the positive half_float::half and not the negative, we need an extra NX/2, so we have exp(i*2*pi*x / NX (NX + 1)) which reduces to exp(i*2*pi*x/NX)
                 sincosf(lead_term * float(i), &tmp_imag_value, &tmp_real_value);
                 tmp_real.real_values[address] = real_values[address] * yz_shift * tmp_real_value;
                 tmp_imag.real_values[address] = real_values[address] * yz_shift * tmp_imag_value;

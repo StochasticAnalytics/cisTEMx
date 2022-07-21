@@ -65,6 +65,8 @@ class GpuImage {
 
     __half*  real_values_16f;
     __half2* complex_values_16f;
+    __half*  ctf_buffer_16f;
+    __half2* ctf_complex_buffer_16f;
 
     // We want to be able to re-use the texture object, so only set it up once.
     cudaTextureObject_t tex_real;
@@ -192,7 +194,7 @@ class GpuImage {
 
     void CopyHostToDevice( );
     void CopyHostToDeviceTextureComplex3d( );
-    void CopyHostRealPartToDevice( ); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
+    void CopyHostToDevice16f( ); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
     void CopyDeviceToHostAndSynchronize(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true, bool unpin_host_memory = true);
@@ -218,6 +220,7 @@ class GpuImage {
     void ApplyBFactor(float bfactor);
     void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
     void Whiten(float resolution_limit = 1.f);
+    void GetWeightedCorrelationWithImage(GpuImage& projection_image, int* bins, float signed_CC_limit);
 
     inline void MaskCentralCross(float vertical_mask_size, float horizontal_mask_size) { return; }; // noop
 
@@ -331,13 +334,14 @@ class GpuImage {
                             b_countinrange,
                             b_histogram,
                             b_16f,
+                            b_ctf_16f,
                             b_l2norm,
                             b_dotproduct,
                             b_clip_into_mask };
 
     //  void CublasInit();
     void NppInit( );
-    void BufferInit(BufferType bt);
+    void BufferInit(BufferType bt, int n_elements = 0);
     void BufferDestroy( );
 
     // Real buffer = size real_values
@@ -370,6 +374,7 @@ class GpuImage {
     Npp8u* dotproduct_buffer;
     bool   is_allocated_dotproduct_buffer;
     bool   is_allocated_16f_buffer;
+    bool   is_allocated_ctf_16f_buffer;
     int*   clip_into_mask;
     bool   is_allocated_clip_into_mask;
     bool   is_set_realLoadAndClipInto;

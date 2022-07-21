@@ -74,7 +74,6 @@ class ImageProjectionComparison {
         // This is a shared resource, and we don't copy the host real_values anyway, so DONOT pin the memory
         gpu_density_map->Init(temp_image, false, false);
         gpu_density_map->CopyHostToDeviceTextureComplex3d( );
-        gpu_density_map->RecordAndWait( );
 
         return;
     };
@@ -95,7 +94,6 @@ class ImageProjectionComparison {
             gpu_projection->BackwardFFT( );
         }
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-        gpu_projection->RecordAndWait( );
         global_timer.lap("calc_proj gpu");
 
         global_timer.start("copy device to host");
@@ -1286,16 +1284,39 @@ bool Refine3DApp::DoCalculation( ) {
             refine_particle_local.PhaseShiftInverse( );
 
             if ( ctf_refinement && high_resolution_limit <= 20.0 ) {
-                timer.start("refining ctf");
+                timer.start("ctf refinement");
                 //			wxPrintf("\nRefining defocus for parameter line %i\n", current_line);
                 refine_particle_local.filter_radius_low = 30.0;
                 refine_particle_local.SetIndexForWeightedCorrelation( );
                 binned_image.CopyFrom(refine_particle_local.particle_image);
                 refine_particle_local.InitCTF(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
                 best_score = -std::numeric_limits<float>::max( );
+
+                bool is_gpu_ctf_image_initialized_for_refinement = false;
+
                 for ( defocus_i = -myround(float(defocus_search_range) / float(defocus_step)); defocus_i <= myround(float(defocus_search_range) / float(defocus_step)); defocus_i++ ) {
+
                     refine_particle_local.SetDefocus(input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift);
+
+#ifdef ENABLEGPU
+                    refine_particle_local.InitCTFImageFP16(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+                    if ( ! is_gpu_ctf_image_initialized_for_refinement ) {
+                        //     // Do not allocate the single precision buffer, since we'll use fp16
+                        gpu_ctf_image_local.Init(*refine_particle_local.ctf_image, false);
+                        is_gpu_ctf_image_initialized_for_refinement = true;
+                    }
+                    timer.lap("ctf refinement");
+                    timer.start("copy ctf image to gpu");
+                    gpu_ctf_image_local.CopyHostToDevice16f( );
+                    timer.lap("copy ctf image to gpu");
+                    timer.start("ctf refinement");
+                    comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
+
+#else
                     refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+
+#endif
+
                     if ( normalize_input_3d )
                         refine_particle_local.WeightBySSNR(refine_statistics.part_SSNR, 1);
                     //				// Apply SSNR weighting only to image since input 3D map assumed to be calculated from correctly whitened images
@@ -1310,7 +1331,9 @@ bool Refine3DApp::DoCalculation( ) {
                     //				refine_particle_local.WeightBySSNR(input_3d_local.statistics.part_SSNR, 1);
 
                     score = -100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
+#ifdef PRINT_SCORES
                     wxPrintf("Score is %f from line %i\n", score, __LINE__);
+#endif
                     if ( score > best_score ) {
                         best_score     = score;
                         best_defocus_i = defocus_i;
@@ -1325,12 +1348,19 @@ bool Refine3DApp::DoCalculation( ) {
                 output_parameters.defocus_1 = input_parameters.defocus_1 + best_defocus_i * defocus_step;
                 output_parameters.defocus_2 = input_parameters.defocus_2 + best_defocus_i * defocus_step;
                 refine_particle_local.SetDefocus(output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift);
+#ifdef ENABLEGPU
+                refine_particle_local.InitCTFImageFP16(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+#else
                 refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
-                timer.lap("refining ctf");
+#endif
+                timer.lap("ctf refinement");
             }
             else {
-                //			wxPrintf("tx, ty, sx, sy = %g %g %g %g\n", input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+#ifdef ENABLEGPU
+                refine_particle_local.InitCTFImageFP16(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+#else
                 refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+#endif
             }
             //		refine_particle_local.SetLowResolutionContrast(low_resolution_contrast);
 
@@ -1354,8 +1384,8 @@ bool Refine3DApp::DoCalculation( ) {
             //		input_parameters[15] = 10.0;
             //		input_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
 #ifdef ENABLEGPU
-            gpu_ctf_image_local.Init(*refine_particle_local.ctf_image);
-            gpu_ctf_image_local.CopyHostRealPartToDevice( );
+            gpu_ctf_image_local.Init(*refine_particle_local.ctf_image, false);
+            gpu_ctf_image_local.CopyHostToDevice16f( );
             comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
 #endif
             if ( (refine_particle_local.number_of_search_dimensions > 0) && (global_search_local || local_refinement_local) ) {
@@ -1517,7 +1547,7 @@ bool Refine3DApp::DoCalculation( ) {
 #ifdef ENABLEGPU
 
                         gpu_search_ctf_image_local.Init(*search_particle_local.ctf_image);
-                        gpu_search_ctf_image_local.CopyHostRealPartToDevice( );
+                        gpu_search_ctf_image_local.CopyHostToDevice16f( );
                         comparison_object.gpu_ctf_image = &gpu_search_ctf_image_local;
                         // The memory for these was already setup outside the loop, but inside the omp sections
                         comparison_object.gpu_projection   = &gpu_search_projection_local;
@@ -1614,8 +1644,8 @@ bool Refine3DApp::DoCalculation( ) {
                     // The memory for these was already setup outside the loop, but inside the omp sections
                     comparison_object.gpu_projection  = &gpu_projection_local;
                     comparison_object.gpu_density_map = &gpu_density_map_local;
-                    gpu_ctf_image_local.Init(*refine_particle_local.ctf_image);
-                    gpu_ctf_image_local.CopyHostRealPartToDevice( );
+                    gpu_ctf_image_local.Init(*refine_particle_local.ctf_image, false);
+                    gpu_ctf_image_local.CopyHostToDevice16f( );
                     comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
 #endif
                     refine_particle_local.MapParameters(cg_starting_point);

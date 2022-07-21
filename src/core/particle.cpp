@@ -357,6 +357,31 @@ void Particle::InitCTFImage(float voltage_kV, float spherical_aberration_mm, flo
     beamtilt_image_calculated = true;
 }
 
+void Particle::InitCTFImageFP16(float voltage_kV, float spherical_aberration_mm, float amplitude_contrast, float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift, float beam_tilt_x, float beam_tilt_y, float particle_shift_x, float particle_shift_y, bool calculate_complex_ctf) {
+    MyDebugAssertTrue(ctf_image->is_in_memory, "ctf_image memory not allocated");
+    MyDebugAssertTrue(beamtilt_image->is_in_memory, "beamtilt_image memory not allocated");
+    MyDebugAssertTrue(! ctf_image->is_in_real_space, "ctf_image not in Fourier space");
+    MyDebugAssertTrue(! beamtilt_image->is_in_real_space, "beamtilt_image not in Fourier space");
+
+    InitCTF(voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus_1, defocus_2, astigmatism_angle, phase_shift, beam_tilt_x, beam_tilt_y, particle_shift_x, particle_shift_y);
+    complex_ctf = calculate_complex_ctf;
+    if ( ctf_parameters.IsAlmostEqualTo(&current_ctf, 1 / pixel_size) == false || ! ctf_image_calculated )
+    // Need to calculate current_ctf_image to be inserted into ctf_reconstruction
+    {
+        bool apply_coherence_envelope = false;
+        bool use_half_precision       = true;
+        current_ctf                   = ctf_parameters;
+        ctf_image->CalculateCTFImage(current_ctf, complex_ctf, apply_coherence_envelope, use_half_precision);
+    }
+    if ( ctf_parameters.BeamTiltIsAlmostEqualTo(&current_ctf) == false || ! beamtilt_image_calculated )
+    // Need to calculate current_beamtilt_image to correct input image for beam tilt
+    {
+        beamtilt_image->CalculateBeamTiltImage(current_ctf);
+    }
+    ctf_image_calculated      = true;
+    beamtilt_image_calculated = true;
+}
+
 void Particle::PhaseFlipImage( ) {
     MyDebugAssertTrue(ctf_image_calculated, "CTF image not calculated");
 

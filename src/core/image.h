@@ -3,6 +3,7 @@
 	for information on actual data management / addressing see the image_data_array class..
 
 */
+#include "../../include/ieee-754-half/half.hpp"
 
 class ReconstructedVolume;
 class EulerSearch;
@@ -56,6 +57,7 @@ class Image {
     int logical_lower_bound_real_z; // !<  In each dimension, the lower bound of the real image's logical addresses
 
     long real_memory_allocated; // !<  Number of floats allocated in real space;
+    int  real_memory_allocated_16f;
 
     int padding_jump_value; // !<  The FFTW padding value, if odd this is 2, if even it is 1.  It is used in loops etc over real space.
 
@@ -70,6 +72,8 @@ class Image {
     std::complex<float>* complex_values; // !<  Complex array to hold values for COMP images.
     bool                 is_in_memory; // !<  Whether image values are in-memory, in other words whether the image has memory space allocated to its data array. Default = .FALSE.
 
+    half_float::half* real_values_16f;
+    bool              is_in_memory_16f;
     // FFTW-specfic
 
     fftwf_plan plan_fwd; // !< FFTW plan for the image (fwd)
@@ -93,6 +97,7 @@ class Image {
     void Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size = 1, bool is_in_real_space = true, bool do_fft_planning = true);
     void Allocate(int wanted_x_size, int wanted_y_size, bool is_in_real_space = true);
     void Allocate(Image* image_to_copy_size_and_space_from);
+    void Allocate16fBuffer( );
 
     void AllocateAsPointingToSliceIn3D(Image* wanted3d, long wanted_slice);
 
@@ -189,7 +194,7 @@ class Image {
     void                CircleMaskWithValue(float wanted_mask_radius, float wanted_mask_value, bool invert = false);
     void                SquareMaskWithValue(float wanted_mask_dim, float wanted_mask_value, bool invert = false, int wanted_center_x = 0, int wanted_center_y = 0, int wanted_center_z = 0);
     void                TriangleMask(float wanted_triangle_half_base_length);
-    void                CalculateCTFImage(CTF& ctf_of_image, bool calculate_complex_ctf = false, bool apply_coherence_envelope = false);
+    void                CalculateCTFImage(CTF& ctf_of_image, bool calculate_complex_ctf = false, bool apply_coherence_envelope = false, bool use_half_precision = false);
     void                CalculateBeamTiltImage(CTF& ctf_of_image, bool output_phase_shifts = false);
     bool                ContainsBlankEdges(float mask_radius = 0.0);
     void                CorrectMagnificationDistortion(float distortion_angle, float distortion_major_axis, float distortion_minor_axis);

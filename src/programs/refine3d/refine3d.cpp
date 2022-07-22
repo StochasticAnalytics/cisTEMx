@@ -58,6 +58,7 @@ class ImageProjectionComparison {
     int       score_buffer_size;
     bool      is_set_gpu_ctf_image;
     bool      copy_gpu_particle_image;
+    bool      copy_gpu_search_particle_image;
 
     void PrepareGpuVolumeProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume) {
 
@@ -93,6 +94,7 @@ class ImageProjectionComparison {
     float DoGpuProjection( ) {
         MyDebugAssertTrue(gpu_density_map->is_allocated_texture_cache, "gpu_density_map is not allocated");
         MyDebugAssertTrue(gpu_projection->is_in_memory_gpu, "gpu_projection is not allocated");
+        MyDebugAssertTrue(gpu_particle_image->is_in_memory_gpu, "gpu_particle_image is not allocated");
         // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
         global_timer.start("calc_proj gpu");
 
@@ -115,13 +117,19 @@ class ImageProjectionComparison {
         if ( particle->filter_radius_low != 0.0 )
             filter_radius_low = powf(particle->pixel_size / particle->filter_radius_low, 2);
 
-        if ( copy_gpu_particle_image ) {
-            gpu_particle_image->Init(*particle->particle_image);
-            gpu_particle_image->CopyHostToDevice( );
-            copy_gpu_particle_image = false;
-        }
+        // if ( copy_gpu_particle_image ) {
+        //     if ( gpu_particle_image == nullptr ) {
+        //         gpu_particle_image = new GpuImage;
+        //     }
+        //     gpu_particle_image->Init(*particle->particle_image);
+        //     gpu_particle_image->CopyHostToDevice( );
+        //     copy_gpu_particle_image = false;
+        // }
 
+        gpu_particle_image->Init(*particle->particle_image, false);
+        gpu_particle_image->CopyHostToDevice( );
         float tmp_corr = gpu_particle_image->GetWeightedCorrelationWithImage(*gpu_projection, score_buffer, &score_buffer_size, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
+
         global_timer.lap("calc_proj gpu");
 
         return tmp_corr;
@@ -146,15 +154,14 @@ ImageProjectionComparison::ImageProjectionComparison( ) {
     y_shift_limit      = FLT_MAX;
     angle_change_limit = FLT_MAX;
 
-    nprj                    = 0;
-    score_buffer            = nullptr;
-    score_buffer_size       = 0;
-    is_set_gpu_ctf_image    = false;
-    mask_radius             = 0.0f; // normal default for cpu refinement,
-    mask_falloff            = 0.0f; // normal default for cpu refinement,
-    copy_gpu_particle_image = true;
-
-    gpu_particle_image = new GpuImage;
+    nprj                           = 0;
+    score_buffer                   = nullptr;
+    score_buffer_size              = 0;
+    is_set_gpu_ctf_image           = false;
+    mask_radius                    = 0.0f; // normal default for cpu refinement,
+    mask_falloff                   = 0.0f; // normal default for cpu refinement,
+    copy_gpu_particle_image        = true;
+    copy_gpu_search_particle_image = true;
 }
 
 ImageProjectionComparison::~ImageProjectionComparison( ) {
@@ -162,8 +169,6 @@ ImageProjectionComparison::~ImageProjectionComparison( ) {
         delete[] score_buffer;
         score_buffer = nullptr;
     }
-
-    delete gpu_particle_image;
 }
 
 // This is the function which will be minimized
@@ -311,6 +316,10 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
                  comparison_object->particle->alignment_parameters.ReturnPhiAngle( ),
                  comparison_object->particle->alignment_parameters.ReturnThetaAngle( ));
     }
+#ifdef ENABLEGPU
+    comparison_object->gpu_particle_image->QuickAndDirtyWriteSlices("gpu_DEBUGparticle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
+    comparison_object->particle->particle_image->QuickAndDirtyWriteSlices("cpu_DEBUGparticle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
+#endif
     MyDebugAssertFalse(isnan(tmp_corr), "Frealign score function: correlation term is NaN");
     MyDebugAssertFalse(isnan(tmp_penalty), "Frealign score function: penalty term is NaN");
 #endif
@@ -1160,13 +1169,13 @@ bool Refine3DApp::DoCalculation( ) {
         GpuImage gpu_search_density_map_local;
         GpuImage gpu_search_projection_local;
         GpuImage gpu_search_ctf_image_local;
+        GpuImage gpu_search_particle_image_local;
         bool     is_set_gpu_search_density_map = false;
 
         GpuImage gpu_density_map_local;
         GpuImage gpu_projection_local;
         GpuImage gpu_ctf_image_local;
-        comparison_object.projection_image = &projection_image_local;
-
+        GpuImage gpu_particle_image_local;
         comparison_object.PrepareGpuVolumeProjection(input_3d_local, &gpu_density_map_local);
 
 #endif
@@ -1343,7 +1352,12 @@ bool Refine3DApp::DoCalculation( ) {
             comparison_object.particle         = &refine_particle_local;
 
 #ifdef ENABLEGPU
-            comparison_object.copy_gpu_particle_image = true;
+            // if ( comparison_object.copy_gpu_particle_image == true ) {
+            gpu_particle_image_local.Init(*refine_particle_local.particle_image);
+            // comparison_object.copy_gpu_particle_image = false;
+            // }
+            gpu_particle_image_local.CopyHostToDevice( );
+            comparison_object.gpu_particle_image = &gpu_particle_image_local;
             comparison_object.PrepareGpuImagesProjection(&gpu_projection_local);
 #endif
 
@@ -1460,6 +1474,7 @@ bool Refine3DApp::DoCalculation( ) {
             gpu_ctf_image_local.Init(*refine_particle_local.ctf_image, false);
             gpu_ctf_image_local.CopyHostToDevice16f( );
             comparison_object.gpu_ctf_image = &gpu_ctf_image_local;
+
 #endif
             if ( (refine_particle_local.number_of_search_dimensions > 0) && (global_search_local || local_refinement_local) ) {
                 timer.start("refining search FrealignObjFunct 1");
@@ -1623,12 +1638,15 @@ bool Refine3DApp::DoCalculation( ) {
                         gpu_search_ctf_image_local.CopyHostToDevice16f( );
                         comparison_object.gpu_ctf_image = &gpu_search_ctf_image_local;
                         // The memory for these was already setup outside the loop, but inside the omp sections
-                        comparison_object.gpu_projection          = &gpu_search_projection_local;
-                        comparison_object.gpu_density_map         = &gpu_search_density_map_local;
-                        comparison_object.gpu_projection          = &gpu_search_projection_local;
-                        comparison_object.copy_gpu_particle_image = true;
+                        comparison_object.gpu_density_map = &gpu_search_density_map_local;
 
                         comparison_object.PrepareGpuImagesProjection(&gpu_search_projection_local);
+                        // if ( comparison_object.copy_gpu_search_particle_image == true ) {
+                        gpu_search_particle_image_local.Init(*search_particle_local.particle_image);
+                        // comparison_object.copy_gpu_search_particle_image = false;
+                        // }
+                        gpu_search_particle_image_local.CopyHostToDevice( );
+                        comparison_object.gpu_particle_image = &gpu_search_particle_image_local;
 
 #endif
 
@@ -1718,6 +1736,7 @@ bool Refine3DApp::DoCalculation( ) {
                     comparison_object.gpu_projection          = &gpu_projection_local;
                     comparison_object.gpu_density_map         = &gpu_density_map_local;
                     comparison_object.copy_gpu_particle_image = true;
+                    comparison_object.gpu_particle_image      = &gpu_particle_image_local;
 
                     gpu_ctf_image_local.Init(*refine_particle_local.ctf_image, false);
                     gpu_ctf_image_local.CopyHostToDevice16f( );

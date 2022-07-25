@@ -7,14 +7,12 @@ From: ubuntu:20.04
 # /groups/himesb/.config/Code\ -\ Insiders/User/globalStorage/ms-vscode-remote.remote-containers/cli-bin/code-insiders build --image-name bhimesbhimes/cistem_build_env:latest ./.devcontainer_build
 
 
-export DEBIAN_FRONTEND=noninteractive
-export GCC_VER=11
-export n_threads=6
+DEBIAN_FRONTEND=noninteractive
+TZ=America/New_York
+GCC_VER=11
+n_threads=6
 
-unset TZ
-
-echo 'America/New_York' | tee /etc/timezone
-apt-get update &&  apt-get -y install tzdata &&  dpkg-reconfigure --frontend noninteractive tzdata
+apt-get update && apt-get -y install tzdata
 
 apt-get install -y locales && rm -rf /var/lib/apt/lists/* \
 && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8

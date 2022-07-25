@@ -266,14 +266,17 @@ if test "$want_cuda" = "yes" ; then
     AC_MSG_NOTICE([Using CUDA_CXXFLAGS=$CUDA_CXXFLAGS])
     AC_MSG_NOTICE([Using CUDA_LIBS=$CUDA_LIBS])
 
-    AC_DEFINE([ENABLEGPU], [], [Enable gpu codepath])
+    # This does include any gpu functionality directly, but is used primarily in the GUI to do things like
+    # showing radio buttons to  use/not use gpu functionality that is enabled in the called program.
+    AC_DEFINE([SHOW_CISTEM_GPU_OPTIONS], [], [Enable gpu codepath])
 fi
 
 ##############################
 # END CUDA CHECKS AND SETS
-##############################  
+##############################
 
-AM_CONDITIONAL([ENABLEGPU_AM], [test "$want_cuda" = "yes"])
+# Define WANT_CISTEM_GPU_AM to be used in the Makefile on a per-program basis to then define ENABLEGPU or not.
+AM_CONDITIONAL([WANT_CISTEM_GPU_AM], [test "$want_cuda" = "yes"])
 AM_CONDITIONAL([ENABLE_FASTFFT_AM], [test "x$use_FastFFT" = "xyes"])
 
 # fftw

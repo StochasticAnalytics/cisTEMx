@@ -6,6 +6,10 @@ using namespace cistem;
 wxMutex Image::s_mutexProtectingFFTW;
 double  BeamTiltScoreFunctionForSimplex(void* pt2Object, double values[]);
 
+#ifdef ENABLEGPU
+// This is just to see if the new, program by program ENABLEGPU is working. This would break everything if not.
+#include "../gpu/gpu_core_headers.h"
+#endif
 void Image::SetupInitialValues( ) {
     logical_x_dimension = 0;
     logical_y_dimension = 0;

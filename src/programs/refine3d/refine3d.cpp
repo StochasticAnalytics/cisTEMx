@@ -9,6 +9,8 @@
 #include "../../core/core_headers.h"
 #endif
 
+#include "ProjectionComparisonObjects.h"
+
 #ifdef PROFILING
 using namespace cistem_timer;
 #else
@@ -17,6 +19,8 @@ using namespace cistem_timer_noop;
 
 // #define SAVE_DEBUG_IMAGES
 // #define PRINT_SCORES
+// #define COMPARE_GPU_CPU_SCORE
+#define CALCULATE_SCORE_ON_CPU
 StopWatch global_timer;
 
 class
@@ -45,20 +49,19 @@ class ImageProjectionComparison {
 
     // These are used in the projection step
 
-    float mask_radius; // normal default for cpu refinement,
-    float mask_falloff; // normal default for cpu refinement,
-    bool  swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
-
+    float  mask_radius; // normal default for cpu refinement,
+    float  mask_falloff; // normal default for cpu refinement,
+    bool   swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
+    float* score_buffer;
+    int    score_buffer_size;
+    bool   is_set_gpu_ctf_image;
+    bool   copy_gpu_particle_image;
+    bool   copy_gpu_search_particle_image;
 #ifdef ENABLEGPU
     GpuImage* gpu_density_map;
     GpuImage* gpu_projection;
     GpuImage* gpu_ctf_image;
     GpuImage* gpu_particle_image;
-    float*    score_buffer;
-    int       score_buffer_size;
-    bool      is_set_gpu_ctf_image;
-    bool      copy_gpu_particle_image;
-    bool      copy_gpu_search_particle_image;
 
     void PrepareGpuVolumeProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume) {
 
@@ -107,29 +110,33 @@ class ImageProjectionComparison {
             // CosineMask is not implemented yet, but we can at least do the backFFT
             gpu_projection->BackwardFFT( );
         }
-        // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-        // global_timer.start("copy device to host");
-        // gpu_projection->CopyDeviceToHostAndSynchronize(false, false);
-        // global_timer.lap("copy device to host");
+#if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU)
+        global_timer.start("copy device to host");
+        gpu_projection->CopyDeviceToHostAndSynchronize(false, false);
+        global_timer.lap("copy device to host");
+#endif
         float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
         float filter_radius_low  = 0.0f;
         if ( particle->filter_radius_low != 0.0 )
             filter_radius_low = powf(particle->pixel_size / particle->filter_radius_low, 2);
 
-        // if ( copy_gpu_particle_image ) {
-        //     if ( gpu_particle_image == nullptr ) {
-        //         gpu_particle_image = new GpuImage;
-        //     }
-        //     gpu_particle_image->Init(*particle->particle_image);
-        //     gpu_particle_image->CopyHostToDevice( );
-        //     copy_gpu_particle_image = false;
-        // }
-
+            // if ( copy_gpu_particle_image ) {
+            //     if ( gpu_particle_image == nullptr ) {
+            //         gpu_particle_image = new GpuImage;
+            //     }
+            //     gpu_particle_image->Init(*particle->particle_image);
+            //     gpu_particle_image->CopyHostToDevice( );
+            //     copy_gpu_particle_image = false;
+            // }
+#ifndef CALCULATE_SCORE_ON_CPU
         gpu_particle_image->Init(*particle->particle_image, false);
         gpu_particle_image->CopyHostToDevice( );
         float tmp_corr = gpu_particle_image->GetWeightedCorrelationWithImage(*gpu_projection, score_buffer, &score_buffer_size, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
-
+#else
+        float tmp_corr = 0.f;
+#endif
         global_timer.lap("calc_proj gpu");
 
         return tmp_corr;
@@ -234,7 +241,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     }
 #endif
 
-#else
+#endif
 
     global_timer.start("calc_proj cpu");
     comparison_object->reference_volume->CalculateProjection(*comparison_object->projection_image,
@@ -250,8 +257,6 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
                                                              use_gpu_projection);
 
     global_timer.lap("calc_proj cpu");
-
-#endif
 
 #ifndef ENABLEGPU
 #ifdef SAVE_DEBUG_IMAGES
@@ -292,12 +297,25 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
         return 1;
 
     global_timer.start("ReturnScore");
+
+#ifdef CALCULATE_SCORE_ON_CPU
+    float tmp_corr = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
+ comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
+ #else
 #ifdef ENABLEGPU
     float tmp_corr = gpu_score;
-#else
-    float tmp_corr = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
-                                                                                                  comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
+    #else
+#error "We need to calculate the score somewhere!!"
 #endif
+
+#endif
+
+#if defined(COMPARE_GPU_CPU_SCORE) && defined(ENABLEGPU)
+    float for_test = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
+                                                                                                  comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
+    wxPrintf("gpu:cpu scores %3.3g:%3.3g  %3.3g\n", tmp_corr, for_test, tmp_corr / for_test);
+#endif
+
     global_timer.lap("ReturnScore");
 
     // wxPrintf("Gpu score: gpu_score = %f, cpu_score = %f\n", gpu_score, tmp_corr);
@@ -564,29 +582,28 @@ bool Refine3DApp::DoCalculation( ) {
     refine_particle.constraints_used.x_shift = true;
     refine_particle.constraints_used.y_shift = true;
 
-    Image                     input_image_local;
-    Image                     projection_image_local;
-    Image                     search_projection_image;
-    Image                     binned_image;
-    Image                     final_image;
-    Image                     temp_image_local;
-    Image                     temp_image2_local;
-    Image                     sum_power;
-    Image                     sum_power_local;
-    Image*                    projection_cache = NULL;
-    CTF                       input_ctf;
-    Image                     snr_image;
-    ReconstructedVolume       input_3d;
-    ReconstructedVolume       input_3d_local;
-    ReconstructedVolume       search_reference_3d;
-    ReconstructedVolume       search_reference_3d_local;
-    ImageProjectionComparison comparison_object;
-    ConjugateGradient         conjugate_gradient_minimizer;
-    EulerSearch               global_euler_search, euler_search_local;
-    Curve                     noise_power_spectrum;
-    Curve                     number_of_terms;
-    RandomNumberGenerator     random_particle(true);
-    ProgressBar*              my_progress;
+    Image                 input_image_local;
+    Image                 projection_image_local;
+    Image                 search_projection_image;
+    Image                 binned_image;
+    Image                 final_image;
+    Image                 temp_image_local;
+    Image                 temp_image2_local;
+    Image                 sum_power;
+    Image                 sum_power_local;
+    Image*                projection_cache = NULL;
+    CTF                   input_ctf;
+    Image                 snr_image;
+    ReconstructedVolume   input_3d;
+    ReconstructedVolume   input_3d_local;
+    ReconstructedVolume   search_reference_3d;
+    ReconstructedVolume   search_reference_3d_local;
+    ConjugateGradient     conjugate_gradient_minimizer;
+    EulerSearch           global_euler_search, euler_search_local;
+    Curve                 noise_power_spectrum;
+    Curve                 number_of_terms;
+    RandomNumberGenerator random_particle(true);
+    ProgressBar*          my_progress;
 
     JobResult* intermediate_result;
 
@@ -1125,13 +1142,16 @@ bool Refine3DApp::DoCalculation( ) {
                                                                    random_particle, defocus_range_mean2, defocus_range_std, defocus_mean_score, current_class, mask_radius_search, search_reference_3d, high_resolution_limit_search,                                                                                                    \
                                                                    binning_factor_search, search_statistics, search_box_size, projection_cache, my_symmetry, angular_step, psi_max, psi_step, psi_start, take_random_best_parameter, refine_particle,                                                                                    \
                                                                    skip_local_refinement, calculate_matching_projections, classification_resolution_limit, output_file, best_parameters_to_keep, ignore_input_angles, global_random_number_generator,                                                                                    \
-                                                                   global_euler_search, binned_image_box_size, binned_search_image_box_size, global_search) private(image_counter, refine_particle_local, current_line_local, input_parameters, temp_float, output_parameters, input_ctf, variance, average, comparison_object,          \
+                                                                   global_euler_search, binned_image_box_size, binned_search_image_box_size, global_search) private(image_counter, refine_particle_local, current_line_local, input_parameters, temp_float, output_parameters, input_ctf, variance, average,                             \
                                                                                                                                                                     best_score, defocus_i, score, cg_starting_point, input_image_local, search_particle_local, intermediate_result, gui_result_parameters, image_shift_x, image_shift_y, \
                                                                                                                                                                     binned_image, projection_image_local, best_defocus_i, defocus_score, temp_image2_local, search_projection_image, cg_accuracy, search_reference_3d_local,             \
                                                                                                                                                                     temp_image_local, search_parameters, istart, parameter_to_keep, conjugate_gradient_minimizer, i, final_image, input_3d_local, euler_search_local, frealign_score_local)
     { // for omp
 
         timer.start("omp copy to local variables");
+
+        ImageProjectionComparison comparison_object;
+
         //	input_3d_local = input_3d;
         input_3d_local.CopyAllButVolume(&input_3d);
         input_3d_local.density_map = input_3d.density_map;

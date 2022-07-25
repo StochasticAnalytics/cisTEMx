@@ -97,10 +97,7 @@
         "valarray": "cpp",
         "variant": "cpp",
         "__nullptr": "cpp",
-        "__config": "cpp",
-        "ios": "cpp",
-        "__locale": "cpp",
-        "__string": "cpp"
+        "__config": "cpp"
     },
     "C_Cpp.clang_format_path": "/usr/bin/clang-format-14",
     "editor.formatOnSave": true,

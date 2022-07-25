@@ -22,6 +22,53 @@
             "browse": {
                 "limitSymbolsToIncludedHeaders": true
             }
+        },
+        {
+            "name": "GPU Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                // Find these with wx-config --cxxflags so that intellisense works
+                // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
+                // "/usr/include/wx-3.1-unofficial",
+                "/opt/WX/intel-dynamic/include/wx-3.0/",
+                "/usr/local/cuda/include"
+            ],
+            "defines": [
+                "_FILE_OFFSET_BITS=64",
+                "WXUSINGDLL",
+                "__WXGTK__",
+                "ENABLEGPU"
+            ],
+            "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true
+            }
+        },
+        {
+            "name": "GPU debug Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                // Find these with wx-config --cxxflags so that intellisense works
+                // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
+                // "/usr/include/wx-3.1-unofficial",
+                "/opt/WX/intel-dynamic/include/wx-3.0/",
+                "/usr/local/cuda/include"
+            ],
+            "defines": [
+                "_FILE_OFFSET_BITS=64",
+                "WXUSINGDLL",
+                "__WXGTK__",
+                "DEBUG",
+                "ENABLEGPU"
+            ],
+            "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true
+            }
         }
     ],
     "version": 4

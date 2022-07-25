@@ -71,12 +71,12 @@ RUN . /opt/intel/oneapi/setvars.sh  && cd /tmp/wxWidgets-3.0.5 && CXX=icpc CC=ic
     make install 
 
 # Now build with out static gcc
-RUN cd /tmp/wxWidgets-3.0.5 && CXX=g++ CC=gcc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/gnu-dynamic --with-libnotify=no \
-    --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
-    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
-    make -j$n_threads && \
-    make install && \
-    rm -rf /tmp/wxWidgets-3.0.5 /tmp/wxwidgets.tar.bz2    
+# RUN cd /tmp/wxWidgets-3.0.5 && CXX=g++ CC=gcc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/gnu-dynamic --with-libnotify=no \
+#     --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
+#     --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
+#     make -j$n_threads && \
+#     make install && \
+#     rm -rf /tmp/wxWidgets-3.0.5 /tmp/wxwidgets.tar.bz2    
 
 
 # Install wxWidgets 3.1.5 - this is used when webview is built (and must be configured as such TODO add check)

@@ -16,9 +16,8 @@ ProjectionComparisonObjects::ProjectionComparisonObjects( ) {
     y_shift_limit      = std::numeric_limits<float>::max( );
     angle_change_limit = std::numeric_limits<float>::max( );
 
-    score_buffer_size = 0;
-    mask_radius       = 0.0f;
-    mask_falloff      = 0.0f;
+    mask_radius  = 0.0f;
+    mask_falloff = 0.0f;
 
     is_allocated_gpu_density_map    = false;
     is_allocated_gpu_projection     = false;
@@ -76,12 +75,6 @@ ProjectionComparisonObjects::~ProjectionComparisonObjects( ) {
 }
 
 void ProjectionComparisonObjects::Deallocate( ) {
-    if ( score_buffer_size > 0 ) {
-#ifdef ENABLEGPU
-        cudaErr(cudaFreeHost(score_buffer));
-#endif
-        score_buffer_size = 0;
-    }
 }
 
 // These are here to prevent copying of pointers.
@@ -341,10 +334,8 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     float filter_radius_low  = 0.0f;
     if ( particle->filter_radius_low != 0.0 )
         filter_radius_low = powf(particle->pixel_size / particle->filter_radius_low, 2);
-    wxPrintf("old_buffer_size = %d, BEFORE pointer %p\n", score_buffer_size, score_buffer);
 
-    float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, score_buffer, score_buffer_size, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
-    wxPrintf("old_buffer_size = %d, BEFORE pointer %p\n", score_buffer_size, score_buffer);
+    float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
 
     return tmp_corr;
 };

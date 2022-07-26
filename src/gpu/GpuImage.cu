@@ -296,6 +296,8 @@ void GpuImage::SetupInitialValues( ) {
 
     ft_normalization_factor = 0;
 
+    // weighted_correlation_buffer_size = 0; // TODO: Should this be with b uffer stuff
+
     real_values_gpu    = NULL; // !<  Real array to hold values for REAL images.
     complex_values_gpu = NULL; // !<  Complex array to hold values for COMP images.
 
@@ -519,6 +521,23 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
             }
             break;
 
+        case b_weighted_correlation: {
+            MyAssertTrue(n_elements > 0, "For allocating the weighted_correlation_buffer buffer, you must specify the number of elements");
+            if ( is_allocated_weighted_correlation_buffer ) {
+                if ( n_elements != weighted_correlation_buffer_size ) {
+                    cudaErr(cudaFreeHost(weighted_correlation_buffer));
+                    cudaErr(cudaMallocHost(&weighted_correlation_buffer, sizeof(float) * n_elements));
+                    weighted_correlation_buffer_size = n_elements;
+                }
+            }
+            else {
+                cudaErr(cudaMallocHost(&weighted_correlation_buffer, sizeof(float) * n_elements));
+                weighted_correlation_buffer_size         = n_elements;
+                is_allocated_weighted_correlation_buffer = true;
+            }
+            break;
+        }
+
         case b_ctf_16f:
             if ( ! is_allocated_ctf_16f_buffer ) {
                 MyAssertTrue(n_elements > 0, "For allocating the ctf_16f buffer, you must specify the number of elements");
@@ -701,6 +720,12 @@ void GpuImage::BufferDestroy( ) {
         cudaErr(cudaFree(real_values_16f));
 #endif
         is_allocated_16f_buffer = false;
+    }
+
+    if ( is_allocated_weighted_correlation_buffer ) {
+        cudaErr(cudaFreeHost(weighted_correlation_buffer));
+        weighted_correlation_buffer_size         = 0;
+        is_allocated_weighted_correlation_buffer = false;
     }
 
     if ( is_allocated_ctf_16f_buffer ) {
@@ -1417,7 +1442,7 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     }
 }
 
-float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int& old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
+float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(projection_image.is_in_memory_gpu, "Projection Image Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
@@ -1453,28 +1478,10 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, floa
                                                                                                                filter_radius_high_sq);
     postcheck;
 
-    // Reuse to avoid tons of allocation
-    bool allocate_new_buffer = false;
-    wxPrintf("old_buffer_size = %d, new_buffer_size = %d pointer %p\n", old_buffer_size, new_buffer_size, rotational_average_host);
-    // old_buffer_size == 0 implies no prior allocation (can't run delete)
-    if ( old_buffer_size == 0 ) {
-        allocate_new_buffer = true;
-    }
-    else {
-        if ( old_buffer_size != new_buffer_size ) {
-            cudaErr(cudaFreeHost(rotational_average_host));
-            allocate_new_buffer = true;
-        }
-    }
-
-    if ( allocate_new_buffer ) {
-        old_buffer_size = new_buffer_size;
-        cudaErr(cudaMallocHost(&rotational_average_host, new_buffer_size * sizeof(float)));
-    }
-    wxPrintf("old_buffer_size = %d, new_buffer_size = %d pointer %p\n", old_buffer_size, new_buffer_size, rotational_average_host);
+    BufferInit(b_weighted_correlation, new_buffer_size);
 
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    cudaErr(cudaMemcpyAsync(rotational_average_host, rotational_average, shared_mem * n_blocks, cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync(weighted_correlation_buffer, rotational_average, shared_mem * n_blocks, cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
     // Wait until we've copied to free the data, but start reduction while freeing up the memory
@@ -1490,7 +1497,7 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, floa
 
     // Now aggregate out the partial PS to global memory
 
-    cross_terms     = rotational_average_host;
+    cross_terms     = weighted_correlation_buffer;
     image_norm      = &cross_terms[n_bins];
     projection_norm = &image_norm[n_bins * 2];
     int offset;

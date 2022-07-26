@@ -224,7 +224,7 @@ class GpuImage {
     void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
     void Whiten(float resolution_limit = 1.f);
 
-    float GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int& old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
+    float GetWeightedCorrelationWithImage(GpuImage& projection_image, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
 
     inline void MaskCentralCross(float vertical_mask_size, float horizontal_mask_size) { return; }; // noop
 
@@ -341,7 +341,8 @@ class GpuImage {
                             b_ctf_16f,
                             b_l2norm,
                             b_dotproduct,
-                            b_clip_into_mask };
+                            b_clip_into_mask,
+                            b_weighted_correlation };
 
     //  void CublasInit();
     void NppInit( );
@@ -382,6 +383,9 @@ class GpuImage {
     int*   clip_into_mask;
     bool   is_allocated_clip_into_mask;
     bool   is_set_realLoadAndClipInto;
+    float* weighted_correlation_buffer;
+    bool   is_allocated_weighted_correlation_buffer;
+    int    weighted_correlation_buffer_size;
 
     GpuImage* mask_CSOS;
     bool      is_allocated_mask_CSOS;

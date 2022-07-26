@@ -62,8 +62,7 @@ class ProjectionComparisonObjects {
 
 #endif
 
-    float* score_buffer;
-    int    score_buffer_size; // use the buffer size to also track allocation (intialize to zero)
+
 
     bool current_cpu_pointers_are_for_global_search;
     bool is_allocated_gpu_density_map;

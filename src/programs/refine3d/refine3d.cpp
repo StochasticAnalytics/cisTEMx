@@ -3,7 +3,7 @@
 
 // #define PRINT_SCORES
 // #define COMPARE_GPU_CPU_SCORE
-// #define SAVE_DEBUG_IMAGES
+#define SAVE_DEBUG_IMAGES
 
 #ifdef ENABLEGPU
 #warning "GPU enabled in refine3d"
@@ -38,146 +38,6 @@ class
 
 //float		beam_tilt_x = 0.0f;
 //float		beam_tilt_y = 0.0f;
-
-class ImageProjectionComparison {
-  public:
-    ImageProjectionComparison( );
-    ~ImageProjectionComparison( );
-
-    Particle*            particle;
-    ReconstructedVolume* reference_volume;
-    Image*               projection_image;
-
-    // These are used in the projection step
-
-    float  mask_radius; // normal default for cpu refinement,
-    float  mask_falloff; // normal default for cpu refinement,
-    bool   swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
-    float* score_buffer;
-    int    score_buffer_size;
-    bool   is_set_gpu_ctf_image;
-    bool   copy_gpu_particle_image;
-    bool   copy_gpu_search_particle_image;
-#ifdef ENABLEGPU
-    GpuImage* gpu_density_map;
-    GpuImage* gpu_projection;
-    GpuImage* gpu_ctf_image;
-    GpuImage* gpu_particle_image;
-
-    void PrepareGpuVolumeProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume) {
-
-        gpu_density_map = external_gpu_volume;
-        // Make a copy since we cannot take a back fft after FourierSpaceQuadrant Swap
-        Image temp_image;
-        temp_image = input_density.density_map;
-        temp_image.BackwardFFT( );
-
-        // Realspace quadrants should already be swapped. TODO: just add a check inside the method and don't bother with the argument passing
-        temp_image.SwapFourierSpaceQuadrants(false);
-        // This is a shared resource, and we don't copy the host real_values anyway, so DONOT pin the memory
-        gpu_density_map->Init(temp_image, false, false);
-        gpu_density_map->CopyHostToDeviceTextureComplex3d( );
-
-        return;
-    };
-
-    void PrepareGpuImagesProjection(GpuImage* external_gpu_projection) {
-
-        // We only want a pointer in the ImageComparisionObject so
-
-        gpu_projection = external_gpu_projection;
-        if ( ! gpu_projection->is_meta_data_initialized ) {
-            // Note this is not copying any image data, just the meta data
-            gpu_projection->Init(*projection_image);
-            gpu_projection->CopyHostToDevice( );
-        }
-
-        return;
-    };
-
-    float DoGpuProjection( ) {
-        MyDebugAssertTrue(gpu_density_map->is_allocated_texture_cache, "gpu_density_map is not allocated");
-        MyDebugAssertTrue(gpu_projection->is_in_memory_gpu, "gpu_projection is not allocated");
-        MyDebugAssertTrue(gpu_particle_image->is_in_memory_gpu, "gpu_particle_image is not allocated");
-        // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
-        global_timer.start("calc_proj gpu");
-
-        gpu_projection->ExtractSliceShiftAndCtf(gpu_density_map, gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
-                                                swap_quadrants, apply_shifts, apply_ctf, absolute_ctf);
-        if ( whiten ) {
-            gpu_projection->Whiten(particle->pixel_size / particle->filter_radius_high);
-        }
-        if ( mask_radius > 0.f ) {
-            // CosineMask is not implemented yet, but we can at least do the backFFT
-            gpu_projection->BackwardFFT( );
-        }
-        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-
-#if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU)
-        global_timer.start("copy device to host");
-        gpu_projection->CopyDeviceToHostAndSynchronize(false, false);
-        global_timer.lap("copy device to host");
-#endif
-        float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
-        float filter_radius_low  = 0.0f;
-        if ( particle->filter_radius_low != 0.0 )
-            filter_radius_low = powf(particle->pixel_size / particle->filter_radius_low, 2);
-
-            // if ( copy_gpu_particle_image ) {
-            //     if ( gpu_particle_image == nullptr ) {
-            //         gpu_particle_image = new GpuImage;
-            //     }
-            //     gpu_particle_image->Init(*particle->particle_image);
-            //     gpu_particle_image->CopyHostToDevice( );
-            //     copy_gpu_particle_image = false;
-            // }
-#ifndef CALCULATE_SCORE_ON_CPU
-
-        float tmp_corr = gpu_particle_image->GetWeightedCorrelationWithImage(*gpu_projection, score_buffer, &score_buffer_size, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
-#else
-        float tmp_corr = 0.f;
-#endif
-        global_timer.lap("calc_proj gpu");
-
-        return tmp_corr;
-    };
-
-#endif
-    int   nprj;
-    float x_shift_limit;
-    float y_shift_limit;
-    float angle_change_limit;
-
-    float initial_x_shift;
-    float initial_y_shift;
-    float initial_psi_angle;
-    float initial_phi_angle;
-    float initial_theta_angle;
-    //	Image						*temp_image;
-};
-
-ImageProjectionComparison::ImageProjectionComparison( ) {
-    x_shift_limit      = FLT_MAX;
-    y_shift_limit      = FLT_MAX;
-    angle_change_limit = FLT_MAX;
-
-    nprj                           = 0;
-    score_buffer                   = nullptr;
-    score_buffer_size              = 0;
-    is_set_gpu_ctf_image           = false;
-    mask_radius                    = 0.0f; // normal default for cpu refinement,
-    mask_falloff                   = 0.0f; // normal default for cpu refinement,
-    copy_gpu_particle_image        = true;
-    copy_gpu_search_particle_image = true;
-}
-
-ImageProjectionComparison::~ImageProjectionComparison( ) {
-    if ( score_buffer != nullptr ) {
-        delete[] score_buffer;
-        score_buffer = nullptr;
-    }
-}
-
 // This is the function which will be minimized
 float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values) {
     global_timer.start("re_cast");
@@ -233,6 +93,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     if ( comparison_object->nprj < 10 ) {
         comparison_object->gpu_particle_image.QuickAndDirtyWriteSlices("gpu_particle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
         comparison_object->particle->particle_image->QuickAndDirtyWriteSlices("cpu_particls_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
+        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         comparison_object->projection_image->SwapRealSpaceQuadrants( );
         comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
         comparison_object->projection_image->SwapRealSpaceQuadrants( );
@@ -1187,6 +1048,7 @@ bool Refine3DApp::DoCalculation( ) {
             final_image.Allocate(input_stack.ReturnXSize( ), input_stack.ReturnYSize( ), true);
 
         // ifndef ENABLEGPU this is a noop
+
         comparison_object.PrepareGpuVolumeProjection(input_3d_local, false);
 
         image_counter = 0;
@@ -1351,14 +1213,13 @@ bool Refine3DApp::DoCalculation( ) {
             temp_image_local.ForwardFFT( );
             temp_image_local.ClipInto(refine_particle_local.particle_image);
             refine_particle_local.RecordNewImageData( );
+            search_particle_local.RecordNewImageData( );
+            refine_particle_local.use_half_precision_where_possible = true;
+            search_particle_local.use_half_precision_where_possible = true;
             // Multiply by binning_factor so variance after binning is close to 1.
             //		refine_particle_local.particle_image->MultiplyByConstant(binning_factor_refine);
 
             comparison_object.SetHostPointers(&input_3d_local, &projection_image_local, &refine_particle_local, false);
-
-            // ifndef ENABLEGPU this is a noop
-            // because this is the first encounter on this loop, we need to make sure the host
-            comparison_object.PrepareGpuImages(refine_particle_local, projection_image_local, false);
 
             refine_particle_local.MapParameters(cg_starting_point);
 
@@ -1383,11 +1244,6 @@ bool Refine3DApp::DoCalculation( ) {
                     refine_particle_local.SetDefocus(input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift);
                     refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
 
-                    timer.start("ctf prep GPU images");
-                    // ifndef ENABLEGPU this is a noop.
-                    comparison_object.PrepareGpuCTFImages(refine_particle_local, false);
-                    timer.lap("ctf prep GPU images");
-
                     timer.start("ctf ssnr");
                     if ( normalize_input_3d )
                         refine_particle_local.WeightBySSNR(refine_statistics.part_SSNR, 1);
@@ -1404,6 +1260,13 @@ bool Refine3DApp::DoCalculation( ) {
                     refine_particle_local.CenterInCorner( );
                     timer.lap("ctf image proc");
                     //				refine_particle_local.WeightBySSNR(input_3d_local.statistics.part_SSNR, 1);
+
+                    // ifndef ENABLEGPU this is a noop
+                    // because this is the first encounter on this loop, we need to make sure the host
+
+                    comparison_object.PrepareGpuImages(refine_particle_local, projection_image_local, false);
+                    comparison_object.PrepareGpuCTFImages(refine_particle_local, false);
+
                     timer.start("ctf score");
                     score = -100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
                     timer.lap("ctf score");
@@ -1455,6 +1318,7 @@ bool Refine3DApp::DoCalculation( ) {
             //		input_parameters[15] = 10.0;
             //		input_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
 
+            comparison_object.PrepareGpuImages(refine_particle_local, projection_image_local, false);
             comparison_object.PrepareGpuCTFImages(refine_particle_local, false);
 
             if ( (refine_particle_local.number_of_search_dimensions > 0) && (global_search_local || local_refinement_local) ) {
@@ -1612,8 +1476,8 @@ bool Refine3DApp::DoCalculation( ) {
                             search_parameters.y_shift = input_parameters.y_shift;
                         search_particle_local.SetParameters(search_parameters);
                         search_particle_local.MapParameters(cg_starting_point);
-                        comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
 
+                        comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
                         comparison_object.PrepareGpuCTFImages(search_particle_local, true);
 
                         search_parameters.score = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
@@ -1696,8 +1560,8 @@ bool Refine3DApp::DoCalculation( ) {
                     //				my_time_in = wxDateTime::UNow();
 
                     comparison_object.SetHostPointers(&input_3d_local, &projection_image_local, &refine_particle_local, false);
-                    comparison_object.PrepareGpuImages(refine_particle_local, projection_image_local, false);
 
+                    comparison_object.PrepareGpuImages(refine_particle_local, projection_image_local, false);
                     comparison_object.PrepareGpuCTFImages(refine_particle_local, false);
 
                     refine_particle_local.MapParameters(cg_starting_point);

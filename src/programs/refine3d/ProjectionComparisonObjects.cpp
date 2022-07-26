@@ -217,8 +217,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
     switch ( image_type ) {
         case c_img_t::particle_image_t: {
 
-            host_particle.use_half_precision_where_possible = true;
-            // To avoid a bunch of redundant checks, we'll assign some temporary pointers
+                        // To avoid a bunch of redundant checks, we'll assign some temporary pointers
             GpuImage* tmp_gpu_projection     = is_for_global_search ? &gpu_search_projection : &gpu_projection;
             GpuImage* tmp_gpu_particle_image = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
 
@@ -321,7 +320,7 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     gpu_projection.ExtractSliceShiftAndCtf(&gpu_density_map, &gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
                                            swap_quadrants, apply_shifts, apply_ctf, absolute_ctf);
     if ( whiten ) {
-        // gpu_projection->Whiten(particle->pixel_size / particle->filter_radius_high);
+        gpu_projection.Whiten(particle->pixel_size / particle->filter_radius_high);
     }
     if ( mask_radius > 0.f ) {
         // CosineMask is not implemented yet, but we can at least do the backFFT

@@ -53,8 +53,6 @@ class Particle {
     bool has_ctf_image_data_changed;
     bool has_beamtilt_image_data_changed;
 
-    bool use_half_precision_where_possible;
-
   public:
     int             origin_micrograph;
     float           origin_x_coordinate; // Particle X coordinate in micrograph, in A
@@ -113,6 +111,7 @@ class Particle {
     bool                 apply_2D_masking;
     bool                 no_ctf_weighting;
     bool                 complex_ctf;
+    bool                 use_half_precision_where_possible;
 
     Particle( );
     Particle(int wanted_logical_x_dimension, int wanted_logical_y_dimension);

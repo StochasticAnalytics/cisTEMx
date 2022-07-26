@@ -42,7 +42,7 @@ class ProjectionComparisonObjects {
     ProjectionComparisonObjects& operator=(const ProjectionComparisonObjects& t);
     ProjectionComparisonObjects& operator=(const ProjectionComparisonObjects* t);
 
-    inline void SetInitialAnglesAndShifts(const Particle& wanted_particle_local) {
+    inline void SetInitialAnglesAndShifts(Particle& wanted_particle_local) {
         initial_x_shift     = wanted_particle_local.alignment_parameters.ReturnShiftX( );
         initial_y_shift     = wanted_particle_local.alignment_parameters.ReturnShiftY( );
         initial_psi_angle   = wanted_particle_local.alignment_parameters.ReturnPsiAngle( );
@@ -62,7 +62,7 @@ class ProjectionComparisonObjects {
     float DoGpuProjection( );
     void  PrepareGpuImages(Particle& host_particle, Image& host_projection_image, const bool is_for_global_search, c_img_t image_type = c_img_t::particle_image_t);
     void  PrepareGpuCTFImages(Particle& host_particle, const bool is_for_global_search);
-    void  PrepareGpuVolumeProjection(const ReconstructedVolume& input_3d_local, const bool is_for_global_search);
+    void  PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search);
 
   private:
     Particle*            particle;

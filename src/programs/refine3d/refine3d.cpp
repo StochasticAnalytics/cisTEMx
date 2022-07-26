@@ -1403,7 +1403,8 @@ bool Refine3DApp::DoCalculation( ) {
 #ifdef ENABLEGPU
                     timer.start("ctf init");
                     // TODO set FP16 bool
-                    refine_particle_local.InitCTFImageFP16(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
+                    refine_particle_local.use_half_precision_where_possible = true;
+                    refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
                     timer.lap("ctf init");
                     if ( gpu_ctf_image_needs_to_be_initialized_for_refinement ) {
                         //     // Do not allocate the single precision buffer, since we'll use fp16
@@ -1458,18 +1459,10 @@ bool Refine3DApp::DoCalculation( ) {
                 output_parameters.defocus_1 = input_parameters.defocus_1 + best_defocus_i * defocus_step;
                 output_parameters.defocus_2 = input_parameters.defocus_2 + best_defocus_i * defocus_step;
                 refine_particle_local.SetDefocus(output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift);
-#ifdef ENABLEGPU
-                refine_particle_local.InitCTFImageFP16(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
-#else
                 refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, output_parameters.defocus_1, output_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
-#endif
             }
             else {
-#ifdef ENABLEGPU
-                refine_particle_local.InitCTFImageFP16(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
-#else
                 refine_particle_local.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
-#endif
             }
             //		refine_particle_local.SetLowResolutionContrast(low_resolution_contrast);
 

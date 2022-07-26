@@ -39,27 +39,21 @@ ProjectionComparisonObjects::ProjectionComparisonObjects( ) {
     n_particle_image_allocations   = 0;
     n_projection_image_allocations = 0;
     n_ctf_image_allocations        = 0;
-    n_density_map_allocations      = 0;
 
     n_search_particle_image_allocations   = 0;
     n_search_projection_image_allocations = 0;
     n_search_ctf_image_allocations        = 0;
-    n_search_density_map_allocations      = 0;
 
     n_particle_image_HtoD_copies   = 0;
     n_projection_image_HtoD_copies = 0;
     n_ctf_image_HtoD_copies        = 0;
-    n_density_map_HtoD_copies      = 0;
 
     n_search_particle_image_HtoD_copies   = 0;
     n_search_projection_image_HtoD_copies = 0;
     n_search_ctf_image_HtoD_copies        = 0;
-    n_search_density_map_HtoD_copies      = 0;
 
     n_calls_to_prep_images            = 0;
     n_calls_to_prep_search_images     = 0;
-    n_calls_to_prep_volumes           = 0;
-    n_calls_to_prep_search_volumes    = 0;
     n_calls_to_prep_ctf_images        = 0;
     n_calls_to_prep_search_ctf_images = 0;
 
@@ -114,11 +108,15 @@ ProjectionComparisonObjects& ProjectionComparisonObjects::operator=(const Projec
 
 #ifndef ENABLEGPU
 
-void ProjectionComparisonObjects::PrepareGpuVolumeProjection(ReconstructedVolume& input_density, GpuImage* external_gpu_volume) {
+void ProjectionComparisonObjects::PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search) {
     return;
 }
 
-void ProjectionComparisonObjects::PrepareGpuImagesProjection(GpuImage* external_gpu_projection) {
+void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Image& host_projection_image, const bool is_for_global_search, c_img_t image_type) {
+    return;
+}
+
+void ProjectionComparisonObjects::PrepareGpuCTFImages(Particle& host_particle, const bool is_for_global_search) {
     return;
 }
 
@@ -137,11 +135,11 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
  * @param external_gpu_volume The GPU image to use for the volume.
 */
 
-void ProjectionComparisonObjects::PrepareGpuVolumeProjection(const ReconstructedVolume& input_3d_local, const bool is_for_global_search) {
+void ProjectionComparisonObjects::PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search) {
 
     // Make a copy since we cannot take a back fft after FourierSpaceQuadrant Swap
     Image temp_image;
-    temp_image.CopyFrom(&input_3d_local.density_map);
+    temp_image.CopyFrom(input_3d_local.density_map);
 
     MyDebugAssertTrue(temp_image.is_in_memory, "Density map is not in memory");
     MyDebugAssertFalse(temp_image.is_in_real_space, "Density map is in real space");
@@ -181,6 +179,8 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
     bool gpu_memory_was_changed;
     switch ( image_type ) {
         case c_img_t::particle_image_t: {
+
+            host_particle.use_half_precision_where_possible = true;
             // To avoid a bunch of redundant checks, we'll assign some temporary pointers
             GpuImage* tmp_gpu_projection     = is_for_global_search ? &gpu_search_projection : &gpu_projection;
             GpuImage* tmp_gpu_particle_image = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;

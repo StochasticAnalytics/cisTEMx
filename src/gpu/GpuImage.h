@@ -192,9 +192,12 @@ class GpuImage {
     ///// Methods that do not have a counterpart in the image class
     ////////////////////////////////////////////////////////////////////////
 
-    void CopyHostToDevice( );
+    void CopyHostToDevice(bool should_block_until_complete = false);
+
+    void CopyHostToDeviceAndSynchronize( ) { CopyHostToDevice(true); };
+
     void CopyHostToDeviceTextureComplex3d( );
-    void CopyHostToDevice16f( ); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
+    void CopyHostToDevice16f(bool should_block_until_finished = false ); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
     void CopyDeviceToHostAndSynchronize(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true, bool unpin_host_memory = true);

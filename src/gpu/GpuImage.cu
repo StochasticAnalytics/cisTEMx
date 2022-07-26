@@ -326,6 +326,7 @@ bool GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory,
             Deallocate( );
             gpu_memory_was_changed = true;
         }
+        return gpu_memory_was_changed;
     }
 
     CopyCpuImageMetaData(cpu_image);
@@ -1855,7 +1856,7 @@ void GpuImage::Zeros( ) {
     postcheck;
 }
 
-void GpuImage::CopyHostToDevice( ) {
+void GpuImage::CopyHostToDevice(bool should_block_until_complete) {
 
     MyAssertTrue(is_in_memory, "Host memory not allocated");
 
@@ -1868,6 +1869,9 @@ void GpuImage::CopyHostToDevice( ) {
     postcheck;
 
     CopyCpuImageMetaData(*host_image_ptr);
+    if ( should_block_until_complete ) {
+        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    }
 }
 
 void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
@@ -1960,7 +1964,7 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
     delete[] host_array_imag;
 }
 
-void GpuImage::CopyHostToDevice16f( ) {
+void GpuImage::CopyHostToDevice16f(bool should_block_until_finished) {
 
     MyAssertTrue(host_image_ptr->is_in_memory_16f, "Host memory not allocated");
     MyAssertFalse(host_image_ptr->is_in_real_space, "CopyHostRealPartToDevice should only be called for complex images");
@@ -1981,6 +1985,9 @@ void GpuImage::CopyHostToDevice16f( ) {
     Record( );
     postcheck;
 
+    if ( should_block_until_finished ) {
+        cudaError(cudaStreamSynchronize(cudaStreamPerThread));
+    }
     Wait( );
     cudaErr(cudaHostUnregister(tmpPinnedPtr));
 }
@@ -3404,6 +3411,8 @@ void GpuImage::CopyCpuImageMetaData(Image& cpu_image) {
     real_memory_allocated = cpu_image.real_memory_allocated;
 
     ft_normalization_factor = cpu_image.ft_normalization_factor;
+
+    is_meta_data_initialized = true;
 }
 
 void GpuImage::CopyGpuImageMetaData(const GpuImage* other_image) {
@@ -3902,7 +3911,7 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
     // MyAssertTrue(IsCubic( ), "Image volume to project is not cubic"); // This is checked on call to CopyHostToDeviceTextureComplex3d
     MyAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
     MyAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
-    MyAssertTrue(ctf_image->is_in_memory_gpu, "Error: gpu memory not allocated");
+    MyAssertTrue(ctf_image->is_allocated_ctf_16f_buffer, "Error: ctf fp16 gpu memory not allocated");
 
     // Get launch params for a complex non-redundant half image
     ReturnLaunchParamters(dims, false);

@@ -28,47 +28,10 @@ class GpuImage;
 #include "../../core/cistem_constants.h"
 using c_img_t = cistem::PCOS_image_type::Enum;
 
+
 class ProjectionComparisonObjects {
 
-  public:
-    // Intended to be constructed *inside* any parallel region. (Copying is blocked below.)
-    // Thread safety is the name of the game. And sure, using omp private() should work if careful, but by mess with it?
-    ProjectionComparisonObjects( );
-    ~ProjectionComparisonObjects( );
-    void Deallocate( );
-
-    // Explicitly define copy and assignment operators to prevent copying of pointers.
-    ProjectionComparisonObjects(const ProjectionComparisonObjects& other_pcos);
-    ProjectionComparisonObjects& operator=(const ProjectionComparisonObjects& t);
-    ProjectionComparisonObjects& operator=(const ProjectionComparisonObjects* t);
-
-    inline void SetInitialAnglesAndShifts(Particle& wanted_particle_local) {
-        initial_x_shift     = wanted_particle_local.alignment_parameters.ReturnShiftX( );
-        initial_y_shift     = wanted_particle_local.alignment_parameters.ReturnShiftY( );
-        initial_psi_angle   = wanted_particle_local.alignment_parameters.ReturnPsiAngle( );
-        initial_theta_angle = wanted_particle_local.alignment_parameters.ReturnThetaAngle( );
-        initial_phi_angle   = wanted_particle_local.alignment_parameters.ReturnPhiAngle( );
-    }
-
-    inline void SetHostPointers(ReconstructedVolume* input_3d_local, Image* projection_image_local, Particle* refine_particle_local, bool is_for_global_search) {
-        current_cpu_pointers_are_for_global_search = is_for_global_search ? true : false;
-
-        reference_volume = input_3d_local;
-        projection_image = projection_image_local;
-        particle         = refine_particle_local;
-    }
-
-    // These are used in the projection step. ifndef ENABLEGPU, they are just no-ops.
-    float DoGpuProjection( );
-    void  PrepareGpuImages(Particle& host_particle, Image& host_projection_image, const bool is_for_global_search, c_img_t image_type = c_img_t::particle_image_t);
-    void  PrepareGpuCTFImages(Particle& host_particle, const bool is_for_global_search);
-    void  PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search);
-
-  private:
-    Particle*            particle;
-    ReconstructedVolume* reference_volume;
-    Image*               projection_image;
-
+    public:
 #ifdef ENABLEGPU
     // the search volumes refer to global (grid search) which happens either in CTF refinement or in global search.
     GpuImage gpu_density_map;
@@ -80,23 +43,26 @@ class ProjectionComparisonObjects {
     GpuImage gpu_search_projection;
     GpuImage gpu_search_ctf_image;
     GpuImage gpu_search_particle_image;
+
+    GpuImage clean_copy;
+// #else
+//     // FIXME: shouldn't need to do this to get Cpu to compile - but in some debug steps still accessing the GPU members directly (also FIXME)
+//     Image gpu_density_map;
+//     Image gpu_projection;
+//     Image gpu_ctf_image;
+//     Image gpu_particle_image;
+
+//     Image gpu_search_density_map;
+//     Image gpu_search_projection;
+//     Image gpu_search_ctf_image;
+//     Image gpu_search_particle_image;
+
+//     Image clean_copy;
+
 #endif
 
-    float  mask_radius;
-    float  mask_falloff;
-    bool   swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
     float* score_buffer;
     int    score_buffer_size; // use the buffer size to also track allocation (intialize to zero)
-
-    float x_shift_limit;
-    float y_shift_limit;
-    float angle_change_limit;
-
-    float initial_x_shift;
-    float initial_y_shift;
-    float initial_psi_angle;
-    float initial_phi_angle;
-    float initial_theta_angle;
 
     bool current_cpu_pointers_are_for_global_search;
     bool is_allocated_gpu_density_map;
@@ -136,6 +102,63 @@ class ProjectionComparisonObjects {
     int n_calls_to_prep_search_images;
     int n_calls_to_prep_search_ctf_images;
 #endif
+
+    // Intended to be constructed *inside* any parallel region. (Copying is blocked below.)
+    // Thread safety is the name of the game. And sure, using omp private() should work if careful, but by mess with it?
+    ProjectionComparisonObjects( );
+    ~ProjectionComparisonObjects( );
+    void Deallocate( );
+
+    // Explicitly define copy and assignment operators to prevent copying of pointers.
+    ProjectionComparisonObjects(const ProjectionComparisonObjects& other_pcos);
+    ProjectionComparisonObjects& operator=(const ProjectionComparisonObjects& t);
+    ProjectionComparisonObjects& operator=(const ProjectionComparisonObjects* t);
+
+    inline void SetInitialAnglesAndShifts(Particle& wanted_particle_local) {
+        initial_x_shift     = wanted_particle_local.alignment_parameters.ReturnShiftX( );
+        initial_y_shift     = wanted_particle_local.alignment_parameters.ReturnShiftY( );
+        initial_psi_angle   = wanted_particle_local.alignment_parameters.ReturnPsiAngle( );
+        initial_theta_angle = wanted_particle_local.alignment_parameters.ReturnThetaAngle( );
+        initial_phi_angle   = wanted_particle_local.alignment_parameters.ReturnPhiAngle( );
+    }
+
+    inline void SetHostPointers(ReconstructedVolume* input_3d_local, Image* projection_image_local, Particle* refine_particle_local, bool is_for_global_search) {
+        current_cpu_pointers_are_for_global_search = is_for_global_search ? true : false;
+
+        reference_volume = input_3d_local;
+        projection_image = projection_image_local;
+        particle         = refine_particle_local;
+    }
+
+    // These are used in the projection step. ifndef ENABLEGPU, they are just no-ops.
+    float DoGpuProjection();
+    void  PrepareGpuImages(Particle& host_particle, Image& host_projection_image, const bool is_for_global_search, c_img_t image_type = c_img_t::particle_image_t);
+    void  PrepareGpuCTFImages(Particle& host_particle, const bool is_for_global_search);
+    void  PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search);
+
+    // In the ctf refinement loop, we want to keep a clean copy of the particle image and just copy it back each loop
+    void GetCleanCopyOfParticleImage(const bool is_for_global_search);
+
+    void DeallocateCleanCopyOfParticleImage( );
+
+    void ResetCleanCopyOfParticleImage(const bool is_for_global_search);
+
+    Particle*            particle;
+    ReconstructedVolume* reference_volume;
+    Image*               projection_image;
+    bool                 swap_quadrants, apply_shifts, whiten, apply_ctf, absolute_ctf;
+
+    float mask_radius;
+    float mask_falloff;
+    float x_shift_limit;
+    float y_shift_limit;
+    float angle_change_limit;
+
+    float initial_x_shift;
+    float initial_y_shift;
+    float initial_psi_angle;
+    float initial_phi_angle;
+    float initial_theta_angle;
 };
 
 #endif // _SRC_PROGRAMS_REFINE3D_PROJECTION_COMPARISON_OBJECTS_H_

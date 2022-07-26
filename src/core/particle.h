@@ -172,6 +172,8 @@ class Particle {
 
     inline void RecordGpuBeamTiltImageAssociation( ) { has_beamtilt_image_data_changed = false; };
 
+    inline void RecordNewImageData( ) { has_particle_image_data_changed = true; };
+
     inline bool HasParticleImageDataChanged( ) { return has_particle_image_data_changed; };
 
     inline bool HasCTFImageDataChanged( ) { return has_ctf_image_data_changed; };

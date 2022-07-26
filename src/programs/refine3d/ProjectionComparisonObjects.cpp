@@ -66,7 +66,7 @@ ProjectionComparisonObjects::~ProjectionComparisonObjects( ) {
 #ifdef DEBUG
     wxPrintf("\n----------------------------------------------------\n");
     wxPrintf("Image type : Calls : Allocs : HtoD copies\n");
-    wxPrintf("Particle image : %i : %i : %i\n", n_calls_to_prep_images, n_particle_image_allocations, n_particle_image_HtoD_copies);
+    wxPrintf("Particley image : %i : %i : %i\n", n_calls_to_prep_images, n_particle_image_allocations, n_particle_image_HtoD_copies);
     wxPrintf("Projection image : %i : %i : %i\n", n_calls_to_prep_images, n_projection_image_allocations, n_projection_image_HtoD_copies);
     wxPrintf("CTF image : %i : %i : %i\n", n_calls_to_prep_images, n_ctf_image_allocations, n_ctf_image_HtoD_copies);
     wxPrintf("Particle search image : %i : %i : %i\n", n_calls_to_prep_search_images, n_search_particle_image_allocations, n_search_particle_image_HtoD_copies);
@@ -124,7 +124,44 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     return 0.0f;
 }
 
+void ProjectionComparisonObjects::GetCleanCopyOfParticleImage(const bool is_for_global_search) {
+    return;
+}
+
+void ProjectionComparisonObjects::ResetCleanCopyOfParticleImage(const bool is_for_global_search) {
+    return;
+}
+
+void ProjectionComparisonObjects::DeallocateCleanCopyOfParticleImage( ) {
+    return;
+}
+
 #else
+
+void ProjectionComparisonObjects::GetCleanCopyOfParticleImage(const bool is_for_global_search) {
+
+    GpuImage* tmp_ptr = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
+
+    MyDebugAssertTrue(tmp_ptr->is_in_memory_gpu, "Image is not in GPU memory");
+
+    clean_copy = *tmp_ptr;
+}
+
+void ProjectionComparisonObjects::DeallocateCleanCopyOfParticleImage( ) {
+    { clean_copy.Deallocate( ); };
+    return;
+}
+
+void ProjectionComparisonObjects::ResetCleanCopyOfParticleImage(const bool is_for_global_search) {
+
+    GpuImage* tmp_ptr = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
+
+    MyDebugAssertTrue(clean_copy.is_in_memory_gpu, "Clean copy of particle image is not in memory!");
+    MyDebugAssertTrue(tmp_ptr->is_in_memory_gpu, "Particle image is not in memory!");
+
+    // Leave this as a blocking call
+    cudaErr(cudaMemcpy(tmp_ptr->real_values_gpu, clean_copy.real_values_gpu, clean_copy.real_memory_allocated * sizeof(float), cudaMemcpyDeviceToDevice));
+}
 
 /** 
  * @brief Prepare complex input image and then FFT to obtain a Fourier Quadrant swapped half-FFT that includes the X=-1 plane.
@@ -186,12 +223,14 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
             GpuImage* tmp_gpu_particle_image = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
 
             // Init checks for equivalent size and whether or not to allocate.
+            wxPrintf("In memory tmp_ptr %d %p\n", tmp_gpu_particle_image->is_in_memory_gpu, tmp_gpu_particle_image);
             gpu_memory_was_changed         = tmp_gpu_particle_image->Init(*host_particle.particle_image, pin_host_memory, allocate_gpu_memory_if_needed);
             host_particle_data_has_changed = host_particle.HasParticleImageDataChanged( );
 
             // If we altered the gpu memory, or if the host particle has recorded a change to its underlying data, we need to copy host - > device.
+            wxPrintf("GPU memory was changed: %d host_particle_data_has_changed: %d\n", gpu_memory_was_changed, host_particle_data_has_changed);
             if ( gpu_memory_was_changed || host_particle_data_has_changed ) {
-                tmp_gpu_projection->CopyHostToDevice( );
+                tmp_gpu_particle_image->CopyHostToDeviceAndSynchronize( );
             }
 
             // Now the same for the projection image, except we only care about it's size and pointer association, not the host data so no need for a copy.
@@ -300,12 +339,12 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     gpu_projection->CopyDeviceToHostAndSynchronize(false, false);
     global_timer.lap("copy device to host");
 #endif
+
+#ifndef CALCULATE_SCORE_ON_CPU
     float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
     float filter_radius_low  = 0.0f;
     if ( particle->filter_radius_low != 0.0 )
         filter_radius_low = powf(particle->pixel_size / particle->filter_radius_low, 2);
-
-#ifndef CALCULATE_SCORE_ON_CPU
     float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, score_buffer, &score_buffer_size, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
 #else
     float tmp_corr = 0.f;

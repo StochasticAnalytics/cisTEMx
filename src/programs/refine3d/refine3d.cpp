@@ -2,8 +2,9 @@
 #include <cistem_config.h>
 
 // #define PRINT_SCORES
-// #define COMPARE_GPU_CPU_SCORE
-#define SAVE_DEBUG_IMAGES
+#define COMPARE_GPU_CPU_SCORE
+// #define SAVE_DEBUG_IMAGES
+#define CALCULATE_SCORE_ON_CPU
 
 #ifdef ENABLEGPU
 #warning "GPU enabled in refine3d"
@@ -21,7 +22,10 @@ using namespace cistem_timer_noop;
 
 #include "ProjectionComparisonObjects.h"
 
-#define CALCULATE_SCORE_ON_CPU
+#if ( defined(CALCULATE_SCORE_ON_CPU) && ! defined(CALCULATE_SCORE_ON_CPU_pcos) ) || (! defined(CALCULATE_SCORE_ON_CPU) && defined(CALCULATE_SCORE_ON_CPU_pcos))
+#error "To trouble shoot scoring on the cpu , you have to modify refine3d and ProjectionComparisonObjects.h"
+#endif
+
 StopWatch global_timer;
 
 class
@@ -92,7 +96,9 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 #ifdef SAVE_DEBUG_IMAGES
     if ( comparison_object->nprj < 10 ) {
         comparison_object->gpu_particle_image.QuickAndDirtyWriteSlices("gpu_particle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
-        comparison_object->particle->particle_image->QuickAndDirtyWriteSlices("cpu_particls_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
+        comparison_object->particle->particle_image->QuickAndDirtyWriteSlices("cpu_particle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
+        comparison_object->gpu_projection.SwapRealSpaceQuadrants( );
+        comparison_object->gpu_projection.QuickAndDirtyWriteSlices("gpu_projection_fromGPU_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         comparison_object->projection_image->SwapRealSpaceQuadrants( );
         comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);

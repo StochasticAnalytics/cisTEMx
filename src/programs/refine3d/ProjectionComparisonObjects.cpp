@@ -217,17 +217,15 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
     switch ( image_type ) {
         case c_img_t::particle_image_t: {
 
-                        // To avoid a bunch of redundant checks, we'll assign some temporary pointers
+            // To avoid a bunch of redundant checks, we'll assign some temporary pointers
             GpuImage* tmp_gpu_projection     = is_for_global_search ? &gpu_search_projection : &gpu_projection;
             GpuImage* tmp_gpu_particle_image = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
 
             // Init checks for equivalent size and whether or not to allocate.
-            wxPrintf("In memory tmp_ptr %d %p\n", tmp_gpu_particle_image->is_in_memory_gpu, tmp_gpu_particle_image);
             gpu_memory_was_changed         = tmp_gpu_particle_image->Init(*host_particle.particle_image, pin_host_memory, allocate_gpu_memory_if_needed);
             host_particle_data_has_changed = host_particle.HasParticleImageDataChanged( );
 
             // If we altered the gpu memory, or if the host particle has recorded a change to its underlying data, we need to copy host - > device.
-            wxPrintf("GPU memory was changed: %d host_particle_data_has_changed: %d\n", gpu_memory_was_changed, host_particle_data_has_changed);
             if ( gpu_memory_was_changed || host_particle_data_has_changed ) {
                 tmp_gpu_particle_image->CopyHostToDeviceAndSynchronize( );
             }
@@ -333,13 +331,11 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 #endif
 
-#if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU)
-    global_timer.start("copy device to host");
-    gpu_projection->CopyDeviceToHostAndSynchronize(false, false);
-    global_timer.lap("copy device to host");
+#if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU_pcos)
+    gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
 #endif
 
-#ifndef CALCULATE_SCORE_ON_CPU
+#ifndef CALCULATE_SCORE_ON_CPU_pcos
     float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
     float filter_radius_low  = 0.0f;
     if ( particle->filter_radius_low != 0.0 )

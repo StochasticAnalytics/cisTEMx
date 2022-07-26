@@ -250,7 +250,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     std::vector<bool> absolute_ctf   = {false, false, false};
     std::vector<bool> whiten         = {true, true, true};
 
-    // Dummy ctf imag; TODO: add random CTFs w/ w/o absolute CTF.
+    // Dummy ctf imag; TODO: add random CTFs w/ w/o absolute CTF. needs to be updated with
     GpuImage ctf_img;
     ctf_img.CopyFrom(&gpu_prj);
     ctf_img.SetToConstant(1.f);

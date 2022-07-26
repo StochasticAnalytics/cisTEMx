@@ -14,7 +14,8 @@ to only do what is strictly necessary, while cpu Image objects still handle much
 the actual data itself may fall out of sync with an associated GpuImage object.
 
 */
-#define CALCULATE_SCORE_ON_CPU_pcos
+// #define CALCULATE_SCORE_ON_CPU_pcos
+
 #ifndef _SRC_PROGRAMS_REFINE3D_PROJECTION_COMPARISON_OBJECTS_H_
 #define _SRC_PROGRAMS_REFINE3D_PROJECTION_COMPARISON_OBJECTS_H_
 

@@ -77,7 +77,9 @@ ProjectionComparisonObjects::~ProjectionComparisonObjects( ) {
 
 void ProjectionComparisonObjects::Deallocate( ) {
     if ( score_buffer_size > 0 ) {
-        delete[] score_buffer;
+#ifdef ENABLEGPU
+        cudaErr(cudaFreeHost(score_buffer));
+#endif
         score_buffer_size = 0;
     }
 }
@@ -335,15 +337,14 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
 #endif
 
-#ifndef CALCULATE_SCORE_ON_CPU_pcos
     float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
     float filter_radius_low  = 0.0f;
     if ( particle->filter_radius_low != 0.0 )
         filter_radius_low = powf(particle->pixel_size / particle->filter_radius_low, 2);
-    float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, score_buffer, &score_buffer_size, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
-#else
-    float tmp_corr = 0.f;
-#endif
+    wxPrintf("old_buffer_size = %d, BEFORE pointer %p\n", score_buffer_size, score_buffer);
+
+    float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, score_buffer, score_buffer_size, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
+    wxPrintf("old_buffer_size = %d, BEFORE pointer %p\n", score_buffer_size, score_buffer);
 
     return tmp_corr;
 };

@@ -197,7 +197,7 @@ class GpuImage {
     void CopyHostToDeviceAndSynchronize( ) { CopyHostToDevice(true); };
 
     void CopyHostToDeviceTextureComplex3d( );
-    void CopyHostToDevice16f(bool should_block_until_finished = false ); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
+    void CopyHostToDevice16f(bool should_block_until_finished = false); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
     void CopyDeviceToHostAndSynchronize(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
     void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true, bool unpin_host_memory = true);
@@ -224,7 +224,7 @@ class GpuImage {
     void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
     void Whiten(float resolution_limit = 1.f);
 
-    float GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int* old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
+    float GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int& old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
 
     inline void MaskCentralCross(float vertical_mask_size, float horizontal_mask_size) { return; }; // noop
 

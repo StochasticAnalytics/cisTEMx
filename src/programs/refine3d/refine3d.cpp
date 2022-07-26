@@ -4,7 +4,7 @@
 // #define PRINT_SCORES
 #define COMPARE_GPU_CPU_SCORE
 // #define SAVE_DEBUG_IMAGES
-#define CALCULATE_SCORE_ON_CPU
+// #define CALCULATE_SCORE_ON_CPU
 
 #ifdef ENABLEGPU
 #warning "GPU enabled in refine3d"
@@ -85,11 +85,9 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
 #ifdef ENABLEGPU
 
-#ifndef COMPARE_GPU_CPU_SCORE
     // Flip the overrides;
     calculate_projection = false;
     use_gpu_projection   = true;
-#endif
     // First get the projection, optionally shifted and multiplied by the CTF
     float gpu_score = comparison_object->DoGpuProjection( );
 
@@ -169,7 +167,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     global_timer.start("ReturnScore");
 
-#ifdef CALCULATE_SCORE_ON_CPU
+#if defined(CALCULATE_SCORE_ON_CPU) || ! defined(ENABLEGPU)
     float tmp_corr = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
                                                                                                   comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
 #else

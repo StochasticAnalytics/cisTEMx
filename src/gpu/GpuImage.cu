@@ -1406,9 +1406,9 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     // all the sum1s for every block are contiguous in memory
     // threadIdx.x + threadIdx.y * blockDim.x = linear index in a 2d block of threads
     // blockIdx.x + blockIdx.y * gridDim.x = linear index in 2d grid of blocks
-    float* cross_terms     = &rotational_average[n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
-    float* image_sums      = &cross_terms[n_bins * gridDim.x * gridDim.y];
-    float* projection_sums = &image_sums[n_bins * gridDim.x * gridDim.y];
+    float* cross_terms     = &rotational_average[3 * n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
+    float* image_sums      = &cross_terms[n_bins];
+    float* projection_sums = &image_sums[n_bins];
 
     for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
         cross_terms[i]     = sum1[i];
@@ -1417,7 +1417,7 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     }
 }
 
-float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int* old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
+float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, float* rotational_average_host, int& old_buffer_size, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(projection_image.is_in_memory_gpu, "Projection Image Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
@@ -1455,19 +1455,24 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, floa
 
     // Reuse to avoid tons of allocation
     bool allocate_new_buffer = false;
-    if ( rotational_average_host != nullptr ) {
-        if ( *old_buffer_size != new_buffer_size ) {
-            delete[] rotational_average_host;
+    wxPrintf("old_buffer_size = %d, new_buffer_size = %d pointer %p\n", old_buffer_size, new_buffer_size, rotational_average_host);
+    // old_buffer_size == 0 implies no prior allocation (can't run delete)
+    if ( old_buffer_size == 0 ) {
+        allocate_new_buffer = true;
+    }
+    else {
+        if ( old_buffer_size != new_buffer_size ) {
+            cudaErr(cudaFreeHost(rotational_average_host));
             allocate_new_buffer = true;
         }
     }
-    else {
-        allocate_new_buffer = true;
-    }
+
     if ( allocate_new_buffer ) {
-        *old_buffer_size        = new_buffer_size;
-        rotational_average_host = new float[new_buffer_size];
+        old_buffer_size = new_buffer_size;
+        cudaErr(cudaMallocHost(&rotational_average_host, new_buffer_size * sizeof(float)));
     }
+    wxPrintf("old_buffer_size = %d, new_buffer_size = %d pointer %p\n", old_buffer_size, new_buffer_size, rotational_average_host);
+
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     cudaErr(cudaMemcpyAsync(rotational_average_host, rotational_average, shared_mem * n_blocks, cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
@@ -1486,11 +1491,11 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, floa
     // Now aggregate out the partial PS to global memory
 
     cross_terms     = rotational_average_host;
-    image_norm      = &cross_terms[n_bins * n_blocks];
-    projection_norm = &image_norm[n_bins * n_blocks];
+    image_norm      = &cross_terms[n_bins];
+    projection_norm = &image_norm[n_bins * 2];
     int offset;
     for ( int iBlock = 0; iBlock < n_blocks; iBlock++ ) {
-        offset = n_bins * iBlock;
+        offset = 3 * n_bins * iBlock;
         // Exclude last resolution bin since it may contain some incompletely calculated terms
         for ( int i = 1; i < n_bins - 1; i++ ) {
             if ( projection_norm[i + offset] != 0.0 ) { // I think this check is no longer needed because we don't de

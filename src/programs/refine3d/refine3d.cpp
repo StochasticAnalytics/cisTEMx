@@ -1,5 +1,8 @@
 
 #include <cistem_config.h>
+// #define SAVE_DEBUG_IMAGES
+// #define PRINT_SCORES
+// #define COMPARE_GPU_CPU_SCORE
 
 #ifdef ENABLEGPU
 #warning "GPU enabled in refine3d"
@@ -11,15 +14,13 @@
 
 #include "ProjectionComparisonObjects.h"
 
-#ifdef PROFILING
+#ifdef CISTEM_PROFILING
 using namespace cistem_timer;
 #else
 using namespace cistem_timer_noop;
 #endif
 
-// #define SAVE_DEBUG_IMAGES
-// #define PRINT_SCORES
-// #define COMPARE_GPU_CPU_SCORE
+
 #define CALCULATE_SCORE_ON_CPU
 StopWatch global_timer;
 
@@ -1401,6 +1402,7 @@ bool Refine3DApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
                     timer.start("ctf init");
+                    // TODO set FP16 bool
                     refine_particle_local.InitCTFImageFP16(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1 + defocus_i * defocus_step, input_parameters.defocus_2 + defocus_i * defocus_step, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
                     timer.lap("ctf init");
                     if ( gpu_ctf_image_needs_to_be_initialized_for_refinement ) {

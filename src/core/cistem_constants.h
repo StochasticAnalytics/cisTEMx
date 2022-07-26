@@ -29,6 +29,13 @@ enum Enum : int { single_particle,
                   template_matching };
 } // namespace workflow
 
+namespace PCOS_image_type {
+enum Enum : int { reference_volume_t,
+                  particle_image_t,
+                  ctf_image_t,
+                  beamtilt_image_t };
+}
+
 } // namespace cistem
 
 #endif

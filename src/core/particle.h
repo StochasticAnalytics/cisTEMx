@@ -47,6 +47,14 @@ class ParameterMap {
 
 class Particle {
 
+  private:
+    // To minize allocations and copy on the GPU, we need to keep track of whether or not an associated host image has changed.
+    bool has_particle_image_data_changed;
+    bool has_ctf_image_data_changed;
+    bool has_beamtilt_image_data_changed;
+
+    bool use_half_precision_where_possible;
+
   public:
     int             origin_micrograph;
     float           origin_x_coordinate; // Particle X coordinate in micrograph, in A
@@ -110,28 +118,26 @@ class Particle {
     Particle(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
     ~Particle( );
 
-    void CopyAllButImages(const Particle* other_particle);
-    void Init( );
-    void AllocateImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
-    void AllocateCTFImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
-    void Allocate(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
-    void Deallocate( );
-    void ResetImageFlags( );
-    void PhaseShift( );
-    void PhaseShiftInverse( );
-    void Whiten(float resolution_limit = 0.49);
-    void ForwardFFT(bool do_scaling = true);
-    void BackwardFFT( );
-    void CosineMask(bool invert = false, bool force_mask_value = false, float wanted_mask_value = 0.0);
-    void CenterInBox( );
-    void CenterInCorner( );
-    void InitCTF(float voltage_kV, float spherical_aberration_mm, float amplitude_contrast, float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift, float beam_tilt_x = 0.0f, float beam_tilt_y = 0.0f, float particle_shift_x = 0.0f, float particle_shift_y = 0.0f);
-    void SetDefocus(float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift);
-    void SetBeamTilt(float beam_tilt_x, float beam_tilt_y, float particle_shift_x = 0.0f, float particle_shift_y = 0.0f);
-    void SetLowResolutionContrast(float low_resolution_contrast);
-    void InitCTFImage(float voltage_kV, float spherical_aberration_mm, float amplitude_contrast, float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift, float beam_tilt_x = 0.0f, float beam_tilt_y = 0.0f, float particle_shift_x = 0.0f, float particle_shift_y = 0.0f, bool calculate_complex_ctf = false);
-    void InitCTFImageFP16(float voltage_kV, float spherical_aberration_mm, float amplitude_contrast, float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift, float beam_tilt_x = 0.0f, float beam_tilt_y = 0.0f, float particle_shift_x = 0.0f, float particle_shift_y = 0.0f, bool calculate_complex_ctf = false);
-
+    void  CopyAllButImages(const Particle* other_particle);
+    void  Init( );
+    void  AllocateImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
+    void  AllocateCTFImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
+    void  Allocate(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
+    void  Deallocate( );
+    void  ResetImageFlags( );
+    void  PhaseShift( );
+    void  PhaseShiftInverse( );
+    void  Whiten(float resolution_limit = 0.49);
+    void  ForwardFFT(bool do_scaling = true);
+    void  BackwardFFT( );
+    void  CosineMask(bool invert = false, bool force_mask_value = false, float wanted_mask_value = 0.0);
+    void  CenterInBox( );
+    void  CenterInCorner( );
+    void  InitCTF(float voltage_kV, float spherical_aberration_mm, float amplitude_contrast, float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift, float beam_tilt_x = 0.0f, float beam_tilt_y = 0.0f, float particle_shift_x = 0.0f, float particle_shift_y = 0.0f);
+    void  SetDefocus(float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift);
+    void  SetBeamTilt(float beam_tilt_x, float beam_tilt_y, float particle_shift_x = 0.0f, float particle_shift_y = 0.0f);
+    void  SetLowResolutionContrast(float low_resolution_contrast);
+    void  InitCTFImage(float voltage_kV, float spherical_aberration_mm, float amplitude_contrast, float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift, float beam_tilt_x = 0.0f, float beam_tilt_y = 0.0f, float particle_shift_x = 0.0f, float particle_shift_y = 0.0f, bool calculate_complex_ctf = false);
     void  PhaseFlipImage( );
     void  CTFMultiplyImage( );
     void  BeamTiltMultiplyImage( );
@@ -158,4 +164,18 @@ class Particle {
                  float best_psi, Image& best_correlation_map, bool calculate_correlation_map_only = false, bool uncrop = true, bool apply_ctf_to_classes = true,
                  Image* image_to_blur = NULL, Image* diff_image_to_blur = NULL, float max_shift_in_angstroms = FLT_MAX);
     void  EstimateSigmaNoise( );
+
+    // These are to be called from methods that bind Image/GpuImage objects. The bools are set in any Partcle::method() where the respective object's data are changed via
+    // maths or memory ops.
+    inline void RecordGpuParticleImageAssociation( ) { has_particle_image_data_changed = false; };
+
+    inline void RecordGpuCTFImageAssociation( ) { has_ctf_image_data_changed = false; };
+
+    inline void RecordGpuBeamTiltImageAssociation( ) { has_beamtilt_image_data_changed = false; };
+
+    inline bool HasParticleImageDataChanged( ) { return has_particle_image_data_changed; };
+
+    inline bool HasCTFImageDataChanged( ) { return has_ctf_image_data_changed; };
+
+    inline bool HasBeamTiltImageDataChanged( ) { return has_beamtilt_image_data_changed; };
 };

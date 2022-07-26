@@ -262,8 +262,9 @@ GpuImage::~GpuImage( ) {
  * @param cpu_image 
  * @param allocate_real_values 
  */
-void GpuImage::Init(Image& cpu_image, bool pin_host_memory, bool allocate_real_values) {
-    InitializeBasedOnCpuImage(cpu_image, pin_host_memory, allocate_real_values);
+bool GpuImage::Init(Image& cpu_image, bool pin_host_memory, bool allocate_real_values) {
+    // Returns true if gpu_memory was changed (alloc/dealloc)
+    return InitializeBasedOnCpuImage(cpu_image, pin_host_memory, allocate_real_values);
 }
 
 void GpuImage::SetupInitialValues( ) {
@@ -315,13 +316,15 @@ void GpuImage::CopyFrom(GpuImage* other_image) {
     *this = other_image;
 }
 
-void GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values) {
+bool GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values) {
 
+    bool gpu_memory_was_changed = false;
     // First check to see if we have existed before
     if ( is_meta_data_initialized ) {
         // Okay, the GpuImage has existed, see if it is already pointing at the cpu
         if ( real_memory_allocated != cpu_image.real_memory_allocated && cpu_image.real_memory_allocated > 0 ) {
             Deallocate( );
+            gpu_memory_was_changed = true;
         }
     }
 
@@ -329,7 +332,7 @@ void GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory,
 
     if ( allocate_real_values ) {
         // This will also check to ensure we are not allocated
-        Allocate(dims.x, dims.y, dims.z, is_in_real_space);
+        gpu_memory_was_changed = gpu_memory_was_changed || Allocate(dims.x, dims.y, dims.z, is_in_real_space);
     }
 
     if ( pin_host_memory && ! is_host_memory_pinned ) {
@@ -337,6 +340,8 @@ void GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory,
         is_host_memory_pinned = true;
         cudaErr(cudaHostGetDevicePointer(&pinnedPtr, real_values, 0));
     }
+
+    return gpu_memory_was_changed;
 }
 
 void GpuImage::UpdateCpuFlags( ) {
@@ -2951,11 +2956,11 @@ void GpuImage::AllocateTmpVarsAndEvents( ) {
     }
 }
 
-void GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space) {
+bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space) {
     MyAssertTrue(wanted_x_size > 0 && wanted_y_size > 0 && wanted_z_size > 0, "Bad dimensions: %i %i %i\n", wanted_x_size, wanted_y_size, wanted_z_size);
 
     // check to see if we need to do anything?
-
+    bool memory_was_allocated = false;
     if ( is_in_memory_gpu == true ) {
         is_in_real_space = should_be_in_real_space;
         if ( wanted_x_size == dims.x && wanted_y_size == dims.y && wanted_z_size == dims.z ) {
@@ -2993,8 +2998,9 @@ void GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
 #else
     cudaErr(cudaMalloc(&real_values_gpu, real_memory_allocated * sizeof(cufftReal)));
 #endif
-    complex_values_gpu = (cufftComplex*)real_values_gpu;
-    is_in_memory_gpu   = true;
+    memory_was_allocated = true;
+    complex_values_gpu   = (cufftComplex*)real_values_gpu;
+    is_in_memory_gpu     = true;
 
     // Update addresses etc..
     UpdateLoopingAndAddressing(wanted_x_size, wanted_y_size, wanted_z_size);
@@ -3012,6 +3018,8 @@ void GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
     ft_normalization_factor     = 1.0 / sqrtf(float(number_of_real_space_pixels));
 
     AllocateTmpVarsAndEvents( );
+
+    return memory_was_allocated;
 }
 
 void GpuImage::UpdateBoolsToDefault( ) {
@@ -3446,8 +3454,8 @@ void GpuImage::CopyGpuImageMetaData(const GpuImage* other_image) {
 /*
  Overwrite current GpuImage with a new image, then deallocate new image.
 */
-void GpuImage::Consume(GpuImage* other_image) // copy the parameters then directly steal the memory of another image, leaving it an empty shell
-{
+// copy the parameters then directly steal the memory of another image, leaving it an empty shell
+void GpuImage::Consume(GpuImage* other_image) {
     MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
 
     if ( this == other_image ) { // no need to consume, its the same image.

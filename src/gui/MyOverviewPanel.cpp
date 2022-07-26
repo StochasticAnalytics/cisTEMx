@@ -162,7 +162,7 @@ void MyOverviewPanel::SetWelcomeInfo( ) {
 #ifdef ROTATEFORSPEED
     InfoText->WriteText(wxString::Format("ROTATEFORSPEED "));
 #endif
-#ifdef PROFILING
+#ifdef CISTEM_PROFILING
     InfoText->WriteText(wxString::Format("Compiled in PROFILING mode"));
 #endif
     InfoText->Newline( );

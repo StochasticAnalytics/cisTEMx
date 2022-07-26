@@ -307,7 +307,7 @@ AM_CONDITIONAL([ENABLESAMPLES_AM], [test "$want_samples" = "yes"])
 want_profiling="no"  
 AC_ARG_ENABLE(profiling, AS_HELP_STRING([--enable-profiling],[Include fine-grained profiling [default=no]]),[
   if test "$enableval" = yes; then
-    AC_DEFINE([PROFILING], [], [Define the profiling flag])
+    AC_DEFINE([CISTEM_PROFILING], [], [Define the profiling flag])
   	want_profiling="true"
   	AC_MSG_NOTICE([Compiling with fine-grained profiling])	
   fi

@@ -14,7 +14,7 @@ class GpuImage {
     GpuImage( );
     GpuImage(const GpuImage& other_gpu_image); // copy constructor
     GpuImage(Image& cpu_image);
-    virtual ~GpuImage( );
+    ~GpuImage( );
 
     GpuImage& operator=(const GpuImage& t);
     GpuImage& operator=(const GpuImage* t);
@@ -181,9 +181,9 @@ class GpuImage {
     void  Deallocate( );
     void  ConvertToHalfPrecision(bool deallocate_single_precision = true);
     void  AllocateTmpVarsAndEvents( );
-    void  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
+    bool  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
 
-    void Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };
+    bool Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { return Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };
 
     // Combines this and UpdatePhysicalAddressOfBoxCenter and SetLogicalDimensions
     void UpdateLoopingAndAddressing(int wanted_x_size, int wanted_y_size, int wanted_z_size);
@@ -228,7 +228,7 @@ class GpuImage {
     void CalculateCrossCorrelationImageWith(GpuImage* other_image);
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
 
-    void Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
+    bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void SetCufftPlan(bool use_half_precision = false);
     void SetupInitialValues( );
     void UpdateBoolsToDefault( );
@@ -256,7 +256,7 @@ class GpuImage {
     };
 
     void CopyFrom(GpuImage* other_image);
-    void InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
+    bool InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
     bool HasSameDimensionsAs(GpuImage* other_image);

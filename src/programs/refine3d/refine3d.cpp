@@ -1,8 +1,8 @@
 
 #include <cistem_config.h>
 
-// #define PRINT_SCORES
-#define COMPARE_GPU_CPU_SCORE
+#define PRINT_SCORES
+// #define COMPARE_GPU_CPU_SCORE
 // #define SAVE_DEBUG_IMAGES
 // #define CALCULATE_SCORE_ON_CPU
 

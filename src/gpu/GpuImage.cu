@@ -535,6 +535,7 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
                 weighted_correlation_buffer_size         = n_elements;
                 is_allocated_weighted_correlation_buffer = true;
             }
+            wxPrintf("\n");
             break;
         }
 
@@ -723,7 +724,7 @@ void GpuImage::BufferDestroy( ) {
     }
 
     if ( is_allocated_weighted_correlation_buffer ) {
-        cudaErr(cudaFreeHost(weighted_correlation_buffer));
+        // cudaErr(cudaFreeHost(weighted_correlation_buffer));
         weighted_correlation_buffer_size         = 0;
         is_allocated_weighted_correlation_buffer = false;
     }
@@ -1388,13 +1389,13 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
         return;
     }
 
-    extern __shared__ float sum1[];
+    extern __shared__ float rotational_avgerage_shared[];
 
     // initialize temporary accumulation array in shared memory
     for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        sum1[i]              = 0.f;
-        sum1[i + n_bins]     = 0.f;
-        sum1[i + n_bins * 2] = 0.f;
+        rotational_avgerage_shared[i]              = 0.f;
+        rotational_avgerage_shared[i + n_bins]     = 0.f;
+        rotational_avgerage_shared[i + n_bins * 2] = 0.f;
     }
     __syncthreads( );
 
@@ -1418,27 +1419,25 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
         // This check is from Image::Whiten, but should it really be checking a float like this?
         if ( bin >= 1 ) {
             Complex temp_c = ComplexConjMul(image_values[y], projection_values[y]);
-            if ( temp_c.x != 0.f ) {
-                atomicAdd(&sum1[bin], temp_c.x);
-                atomicAdd(&sum1[bin + n_bins], ComplexModulusSquared(image_values[y]));
-                atomicAdd(&sum1[bin + n_bins * 2], ComplexModulusSquared(projection_values[y]));
+            if ( temp_c.x != 0.f && temp_c.y != 0.f ) {
+                atomicAdd(&rotational_avgerage_shared[bin], temp_c.x);
+                atomicAdd(&rotational_avgerage_shared[bin + n_bins], ComplexModulusSquared(image_values[y]));
+                atomicAdd(&rotational_avgerage_shared[bin + n_bins * 2], ComplexModulusSquared(projection_values[y]));
             }
         }
     }
     __syncthreads( );
 
     // Now write out the partial sums to global memory
-    // all the sum1s for every block are contiguous in memory
+    // all the rotational_avgerage_shareds for every block are contiguous in memory
     // threadIdx.x + threadIdx.y * blockDim.x = linear index in a 2d block of threads
     // blockIdx.x + blockIdx.y * gridDim.x = linear index in 2d grid of blocks
-    float* cross_terms     = &rotational_average[3 * n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
-    float* image_sums      = &cross_terms[n_bins];
-    float* projection_sums = &image_sums[n_bins];
+    float* cross_terms = &rotational_average[3 * n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
 
     for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        cross_terms[i]     = sum1[i];
-        image_sums[i]      = sum1[i + n_bins];
-        projection_sums[i] = sum1[i + n_bins * 2];
+        cross_terms[i]              = rotational_avgerage_shared[i];
+        cross_terms[i + n_bins]     = rotational_avgerage_shared[i + n_bins];
+        cross_terms[i + n_bins * 2] = rotational_avgerage_shared[i + n_bins * 2];
     }
 }
 
@@ -1446,7 +1445,10 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, floa
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(projection_image.is_in_memory_gpu, "Projection Image Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
+    MyDebugAssertFalse(projection_image.is_in_real_space, "Projection Image not in Fourier space");
     MyAssertTrue(dims.z == 1, "Get Weighted Correlation is only setup to work in 2D");
+    MyDebugAssertTrue(dims.x == dims.y, "Get Weighted Correlation is only setup to work in square 2D");
+    // TODO: add nan check per the cpu method
 
     // First we need to get the rotationally averaged PS, which we'll store in global memory
     ReturnLaunchParamters(dims, false);
@@ -1466,62 +1468,151 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, floa
     cudaErr(cudaMalloc(&rotational_average, shared_mem * n_blocks));
 #endif
 
-    precheck;
-    _pre_GetWeightedCorrelationWithImageKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
-                                                                                                               projection_image.complex_values_gpu,
-                                                                                                               rotational_average,
-                                                                                                               dims.w / 2,
-                                                                                                               dims.y,
-                                                                                                               n_bins,
-                                                                                                               n_bins2,
-                                                                                                               filter_radius_low_sq,
-                                                                                                               filter_radius_high_sq);
-    postcheck;
+    Image tmp_img = CopyDeviceToNewHost(true, false, false);
+    Image tmp_prj = projection_image.CopyDeviceToNewHost(true, false, false);
 
-    BufferInit(b_weighted_correlation, new_buffer_size);
+    double* _a = new double[tmp_img.real_memory_allocated / 2];
+    double* _b = new double[tmp_img.real_memory_allocated / 2];
+    double* _c = new double[tmp_img.real_memory_allocated / 2];
 
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    cudaErr(cudaMemcpyAsync(weighted_correlation_buffer, rotational_average, shared_mem * n_blocks, cudaMemcpyDeviceToHost, cudaStreamPerThread));
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    int                 i, j, k, bin;
+    float               x, y, z, frequency_squared;
+    std::complex<float> temp_c;
+    int                 pixel_counter = 0;
+    for ( k = 0; k <= tmp_img.physical_upper_bound_complex_z; k++ ) {
+        z = powf(tmp_img.ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k) * tmp_img.fourier_voxel_size_z, 2);
 
-    // Wait until we've copied to free the data, but start reduction while freeing up the memory
-    cudaErr(cudaFreeAsync(rotational_average, cudaStreamPerThread));
-    double sum1             = 0.0;
-    double sum2             = 0.0;
-    double sum3             = 0.0;
-    int    bin_limit_signed = signed_CC_limit * n_bins2;
+        for ( j = 0; j <= tmp_img.physical_upper_bound_complex_y; j++ ) {
+            y = powf(tmp_img.ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * tmp_img.fourier_voxel_size_y, 2);
 
-    float* cross_terms;
-    float* image_norm;
-    float* projection_norm;
+            for ( i = 0; i <= tmp_img.physical_upper_bound_complex_x; i++ ) {
+                x                 = powf(i * tmp_img.fourier_voxel_size_x, 2);
+                frequency_squared = x + y + z;
 
-    // Now aggregate out the partial PS to global memory
-
-    cross_terms     = weighted_correlation_buffer;
-    image_norm      = &cross_terms[n_bins];
-    projection_norm = &image_norm[n_bins * 2];
-    int offset;
-    for ( int iBlock = 0; iBlock < n_blocks; iBlock++ ) {
-        offset = 3 * n_bins * iBlock;
-        // Exclude last resolution bin since it may contain some incompletely calculated terms
-        for ( int i = 1; i < n_bins - 1; i++ ) {
-            if ( projection_norm[i + offset] != 0.0 ) { // I think this check is no longer needed because we don't de
-                if ( i <= bin_limit_signed ) {
-                    sum3 += cross_terms[i + offset];
+                if ( (frequency_squared >= filter_radius_low_sq && frequency_squared <= filter_radius_high_sq) ) {
+                    bin = int(sqrtf(frequency_squared) * n_bins2);
+                    if ( bin >= 1 ) {
+                        temp_c = tmp_img.complex_values[pixel_counter] * conj(tmp_prj.complex_values[pixel_counter]);
+                        if ( temp_c != 0.0f ) {
+                            _a[bin] += real(tmp_img.complex_values[pixel_counter] * conj(tmp_img.complex_values[pixel_counter]));
+                            _b[bin] += real(tmp_prj.complex_values[pixel_counter] * conj(tmp_prj.complex_values[pixel_counter]));
+                            // Since projection_image has been whitened, the sum in a resolution zone is simply the number of terms that are added
+                            // Not true in new code where projection could be non-white
+                            //				sum_b[bin] ++;
+                            _c[bin] += real(temp_c);
+                        }
+                    }
                 }
-                else {
-                    sum3 += fabsf(cross_terms[i + offset]);
-                }
-                sum1 += image_norm[i + offset];
-                sum2 += projection_norm[i + offset];
+                pixel_counter++;
             }
         }
     }
-    sum1 *= sum2;
-    if ( sum1 != 0.0 )
-        sum3 /= sqrtf(sum1);
 
-    return float(sum3);
+    int bin_limit_signed = signed_CC_limit * n_bins2;
+
+    double _sum1 = 0.0;
+    double _sum2 = 0.0;
+    double _sum3 = 0.0;
+    // Exclude last resolution bin since it may contain some incompletely calculated terms
+    for ( i = 1; i < n_bins - 1; i++ ) {
+        if ( _b[i] != 0.0 ) {
+            if ( i <= bin_limit_signed ) {
+                _sum3 += _c[i];
+                //				wxPrintf("i_s = %i, sum_a = %g, sum_b = %i, cross = %g\n", i, sum_a[i], sum_b[i], cross_terms[i]);
+                //				r = cross_terms[i] / sqrtf(sum_b[i]);
+            }
+            else {
+                _sum3 += fabsf(_c[i]);
+                //				wxPrintf("i_u = %i, sum_a = %g, sum_b = %i, cross = %g\n", i, sum_a[i], sum_b[i], cross_terms[i]);
+                //				r = fabsf(cross_terms[i] / sqrtf(sum_b[i]));
+            }
+            _sum1 += _a[i];
+            _sum2 += _b[i];
+            //			sum1 += 1.0;
+            //			sum2 += sum_a[i];
+            //			sum3 += r;
+        }
+    }
+    _sum1 *= _sum2;
+    if ( _sum1 != 0.0 )
+        _sum3 /= sqrtf(_sum1);
+
+    delete[] _a;
+    delete[] _b;
+    delete[] _c;
+
+    // precheck;
+    // _pre_GetWeightedCorrelationWithImageKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
+    //                                                                                                            projection_image.complex_values_gpu,
+    //                                                                                                            rotational_average,
+    //                                                                                                            dims.w / 2,
+    //                                                                                                            dims.y,
+    //                                                                                                            n_bins,
+    //                                                                                                            n_bins2,
+    //                                                                                                            filter_radius_low_sq,
+    //                                                                                                            filter_radius_high_sq);
+    // postcheck;
+
+    BufferInit(b_weighted_correlation, new_buffer_size);
+
+    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    // cudaErr(cudaMemcpyAsync(weighted_correlation_buffer, rotational_average, new_buffer_size * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+
+    // // Troubleshooting:
+    // // Wait until we've copied to free the data, but start reduction while freeing up the memory
+    // cudaErr(cudaFreeAsync(rotational_average, cudaStreamPerThread));
+    // double sum1             = 0.0;
+    // double sum2             = 0.0;
+    // double sum3             = 0.0;
+    // int    bin_limit_signed = signed_CC_limit * n_bins2;
+
+    // float* cross_terms;
+    // float* image_norm;
+    // float* projection_norm;
+
+    // // Now aggregate out the partial PS to global memory
+
+    // cross_terms     = weighted_correlation_buffer;
+    // image_norm      = &cross_terms[n_bins];
+    // projection_norm = &image_norm[n_bins * 2];
+    // int offset;
+
+    // // first reduce everything to the first block (maybe this should just be on the device)
+    // for ( int iBlock = 1; iBlock < n_blocks; iBlock++ ) {
+    //     offset = 3 * n_bins * iBlock;
+    //     // Exclude last resolution bin since it may contain some incompletely calculated terms
+    //     for ( int i = 1; i < n_bins - 1; i++ ) {
+    //         if ( projection_norm[i + offset] != 0.0 ) { // I think this check is no longer needed because we don't de
+    //             cross_terms[i] += cross_terms[i + offset];
+    //             image_norm[i] += image_norm[i + offset];
+    //             projection_norm[i] += projection_norm[i + offset];
+    //         }
+    //     }
+    // }
+
+    // // Now look over the first block
+    // for ( int i = 1; i < n_bins - 1; i++ ) {
+    //     if ( projection_norm[i] != 0.0 ) { // I think this check is no longer needed because we don't de
+    //         if ( i <= bin_limit_signed ) {
+    //             sum3 += cross_terms[i];
+    //         }
+    //         else {
+    //             sum3 += fabsf(cross_terms[i]);
+    //         }
+    //         sum1 += image_norm[i];
+    //         sum2 += projection_norm[i];
+    //     }
+    // }
+
+    // wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
+    // sum1 *= sum2;
+    // if ( sum1 != 0.0 )
+    //     sum3 /= sqrtf(sum1);
+
+    wxPrintf("sum3 %f\n", _sum3);
+
+    return float(_sum3);
 }
 
 void GpuImage::CalculateCrossCorrelationImageWith(GpuImage* other_image) {

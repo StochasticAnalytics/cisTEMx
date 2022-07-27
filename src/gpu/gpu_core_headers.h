@@ -93,6 +93,11 @@ static __device__ __host__ inline Complex ComplexConjMul(Complex a, Complex b) {
 }
 
 // Complex a * conj b multiplication
+static __device__ __host__ inline float RealPartOfComplexConjMul(Complex a, Complex b) {
+    return a.x * b.x + a.y * b.y;
+}
+
+// Complex a * conj b multiplication
 static __device__ __host__ inline float ComplexModulus(Complex a) {
     return sqrtf(float(a.x * a.x + a.y * a.y));
 }

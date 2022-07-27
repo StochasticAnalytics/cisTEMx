@@ -229,7 +229,7 @@ GpuImage& GpuImage::operator=(const GpuImage* other_gpu_image) {
     // Check for self assignment
     if ( this != other_gpu_image ) {
 
-        MyAssertTrue(other_gpu_image->is_in_memory_gpu, "Other image Memory not allocated");
+        MyDebugAssertTrue(other_gpu_image->is_in_memory_gpu, "Other image Memory not allocated");
 
         if ( is_in_memory_gpu == true ) {
 
@@ -366,8 +366,8 @@ void GpuImage::printVal(std::string msg, int idx) {
 
 bool GpuImage::HasSameDimensionsAs(GpuImage* other_image) {
     // Functions that call this method also assume these asserts are being called here, so do not remove.
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
     // end of dependent asserts.
 
     if ( dims.x == other_image->dims.x && dims.y == other_image->dims.y && dims.z == other_image->dims.z )
@@ -378,9 +378,9 @@ bool GpuImage::HasSameDimensionsAs(GpuImage* other_image) {
 
 void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image) {
     // FIXME when adding real space complex images
-    MyAssertFalse(is_in_real_space, "Image is in real space");
-    MyAssertFalse(other_image.is_in_real_space, "Other image is in real space");
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
+    MyDebugAssertFalse(is_in_real_space, "Image is in real space");
+    MyDebugAssertFalse(other_image.is_in_real_space, "Other image is in real space");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
 
     //  NppInit();
     //  Conj();
@@ -396,8 +396,8 @@ __global__ void ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values_gpu, i
 
 float GpuImage::ReturnAverageOfRealValuesOnEdges( ) {
     // FIXME to use a masked routing, this is slow af
-    MyAssertTrue(is_in_memory, "Memory not allocated");
-    MyAssertTrue(dims.z == 1, "ReturnAverageOfRealValuesOnEdges only implemented in 2d");
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    MyDebugAssertTrue(dims.z == 1, "ReturnAverageOfRealValuesOnEdges only implemented in 2d");
 
     precheck;
     *tmpVal = 5.0f;
@@ -522,7 +522,7 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
             break;
 
         case b_weighted_correlation: {
-            MyAssertTrue(n_elements > 0, "For allocating the weighted_correlation_buffer buffer, you must specify the number of elements");
+            MyDebugAssertTrue(n_elements > 0, "For allocating the weighted_correlation_buffer buffer, you must specify the number of elements");
             if ( is_allocated_weighted_correlation_buffer ) {
                 if ( n_elements != weighted_correlation_buffer_size ) {
                     cudaErr(cudaFreeHost(weighted_correlation_buffer));
@@ -541,7 +541,7 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
 
         case b_ctf_16f:
             if ( ! is_allocated_ctf_16f_buffer ) {
-                MyAssertTrue(n_elements > 0, "For allocating the ctf_16f buffer, you must specify the number of elements");
+                MyDebugAssertTrue(n_elements > 0, "For allocating the ctf_16f buffer, you must specify the number of elements");
 #ifdef USE_ASYNC_MALLOC_FREE
                 cudaErr(cudaMallocAsync(&ctf_buffer_16f, sizeof(__half) * n_elements, cudaStreamPerThread));
 #else
@@ -872,8 +872,8 @@ void GpuImage::BufferDestroy( ) {
 float GpuImage::ReturnSumOfSquares( ) {
 
     // FIXME this assumes padded values are zero which is not strictly true
-    MyAssertTrue(is_in_memory_gpu, "Image not allocated");
-    MyAssertTrue(is_in_real_space, "This method is for real space, use ReturnSumSquareModulusComplexValues for Fourier space")
+    MyDebugAssertTrue(is_in_memory_gpu, "Image not allocated");
+    MyDebugAssertTrue(is_in_real_space, "This method is for real space, use ReturnSumSquareModulusComplexValues for Fourier space")
 
             BufferInit(b_l2norm);
     NppInit( );
@@ -902,14 +902,14 @@ float GpuImage::ReturnSumOfSquares( ) {
 float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
     //
-    MyAssertTrue(is_in_memory_gpu, "Image not allocated");
-    MyAssertFalse(is_in_real_space, "This method is NOT for real space, use ReturnSumofSquares for realspace") int address   = 0;
-    bool                                                                                                           x_is_even = IsEven(dims.x);
-    int                                                                                                            i, j, k, jj, kk;
-    const std::complex<float>                                                                                      c1(sqrtf(0.25f), sqrtf(0.25));
-    const std::complex<float>                                                                                      c2(sqrtf(0.5f), sqrtf(0.5f)); // original code is pow(abs(Val),2)*0.5
-    const std::complex<float>                                                                                      c3(1.0, 1.0);
-    const std::complex<float>                                                                                      c4(0.0, 0.0);
+    MyDebugAssertTrue(is_in_memory_gpu, "Image not allocated");
+    MyDebugAssertFalse(is_in_real_space, "This method is NOT for real space, use ReturnSumofSquares for realspace") int address   = 0;
+    bool                                                                                                                x_is_even = IsEven(dims.x);
+    int                                                                                                                 i, j, k, jj, kk;
+    const std::complex<float>                                                                                           c1(sqrtf(0.25f), sqrtf(0.25));
+    const std::complex<float>                                                                                           c2(sqrtf(0.5f), sqrtf(0.5f)); // original code is pow(abs(Val),2)*0.5
+    const std::complex<float>                                                                                           c3(1.0, 1.0);
+    const std::complex<float>                                                                                           c4(0.0, 0.0);
     //	float returnValue;
 
     if ( ! is_allocated_mask_CSOS ) {
@@ -1012,7 +1012,7 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_comple
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {
 
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
     precheck;
     ReturnLaunchParamters(dims, true);
     MipPixelWiseKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, other_image.real_values_gpu, this->dims);
@@ -1034,7 +1034,7 @@ __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_
 void GpuImage::MipPixelWise(GpuImage& other_image, GpuImage& psi, GpuImage& phi, GpuImage& theta, GpuImage& defocus, GpuImage& pixel,
                             float c_psi, float c_phi, float c_theta, float c_defocus, float c_pixel) {
 
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
     precheck;
     ReturnLaunchParamters(dims, true);
     MipPixelWiseKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, other_image.real_values_gpu,
@@ -1066,7 +1066,7 @@ __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* correlation_output
 void GpuImage::MipPixelWise(GpuImage& other_image, GpuImage& psi, GpuImage& phi, GpuImage& theta,
                             float c_psi, float c_phi, float c_theta) {
 
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
     precheck;
     ReturnLaunchParamters(dims, true);
     MipPixelWiseKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, other_image.real_values_gpu,
@@ -1095,7 +1095,7 @@ __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* correlation_output
 
 void GpuImage::ApplyBFactor(float bfactor) {
 
-    MyAssertFalse(is_in_real_space, "This function is only for Fourier space images.");
+    MyDebugAssertFalse(is_in_real_space, "This function is only for Fourier space images.");
 
     precheck;
     ReturnLaunchParamters(dims, false);
@@ -1323,7 +1323,7 @@ __global__ void WhitenKernel(cufftComplex* input_values,
 void GpuImage::Whiten(float resolution_limit) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
-    MyAssertTrue(dims.z == 1, "Whitening is only setup to work in 2D");
+    MyDebugAssertTrue(dims.z == 1, "Whitening is only setup to work in 2D");
 
     // First we need to get the rotationally averaged PS, which we'll store in global memory
     ReturnLaunchParamters(dims, false);
@@ -1372,13 +1372,15 @@ void GpuImage::Whiten(float resolution_limit) {
 
 __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cufftComplex* image_values,
                                                            const __restrict__ cufftComplex* projection_values,
-                                                           float*                           rotational_average,
+                                                           cufftReal*                       cross_terms,
+                                                           cufftReal*                       image_PS,
+                                                           cufftReal*                       projection_PS,
+                                                           const int                        output_pitch,
                                                            const int                        NX,
                                                            const int                        NY,
-                                                           const int                        n_bins,
-                                                           const int                        n_bins2,
                                                            const float                      filter_radius_low_sq,
-                                                           const float                      filter_radius_high_sq) {
+                                                           const float                      filter_radius_high_sq,
+                                                           const float                      signed_CC_limit_sq) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -1388,16 +1390,6 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     if ( y >= NY ) {
         return;
     }
-
-    extern __shared__ float rotational_avgerage_shared[];
-
-    // initialize temporary accumulation array in shared memory
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        rotational_avgerage_shared[i]              = 0.f;
-        rotational_avgerage_shared[i + n_bins]     = 0.f;
-        rotational_avgerage_shared[i + n_bins * 2] = 0.f;
-    }
-    __syncthreads( );
 
     float u, v;
     // low_limit2 = powf(pixel_size / filter_radius_low, 2);
@@ -1413,206 +1405,98 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     }
 
     u = u * u + v * v;
-    y = y * NX + x;
-    if ( u >= filter_radius_low_sq && u <= filter_radius_high_sq ) {
-        int bin = int(sqrtf(u) * n_bins2);
-        // This check is from Image::Whiten, but should it really be checking a float like this?
-        if ( bin >= 1 ) {
-            Complex temp_c = ComplexConjMul(image_values[y], projection_values[y]);
-            if ( temp_c.x != 0.f && temp_c.y != 0.f ) {
-                atomicAdd(&rotational_avgerage_shared[bin], temp_c.x);
-                atomicAdd(&rotational_avgerage_shared[bin + n_bins], ComplexModulusSquared(image_values[y]));
-                atomicAdd(&rotational_avgerage_shared[bin + n_bins * 2], ComplexModulusSquared(projection_values[y]));
+    // We use a real GpuImage to place the real values of the inputs, which will have padding we need to deal with.
+    int real_idx    = y * output_pitch + x;
+    int complex_idx = y * NX + x;
+
+    bool set_to_zero = false;
+    if ( u >= filter_radius_low_sq && u <= filter_radius_high_sq || x > 1 || y > 1 ) {
+        if ( image_values[complex_idx].x == 0.f && image_values[complex_idx].y == 0.f || projection_values[complex_idx].x == 0.f && projection_values[complex_idx].y == 0.f ) {
+            set_to_zero = true;
+        }
+        else {
+            image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
+            projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
+            if ( u > signed_CC_limit_sq ) {
+                cross_terms[real_idx] = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
+            }
+            else {
+                cross_terms[real_idx] = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
             }
         }
     }
-    __syncthreads( );
+    else {
+        set_to_zero = true;
+    }
 
-    // Now write out the partial sums to global memory
-    // all the rotational_avgerage_shareds for every block are contiguous in memory
-    // threadIdx.x + threadIdx.y * blockDim.x = linear index in a 2d block of threads
-    // blockIdx.x + blockIdx.y * gridDim.x = linear index in 2d grid of blocks
-    float* cross_terms = &rotational_average[3 * n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
-
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        cross_terms[i]              = rotational_avgerage_shared[i];
-        cross_terms[i + n_bins]     = rotational_avgerage_shared[i + n_bins];
-        cross_terms[i + n_bins * 2] = rotational_avgerage_shared[i + n_bins * 2];
+    if ( set_to_zero ) {
+        cross_terms[real_idx]   = 0.f;
+        image_PS[real_idx]      = 0.f;
+        projection_PS[real_idx] = 0.f;
     }
 }
 
-float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
+float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuImage& cross_terms, GpuImage& image_PS, GpuImage& projection_PS, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(projection_image.is_in_memory_gpu, "Projection Image Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image not in Fourier space");
     MyDebugAssertFalse(projection_image.is_in_real_space, "Projection Image not in Fourier space");
-    MyAssertTrue(dims.z == 1, "Get Weighted Correlation is only setup to work in 2D");
+    MyDebugAssertTrue(dims.z == 1, "Get Weighted Correlation is only setup to work in 2D");
     MyDebugAssertTrue(dims.x == dims.y, "Get Weighted Correlation is only setup to work in square 2D");
+
+    // TODO add checks on buffer images.
     // TODO: add nan check per the cpu method
+
+    /* This is quite different in execution than the cpu method, which first calculates the ab* aa* and bb* in resolution rings 
+       applies some logic, and then sums rings, then deals with sums.
+       This is unecessary though.
+       Condition 1: out of resolution limits = 0.f, same for array and ring
+       Condition 2: if ab* is identically zero we don't add to any shells, 
+       but in practice this can only happen if a == 0.f || b == 0.f, so we can just multiply set a = 0 if b = 0 or vice versa.
+       Condition 3: if sum(bb*) in a ring is identically zero, we don't add to the final sums. This is the "perfect" projection image, so it 
+       should only be zero in a shell if we set it that way with a mask, and will be zero everywhere in that shell. (There could be an
+       anisotropic SSNR weighting that invalidates this logic)
+
+       So just calculate three temp arrays, fitting this logic, sum independently and then work with that.
+    */
 
     // First we need to get the rotationally averaged PS, which we'll store in global memory
     ReturnLaunchParamters(dims, false);
 
-    int n_bins  = dims.y / 2 + 1;
-    int n_bins2 = 2 * (n_bins - 1);
-    // For bin resolution of one pixel, uint16 should be plenty
-    int shared_mem = n_bins * 3 * sizeof(float);
-    // For coalescing in global memory (2d grid)
-    int    n_blocks        = gridDims.x * gridDims.y;
-    int    new_buffer_size = n_bins * 3 * n_blocks;
-    float* rotational_average;
+    cross_terms.Zeros( );
+    image_PS.Zeros( );
+    projection_PS.Zeros( );
 
-#ifdef USE_ASYNC_MALLOC_FREE
-    cudaErr(cudaMallocAsync(&rotational_average, shared_mem * n_blocks, cudaStreamPerThread));
-#else
-    cudaErr(cudaMalloc(&rotational_average, shared_mem * n_blocks));
-#endif
+    signed_CC_limit *= signed_CC_limit;
+    precheck;
+    _pre_GetWeightedCorrelationWithImageKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
+                                                                                                      projection_image.complex_values_gpu,
+                                                                                                      cross_terms.real_values_gpu,
+                                                                                                      image_PS.real_values_gpu,
+                                                                                                      projection_PS.real_values_gpu,
+                                                                                                      projection_PS.dims.w,
+                                                                                                      dims.w / 2,
+                                                                                                      dims.y,
+                                                                                                      filter_radius_low_sq,
+                                                                                                      filter_radius_high_sq,
+                                                                                                      signed_CC_limit);
+    postcheck;
 
-    Image tmp_img = CopyDeviceToNewHost(true, false, false);
-    Image tmp_prj = projection_image.CopyDeviceToNewHost(true, false, false);
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    // These should all be in the same stream so no need to synchronize.
+    float sum3 = cross_terms.ReturnSumOfRealValues( );
+    float sum1 = image_PS.ReturnSumOfRealValues( );
+    float sum2 = projection_PS.ReturnSumOfRealValues( );
 
-    double* _a = new double[tmp_img.real_memory_allocated / 2];
-    double* _b = new double[tmp_img.real_memory_allocated / 2];
-    double* _c = new double[tmp_img.real_memory_allocated / 2];
+    wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
 
-    int                 i, j, k, bin;
-    float               x, y, z, frequency_squared;
-    std::complex<float> temp_c;
-    int                 pixel_counter = 0;
-    for ( k = 0; k <= tmp_img.physical_upper_bound_complex_z; k++ ) {
-        z = powf(tmp_img.ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k) * tmp_img.fourier_voxel_size_z, 2);
+    sum1 *= sum2;
+    if ( sum1 != 0.0 )
+        sum3 /= sqrtf(sum1);
 
-        for ( j = 0; j <= tmp_img.physical_upper_bound_complex_y; j++ ) {
-            y = powf(tmp_img.ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * tmp_img.fourier_voxel_size_y, 2);
+    wxPrintf("sum3 %f\n", sum3);
 
-            for ( i = 0; i <= tmp_img.physical_upper_bound_complex_x; i++ ) {
-                x                 = powf(i * tmp_img.fourier_voxel_size_x, 2);
-                frequency_squared = x + y + z;
-
-                if ( (frequency_squared >= filter_radius_low_sq && frequency_squared <= filter_radius_high_sq) ) {
-                    bin = int(sqrtf(frequency_squared) * n_bins2);
-                    if ( bin >= 1 ) {
-                        temp_c = tmp_img.complex_values[pixel_counter] * conj(tmp_prj.complex_values[pixel_counter]);
-                        if ( temp_c != 0.0f ) {
-                            _a[bin] += real(tmp_img.complex_values[pixel_counter] * conj(tmp_img.complex_values[pixel_counter]));
-                            _b[bin] += real(tmp_prj.complex_values[pixel_counter] * conj(tmp_prj.complex_values[pixel_counter]));
-                            // Since projection_image has been whitened, the sum in a resolution zone is simply the number of terms that are added
-                            // Not true in new code where projection could be non-white
-                            //				sum_b[bin] ++;
-                            _c[bin] += real(temp_c);
-                        }
-                    }
-                }
-                pixel_counter++;
-            }
-        }
-    }
-
-    int bin_limit_signed = signed_CC_limit * n_bins2;
-
-    double _sum1 = 0.0;
-    double _sum2 = 0.0;
-    double _sum3 = 0.0;
-    // Exclude last resolution bin since it may contain some incompletely calculated terms
-    for ( i = 1; i < n_bins - 1; i++ ) {
-        if ( _b[i] != 0.0 ) {
-            if ( i <= bin_limit_signed ) {
-                _sum3 += _c[i];
-                //				wxPrintf("i_s = %i, sum_a = %g, sum_b = %i, cross = %g\n", i, sum_a[i], sum_b[i], cross_terms[i]);
-                //				r = cross_terms[i] / sqrtf(sum_b[i]);
-            }
-            else {
-                _sum3 += fabsf(_c[i]);
-                //				wxPrintf("i_u = %i, sum_a = %g, sum_b = %i, cross = %g\n", i, sum_a[i], sum_b[i], cross_terms[i]);
-                //				r = fabsf(cross_terms[i] / sqrtf(sum_b[i]));
-            }
-            _sum1 += _a[i];
-            _sum2 += _b[i];
-            //			sum1 += 1.0;
-            //			sum2 += sum_a[i];
-            //			sum3 += r;
-        }
-    }
-    _sum1 *= _sum2;
-    if ( _sum1 != 0.0 )
-        _sum3 /= sqrtf(_sum1);
-
-    delete[] _a;
-    delete[] _b;
-    delete[] _c;
-
-    // precheck;
-    // _pre_GetWeightedCorrelationWithImageKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
-    //                                                                                                            projection_image.complex_values_gpu,
-    //                                                                                                            rotational_average,
-    //                                                                                                            dims.w / 2,
-    //                                                                                                            dims.y,
-    //                                                                                                            n_bins,
-    //                                                                                                            n_bins2,
-    //                                                                                                            filter_radius_low_sq,
-    //                                                                                                            filter_radius_high_sq);
-    // postcheck;
-
-    BufferInit(b_weighted_correlation, new_buffer_size);
-
-    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    // cudaErr(cudaMemcpyAsync(weighted_correlation_buffer, rotational_average, new_buffer_size * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
-    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-
-    // // Troubleshooting:
-    // // Wait until we've copied to free the data, but start reduction while freeing up the memory
-    // cudaErr(cudaFreeAsync(rotational_average, cudaStreamPerThread));
-    // double sum1             = 0.0;
-    // double sum2             = 0.0;
-    // double sum3             = 0.0;
-    // int    bin_limit_signed = signed_CC_limit * n_bins2;
-
-    // float* cross_terms;
-    // float* image_norm;
-    // float* projection_norm;
-
-    // // Now aggregate out the partial PS to global memory
-
-    // cross_terms     = weighted_correlation_buffer;
-    // image_norm      = &cross_terms[n_bins];
-    // projection_norm = &image_norm[n_bins * 2];
-    // int offset;
-
-    // // first reduce everything to the first block (maybe this should just be on the device)
-    // for ( int iBlock = 1; iBlock < n_blocks; iBlock++ ) {
-    //     offset = 3 * n_bins * iBlock;
-    //     // Exclude last resolution bin since it may contain some incompletely calculated terms
-    //     for ( int i = 1; i < n_bins - 1; i++ ) {
-    //         if ( projection_norm[i + offset] != 0.0 ) { // I think this check is no longer needed because we don't de
-    //             cross_terms[i] += cross_terms[i + offset];
-    //             image_norm[i] += image_norm[i + offset];
-    //             projection_norm[i] += projection_norm[i + offset];
-    //         }
-    //     }
-    // }
-
-    // // Now look over the first block
-    // for ( int i = 1; i < n_bins - 1; i++ ) {
-    //     if ( projection_norm[i] != 0.0 ) { // I think this check is no longer needed because we don't de
-    //         if ( i <= bin_limit_signed ) {
-    //             sum3 += cross_terms[i];
-    //         }
-    //         else {
-    //             sum3 += fabsf(cross_terms[i]);
-    //         }
-    //         sum1 += image_norm[i];
-    //         sum2 += projection_norm[i];
-    //     }
-    // }
-
-    // wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
-    // sum1 *= sum2;
-    // if ( sum1 != 0.0 )
-    //     sum3 /= sqrtf(sum1);
-
-    wxPrintf("sum3 %f\n", _sum3);
-
-    return float(_sum3);
+    return float(sum3);
 }
 
 void GpuImage::CalculateCrossCorrelationImageWith(GpuImage* other_image) {
@@ -1672,14 +1556,14 @@ Peak GpuImage::FindPeakWithParabolaFit(float inner_radius_for_peak_search, float
 }
 
 void GpuImage::Abs( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 
     NppInit( );
     nppErr(nppiAbs_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::AbsDiff(GpuImage& other_image) {
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
 
     BufferInit(b_image);
     NppInit( );
@@ -1695,8 +1579,8 @@ void GpuImage::AbsDiff(GpuImage& other_image) {
 
 void GpuImage::AbsDiff(GpuImage& other_image, GpuImage& output_image) {
     // In place abs diff (see overload for out of place)
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
-    MyAssertTrue(HasSameDimensionsAs(&output_image), "Images have different dimension.");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
+    MyDebugAssertTrue(HasSameDimensionsAs(&output_image), "Images have different dimension.");
 
     NppInit( );
 
@@ -1706,8 +1590,8 @@ void GpuImage::AbsDiff(GpuImage& other_image, GpuImage& output_image) {
 }
 
 void GpuImage::Min( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_min);
@@ -1716,8 +1600,8 @@ void GpuImage::Min( ) {
 }
 
 void GpuImage::MinAndCoords( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_minIDX);
@@ -1726,8 +1610,8 @@ void GpuImage::MinAndCoords( ) {
 }
 
 void GpuImage::Max( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_max);
@@ -1736,8 +1620,8 @@ void GpuImage::Max( ) {
 }
 
 void GpuImage::MaxAndCoords( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_maxIDX);
@@ -1746,8 +1630,8 @@ void GpuImage::MaxAndCoords( ) {
 }
 
 void GpuImage::MinMax( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_minmax);
@@ -1756,8 +1640,8 @@ void GpuImage::MinMax( ) {
 }
 
 void GpuImage::MinMaxAndCoords( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_minmaxIDX);
@@ -1766,8 +1650,8 @@ void GpuImage::MinMaxAndCoords( ) {
 }
 
 void GpuImage::Mean( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_mean);
@@ -1778,8 +1662,8 @@ void GpuImage::Mean( ) {
 }
 
 void GpuImage::MeanStdDev( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_meanstddev);
@@ -1791,7 +1675,7 @@ void GpuImage::MeanStdDev( ) {
 }
 
 void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 
     NppInit( );
     if ( is_in_real_space ) {
@@ -1803,55 +1687,55 @@ void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
 }
 
 void GpuImage::AddConstant(const float add_val) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     nppErr(nppiAddC_32f_C1IR_Ctx((Npp32f)add_val, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::AddConstant(const Npp32fc add_val) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Image in real space.")
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Image in real space.")
 
             NppInit( );
     nppErr(nppiAddC_32fc_C1IR_Ctx((Npp32fc)add_val, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::SquareRealValues( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     nppErr(nppiSqr_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::SquareRootRealValues( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     nppErr(nppiSqrt_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::LogarithmRealValues( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 
     NppInit( );
     nppErr(nppiLn_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::ExponentiateRealValues( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     nppErr(nppiExp_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::CountInRange(float lower_bound, float upper_bound) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     nppErr(nppiCountInRange_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, &number_of_pixels_in_range,
@@ -1861,8 +1745,8 @@ void GpuImage::CountInRange(float lower_bound, float upper_bound) {
 
 float GpuImage::ReturnSumOfRealValues( ) {
     // FIXME assuming padded values are zero
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     NppInit( );
     BufferInit(b_sum);
@@ -1874,7 +1758,7 @@ float GpuImage::ReturnSumOfRealValues( ) {
 
 void GpuImage::AddImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
 
     NppInit( );
     nppErr(nppiAdd_32f_C1IR_Ctx((const Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
@@ -1882,7 +1766,7 @@ void GpuImage::AddImage(GpuImage& other_image) {
 
 void GpuImage::SubtractImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
 
     NppInit( );
     nppErr(nppiSub_32f_C1IR_Ctx((const Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
@@ -1890,15 +1774,15 @@ void GpuImage::SubtractImage(GpuImage& other_image) {
 
 void GpuImage::AddSquaredImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array
-    MyAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
-    MyAssertTrue(is_in_real_space, "Image is not in real space");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
+    MyDebugAssertTrue(is_in_real_space, "Image is not in real space");
 
     NppInit( );
     nppErr(nppiAddSquare_32f_C1IR_Ctx((const Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::MultiplyByConstant(float scale_factor) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 
     NppInit( );
     if ( is_in_real_space ) {
@@ -1930,8 +1814,8 @@ void GpuImage::SetToConstant(Npp32fc scale_factor_complex) {
 }
 
 void GpuImage::Conj( ) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertFalse(is_in_real_space, "Conj only supports complex images");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Conj only supports complex images");
 
     Npp32fc scale_factor;
     scale_factor.re = 1.0f;
@@ -1942,7 +1826,7 @@ void GpuImage::Conj( ) {
 
 void GpuImage::Zeros( ) {
 
-    MyAssertTrue(is_meta_data_initialized, "Host meta data has not been copied");
+    MyDebugAssertFalse(real_memory_allocated == 0, "Host meta data has not been copied");
 
     if ( ! is_in_memory_gpu ) {
 #ifdef USE_ASYNC_MALLOC_FREE
@@ -1961,7 +1845,7 @@ void GpuImage::Zeros( ) {
 
 void GpuImage::CopyHostToDevice(bool should_block_until_complete) {
 
-    MyAssertTrue(is_in_memory, "Host memory not allocated");
+    MyDebugAssertTrue(is_in_memory, "Host memory not allocated");
 
     if ( ! is_in_memory_gpu ) {
         Allocate(dims.x, dims.y, dims.z, host_image_ptr->is_in_real_space);
@@ -2069,9 +1953,9 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
 
 void GpuImage::CopyHostToDevice16f(bool should_block_until_finished) {
 
-    MyAssertTrue(host_image_ptr->is_in_memory_16f, "Host memory not allocated");
-    MyAssertFalse(host_image_ptr->is_in_real_space, "CopyHostRealPartToDevice should only be called for complex images");
-    MyAssertTrue(host_image_ptr->real_memory_allocated_16f == real_memory_allocated, "Host memory size mismatch");
+    MyDebugAssertTrue(host_image_ptr->is_in_memory_16f, "Host memory not allocated");
+    MyDebugAssertFalse(host_image_ptr->is_in_real_space, "CopyHostRealPartToDevice should only be called for complex images");
+    MyDebugAssertTrue(host_image_ptr->real_memory_allocated_16f == real_memory_allocated, "Host memory size mismatch");
 
     CopyCpuImageMetaData(*host_image_ptr);
 
@@ -2085,13 +1969,14 @@ void GpuImage::CopyHostToDevice16f(bool should_block_until_finished) {
     // always unregister the temporary pointer as it is not associated with a GpuImage
     precheck;
     cudaErr(cudaMemcpyAsync((void*)ctf_buffer_16f, tmpPinnedPtr, real_memory_allocated * sizeof(half_float::half), cudaMemcpyHostToDevice, cudaStreamPerThread));
-    Record( );
     postcheck;
 
     if ( should_block_until_finished ) {
         cudaError(cudaStreamSynchronize(cudaStreamPerThread));
     }
-    Wait( );
+    else {
+        RecordAndWait( );
+    }
     cudaErr(cudaHostUnregister(tmpPinnedPtr));
 }
 
@@ -2102,7 +1987,7 @@ void GpuImage::CopyDeviceToHostAndSynchronize(bool free_gpu_memory, bool unpin_h
 
 void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
 
-    MyAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
     // TODO other asserts on size etc.
     precheck;
     cudaErr(cudaMemcpyAsync(pinnedPtr, real_values_gpu, real_memory_allocated * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
@@ -2121,7 +2006,7 @@ void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
 
 void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
 
-    MyAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
     // TODO other asserts on size etc.
 
     float* tmpPinnedPtr;
@@ -2226,7 +2111,7 @@ void GpuImage::CopyVolumeHostToDevice( ) {
 
     // FIXME not working
     bool is_working = false;
-    MyAssertTrue(is_working, "CopyVolumeHostToDevice is not properly worked out");
+    MyDebugAssertTrue(is_working, "CopyVolumeHostToDevice is not properly worked out");
 
     d_pitchedPtr = {0};
     d_extent     = make_cudaExtent(dims.x * sizeof(float), dims.y, dims.z);
@@ -2245,7 +2130,7 @@ void GpuImage::CopyVolumeDeviceToHost(bool free_gpu_memory, bool unpin_host_memo
 
     // FIXME not working
     bool is_working = false;
-    MyAssertTrue(is_working, "CopyVolumeDeviceToHost is not properly worked out");
+    MyDebugAssertTrue(is_working, "CopyVolumeDeviceToHost is not properly worked out");
 
     if ( ! is_in_memory ) {
         cudaErr(cudaMallocHost(&real_values, real_memory_allocated * sizeof(float)));
@@ -2279,8 +2164,8 @@ void GpuImage::ForwardFFT(bool should_scale) {
 
     bool is_half_precision = false;
 
-    MyAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
-    MyAssertTrue(is_in_real_space, "Image alread in Fourier space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Image alread in Fourier space");
 
     if ( ! is_fft_planned ) {
         SetCufftPlan( );
@@ -2324,10 +2209,10 @@ void GpuImage::ForwardFFT(bool should_scale) {
 
 void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale) {
 
-    MyAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
-    MyAssertTrue(image_to_insert.is_in_memory_gpu, "Gpu memory in image to insert not allocated");
-    MyAssertTrue(is_in_real_space, "Image alread in Fourier space");
-    MyAssertTrue(image_to_insert.is_in_real_space, "I in image to insert alread in Fourier space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertTrue(image_to_insert.is_in_memory_gpu, "Gpu memory in image to insert not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Image alread in Fourier space");
+    MyDebugAssertTrue(image_to_insert.is_in_real_space, "I in image to insert alread in Fourier space");
 
     if ( ! is_fft_planned ) {
         SetCufftPlan( );
@@ -2376,8 +2261,8 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
 
 void GpuImage::BackwardFFT( ) {
 
-    MyAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
-    MyAssertFalse(is_in_real_space, "Image is already in real space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image is already in real space");
 
     if ( ! is_fft_planned ) {
         SetCufftPlan( );
@@ -2395,9 +2280,9 @@ void GpuImage::BackwardFFT( ) {
 template <typename T>
 void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision) {
 
-    MyAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
-    MyAssertFalse(is_in_real_space, "Image is already in real space");
-    MyAssertTrue(load_half_precision ? is_allocated_16f_buffer : true, "FP16 memory is not allocated, but is requested.");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image is already in real space");
+    MyDebugAssertTrue(load_half_precision ? is_allocated_16f_buffer : true, "FP16 memory is not allocated, but is requested.");
 
     if ( ! is_fft_planned ) {
         SetCufftPlan( );
@@ -2460,7 +2345,7 @@ void GpuImage::RecordAndWait( ) {
 
 void GpuImage::SwapRealSpaceQuadrants( ) {
 
-    MyAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
 
     bool must_fft = false;
 
@@ -2519,7 +2404,7 @@ void GpuImage::SwapRealSpaceQuadrants( ) {
 
 void GpuImage::PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift) {
 
-    MyAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
 
     bool need_to_fft = false;
     if ( is_in_real_space == true ) {
@@ -2561,8 +2446,8 @@ __device__ __forceinline__ int
 d_ReturnFourierLogicalCoordGivenPhysicalCoord_X(int physical_index,
                                                 int logical_x_dimension,
                                                 int physical_address_of_box_center_x) {
-    //	MyAssertTrue(is_in_memory, "Memory not allocated");
-    //	MyAssertTrue(physical_index <= physical_upper_bound_complex_x, "index out of bounds");
+    //	MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    //	MyDebugAssertTrue(physical_index <= physical_upper_bound_complex_x, "index out of bounds");
 
     //if (physical_index >= physical_index_of_first_negative_frequency_x)
     if ( physical_index > physical_address_of_box_center_x ) {
@@ -2576,8 +2461,8 @@ __device__ __forceinline__ int
 d_ReturnFourierLogicalCoordGivenPhysicalCoord_Y(int physical_index,
                                                 int logical_y_dimension,
                                                 int physical_index_of_first_negative_frequency_y) {
-    //	MyAssertTrue(is_in_memory, "Memory not allocated");
-    //	MyAssertTrue(physical_index <= physical_upper_bound_complex_y, "index out of bounds");
+    //	MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    //	MyDebugAssertTrue(physical_index <= physical_upper_bound_complex_y, "index out of bounds");
 
     if ( physical_index >= physical_index_of_first_negative_frequency_y ) {
         return physical_index - logical_y_dimension;
@@ -2591,8 +2476,8 @@ d_ReturnFourierLogicalCoordGivenPhysicalCoord_Z(int physical_index,
 
                                                 int logical_z_dimension,
                                                 int physical_index_of_first_negative_frequency_z) {
-    //	MyAssertTrue(is_in_memory, "Memory not allocated");
-    //	MyAssertTrue(physical_index <= physical_upper_bound_complex_z, "index out of bounds");
+    //	MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    //	MyDebugAssertTrue(physical_index <= physical_upper_bound_complex_z, "index out of bounds");
 
     if ( physical_index >= physical_index_of_first_negative_frequency_z ) {
         return physical_index - logical_z_dimension;
@@ -2778,8 +2663,8 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
                         int wanted_coordinate_of_box_center_x,
                         int wanted_coordinate_of_box_center_y,
                         int wanted_coordinate_of_box_center_z) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
 
     int3 wanted_coordinate_of_box_center = make_int3(wanted_coordinate_of_box_center_x,
                                                      wanted_coordinate_of_box_center_y,
@@ -2791,7 +2676,7 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
 
     if ( is_in_real_space == true ) {
 
-        MyAssertTrue(object_is_centred_in_box, "real space image, not centred in box");
+        MyDebugAssertTrue(object_is_centred_in_box, "real space image, not centred in box");
 
         ReturnLaunchParamters(other_image->dims, true);
 
@@ -2809,8 +2694,8 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
 }
 
 void GpuImage::ClipIntoReturnMask(GpuImage* other_image) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(is_in_real_space, "Clip into is only set up for real space on the gpu currently");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Clip into is only set up for real space on the gpu currently");
 
     int3 wanted_coordinate_of_box_center = make_int3(0, 0, 0);
 
@@ -2826,7 +2711,7 @@ void GpuImage::ClipIntoReturnMask(GpuImage* other_image) {
 
     if ( is_in_real_space == true ) {
 
-        MyAssertTrue(object_is_centred_in_box, "real space image, not centred in box");
+        MyDebugAssertTrue(object_is_centred_in_box, "real space image, not centred in box");
 
         ReturnLaunchParamters(other_image->dims, true);
 
@@ -2843,7 +2728,7 @@ void GpuImage::ClipIntoReturnMask(GpuImage* other_image) {
 }
 
 void GpuImage::QuickAndDirtyWriteSlices(std::string filename, int first_slice, int last_slice) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     Image buffer_img;
     buffer_img.Allocate(dims.x, dims.y, dims.z, true);
 
@@ -3007,7 +2892,7 @@ void GpuImage::Deallocate( ) {
 void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
     // FIXME when adding real space complex images.
     // FIXME should probably be called COPYorConvert
-    MyAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
+    MyDebugAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
 
     BufferInit(b_16f);
 
@@ -3067,10 +2952,11 @@ void GpuImage::AllocateTmpVarsAndEvents( ) {
 }
 
 bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space) {
-    MyAssertTrue(wanted_x_size > 0 && wanted_y_size > 0 && wanted_z_size > 0, "Bad dimensions: %i %i %i\n", wanted_x_size, wanted_y_size, wanted_z_size);
+    MyDebugAssertTrue(wanted_x_size > 0 && wanted_y_size > 0 && wanted_z_size > 0, "Bad dimensions: %i %i %i\n", wanted_x_size, wanted_y_size, wanted_z_size);
 
     // check to see if we need to do anything?
     bool memory_was_allocated = false;
+    bool set_all_metadata     = true;
     if ( is_in_memory_gpu == true ) {
         is_in_real_space = should_be_in_real_space;
         if ( wanted_x_size == dims.x && wanted_y_size == dims.y && wanted_z_size == dims.z ) {
@@ -3135,7 +3021,7 @@ bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
 void GpuImage::UpdateBoolsToDefault( ) {
     // The main purpose for all of this meta data is to ensure we don't have any issues with memory allocations on the device.
     // This should only be called on a newly created image.
-    MyAssertFalse(is_meta_data_initialized, "GpuImage::UpdateBoolsToDefault() Should not be called on a non-initialized image");
+    MyDebugAssertFalse(is_meta_data_initialized, "GpuImage::UpdateBoolsToDefault() Should not be called on a non-initialized image");
 
     is_meta_data_initialized      = false;
     is_in_memory_managed_tmp_vals = false;
@@ -3601,10 +3487,10 @@ void GpuImage::Consume(GpuImage* other_image) {
 }
 
 void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value) {
-    MyAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyAssertTrue(destination_image->is_in_memory_gpu, "Destination image memory not allocated");
-    MyAssertTrue(destination_image->object_is_centred_in_box && object_is_centred_in_box, "ClipInto assumes both images are centered at the moment.");
-    MyAssertFalse(is_in_real_space && destination_image->is_in_real_space, "ClipIntoFourierSpace assumes both images are in fourier space");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(destination_image->is_in_memory_gpu, "Destination image memory not allocated");
+    MyDebugAssertTrue(destination_image->object_is_centred_in_box && object_is_centred_in_box, "ClipInto assumes both images are centered at the moment.");
+    MyDebugAssertFalse(is_in_real_space && destination_image->is_in_real_space, "ClipIntoFourierSpace assumes both images are in fourier space");
 
     destination_image->object_is_centred_in_box = object_is_centred_in_box;
     destination_image->is_fft_centered_in_box   = is_fft_centered_in_box;
@@ -3825,13 +3711,13 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
 
 void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit, bool whiten_spectrum) {
     //	MyDebugAssertTrue(image_to_extract.logical_x_dimension == logical_x_dimension && image_to_extract.logical_y_dimension == logical_y_dimension, "Error: Images different sizes");
-    MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
-    MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
-    MyAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
-    MyAssertTrue(volume_to_extract_from->is_allocated_texture_cache, "3d volume not allocated in the texture cache");
-    // MyAssertTrue(IsCubic( ), "Image volume to project is not cubic"); // This is checked on call to CopyHostToDeviceTextureComplex3d
-    MyAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
-    MyAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
+    MyDebugAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
+    MyDebugAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
+    MyDebugAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
+    MyDebugAssertTrue(volume_to_extract_from->is_allocated_texture_cache, "3d volume not allocated in the texture cache");
+    // MyDebugAssertTrue(IsCubic( ), "Image volume to project is not cubic"); // This is checked on call to CopyHostToDeviceTextureComplex3d
+    MyDebugAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
+    MyDebugAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
 
     // Get launch params for a complex non-redundant half image
     ReturnLaunchParamters(dims, false);
@@ -4007,15 +3893,15 @@ __global__ void ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t tex_real
 
 void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit,
                                        bool swap_quadrants, bool apply_shifts, bool apply_ctf, bool absolute_ctf) {
-    MyAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
-    MyAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
-    MyAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
-    MyAssertTrue(volume_to_extract_from->is_allocated_texture_cache, "3d volume not allocated in the texture cache");
-    // MyAssertTrue(IsCubic( ), "Image volume to project is not cubic"); // This is checked on call to CopyHostToDeviceTextureComplex3d
-    MyAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
-    MyAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
+    MyDebugAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
+    MyDebugAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
+    MyDebugAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
+    MyDebugAssertTrue(volume_to_extract_from->is_allocated_texture_cache, "3d volume not allocated in the texture cache");
+    // MyDebugAssertTrue(IsCubic( ), "Image volume to project is not cubic"); // This is checked on call to CopyHostToDeviceTextureComplex3d
+    MyDebugAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
+    MyDebugAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
     if ( apply_ctf ) {
-        MyAssertTrue(ctf_image->is_allocated_ctf_16f_buffer, "Error: ctf fp16 gpu memory not allocated");
+        MyDebugAssertTrue(ctf_image->is_allocated_ctf_16f_buffer, "Error: ctf fp16 gpu memory not allocated");
     }
 
     // Get launch params for a complex non-redundant half image

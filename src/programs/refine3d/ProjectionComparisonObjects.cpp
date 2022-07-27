@@ -31,6 +31,8 @@ ProjectionComparisonObjects::ProjectionComparisonObjects( ) {
 
     current_cpu_pointers_are_for_global_search = false;
 
+    is_allocated_weighted_correlation_buffers = false;
+
 #ifdef DEBUG
     nprj = 0;
     // Get some extra info to make sure all the allocation/deallocation is working. I.e. even if we succeed (no segfaults and correct results)
@@ -258,7 +260,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
 
             // If we altered the gpu memory, or if the host particle has recorded a change to its underlying data, we need to copy host - > device.
             if ( gpu_memory_was_changed || host_particle_data_has_changed ) {
-                tmp_gpu_ctf->CopyHostToDevice16f( );
+                tmp_gpu_ctf->CopyHostToDevice16f(true);
             }
             host_particle.RecordGpuCTFImageAssociation( );
 
@@ -335,7 +337,21 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     if ( particle->filter_radius_low != 0.0 )
         filter_radius_low = powf(particle->pixel_size / particle->filter_radius_low, 2);
 
-    float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
+    // In the cpu method the bins < 1 and > n_bins - 1 are ignored so incorporate this logic into the filter radius
+    // for even sized images, this should just be dims.y
+    int   number_of_bins  = gpu_projection.dims.y / 2 + 1;
+    float number_of_bins2 = 2 * (number_of_bins - 1);
+    filter_radius_low     = std::max(filter_radius_low, powf(1.f / number_of_bins2, 2));
+    filter_radius_high    = std::min(filter_radius_high, powf(float(number_of_bins - 1) / number_of_bins2, 2));
+    // int bin             = int(sqrtf(frequency_sq) * number_of_bins2);
+
+    if ( ! is_allocated_weighted_correlation_buffers ) {
+        buffer_cross_terms.Allocate(gpu_projection.dims.w / 2, gpu_projection.dims.y, 1, true);
+        buffer_image_ps.CopyFrom(&buffer_cross_terms);
+        buffer_projection_ps.CopyFrom(&buffer_cross_terms);
+        is_allocated_weighted_correlation_buffers = true;
+    }
+    float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, buffer_cross_terms, buffer_image_ps, buffer_projection_ps, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
 
     return tmp_corr;
 };

@@ -224,7 +224,7 @@ class GpuImage {
     void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
     void Whiten(float resolution_limit = 1.f);
 
-    float GetWeightedCorrelationWithImage(GpuImage& projection_image, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
+    float GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuImage& cross_terms, GpuImage& image_PS, GpuImage& projection_PS, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
 
     inline void MaskCentralCross(float vertical_mask_size, float horizontal_mask_size) { return; }; // noop
 

@@ -46,6 +46,10 @@ class ProjectionComparisonObjects {
     GpuImage gpu_search_particle_image;
 
     GpuImage clean_copy;
+    GpuImage buffer_cross_terms;
+    GpuImage buffer_image_ps;
+    GpuImage buffer_projection_ps;
+
 // #else
 //     // FIXME: shouldn't need to do this to get Cpu to compile - but in some debug steps still accessing the GPU members directly (also FIXME)
 //     Image gpu_density_map;
@@ -62,8 +66,8 @@ class ProjectionComparisonObjects {
 
 #endif
 
-    float* score_buffer;
-    int    score_buffer_size; // use the buffer size to also track allocation (intialize to zero)
+    bool is_allocated_weighted_correlation_buffers;
+
 
     bool current_cpu_pointers_are_for_global_search;
     bool is_allocated_gpu_density_map;

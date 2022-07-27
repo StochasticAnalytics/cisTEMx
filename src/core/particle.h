@@ -140,7 +140,7 @@ class Particle {
     void  PhaseFlipImage( );
     void  CTFMultiplyImage( );
     void  BeamTiltMultiplyImage( );
-    void  SetIndexForWeightedCorrelation(bool limit_resolution = true);
+    int   SetIndexForWeightedCorrelation(bool limit_resolution = true);
     void  WeightBySSNR(Curve& SSNR, int include_reference_weighting = 1, bool no_ctf = false);
     void  WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_particle_image = true, bool weight_projection_image = true);
     void  CalculateProjection(Image& projection_image, ReconstructedVolume& input_3d);

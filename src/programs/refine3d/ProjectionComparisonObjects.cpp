@@ -32,6 +32,7 @@ ProjectionComparisonObjects::ProjectionComparisonObjects( ) {
     current_cpu_pointers_are_for_global_search = false;
 
     is_allocated_weighted_correlation_buffers = false;
+    old_buffer_size                           = 0;
 
 #ifdef DEBUG
     nprj = 0;
@@ -77,6 +78,27 @@ ProjectionComparisonObjects::~ProjectionComparisonObjects( ) {
 }
 
 void ProjectionComparisonObjects::Deallocate( ) {
+    if ( old_buffer_size > 0 ) {
+        delete[] buffer;
+        old_buffer_size = 0;
+    }
+}
+
+void ProjectionComparisonObjects::AllocateBuffers(int new_buffer_size) {
+
+    // #ifdef USE_OPTIMIZED_CPU_SCORE_CALCULATION
+    //     if ( new_buffer_size > 0 ) {
+    //         if ( new_buffer_size != old_buffer_size ) {
+    //             if ( old_buffer_size > 0 ) {
+    //                 delete[] buffer;
+    //             }
+    //             wxPrintf("ALLOCATION\n");
+    //             buffer = new float[3 * new_buffer_size];
+    //         }
+    //     }
+    //     old_buffer_size = new_buffer_size;
+    // #endif
+    //     return;
 }
 
 // These are here to prevent copying of pointers.
@@ -145,12 +167,15 @@ void ProjectionComparisonObjects::GetCleanCopyOfParticleImage(const bool is_for_
 }
 
 void ProjectionComparisonObjects::DeallocateCleanCopyOfParticleImage( ) {
+#ifndef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
     { clean_copy.Deallocate( ); };
+#endif
     return;
 }
 
 void ProjectionComparisonObjects::ResetCleanCopyOfParticleImage(const bool is_for_global_search) {
 
+#ifndef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
     GpuImage* tmp_ptr = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
 
     MyDebugAssertTrue(clean_copy.is_in_memory_gpu, "Clean copy of particle image is not in memory!");
@@ -158,6 +183,7 @@ void ProjectionComparisonObjects::ResetCleanCopyOfParticleImage(const bool is_fo
 
     // Leave this as a blocking call
     cudaErr(cudaMemcpy(tmp_ptr->real_values_gpu, clean_copy.real_values_gpu, clean_copy.real_memory_allocated * sizeof(float), cudaMemcpyDeviceToDevice));
+#endif
 }
 
 /** 
@@ -209,15 +235,15 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
 
     // Let's see which image we are dealing with, check to see if it has been modified since we last (or never) interactied with it and also
     // reset the associated Particle flag to checkpoint our new association with the GpuImage.
-    bool host_particle_data_has_changed;
-    bool gpu_memory_was_changed;
+    bool host_particle_data_has_changed = false;
+    bool gpu_memory_was_changed         = false;
     switch ( image_type ) {
         case c_img_t::particle_image_t: {
 
             // To avoid a bunch of redundant checks, we'll assign some temporary pointers
             GpuImage* tmp_gpu_projection     = is_for_global_search ? &gpu_search_projection : &gpu_projection;
             GpuImage* tmp_gpu_particle_image = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
-
+#ifndef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
             // Init checks for equivalent size and whether or not to allocate.
             gpu_memory_was_changed         = tmp_gpu_particle_image->Init(*host_particle.particle_image, pin_host_memory, allocate_gpu_memory_if_needed);
             host_particle_data_has_changed = host_particle.HasParticleImageDataChanged( );
@@ -229,7 +255,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
 
             // Now the same for the projection image, except we only care about it's size and pointer association, not the host data so no need for a copy.
             host_particle.RecordGpuParticleImageAssociation( );
-
+#endif
             // for the projection, we don't care about the host data, just the size and pointer association.
             bool was_gpu_projection_memory_changed = tmp_gpu_projection->Init(host_projection_image, pin_host_memory, allocate_gpu_memory_if_needed);
 
@@ -309,7 +335,9 @@ void ProjectionComparisonObjects::PrepareGpuCTFImages(Particle& host_particle, c
 float ProjectionComparisonObjects::DoGpuProjection( ) {
     MyDebugAssertTrue(gpu_density_map.is_allocated_texture_cache, "gpu_density_map is not allocated");
     MyDebugAssertTrue(gpu_projection.is_in_memory_gpu, "gpu_projection is not allocated");
+#ifndef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
     MyDebugAssertTrue(gpu_particle_image.is_in_memory_gpu, "gpu_particle_image is not allocated");
+#endif
     // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
 
     gpu_projection.ExtractSliceShiftAndCtf(&gpu_density_map, &gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
@@ -328,10 +356,14 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     //     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     // #endif
 
-    // #if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU_pcos)
+    // #if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE_pcos)
     //     gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
     // #endif
 
+#ifdef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
+    gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
+    return 0.f;
+#else
     float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
     float filter_radius_low  = 0.0f;
     if ( particle->filter_radius_low != 0.0 )
@@ -354,6 +386,7 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, buffer_cross_terms, buffer_image_ps, buffer_projection_ps, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
 
     return tmp_corr;
+#endif
 };
 
 #endif

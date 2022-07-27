@@ -200,7 +200,60 @@ typedef struct
     }
 } square;
 
+// #define FULL_MASK 0xffffffff
+
 ////////////////////////
+__inline__ __device__ float warpReduceSum(float val) {
+    for ( int offset = warpSize / 2; offset > 0; offset /= 2 )
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__inline__ __device__ float blockReduceSum(float val) {
+
+    static __shared__ int shared[32]; // Shared mem for 32 partial sums
+    int                   lane = threadIdx.x % warpSize;
+    int                   wid  = threadIdx.x / warpSize;
+
+    val = warpReduceSum(val); // Each warp performs partial reduction
+
+    if ( lane == 0 )
+        shared[wid] = val; // Write reduced value to shared memory
+
+    __syncthreads( ); // Wait for all partial reductions
+
+    //read from shared memory only if that warp existed
+    val = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
+
+    if ( wid == 0 )
+        val = warpReduceSum(val); //Final reduce within first warp
+
+    return val;
+}
+
+__inline__ __device__ float blockReduce2dSum(float val) {
+
+    // This assumes a block size of 32x32 which is the default case  (32,32,1)
+    static __shared__ float shared[32]; // Shared mem for 32 partial sums
+    int                     linearIdx = threadIdx.x + threadIdx.y * blockDim.x;
+    int                     lane      = linearIdx % warpSize; // lane in warp
+    int                     wid       = linearIdx / warpSize; // warp id in block
+
+    val = warpReduceSum(val); // Each warp performs partial reduction
+
+    if ( lane == 0 )
+        shared[wid] = val; // Write reduced value to shared memory
+
+    __syncthreads( ); // Wait for all partial reductions
+
+    //read from shared memory only if that warp existed
+    val = (linearIdx < (blockDim.y * blockDim.x) / warpSize) ? shared[lane] : 0;
+
+    if ( wid == 0 )
+        val = warpReduceSum(val); //Final reduce within first warp
+
+    return val;
+}
 
 GpuImage::GpuImage( ) {
     is_meta_data_initialized = false;
@@ -344,6 +397,7 @@ bool GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory,
         cudaErr(cudaHostGetDevicePointer(&pinnedPtr, real_values, 0));
     }
 
+    AllocateTmpVarsAndEvents( );
     return gpu_memory_was_changed;
 }
 
@@ -1380,7 +1434,7 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
                                                            const int                        NY,
                                                            const float                      filter_radius_low_sq,
                                                            const float                      filter_radius_high_sq,
-                                                           const float                      signed_CC_limit_sq) {
+                                                           const float signed_CC_limit_sq, float* s1, float* s2, float* s3) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -1409,20 +1463,29 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     int real_idx    = y * output_pitch + x;
     int complex_idx = y * NX + x;
 
-    bool set_to_zero = false;
+    float sum1, sum2, sum3;
+    bool  set_to_zero = false;
     if ( u >= filter_radius_low_sq && u <= filter_radius_high_sq || x > 1 || y > 1 ) {
-        if ( image_values[complex_idx].x == 0.f && image_values[complex_idx].y == 0.f || projection_values[complex_idx].x == 0.f && projection_values[complex_idx].y == 0.f ) {
+        if ( (image_values[complex_idx].x == 0.f && image_values[complex_idx].y == 0.f) || (projection_values[complex_idx].x == 0.f && projection_values[complex_idx].y == 0.f) ) {
             set_to_zero = true;
         }
         else {
-            image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
-            projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
+            sum1 = ComplexModulusSquared(image_values[complex_idx]);
+            sum2 = ComplexModulusSquared(projection_values[complex_idx]);
             if ( u > signed_CC_limit_sq ) {
-                cross_terms[real_idx] = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
+                sum3 = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
             }
             else {
-                cross_terms[real_idx] = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
+                sum3 = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
             }
+            // image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
+            // projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
+            // if ( u > signed_CC_limit_sq ) {
+            //     cross_terms[real_idx] = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
+            // }
+            // else {
+            //     cross_terms[real_idx] = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
+            // }
         }
     }
     else {
@@ -1430,9 +1493,28 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     }
 
     if ( set_to_zero ) {
-        cross_terms[real_idx]   = 0.f;
-        image_PS[real_idx]      = 0.f;
-        projection_PS[real_idx] = 0.f;
+        sum1 = 0.f;
+        sum2 = 0.f;
+        sum3 = 0.f;
+
+        // cross_terms[real_idx]   = 0.f;
+        // image_PS[real_idx]      = 0.f;
+        // projection_PS[real_idx] = 0.f;
+    }
+    // cross_terms[real_idx]   = sum3;
+    // image_PS[real_idx]      = sum1;
+    // projection_PS[real_idx] = sum2;
+
+    // Just simplest test for now
+    sum1 = blockReduce2dSum(sum1);
+    sum2 = blockReduce2dSum(sum2);
+    sum3 = blockReduce2dSum(sum3);
+
+    // we know the 0th pixel is already zero for now, because we just wrote it
+    if ( threadIdx.x == 0 ) {
+        cross_terms[blockIdx.x + blockIdx.y * gridDim.x]   = sum3;
+        image_PS[blockIdx.x + blockIdx.y * gridDim.x]      = sum1;
+        projection_PS[blockIdx.x + blockIdx.y * gridDim.x] = sum2;
     }
 }
 
@@ -1467,6 +1549,16 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
     image_PS.Zeros( );
     projection_PS.Zeros( );
 
+    float* s1;
+    float* s2;
+    float* s3;
+    cudaErr(cudaMallocManaged(&s1, sizeof(float)));
+    cudaErr(cudaMallocManaged(&s2, sizeof(float)));
+    cudaErr(cudaMallocManaged(&s3, sizeof(float)));
+    *s1 = 0.f;
+    *s2 = 0.f;
+    *s3 = 0.f;
+
     signed_CC_limit *= signed_CC_limit;
     precheck;
     _pre_GetWeightedCorrelationWithImageKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
@@ -1479,24 +1571,40 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
                                                                                                       dims.y,
                                                                                                       filter_radius_low_sq,
                                                                                                       filter_radius_high_sq,
-                                                                                                      signed_CC_limit);
+                                                                                                      signed_CC_limit,
+                                                                                                      s1, s2, s3);
     postcheck;
 
-    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    int nBlocks = gridDims.x * gridDims.y;
+
+    dim3 finalGridDims(1, 1, 1);
+    dim3 finalThreadsPerBlock(1024, 1, 1);
+    precheck;
+    _post_GetWeightedCorrelationWithImageKernel<<<finalGridDims, finalThreadsPerBlock, 0, cudaStreamPerThread>>>(cross_terms.real_values_gpu);
+    postcheck;
+
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     // These should all be in the same stream so no need to synchronize.
-    float sum3 = cross_terms.ReturnSumOfRealValues( );
-    float sum1 = image_PS.ReturnSumOfRealValues( );
-    float sum2 = projection_PS.ReturnSumOfRealValues( );
+    // float sum3 = cross_terms.ReturnSumOfRealValues( );
+    // float sum1 = image_PS.ReturnSumOfRealValues( );
+    // float sum2 = projection_PS.ReturnSumOfRealValues( );
 
     // wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
+    // wxPrintf("sums %f %f %f atomic\n", *s1, *s2, *s3);
 
-    sum1 *= sum2;
-    if ( sum1 != 0.0 )
-        sum3 /= sqrtf(sum1);
+    float final_sum = *s3;
+
+    *s1 *= *s2;
+    if ( *s1 != 0.0 )
+        final_sum /= sqrtf(*s1);
 
     // wxPrintf("sum3 %f\n", sum3);
 
-    return float(sum3);
+    cudaErr(cudaFree(s1));
+    cudaErr(cudaFree(s2));
+    cudaErr(cudaFree(s3));
+
+    return float(final_sum);
 }
 
 void GpuImage::CalculateCrossCorrelationImageWith(GpuImage* other_image) {
@@ -1755,6 +1863,19 @@ float GpuImage::ReturnSumOfRealValues( ) {
 
     return (float)*tmpValComplex;
 }
+
+// float3 GpuImage::ReturnSumOfRealValues3Channel() {
+//     // FIXME assuming padded values are zero
+//     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+//     MyDebugAssertTrue(is_in_real_space, "Not in real space");
+
+//     NppInit( );
+//     BufferInit(b_sum);
+//     nppErr(nppiSum_32f_C3R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, sum_buffer, (Npp64f*)tmpValComplex, nppStream));
+//     cudaErr(cudaStreamSynchronize(nppStream.hStream));
+
+//     return (float3)*tmpValComplex;
+// }
 
 void GpuImage::AddImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array

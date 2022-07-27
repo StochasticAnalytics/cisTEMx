@@ -291,7 +291,8 @@ class GpuImage {
     void AddSquaredImage(GpuImage& other_image);
 
     // Statitical Methods
-    float     ReturnSumOfRealValues( );
+    float ReturnSumOfRealValues( );
+    // float3    ReturnSumOfRealValues3Channel( );
     NppiPoint min_idx;
     NppiPoint max_idx;
     float     min_value;

@@ -1,10 +1,6 @@
 
 #include <cistem_config.h>
-
-// #define PRINT_SCORES
-// #define COMPARE_GPU_CPU_SCORE
-// #define SAVE_DEBUG_IMAGES
-// #define CALCULATE_SCORE_ON_CPU
+#include "refine3d_defines.h"
 
 #ifdef ENABLEGPU
 #warning "GPU enabled in refine3d"
@@ -21,10 +17,6 @@ using namespace cistem_timer_noop;
 #endif
 
 #include "ProjectionComparisonObjects.h"
-
-#if ( defined(CALCULATE_SCORE_ON_CPU) && ! defined(CALCULATE_SCORE_ON_CPU_pcos) ) || (! defined(CALCULATE_SCORE_ON_CPU) && defined(CALCULATE_SCORE_ON_CPU_pcos))
-#error "To trouble shoot scoring on the cpu , you have to modify refine3d and ProjectionComparisonObjects.h"
-#endif
 
 StopWatch global_timer;
 
@@ -44,6 +36,7 @@ class
 //float		beam_tilt_y = 0.0f;
 // This is the function which will be minimized
 float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values) {
+
     global_timer.start("re_cast");
     ProjectionComparisonObjects* comparison_object = reinterpret_cast<ProjectionComparisonObjects*>(scoring_parameters);
     global_timer.lap("re_cast");
@@ -94,7 +87,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     global_timer.lap("gpu_projection");
 
 #ifdef SAVE_DEBUG_IMAGES
-    if ( comparison_object->nprj < 10 ) {
+    if ( comparison_object->nprj < N_DEBUG_IMAGES ) {
         comparison_object->gpu_particle_image.QuickAndDirtyWriteSlices("gpu_particle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
         comparison_object->particle->particle_image->QuickAndDirtyWriteSlices("cpu_particle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
         comparison_object->gpu_projection.SwapRealSpaceQuadrants( );
@@ -104,7 +97,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
         comparison_object->projection_image->QuickAndDirtyWriteSlice("gpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
         comparison_object->projection_image->SwapRealSpaceQuadrants( );
         comparison_object->nprj++;
-        if ( comparison_object->nprj == 10 ) {
+        if ( comparison_object->nprj == N_DEBUG_IMAGES ) {
             wxPrintf("GPU projection is done\n");
             exit(0);
         }
@@ -128,20 +121,17 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     global_timer.lap("calc_proj cpu");
 
-#if ! defined(ENABLEGPU) || defined(COMPARE_GPU_CPU_SCORE)
-
-#ifdef SAVE_DEBUG_IMAGES
+#if defined(SAVE_DEBUG_IMAGES) && ! defined(ENABLEGPU)
     if ( comparison_object->nprj < 10 ) {
         comparison_object->projection_image->SwapRealSpaceQuadrants( );
         comparison_object->projection_image->QuickAndDirtyWriteSlice("cpu_projection_" + std::to_string(comparison_object->nprj) + ".mrc", 1);
         comparison_object->projection_image->SwapRealSpaceQuadrants( );
         comparison_object->nprj++;
-        if ( comparison_object->nprj == 10 ) {
+        if ( comparison_object->nprj == N_DEBUG_IMAGES ) {
             wxPrintf("CPU projection is done\n");
             exit(0);
         }
     }
-#endif
 #endif
 
     // The minimizer sometimes tries weird values
@@ -169,9 +159,21 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     global_timer.start("ReturnScore");
 
-#if defined(CALCULATE_SCORE_ON_CPU) || ! defined(ENABLEGPU)
+#if defined(CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE) || ! defined(ENABLEGPU)
+#ifdef USE_OPTIMIZED_CPU_SCORE_CALCULATION
+    float filter_radius_high = fminf(powf(comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_high, 2), 0.25);
+    float filter_radius_low  = 0.0f;
+    if ( comparison_object->particle->filter_radius_low != 0.0 )
+        filter_radius_low = powf(comparison_object->particle->pixel_size / comparison_object->particle->filter_radius_low, 2);
+
+    float tmp_corr = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image,
+                                                                                                  filter_radius_low, filter_radius_high,
+                                                                                                  powf(comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit, 2));
+#else
     float tmp_corr = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
                                                                                                   comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
+
+#endif
 #else
 #ifdef ENABLEGPU
     float tmp_corr = gpu_score;
@@ -179,12 +181,6 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 #error "We need to calculate the score somewhere!!"
 #endif
 
-#endif
-
-#if defined(COMPARE_GPU_CPU_SCORE) && defined(ENABLEGPU)
-    float for_test = comparison_object->particle->particle_image->GetWeightedCorrelationWithImage(*comparison_object->projection_image, comparison_object->particle->bin_index,
-                                                                                                  comparison_object->particle->pixel_size / comparison_object->particle->signed_CC_limit);
-    wxPrintf("gpu:cpu scores %3.3g:%3.3g  %3.3g\n", tmp_corr, for_test, tmp_corr / for_test);
 #endif
 
     global_timer.lap("ReturnScore");
@@ -205,10 +201,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
                  comparison_object->particle->alignment_parameters.ReturnPhiAngle( ),
                  comparison_object->particle->alignment_parameters.ReturnThetaAngle( ));
     }
-    // #ifdef ENABLEGPU
-    //     comparison_object->gpu_particle_image.QuickAndDirtyWriteSlices("gpu_DEBUGparticle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
-    //     comparison_object->particle->particle_image->QuickAndDirtyWriteSlices("cpu_DEBUGparticle_" + std::to_string(comparison_object->nprj) + ".mrc", 1, 1);
-    // #endif
+
     MyDebugAssertFalse(isnan(tmp_corr), "Frealign score function: correlation term is NaN");
     MyDebugAssertFalse(isnan(tmp_penalty), "Frealign score function: penalty term is NaN");
 #endif
@@ -1023,6 +1016,8 @@ bool Refine3DApp::DoCalculation( ) {
 
         ProjectionComparisonObjects comparison_object;
 
+        int new_buffer_size = 0;
+
         //	input_3d_local = input_3d;
         input_3d_local.CopyAllButVolume(&input_3d);
         input_3d_local.density_map = input_3d.density_map;
@@ -1235,7 +1230,9 @@ bool Refine3DApp::DoCalculation( ) {
                 timer.start("ctf setup");
                 //			wxPrintf("\nRefining defocus for parameter line %i\n", current_line);
                 refine_particle_local.filter_radius_low = 30.0;
-                refine_particle_local.SetIndexForWeightedCorrelation( );
+
+                new_buffer_size = refine_particle_local.SetIndexForWeightedCorrelation( );
+                comparison_object.AllocateBuffers(new_buffer_size);
 
                 // Binned image isn't really binned, but it is being used to keep a clean copy of the image
                 binned_image.CopyFrom(refine_particle_local.particle_image);
@@ -1306,7 +1303,9 @@ bool Refine3DApp::DoCalculation( ) {
 
             timer.start("weight and prep particle");
             refine_particle_local.filter_radius_low = low_resolution_limit;
-            refine_particle_local.SetIndexForWeightedCorrelation( );
+            new_buffer_size                         = refine_particle_local.SetIndexForWeightedCorrelation( );
+            comparison_object.AllocateBuffers(new_buffer_size);
+
             if ( normalize_input_3d )
                 refine_particle_local.WeightBySSNR(refine_statistics.part_SSNR, 1);
             // Apply SSNR weighting only to image since input 3D map assumed to be calculated from correctly whitened images
@@ -1436,7 +1435,9 @@ bool Refine3DApp::DoCalculation( ) {
                     comparison_object.SetHostPointers(&search_reference_3d_local, &search_projection_image, &search_particle_local, true);
 
                     search_particle_local.CenterInCorner( );
-                    search_particle_local.SetIndexForWeightedCorrelation( );
+                    new_buffer_size = search_particle_local.SetIndexForWeightedCorrelation( );
+                    comparison_object.AllocateBuffers(new_buffer_size);
+
                     search_particle_local.SetParameters(input_parameters);
                     search_particle_local.MapParameters(cg_starting_point);
                     search_particle_local.mask_radius = outer_mask_radius;

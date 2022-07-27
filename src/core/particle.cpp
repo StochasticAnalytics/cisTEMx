@@ -422,7 +422,7 @@ void Particle::BeamTiltMultiplyImage( ) {
     has_particle_image_data_changed = true;
 }
 
-void Particle::SetIndexForWeightedCorrelation(bool limit_resolution) {
+int Particle::SetIndexForWeightedCorrelation(bool limit_resolution) {
     MyDebugAssertTrue(particle_image->is_in_memory, "Image memory not allocated");
 
     int i;
@@ -472,6 +472,9 @@ void Particle::SetIndexForWeightedCorrelation(bool limit_resolution) {
             }
         }
     }
+
+    // When storing an external buffer for GetWeightedCorrelation, we want to make sure the buffer size has not changed.
+    return number_of_bins;
 }
 
 void Particle::WeightBySSNR(Curve& SSNR, int include_reference_weighting, bool no_ctf) {

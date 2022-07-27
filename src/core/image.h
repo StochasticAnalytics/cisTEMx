@@ -115,6 +115,7 @@ class Image {
     float ReturnBeamTiltSignificanceScore(Image calculated_beam_tilt);
     float ReturnPixelWiseProduct(Image& other_image);
     float GetWeightedCorrelationWithImage(Image& projection_image, int* bins, float signed_CC_limit);
+    float GetWeightedCorrelationWithImage(Image& projection_image, float low_limit2, float high_limit2, float signed_CC_limit2);
     void  PhaseFlipPixelWise(Image& other_image);
     void  MultiplyPixelWiseReal(Image& other_image, bool absolute = false);
     void  MultiplyPixelWise(Image& other_image);

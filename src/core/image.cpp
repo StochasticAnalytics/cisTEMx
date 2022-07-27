@@ -561,6 +561,64 @@ float Image::GetWeightedCorrelationWithImage(Image& projection_image, int* bins,
     return sum3;
 }
 
+float Image::GetWeightedCorrelationWithImage(Image& projection_image, float low_limit2, float high_limit2, float signed_CC_limit2) {
+    MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
+    MyDebugAssertTrue(projection_image.is_in_memory, "projection_image memory not allocated");
+    MyDebugAssertTrue(! is_in_real_space, "Image not in Fourier space");
+    MyDebugAssertTrue(! projection_image.is_in_real_space, "projection_image not in Fourier space");
+    //	MyDebugAssertTrue(! projection_image.object_is_centred_in_box, "projection_image quadrants have not been swapped");
+    MyDebugAssertTrue(HasSameDimensionsAs(&projection_image), "Images do not have the same dimensions");
+    MyDebugAssertFalse(HasNan( ), "Image has one or more NaN pixels");
+    MyDebugAssertFalse(projection_image.HasNan( ), "Projection has one or more NaN pixels");
+
+    double sum1 = 0;
+    double sum2 = 0;
+    double sum3 = 0;
+
+    float* c_img = (float*)complex_values;
+    float* p_img = (float*)projection_image.complex_values;
+
+    int   i, j, k, pixel_counter;
+    float x, y, z, frequency_squared;
+    pixel_counter = 0;
+    for ( k = 0; k <= physical_upper_bound_complex_z; k++ ) {
+        z = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k) * fourier_voxel_size_z, 2);
+        for ( j = 0; j <= physical_upper_bound_complex_y; j++ ) {
+            y = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * fourier_voxel_size_y, 2);
+            for ( i = 0; i <= physical_upper_bound_complex_x; i++ ) {
+                x                 = powf(i * fourier_voxel_size_x, 2);
+                frequency_squared = x + y + z;
+                if ( frequency_squared >= low_limit2 && frequency_squared <= high_limit2 && (i > 1 && j > 1 && k > 1) ) {
+                    if ( (c_img[pixel_counter] == 0.f && c_img[pixel_counter + 1] == 0.0f) ||
+                         (p_img[pixel_counter] == 0.f && p_img[pixel_counter + 1] == 0.0f) ) {
+                        // Do nothing
+                    }
+                    else {
+
+                        sum1 += (powf(c_img[pixel_counter], 2) + powf(c_img[pixel_counter + 1], 2));
+                        sum2 += (powf(p_img[pixel_counter], 2) + powf(p_img[pixel_counter + 1], 2));
+                        if ( frequency_squared > signed_CC_limit2 ) {
+                            sum3 += fabsf(c_img[pixel_counter] * p_img[pixel_counter] +
+                                          c_img[pixel_counter + 1] * p_img[pixel_counter + 1]);
+                        }
+                        else {
+                            sum3 += (c_img[pixel_counter] * p_img[pixel_counter] +
+                                     c_img[pixel_counter + 1] * p_img[pixel_counter + 1]);
+                        }
+                    }
+                }
+                pixel_counter += 2;
+            }
+        }
+    }
+
+    sum1 *= sum2;
+    if ( sum1 != 0.0 )
+        sum3 /= sqrtf(sum1);
+
+    return sum3;
+}
+
 void Image::PhaseFlipPixelWise(Image& phase_image) {
     MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
     MyDebugAssertTrue(phase_image.is_in_memory, "Other image memory not allocated");

@@ -14,10 +14,11 @@ to only do what is strictly necessary, while cpu Image objects still handle much
 the actual data itself may fall out of sync with an associated GpuImage object.
 
 */
-// #define CALCULATE_SCORE_ON_CPU_pcos
 
 #ifndef _SRC_PROGRAMS_REFINE3D_PROJECTION_COMPARISON_OBJECTS_H_
 #define _SRC_PROGRAMS_REFINE3D_PROJECTION_COMPARISON_OBJECTS_H_
+
+#include "refine3d_defines.h"
 
 #ifdef ENABLEGPU
 #warning "Experimental GPU code from ProjectionComparisonObjects.h will be used in refine3d_gpu"
@@ -29,10 +30,9 @@ class GpuImage;
 #include "../../core/cistem_constants.h"
 using c_img_t = cistem::PCOS_image_type::Enum;
 
-
 class ProjectionComparisonObjects {
 
-    public:
+  public:
 #ifdef ENABLEGPU
     // the search volumes refer to global (grid search) which happens either in CTF refinement or in global search.
     GpuImage gpu_density_map;
@@ -50,24 +50,23 @@ class ProjectionComparisonObjects {
     GpuImage buffer_image_ps;
     GpuImage buffer_projection_ps;
 
-// #else
-//     // FIXME: shouldn't need to do this to get Cpu to compile - but in some debug steps still accessing the GPU members directly (also FIXME)
-//     Image gpu_density_map;
-//     Image gpu_projection;
-//     Image gpu_ctf_image;
-//     Image gpu_particle_image;
+    // #else
+    //     // FIXME: shouldn't need to do this to get Cpu to compile - but in some debug steps still accessing the GPU members directly (also FIXME)
+    //     Image gpu_density_map;
+    //     Image gpu_projection;
+    //     Image gpu_ctf_image;
+    //     Image gpu_particle_image;
 
-//     Image gpu_search_density_map;
-//     Image gpu_search_projection;
-//     Image gpu_search_ctf_image;
-//     Image gpu_search_particle_image;
+    //     Image gpu_search_density_map;
+    //     Image gpu_search_projection;
+    //     Image gpu_search_ctf_image;
+    //     Image gpu_search_particle_image;
 
-//     Image clean_copy;
+    //     Image clean_copy;
 
 #endif
 
     bool is_allocated_weighted_correlation_buffers;
-
 
     bool current_cpu_pointers_are_for_global_search;
     bool is_allocated_gpu_density_map;
@@ -136,7 +135,7 @@ class ProjectionComparisonObjects {
     }
 
     // These are used in the projection step. ifndef ENABLEGPU, they are just no-ops.
-    float DoGpuProjection();
+    float DoGpuProjection( );
     void  PrepareGpuImages(Particle& host_particle, Image& host_projection_image, const bool is_for_global_search, c_img_t image_type = c_img_t::particle_image_t);
     void  PrepareGpuCTFImages(Particle& host_particle, const bool is_for_global_search);
     void  PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search);
@@ -147,6 +146,8 @@ class ProjectionComparisonObjects {
     void DeallocateCleanCopyOfParticleImage( );
 
     void ResetCleanCopyOfParticleImage(const bool is_for_global_search);
+
+    void AllocateBuffers(int new_buffer_size);
 
     Particle*            particle;
     ReconstructedVolume* reference_volume;
@@ -164,6 +165,9 @@ class ProjectionComparisonObjects {
     float initial_psi_angle;
     float initial_phi_angle;
     float initial_theta_angle;
+
+    int    old_buffer_size;
+    float* buffer;
 };
 
 #endif // _SRC_PROGRAMS_REFINE3D_PROJECTION_COMPARISON_OBJECTS_H_

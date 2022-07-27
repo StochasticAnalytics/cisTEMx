@@ -1482,19 +1482,19 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
                                                                                                       signed_CC_limit);
     postcheck;
 
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     // These should all be in the same stream so no need to synchronize.
     float sum3 = cross_terms.ReturnSumOfRealValues( );
     float sum1 = image_PS.ReturnSumOfRealValues( );
     float sum2 = projection_PS.ReturnSumOfRealValues( );
 
-    wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
+    // wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
 
     sum1 *= sum2;
     if ( sum1 != 0.0 )
         sum3 /= sqrtf(sum1);
 
-    wxPrintf("sum3 %f\n", sum3);
+    // wxPrintf("sum3 %f\n", sum3);
 
     return float(sum3);
 }

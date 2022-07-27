@@ -1,7 +1,7 @@
 
 #include <cistem_config.h>
 
-#define PRINT_SCORES
+// #define PRINT_SCORES
 // #define COMPARE_GPU_CPU_SCORE
 // #define SAVE_DEBUG_IMAGES
 // #define CALCULATE_SCORE_ON_CPU
@@ -89,7 +89,9 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     calculate_projection = false;
     use_gpu_projection   = true;
     // First get the projection, optionally shifted and multiplied by the CTF
+    global_timer.start("gpu_projection");
     float gpu_score = comparison_object->DoGpuProjection( );
+    global_timer.lap("gpu_projection");
 
 #ifdef SAVE_DEBUG_IMAGES
     if ( comparison_object->nprj < 10 ) {

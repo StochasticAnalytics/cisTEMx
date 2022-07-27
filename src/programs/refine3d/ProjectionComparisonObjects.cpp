@@ -224,7 +224,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
 
             // If we altered the gpu memory, or if the host particle has recorded a change to its underlying data, we need to copy host - > device.
             if ( gpu_memory_was_changed || host_particle_data_has_changed ) {
-                tmp_gpu_particle_image->CopyHostToDeviceAndSynchronize( );
+                tmp_gpu_particle_image->CopyHostToDevice( ); // TODO: does this need to be synchronize?
             }
 
             // Now the same for the projection image, except we only care about it's size and pointer association, not the host data so no need for a copy.
@@ -260,7 +260,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
 
             // If we altered the gpu memory, or if the host particle has recorded a change to its underlying data, we need to copy host - > device.
             if ( gpu_memory_was_changed || host_particle_data_has_changed ) {
-                tmp_gpu_ctf->CopyHostToDevice16f(true);
+                tmp_gpu_ctf->CopyHostToDevice16f( );
             }
             host_particle.RecordGpuCTFImageAssociation( );
 
@@ -322,15 +322,15 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
         gpu_projection.BackwardFFT( );
     }
 
-#ifdef CISTEM_PROFILING
-    // When profiling, we want to distinguish between projection time and copy time
-    // We still have synchronization in the weighted correlation methods.
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-#endif
+    // #ifdef CISTEM_PROFILING
+    //     // When profiling, we want to distinguish between projection time and copy time
+    //     // We still have synchronization in the weighted correlation methods.
+    //     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    // #endif
 
-#if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU_pcos)
-    gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
-#endif
+    // #if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU_pcos)
+    //     gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
+    // #endif
 
     float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
     float filter_radius_low  = 0.0f;

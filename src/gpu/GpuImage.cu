@@ -1435,8 +1435,7 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
                                                            const int                        NY,
                                                            const float                      filter_radius_low_sq,
                                                            const float                      filter_radius_high_sq,
-                                                           const float                      signed_CC_limit_sq,
-                                                           float* s1, float* s2, float* s3) {
+                                                           const float                      signed_CC_limit_sq) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -1470,7 +1469,8 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
 #endif
     bool set_to_zero = false;
     if ( u >= filter_radius_low_sq && u <= filter_radius_high_sq || x > 1 || y > 1 ) {
-        if ( (image_values[complex_idx].x == 0.f && image_values[complex_idx].y == 0.f) || (projection_values[complex_idx].x == 0.f && projection_values[complex_idx].y == 0.f) ) {
+        v = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
+        if ( v == 0.f ) {
             set_to_zero = true;
         }
         else {
@@ -1478,19 +1478,19 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
             sum1 = ComplexModulusSquared(image_values[complex_idx]);
             sum2 = ComplexModulusSquared(projection_values[complex_idx]);
             if ( u > signed_CC_limit_sq ) {
-                sum3 = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
+                sum3 = fabsf(v);
             }
             else {
-                sum3 = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
+                sum3 = v;
             }
 #else
             image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
             projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
             if ( u > signed_CC_limit_sq ) {
-                cross_terms[real_idx] = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
+                cross_terms[real_idx] = fabsf(v);
             }
             else {
-                cross_terms[real_idx] = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
+                cross_terms[real_idx] = v;
             }
 #endif
         }
@@ -1563,15 +1563,15 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
     image_PS.Zeros( );
     projection_PS.Zeros( );
 
-    float* s1;
-    float* s2;
-    float* s3;
-    cudaErr(cudaMallocManaged(&s1, sizeof(float)));
-    cudaErr(cudaMallocManaged(&s2, sizeof(float)));
-    cudaErr(cudaMallocManaged(&s3, sizeof(float)));
-    *s1 = 0.f;
-    *s2 = 0.f;
-    *s3 = 0.f;
+    // float* s1;
+    // float* s2;
+    // float* s3;
+    // cudaErr(cudaMallocManaged(&s1, sizeof(float)));
+    // cudaErr(cudaMallocManaged(&s2, sizeof(float)));
+    // cudaErr(cudaMallocManaged(&s3, sizeof(float)));
+    // *s1 = 0.f;
+    // *s2 = 0.f;
+    // *s3 = 0.f;
 
     signed_CC_limit *= signed_CC_limit;
     precheck;
@@ -1585,9 +1585,7 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
                                                                                                       dims.y,
                                                                                                       filter_radius_low_sq,
                                                                                                       filter_radius_high_sq,
-                                                                                                      signed_CC_limit,
-                                                                                                      s1, s2, s3);
-    postcheck;
+                                                                                                      signed_CC_limit);
 
     // int nBlocks = gridDims.x * gridDims.y;
 
@@ -1621,9 +1619,9 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
     // wxPrintf("sums %f %f %f atomic\n", *s1, *s2, *s3);
     // wxPrintf("sum3 %f\n", sum3);
 
-    cudaErr(cudaFree(s1));
-    cudaErr(cudaFree(s2));
-    cudaErr(cudaFree(s3));
+    // cudaErr(cudaFree(s1));
+    // cudaErr(cudaFree(s2));
+    // cudaErr(cudaFree(s3));
 
     return float(final_sum);
 }

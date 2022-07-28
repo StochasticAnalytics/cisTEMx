@@ -103,4 +103,4 @@ ENV LD_LIBRARY_PATH=/opt/WX/intel-dynamic/lib/:${LD_LIBRARY_PATH}
 RUN echo 'int mkl_serv_intel_cpu_true() {return 1;}' > /opt/intel/fakeIntel.c && \
     . /opt/intel/oneapi/setvars.sh  && icpc -shared -fPIC -o /opt/intel/libfakeIntel.so /opt/intel/fakeIntel.c 
 
-ENV LD_LOAD=/opt/intel/libfakeIntel.so
+ENV LD_PRELOAD=/opt/intel/libfakeIntel.so

@@ -12,28 +12,6 @@
 #include "../common/common.h"
 #include "projection_comparison.h"
 
-// Convenience function to return the abs(complex) in a real valued image that can be saved for inspection
-Image GetAbsAsReal(Image& input_image) {
-
-    Image tmp_img;
-    int   pixel_pitch = (input_image.logical_x_dimension + input_image.padding_jump_value) / 2;
-    tmp_img.Allocate(pixel_pitch, input_image.logical_y_dimension, input_image.logical_z_dimension, true, true);
-
-    int address_complex = 0;
-    int address_real    = 0;
-    for ( int k = 0; k < input_image.logical_z_dimension; k++ ) {
-        for ( int j = 0; j < input_image.logical_y_dimension; j++ ) {
-            for ( int i = 0; i < pixel_pitch; i++ ) {
-                tmp_img.real_values[address_real] = abs(input_image.complex_values[address_complex]);
-                address_complex++;
-                address_real++;
-            }
-            address_real += tmp_img.padding_jump_value;
-        }
-    }
-    return tmp_img;
-}
-
 bool CPUvsGPUProjectionTest(const wxString& temp_directory) {
 
     bool passed;
@@ -51,7 +29,7 @@ bool CPUvsGPUProjectionTest(const wxString& temp_directory) {
         all_passed = all_passed && DoCPUvsGPUProjectionTest(cistem_ref_dir, temp_directory);
 
         // SamplesPrintResult(all_passed, __LINE__);
-        // wxPrintf("\n\n");
+        wxPrintf("\n\n");
     }
     else {
         // If we are not in the dev container, we can't do the tests.
@@ -109,6 +87,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
 
     AnglesAndShifts my_angles_and_shifts;
     AnglesAndShifts zero_angles(0.f, 0.f, 0.f, 0.f, 0.f);
+    float           pixel_size = 1.0f;
 
     // Make a default projection to see the unrotated.
     cpu_volume.ExtractSlice(cpu_prj, zero_angles, 0.f, false);
@@ -168,10 +147,12 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     GpuImage gpu_prj;
 
     cpu_volume.BackwardFFT( );
+    cpu_volume.ZeroFloatAndNormalize( );
+
     cpu_volume.SwapFourierSpaceQuadrants(false);
 
     // Associate the gpu volume with the cpu volume, getting meta data and pinning the host pointer.
-    gpu_volume.CopyFromCpuImage(cpu_volume);
+    gpu_volume.Init(cpu_volume);
 
     // The volume is already in Fourier space, so we can copy it to texture cache for interpolation.
     gpu_volume.CopyHostToDeviceTextureComplex3d( );
@@ -196,12 +177,12 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
 
         // Make a projection the angles and shifts are set to.
         my_angles_and_shifts.Init(my_angles[iPrj][0], my_angles[iPrj][1], my_angles[iPrj][2], 0.f, 0.f);
-        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, 0.f, false, xtrashifts);
+        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false);
 
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
-        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
         gpu_prj.RecordAndWait( );
 
         cimg.ZeroFloatAndNormalize(1.f, mask_radius);
@@ -216,7 +197,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     all_passed = all_passed && passed;
     SamplesTestResult(passed);
 
-    int         n_loops   = 1000;
+    int         n_loops   = 100;
     std::string test_name = "Extract slice CPU vs GPU fuzzing(" + std::to_string(n_loops) + ") loops";
     SamplesBeginTest(test_name.c_str( ), passed);
 
@@ -234,12 +215,12 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
     for ( int iLoop = 0; iLoop < n_loops; iLoop++ ) {
         my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), 0.f, 0.f);
         new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, 0.f, false);
-        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, 0.f, false, xtrashifts);
+        gpu_prj.ExtractSlice(&gpu_volume, my_angles_and_shifts, pixel_size, 0.f, false);
 
         // Prepare for real-space correlation score.
         gpu_prj.SwapRealSpaceQuadrants( );
         gpu_prj.BackwardFFT( );
-        gpu_prj.CopyDeviceToHost(false, false);
+        gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
         gpu_prj.RecordAndWait( );
 
         cpu_prj.SwapRealSpaceQuadrants( );
@@ -250,6 +231,61 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
 
         score  = cpu_prj.ReturnCorrelationCoefficientUnnormalized(cimg, mask_radius);
         passed = passed && (score > 0.999f);
+    }
+
+    all_passed = all_passed && passed;
+    SamplesTestResult(passed);
+
+    std::vector<std::string> condition_name = {"Extract and whiten w/Fuzzing(" + std::to_string(n_loops) + ") loops",
+                                               "Extract and phase shift w/Fuzzing(" + std::to_string(n_loops) + ") loops",
+                                               "Extract and swap quadrants w/Fuzzing(" + std::to_string(n_loops) + ") loops"};
+
+    // For particle alignment, the res-limit defaults to 0.5 (nyquist).
+    // This means this testing is not strictly valid for the corners in Fourier space, which are used in TM i think.
+    float             res_limit      = 0.5f;
+    std::vector<bool> limit_res      = {true, true, true};
+    std::vector<bool> swap_quadrants = {false, false, true};
+    std::vector<bool> apply_shifts   = {false, true, true};
+    std::vector<bool> apply_ctf      = {false, false, false};
+    std::vector<bool> absolute_ctf   = {false, false, false};
+    std::vector<bool> whiten         = {true, true, true};
+
+    // Dummy ctf imag; TODO: add random CTFs w/ w/o absolute CTF. needs to be updated with
+    GpuImage ctf_img;
+    ctf_img.CopyFrom(&gpu_prj);
+    ctf_img.SetToConstant(1.f);
+
+    for ( int iCondition = 0; iCondition < condition_name.size( ); iCondition++ ) {
+        SamplesBeginTest(condition_name[iCondition].c_str( ), passed);
+        for ( int iLoop = 0; iLoop < n_loops; iLoop++ ) {
+            // Compared to the previous, we now pass a bool to pug Extract slice and add and extra method call for the GPU to get whitening of the PS.
+            my_angles_and_shifts.Init(my_rand.GetUniformRandomSTD(-180.f, 180), my_rand.GetUniformRandomSTD(0.f, 180), my_rand.GetUniformRandomSTD(0.f, 360), 0.f, 0.f);
+            new_cpu_volume.ExtractSlice(cpu_prj, my_angles_and_shifts, res_limit, limit_res[iCondition]);
+            gpu_prj.ExtractSliceShiftAndCtf(&gpu_volume, &ctf_img, my_angles_and_shifts, pixel_size, res_limit, limit_res[iCondition],
+                                            swap_quadrants[iCondition], apply_shifts[iCondition], apply_ctf[iCondition], absolute_ctf[iCondition]);
+            if ( whiten[iCondition] ) {
+                gpu_prj.Whiten( );
+            }
+
+            if ( ! swap_quadrants[iCondition] ) {
+                // If true, then the swapping is done by ExtractSliceShiftAndCtf, otherwise do it here
+                gpu_prj.SwapRealSpaceQuadrants( );
+            }
+            gpu_prj.BackwardFFT( );
+            gpu_prj.CopyDeviceToHostAndSynchronize(false, false);
+
+            cpu_prj.Whiten( );
+            cpu_prj.SwapRealSpaceQuadrants( );
+            cpu_prj.BackwardFFT( );
+
+            cpu_prj.ZeroFloatAndNormalize(1.f, mask_radius);
+            cimg.ZeroFloatAndNormalize(1.f, mask_radius);
+
+            passed = CompareRealValues(cpu_prj, cimg, 0.999f, mask_radius);
+        }
+
+        all_passed = all_passed && passed;
+        SamplesTestResult(passed);
     }
 
     all_passed = all_passed && passed;

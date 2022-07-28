@@ -1,0 +1,13 @@
+    sudo apt-get update -y && \
+    DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
+        apt-transport-https \
+        ca-certificates \
+        gnupg \
+        wget && \
+    sudo rm -rf /var/lib/apt/lists/* && \
+    wget -qO - https://developer.download.nvidia.com/devtools/repos/ubuntu2004/amd64/nvidia.pub | sudo apt-key add - && \
+    echo "deb https://developer.download.nvidia.com/devtools/repos/ubuntu2004/amd64/ /" | sudo tee -a /etc/apt/sources.list.d/nsight.list && \
+    sudo apt-get update -y && \
+    DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
+        nsight-systems-2022.2.1 && \
+    sudo rm -rf /var/lib/apt/lists/* 

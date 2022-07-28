@@ -406,7 +406,20 @@ void EulerSearch::SetSymmetryLimits( ) {
     DEBUG_ABORT;
 }
 
-// Run the search
+/**
+ * @brief Runs a brute force search over a pre-specified range of Euler angles.
+ * 
+ * 1) For in-plane angles at each position on the euler sphere, an image cache of 2d rotations is created. If testing mirrors, these are included in the cache.
+ *     a) Cache is generated from the _particle_ image, which is multiplied by the CTF, then padded, iFFT, and rotated in position space, FFT, real space quadrant swapped.
+ *     b) if testing mirrors, that mirror is next in sequence in the cache.
+ * 2) The search positions are then looped over the euler sphere, at each position doing a conjugate multiplication out of place (to re-use the projection cache and reference projection).
+ * 3) The score and translation are taken from the position space peak after a backward transform.
+ * 
+ * 
+ * @param particle 
+ * @param input_3d 
+ * @param projections 
+ */
 void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
     MyDebugAssertTrue(number_of_search_positions > 0, "EulerSearch not initialized");
     MyDebugAssertTrue(particle.particle_image->is_in_memory, "Particle image not allocated");

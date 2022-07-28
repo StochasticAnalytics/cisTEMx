@@ -253,7 +253,7 @@ void ReconstructedVolume::PrepareForProjections(float low_resolution_limit, floa
 }
 
 void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, AnglesAndShifts& angles_and_shifts_of_projection,
-                                              float mask_radius, float mask_falloff, float resolution_limit, bool swap_quadrants, bool apply_shifts, bool whiten, bool apply_ctf, bool abolute_ctf, bool calculate_projection) {
+                                              float mask_radius, float mask_falloff, float resolution_limit, bool swap_quadrants, bool apply_shifts, bool whiten, bool apply_ctf, bool abolute_ctf, bool calculate_projection, bool use_gpu_projection) {
     //	MyDebugAssertTrue(projection.logical_x_dimension == density_map->logical_x_dimension && projection.logical_y_dimension == density_map->logical_y_dimension, "Error: Images have different sizes");
     MyDebugAssertTrue(CTF.logical_x_dimension == projection.logical_x_dimension && CTF.logical_y_dimension == projection.logical_y_dimension, "Error: CTF image has different size");
     MyDebugAssertTrue(projection.logical_z_dimension == 1, "Error: attempting to extract 3D image from 3D reconstruction");
@@ -261,10 +261,11 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
     MyDebugAssertTrue(density_map->IsCubic( ), "Image volume to project is not cubic (%i, %i, %i)", density_map->logical_x_dimension, density_map->logical_y_dimension, density_map->logical_z_dimension);
     MyDebugAssertTrue(! density_map->object_is_centred_in_box, "Image volume quadrants not swapped");
 
-    if ( current_phi != angles_and_shifts_of_projection.ReturnPhiAngle( ) || current_theta != angles_and_shifts_of_projection.ReturnThetaAngle( ) || current_psi != angles_and_shifts_of_projection.ReturnPsiAngle( ) || current_resolution_limit != resolution_limit ) {
-        if ( calculate_projection )
-            density_map->ExtractSlice(projection, angles_and_shifts_of_projection, resolution_limit);
-        current_projection.CopyFrom(&projection);
+    // The else clause allows us to re-use a projection at a given set of angles and res-limit, with possibly different CTF or mask parameters or shifts. The extra copying is
+    // Not worthwile on the GPU, so we only ever use the main. Update Everything but current projection though, in case it is used elsewhere.
+
+    if ( use_gpu_projection ) {
+        // current_projection.CopyFrom(&projection);
         current_phi              = angles_and_shifts_of_projection.ReturnPhiAngle( );
         current_theta            = angles_and_shifts_of_projection.ReturnThetaAngle( );
         current_psi              = angles_and_shifts_of_projection.ReturnPsiAngle( );
@@ -277,61 +278,50 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
         current_swap_quadrants   = swap_quadrants;
         current_whitening        = whiten;
 
-        if ( whiten ) {
-            //			var_A = projection.ReturnSumOfSquares();
-            //			projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
-            projection.Whiten(resolution_limit);
-            //			projection.PhaseFlipPixelWise(CTF);
-            //			projection.BackwardFFT();
-            //			projection.ZeroFloatOutside(0.5 * projection.logical_x_dimension - 1.0);
-            //			projection.ForwardFFT();
+        // I haven't implemented CosineMask on the GPU yet, but if this condition is met, we at least to the BackwardFFT on the GPU
+        if ( mask_radius > 0.0 ) {
+            // projection.BackwardFFT( );
+            projection.CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size);
+            projection.ForwardFFT( );
         }
-        if ( apply_ctf ) {
-            //			projection.BackwardFFT();
-            //			projection.SetToConstant(1.0);
-            //			projection.real_values[0] = 1.0;
-            //			projection.CosineMask(20.0, 1.0, false, true, 0.0);
-            //			projection.ForwardFFT();
-            //			projection.MultiplyPixelWiseReal(CTF, false);
-            //			projection.SwapRealSpaceQuadrants();
-            //			projection.QuickAndDirtyWriteSlice("proj_20_flipped.mrc", 1);
-            //			exit(0);
-            projection.MultiplyPixelWiseReal(CTF, abolute_ctf);
-
-            if ( mask_radius > 0.0 ) {
-                projection.BackwardFFT( );
-                projection.CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size);
-                projection.ForwardFFT( );
-            }
-        }
-
-        if ( apply_shifts )
-            projection.PhaseShift(angles_and_shifts_of_projection.ReturnShiftX( ) / pixel_size, angles_and_shifts_of_projection.ReturnShiftY( ) / pixel_size);
-        if ( swap_quadrants )
-            projection.SwapRealSpaceQuadrants( );
     }
     else {
-        if ( current_ctf != CTF.real_values[10] || current_shift_x != angles_and_shifts_of_projection.ReturnShiftX( ) || current_shift_y != angles_and_shifts_of_projection.ReturnShiftY( ) || current_mask_radius != mask_radius || current_mask_falloff != mask_falloff || current_swap_quadrants != swap_quadrants || current_whitening != whiten ) {
-            current_shift_x        = angles_and_shifts_of_projection.ReturnShiftX( );
-            current_shift_y        = angles_and_shifts_of_projection.ReturnShiftY( );
-            current_ctf            = CTF.real_values[10];
-            current_mask_radius    = mask_radius;
-            current_mask_falloff   = mask_falloff;
-            current_swap_quadrants = swap_quadrants;
-            current_whitening      = whiten;
+        if ( current_phi != angles_and_shifts_of_projection.ReturnPhiAngle( ) || current_theta != angles_and_shifts_of_projection.ReturnThetaAngle( ) || current_psi != angles_and_shifts_of_projection.ReturnPsiAngle( ) || current_resolution_limit != resolution_limit ) {
+            if ( calculate_projection ) {
+                density_map->ExtractSlice(projection, angles_and_shifts_of_projection, resolution_limit);
+            }
 
-            projection.CopyFrom(&current_projection);
-
+            current_projection.CopyFrom(&projection);
+            current_phi              = angles_and_shifts_of_projection.ReturnPhiAngle( );
+            current_theta            = angles_and_shifts_of_projection.ReturnThetaAngle( );
+            current_psi              = angles_and_shifts_of_projection.ReturnPsiAngle( );
+            current_shift_x          = angles_and_shifts_of_projection.ReturnShiftX( );
+            current_shift_y          = angles_and_shifts_of_projection.ReturnShiftY( );
+            current_resolution_limit = resolution_limit;
+            current_ctf              = CTF.real_values[10];
+            current_mask_radius      = mask_radius;
+            current_mask_falloff     = mask_falloff;
+            current_swap_quadrants   = swap_quadrants;
+            current_whitening        = whiten;
             if ( whiten ) {
-                //				var_A = projection.ReturnSumOfSquares();
-                //				projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
+                //			var_A = projection.ReturnSumOfSquares();
+                //			projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
                 projection.Whiten(resolution_limit);
-                //				projection.PhaseFlipPixelWise(CTF);
-                //				projection.BackwardFFT();
-                //				projection.ZeroFloatOutside(0.5 * projection.logical_x_dimension - 1.0);
-                //				projection.ForwardFFT();
+                //			projection.PhaseFlipPixelWise(CTF);
+                //			projection.BackwardFFT();
+                //			projection.ZeroFloatOutside(0.5 * projection.logical_x_dimension - 1.0);
+                //			projection.ForwardFFT();
             }
             if ( apply_ctf ) {
+                //			projection.BackwardFFT();
+                //			projection.SetToConstant(1.0);
+                //			projection.real_values[0] = 1.0;
+                //			projection.CosineMask(20.0, 1.0, false, true, 0.0);
+                //			projection.ForwardFFT();
+                //			projection.MultiplyPixelWiseReal(CTF, false);
+                //			projection.SwapRealSpaceQuadrants();
+                //			projection.QuickAndDirtyWriteSlice("proj_20_flipped.mrc", 1);
+                //			exit(0);
                 projection.MultiplyPixelWiseReal(CTF, abolute_ctf);
 
                 if ( mask_radius > 0.0 ) {
@@ -345,6 +335,42 @@ void ReconstructedVolume::CalculateProjection(Image& projection, Image& CTF, Ang
                 projection.PhaseShift(angles_and_shifts_of_projection.ReturnShiftX( ) / pixel_size, angles_and_shifts_of_projection.ReturnShiftY( ) / pixel_size);
             if ( swap_quadrants )
                 projection.SwapRealSpaceQuadrants( );
+        }
+        else {
+            if ( current_ctf != CTF.real_values[10] || current_shift_x != angles_and_shifts_of_projection.ReturnShiftX( ) || current_shift_y != angles_and_shifts_of_projection.ReturnShiftY( ) || current_mask_radius != mask_radius || current_mask_falloff != mask_falloff || current_swap_quadrants != swap_quadrants || current_whitening != whiten ) {
+                current_shift_x        = angles_and_shifts_of_projection.ReturnShiftX( );
+                current_shift_y        = angles_and_shifts_of_projection.ReturnShiftY( );
+                current_ctf            = CTF.real_values[10];
+                current_mask_radius    = mask_radius;
+                current_mask_falloff   = mask_falloff;
+                current_swap_quadrants = swap_quadrants;
+                current_whitening      = whiten;
+
+                projection.CopyFrom(&current_projection);
+                if ( whiten ) {
+                    //				var_A = projection.ReturnSumOfSquares();
+                    //				projection.MultiplyByConstant(sqrtf(projection.number_of_real_space_pixels / var_A));
+                    projection.Whiten(resolution_limit);
+                    //				projection.PhaseFlipPixelWise(CTF);
+                    //				projection.BackwardFFT();
+                    //				projection.ZeroFloatOutside(0.5 * projection.logical_x_dimension - 1.0);
+                    //				projection.ForwardFFT();
+                }
+                if ( apply_ctf ) {
+                    projection.MultiplyPixelWiseReal(CTF, abolute_ctf);
+
+                    if ( mask_radius > 0.0 ) {
+                        projection.BackwardFFT( );
+                        projection.CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size);
+                        projection.ForwardFFT( );
+                    }
+                }
+                if ( apply_shifts )
+                    projection.PhaseShift(angles_and_shifts_of_projection.ReturnShiftX( ) / pixel_size, angles_and_shifts_of_projection.ReturnShiftY( ) / pixel_size);
+
+                if ( swap_quadrants )
+                    projection.SwapRealSpaceQuadrants( );
+            }
         }
     }
 

@@ -100,6 +100,10 @@ void Particle::CopyAllButImages(const Particle* other_particle) {
         apply_2D_masking                  = other_particle->apply_2D_masking;
         no_ctf_weighting                  = false;
         complex_ctf                       = other_particle->complex_ctf;
+        use_half_precision_where_possible = other_particle->use_half_precision_where_possible;
+        has_particle_image_data_changed   = true;
+        has_ctf_image_data_changed        = true;
+        has_beamtilt_image_data_changed   = true;
 
         if ( particle_image != NULL ) {
             delete particle_image;
@@ -168,6 +172,10 @@ void Particle::Init( ) {
     apply_2D_masking                  = false;
     no_ctf_weighting                  = false;
     complex_ctf                       = false;
+    use_half_precision_where_possible = false;
+    has_particle_image_data_changed   = true;
+    has_ctf_image_data_changed        = true;
+    has_beamtilt_image_data_changed   = true;
 }
 
 void Particle::AllocateImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension) {
@@ -175,6 +183,7 @@ void Particle::AllocateImage(int wanted_logical_x_dimension, int wanted_logical_
         particle_image = new Image;
     }
     particle_image->Allocate(wanted_logical_x_dimension, wanted_logical_y_dimension, 1, true);
+    has_particle_image_data_changed = true;
 }
 
 void Particle::AllocateCTFImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension) {
@@ -182,11 +191,13 @@ void Particle::AllocateCTFImage(int wanted_logical_x_dimension, int wanted_logic
         ctf_image = new Image;
     }
     ctf_image->Allocate(wanted_logical_x_dimension, wanted_logical_y_dimension, 1, false);
+    has_ctf_image_data_changed = true;
 
     if ( beamtilt_image == NULL ) {
         beamtilt_image = new Image;
     }
     beamtilt_image->Allocate(wanted_logical_x_dimension, wanted_logical_y_dimension, 1, false);
+    has_beamtilt_image_data_changed = true;
 }
 
 void Particle::Allocate(int wanted_logical_x_dimension, int wanted_logical_y_dimension) {
@@ -197,15 +208,18 @@ void Particle::Allocate(int wanted_logical_x_dimension, int wanted_logical_y_dim
 void Particle::Deallocate( ) {
     if ( particle_image != NULL ) {
         delete particle_image;
-        particle_image = NULL;
+        particle_image                  = NULL;
+        has_particle_image_data_changed = true;
     }
     if ( ctf_image != NULL ) {
         delete ctf_image;
-        ctf_image = NULL;
+        ctf_image                  = NULL;
+        has_ctf_image_data_changed = true;
     }
     if ( beamtilt_image != NULL ) {
         delete beamtilt_image;
-        beamtilt_image = NULL;
+        beamtilt_image                  = NULL;
+        has_beamtilt_image_data_changed = true;
     }
 }
 
@@ -243,6 +257,8 @@ void Particle::PhaseShift( ) {
         particle_image->ForwardFFT( );
     particle_image->PhaseShift(alignment_parameters.ReturnShiftX( ) / pixel_size, alignment_parameters.ReturnShiftY( ) / pixel_size);
     shift_counter += 1;
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::PhaseShiftInverse( ) {
@@ -253,6 +269,8 @@ void Particle::PhaseShiftInverse( ) {
         particle_image->ForwardFFT( );
     particle_image->PhaseShift(-alignment_parameters.ReturnShiftX( ) / pixel_size, -alignment_parameters.ReturnShiftY( ) / pixel_size);
     shift_counter -= 1;
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::Whiten(float resolution_limit) {
@@ -260,6 +278,8 @@ void Particle::Whiten(float resolution_limit) {
     MyDebugAssertTrue(! particle_image->is_in_real_space, "Image not in Fourier space");
 
     particle_image->Whiten(resolution_limit);
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::ForwardFFT(bool do_scaling) {
@@ -267,6 +287,8 @@ void Particle::ForwardFFT(bool do_scaling) {
     MyDebugAssertTrue(particle_image->is_in_real_space, "Image not in real space");
 
     particle_image->ForwardFFT(do_scaling);
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::BackwardFFT( ) {
@@ -274,6 +296,8 @@ void Particle::BackwardFFT( ) {
     MyDebugAssertTrue(! particle_image->is_in_real_space, "Image not in Fourier space");
 
     particle_image->BackwardFFT( );
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::CosineMask(bool invert, bool force_mask_value, float wanted_mask_value) {
@@ -284,6 +308,8 @@ void Particle::CosineMask(bool invert, bool force_mask_value, float wanted_mask_
         particle_image->BackwardFFT( );
     mask_volume = particle_image->CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size, invert, force_mask_value, wanted_mask_value);
     is_masked   = true;
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::CenterInBox( ) {
@@ -295,6 +321,8 @@ void Particle::CenterInBox( ) {
         particle_image->ForwardFFT( );
     particle_image->SwapRealSpaceQuadrants( );
     is_centered_in_box = true;
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::CenterInCorner( ) {
@@ -306,6 +334,8 @@ void Particle::CenterInCorner( ) {
         particle_image->ForwardFFT( );
     particle_image->SwapRealSpaceQuadrants( );
     is_centered_in_box = false;
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::InitCTF(float voltage_kV, float spherical_aberration_mm, float amplitude_contrast, float defocus_1, float defocus_2, float astigmatism_angle, float phase_shift, float beam_tilt_x, float beam_tilt_y, float particle_shift_x, float particle_shift_y) {
@@ -345,8 +375,10 @@ void Particle::InitCTFImage(float voltage_kV, float spherical_aberration_mm, flo
     if ( ctf_parameters.IsAlmostEqualTo(&current_ctf, 1 / pixel_size) == false || ! ctf_image_calculated )
     // Need to calculate current_ctf_image to be inserted into ctf_reconstruction
     {
-        current_ctf = ctf_parameters;
-        ctf_image->CalculateCTFImage(current_ctf, complex_ctf);
+        bool apply_coherence_envelope = false;
+        bool use_half_precision       = true;
+        current_ctf                   = ctf_parameters;
+        ctf_image->CalculateCTFImage(current_ctf, complex_ctf, apply_coherence_envelope, use_half_precision_where_possible);
     }
     if ( ctf_parameters.BeamTiltIsAlmostEqualTo(&current_ctf) == false || ! beamtilt_image_calculated )
     // Need to calculate current_beamtilt_image to correct input image for beam tilt
@@ -355,6 +387,9 @@ void Particle::InitCTFImage(float voltage_kV, float spherical_aberration_mm, flo
     }
     ctf_image_calculated      = true;
     beamtilt_image_calculated = true;
+
+    has_ctf_image_data_changed      = true;
+    has_beamtilt_image_data_changed = true;
 }
 
 void Particle::PhaseFlipImage( ) {
@@ -363,6 +398,8 @@ void Particle::PhaseFlipImage( ) {
     if ( particle_image->is_in_real_space )
         particle_image->ForwardFFT( );
     particle_image->PhaseFlipPixelWise(*ctf_image);
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::CTFMultiplyImage( ) {
@@ -371,6 +408,8 @@ void Particle::CTFMultiplyImage( ) {
     if ( particle_image->is_in_real_space )
         particle_image->ForwardFFT( );
     particle_image->MultiplyPixelWiseReal(*ctf_image);
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::BeamTiltMultiplyImage( ) {
@@ -379,9 +418,11 @@ void Particle::BeamTiltMultiplyImage( ) {
     if ( particle_image->is_in_real_space )
         particle_image->ForwardFFT( );
     particle_image->MultiplyPixelWise(*beamtilt_image);
+
+    has_particle_image_data_changed = true;
 }
 
-void Particle::SetIndexForWeightedCorrelation(bool limit_resolution) {
+int Particle::SetIndexForWeightedCorrelation(bool limit_resolution) {
     MyDebugAssertTrue(particle_image->is_in_memory, "Image memory not allocated");
 
     int i;
@@ -431,6 +472,9 @@ void Particle::SetIndexForWeightedCorrelation(bool limit_resolution) {
             }
         }
     }
+
+    // When storing an external buffer for GetWeightedCorrelation, we want to make sure the buffer size has not changed.
+    return number_of_bins;
 }
 
 void Particle::WeightBySSNR(Curve& SSNR, int include_reference_weighting, bool no_ctf) {
@@ -482,6 +526,8 @@ void Particle::WeightBySSNR(Curve& SSNR, int include_reference_weighting, bool n
     //	if (filter_radius_high > 0.0) particle_image->CosineMask(std::max(pixel_size / filter_radius_high, pixel_size / 7.0f + pixel_size / mask_falloff) - pixel_size / (2.0 * mask_falloff), pixel_size / mask_falloff);
 
     delete snr_image;
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_particle_image, bool weight_projection_image) {
@@ -494,6 +540,8 @@ void Particle::WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_pa
     else
         is_ssnr_filtered = false;
     includes_reference_ssnr_weighting = false;
+
+    has_particle_image_data_changed = true;
 }
 
 void Particle::CalculateProjection(Image& projection_image, ReconstructedVolume& input_3d) {

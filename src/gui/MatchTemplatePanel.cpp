@@ -20,7 +20,7 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     run_profiles_are_dirty = false;
     set_up_to_resume_job   = false;
 
-#ifndef ENABLEGPU
+#ifndef SHOW_CISTEM_GPU_OPTIONS
     UseGpuCheckBox->Show(false);
 #endif
 
@@ -157,7 +157,7 @@ void MatchTemplatePanel::ResetDefaults( ) {
         ResumeRunCheckBox->Enable(false);
     }
 
-#ifdef ENABLEGPU
+#ifdef SHOW_CISTEM_GPU_OPTIONS
     UseGpuCheckBox->SetValue(true);
 #else
     UseGpuCheckBox->SetValue(false); // Already disabled, but also set to un-ticked for visual consistency.
@@ -387,7 +387,7 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
             RunProfileComboBox->Enable(true);
             GroupComboBox->Enable(true);
             ReferenceSelectPanel->Enable(true);
-#ifdef ENABLEGPU
+#ifdef SHOW_CISTEM_GPU_OPTIONS
             UseGpuCheckBox->Enable(true);
 #endif
 
@@ -432,7 +432,7 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
             GroupComboBox->Enable(false);
             ReferenceSelectPanel->Enable(false);
             RunProfileComboBox->Enable(false);
-            UseGpuCheckBox->Enable(false); // Doesn't matter if ENABLEGPU
+            UseGpuCheckBox->Enable(false); // Doesn't matter if SHOW_CISTEM_GPU_OPTIONS
             //StartAlignmentButton->SetLabel("Stop Job");
             //StartAlignmentButton->Enable(true);
         }
@@ -707,7 +707,11 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         number_of_rotations++;
     }
 
-    current_job_package.Reset(active_refinement_run_profile, "match_template", number_of_jobs);
+    // CPU match_template can probably be DEPRECATED
+    if ( use_gpu )
+        current_job_package.Reset(active_refinement_run_profile, "match_template_gpu", number_of_jobs);
+    else
+        current_job_package.Reset(active_refinement_run_profile, "match_template", number_of_jobs);
 
     expected_number_of_results = 0;
     number_of_received_results = 0;

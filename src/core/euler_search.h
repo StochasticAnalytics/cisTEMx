@@ -1,3 +1,6 @@
+#ifndef _SRC_CORE_EULER_SEARCH_H_
+#define _SRC_CORE_EULER_SEARCH_H_
+
 class EulerSearch {
     // Brute-force search to find matching projections
 
@@ -47,3 +50,5 @@ class EulerSearch {
     //	void RotateFourier2DIndex(Image &image_to_rotate, Kernel2D &kernel_index, AnglesAndShifts &rotation_angle, float resolution_limit = 1.0, float padding_factor = 1.0);
     Kernel2D ReturnLinearInterpolatedFourierKernel2D(Image& image_to_rotate, float& x, float& y);
 };
+
+#endif

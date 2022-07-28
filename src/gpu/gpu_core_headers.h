@@ -76,6 +76,14 @@ static __device__ __host__ inline Complex ComplexMul(Complex a, Complex b) {
     return c;
 }
 
+// Complex multiplication
+static __device__ __host__ inline Complex ComplexMulAndScale(Complex a, Complex b, float s) {
+    Complex c;
+    c.x = s * (a.x * b.x - a.y * b.y);
+    c.y = s * (a.x * b.y + a.y * b.x);
+    return c;
+}
+
 // Complex a * conj b multiplication
 static __device__ __host__ inline Complex ComplexConjMul(Complex a, Complex b) {
     Complex c;
@@ -85,11 +93,28 @@ static __device__ __host__ inline Complex ComplexConjMul(Complex a, Complex b) {
 }
 
 // Complex a * conj b multiplication
+static __device__ __host__ inline float RealPartOfComplexConjMul(Complex a, Complex b) {
+    return a.x * b.x + a.y * b.y;
+}
+
+// Complex a * conj b multiplication
+static __device__ __host__ inline float ComplexModulus(Complex a) {
+    return sqrtf(float(a.x * a.x + a.y * a.y));
+}
+
+// Complex a * conj b multiplication
+static __device__ __host__ inline float ComplexModulusSquared(Complex a) {
+    return float(a.x * a.x + a.y * a.y);
+}
+
+// Complex a * conj b multiplication
 static __device__ __host__ inline Complex ComplexConjMulAndScale(Complex a, Complex b, float s) {
     Complex c;
     c.x = s * (a.x * b.x + a.y * b.y);
     c.y = s * (a.y * b.x - a.x * b.y);
     return c;
 }
+
+// static constexpr int warpSize = 32;
 
 #endif /* GPU_CORE_HEADERS_H_ */

@@ -30,8 +30,6 @@ bool DoCPUvsGPUResize(wxString hiv_image_80x80x1_filename, wxString temp_directo
     all_passed = all_passed && DoCPUvsGPURealSpaceResize(hiv_image_80x80x1_filename, temp_directory);
     all_passed = all_passed && DoCPUvsGPUFourierResize(hiv_image_80x80x1_filename, temp_directory);
 
-    SamplesBeginTest("CPU vs GPU overall", passed);
-    SamplesPrintResult(all_passed, __LINE__);
     wxPrintf("\n\n");
     return all_passed;
 }
@@ -40,45 +38,80 @@ bool DoCPUvsGPURealSpaceResize(wxString hiv_image_80x80x1_filename, wxString tem
 
     bool passed     = true;
     bool all_passed = true;
+    int  logical_x_start;
+    int  logical_y_start;
+
+    wxString tmp_img_filename = temp_directory + "/tmp1.mrc";
 
     MRCFile input_file(hiv_image_80x80x1_filename.ToStdString( ), false);
-
-    wxString temp_filename = temp_directory + "/tmp1.mrc";
-
-    MRCFile output_file(temp_filename.ToStdString( ), false);
+    MRCFile output_file(tmp_img_filename.ToStdString( ), false);
 
     all_passed = all_passed && passed;
-    SamplesBeginTest("Read onto GPU and copy to new CPU image", passed);
-    Image cpu_image;
-    cpu_image.ReadSlice(&input_file, 1);
 
-    Image from_gpu_image;
-    from_gpu_image.ReadSlice(&input_file, 1);
-    GpuImage gpu_image(from_gpu_image);
+    // This really is more like basic i/o, but since we compare to cpu values, i guess this is okay here.
+    SamplesBeginTest("Read onto GPU and copy to new CPU image", passed);
+
+    Image    cpu_image;
+    Image    gpu_host_image;
+    GpuImage gpu_image;
+
+    cpu_image.ReadSlice(&input_file, 1);
+    gpu_host_image.ReadSlice(&input_file, 1);
+
+    // Record the starting sizes
+    logical_x_start = cpu_image.logical_x_dimension;
+    logical_y_start = cpu_image.logical_y_dimension;
+
+    gpu_image.Init(gpu_host_image);
     gpu_image.CopyHostToDevice( );
+
+    // Copy back to a new image, blocking until complete and freeing the gpu memory
     Image new_cpu_image_from_gpu = gpu_image.CopyDeviceToNewHost(true, true);
 
-    passed = ProperCompareRealValues(cpu_image, new_cpu_image_from_gpu);
+    passed = CompareRealValues(cpu_image, new_cpu_image_from_gpu);
 
     all_passed = all_passed && passed;
     SamplesTestResult(passed);
 
-    SamplesBeginTest("Real Space resize CPU and GPU images", passed);
-    cpu_image.Resize(40, 40, 1, 0);
+    // Real space size reduction
+    SamplesBeginTest("Real Space size reduce", passed);
 
-    Image host_image;
+    // Get a clean copy
+    cpu_image.ReadSlice(&input_file, 1);
+    cpu_image.Resize(logical_x_start / 2, logical_y_start / 2, 1, 0);
 
-    host_image.ReadSlice(&input_file, 1);
+    gpu_host_image.ReadSlice(&input_file, 1);
+    // Deallocated in CopyDeviceToNewHost call
+    gpu_image.Init(gpu_host_image);
 
-    GpuImage device_image(host_image);
+    gpu_image.CopyHostToDevice( );
 
-    device_image.CopyHostToDevice( );
+    gpu_image.Resize(logical_x_start / 2, logical_y_start / 2, 1, 0.f);
 
-    device_image.Resize(40, 40, 1, 0);
+    Image decreased_host_image = gpu_image.CopyDeviceToNewHost(true, true);
 
-    Image resized_host_image = device_image.CopyDeviceToNewHost(true, true);
+    passed     = CompareRealValues(cpu_image, decreased_host_image);
+    all_passed = all_passed && passed;
+    SamplesTestResult(passed);
 
-    passed     = ProperCompareRealValues(cpu_image, resized_host_image);
+    // Real space size reduction
+    SamplesBeginTest("Real Space size increase", passed);
+
+    // Get a clean copy
+    cpu_image.ReadSlice(&input_file, 1);
+    cpu_image.Resize(logical_x_start * 2, logical_y_start * 2, 1, 0);
+
+    gpu_host_image.ReadSlice(&input_file, 1);
+    // Deallocated in CopyDeviceToNewHost call
+    gpu_image.Init(gpu_host_image);
+
+    gpu_image.CopyHostToDevice( );
+
+    gpu_image.Resize(logical_x_start * 2, logical_y_start * 2, 1, 0.f);
+
+    Image increased_host_image = gpu_image.CopyDeviceToNewHost(true, true);
+
+    passed     = CompareRealValues(cpu_image, increased_host_image);
     all_passed = all_passed && passed;
     SamplesTestResult(passed);
 
@@ -91,9 +124,9 @@ bool DoCPUvsGPUFourierResize(wxString hiv_image_80x80x1_filename, wxString temp_
 
     MRCFile input_file(hiv_image_80x80x1_filename.ToStdString( ), false);
 
-    wxString temp_filename = temp_directory + "/tmp1.mrc";
+    wxString tmp_img_filename = temp_directory + "/tmp1.mrc";
 
-    MRCFile output_file(temp_filename.ToStdString( ), false);
+    MRCFile output_file(tmp_img_filename.ToStdString( ), false);
 
     SamplesBeginTest("Fourier Crop CPU and GPU images", passed);
     Image cpu_image;
@@ -105,10 +138,10 @@ bool DoCPUvsGPUFourierResize(wxString hiv_image_80x80x1_filename, wxString temp_
     cpu_image.Resize(40, 40, 1, 0);
     cpu_image.BackwardFFT( );
 
-    Image host_image;
-    host_image.ReadSlice(&input_file, 1);
+    Image gpu_host_image;
+    gpu_host_image.ReadSlice(&input_file, 1);
 
-    GpuImage device_image(host_image);
+    GpuImage device_image(gpu_host_image);
     device_image.CopyHostToDevice( );
 
     device_image.ForwardFFT( );
@@ -117,7 +150,7 @@ bool DoCPUvsGPUFourierResize(wxString hiv_image_80x80x1_filename, wxString temp_
     device_image.BackwardFFT( );
     Image resized_host_image = device_image.CopyDeviceToNewHost(true, true);
 
-    passed = ProperCompareRealValues(cpu_image, resized_host_image);
+    passed = CompareRealValues(cpu_image, resized_host_image);
 
     all_passed = all_passed && passed;
     SamplesTestResult(passed);

@@ -14,7 +14,7 @@ class GpuImage {
     GpuImage( );
     GpuImage(const GpuImage& other_gpu_image); // copy constructor
     GpuImage(Image& cpu_image);
-    virtual ~GpuImage( );
+    ~GpuImage( );
 
     GpuImage& operator=(const GpuImage& t);
     GpuImage& operator=(const GpuImage* t);
@@ -60,13 +60,13 @@ class GpuImage {
     // end  MEMBER VARIABLES FROM THE cpu IMAGE CLASS
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Image* hostImage;
-
     cufftReal*    real_values_gpu; // !<  Real array to hold values for REAL images.
     cufftComplex* complex_values_gpu; // !<  Complex array to hold values for COMP images.
 
     __half*  real_values_16f;
     __half2* complex_values_16f;
+    __half*  ctf_buffer_16f;
+    __half2* ctf_complex_buffer_16f;
 
     // We want to be able to re-use the texture object, so only set it up once.
     cudaTextureObject_t tex_real;
@@ -88,7 +88,7 @@ class GpuImage {
     bool   is_in_memory_gpu; // !<  Whether image values are in-memory, in other words whether the image has memory space allocated to its data array. Default = .FALSE.
     bool   is_host_memory_pinned; // !<  Is the host memory already page locked (2x bandwith and required for asynchronous xfer);
     float* pinnedPtr;
-    Image* hostImagePtr; // Primarily for access to host image methods for preprocessing.
+    Image* host_image_ptr; // Primarily for access to host image methods for preprocessing.
 
     cudaMemcpy3DParms h_3dparams = {0};
     cudaExtent        h_extent;
@@ -112,7 +112,8 @@ class GpuImage {
 
     ////////////////////////////////////////////////////////
 
-    cudaEvent_t nppCalcEvent;
+    cudaEvent_t npp_calc_event;
+    bool        is_npp_calc_event_initialized;
     //	cublasHandle_t cublasHandle;
 
     cufftHandle cuda_plan_forward;
@@ -159,11 +160,6 @@ class GpuImage {
                   int wanted_coordinate_of_box_center_y,
                   int wanted_coordinate_of_box_center_z);
 
-    void ClipIntoRealSpace(GpuImage* other_image, float wanted_padding_value,
-                           bool fill_with_noise, float wanted_noise_sigma,
-                           int wanted_coordinate_of_box_center_x,
-                           int wanted_coordinate_of_box_center_y,
-                           int wanted_coordinate_of_box_center_z);
     void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value);
 
     void ClipIntoReturnMask(GpuImage* other_image);
@@ -175,16 +171,19 @@ class GpuImage {
     void BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision);
 
     void Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value);
-    void Consume(GpuImage& other_image);
+    void Consume(GpuImage* other_image);
+    void CopyCpuImageMetaData(Image& cpu_image);
+    void CopyGpuImageMetaData(const GpuImage* other_image);
     void CopyLoopingAndAddressingFrom(GpuImage* other_image);
 
     float ReturnSumOfSquares( );
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
     void  ConvertToHalfPrecision(bool deallocate_single_precision = true);
-    void  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
+    void  AllocateTmpVarsAndEvents( );
+    bool  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
 
-    void Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };
+    bool Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { return Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };
 
     // Combines this and UpdatePhysicalAddressOfBoxCenter and SetLogicalDimensions
     void UpdateLoopingAndAddressing(int wanted_x_size, int wanted_y_size, int wanted_z_size);
@@ -193,13 +192,18 @@ class GpuImage {
     ///// Methods that do not have a counterpart in the image class
     ////////////////////////////////////////////////////////////////////////
 
-    void CopyHostToDevice( );
-    void CopyHostToDeviceTextureComplex3d( );
-    void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
-    void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true);
+    void CopyHostToDevice(bool should_block_until_complete = false);
 
-    void  CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory);
-    Image CopyDeviceToNewHost(bool should_block_until_complete, bool free_gpu_memory);
+    void CopyHostToDeviceAndSynchronize( ) { CopyHostToDevice(true); };
+
+    void CopyHostToDeviceTextureComplex3d( );
+    void CopyHostToDevice16f(bool should_block_until_finished = false); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
+    void CopyDeviceToHostAndSynchronize(bool free_gpu_memory = true, bool unpin_host_memory = true);
+    void CopyDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
+    void CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete = false, bool free_gpu_memory = true, bool unpin_host_memory = true);
+
+    void  CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory = true);
+    Image CopyDeviceToNewHost(bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory = true);
     // The volume copies with memory coalescing favoring padding are not directly
     // compatible with the memory layout in Image().
     void CopyVolumeHostToDevice( );
@@ -218,13 +222,16 @@ class GpuImage {
     // FIXME: These are added for the unblur refinement but are untested.
     void ApplyBFactor(float bfactor);
     void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
+    void Whiten(float resolution_limit = 1.f);
+
+    float GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuImage& cross_terms, GpuImage& image_PS, GpuImage& projection_PS, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit);
 
     inline void MaskCentralCross(float vertical_mask_size, float horizontal_mask_size) { return; }; // noop
 
     void CalculateCrossCorrelationImageWith(GpuImage* other_image);
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
 
-    void Init(Image& cpu_image);
+    bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void SetCufftPlan(bool use_half_precision = false);
     void SetupInitialValues( );
     void UpdateBoolsToDefault( );
@@ -252,13 +259,16 @@ class GpuImage {
     };
 
     void CopyFrom(GpuImage* other_image);
-    void CopyFromCpuImage(Image& cpu_image);
+    bool InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
     bool HasSameDimensionsAs(GpuImage* other_image);
     void Zeros( );
 
-    void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts_of_image, float resolution_limit, bool apply_resolution_limit, float3 xtra_shifts = make_float3(0.0f, 0.0f, 0.0f));
+    void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);
+
+    void ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit,
+                                 bool swap_quadrants, bool apply_shifts, bool apply_ctf, bool absolute_ctf);
 
     void Abs( );
     void AbsDiff(GpuImage& other_image); // inplace
@@ -281,7 +291,8 @@ class GpuImage {
     void AddSquaredImage(GpuImage& other_image);
 
     // Statitical Methods
-    float     ReturnSumOfRealValues( );
+    float ReturnSumOfRealValues( );
+    // float3    ReturnSumOfRealValues3Channel( );
     NppiPoint min_idx;
     NppiPoint max_idx;
     float     min_value;
@@ -328,13 +339,15 @@ class GpuImage {
                             b_countinrange,
                             b_histogram,
                             b_16f,
+                            b_ctf_16f,
                             b_l2norm,
                             b_dotproduct,
-                            b_clip_into_mask };
+                            b_clip_into_mask,
+                            b_weighted_correlation };
 
     //  void CublasInit();
     void NppInit( );
-    void BufferInit(BufferType bt);
+    void BufferInit(BufferType bt, int n_elements = 0);
     void BufferDestroy( );
 
     // Real buffer = size real_values
@@ -367,9 +380,13 @@ class GpuImage {
     Npp8u* dotproduct_buffer;
     bool   is_allocated_dotproduct_buffer;
     bool   is_allocated_16f_buffer;
+    bool   is_allocated_ctf_16f_buffer;
     int*   clip_into_mask;
     bool   is_allocated_clip_into_mask;
     bool   is_set_realLoadAndClipInto;
+    float* weighted_correlation_buffer;
+    bool   is_allocated_weighted_correlation_buffer;
+    int    weighted_correlation_buffer_size;
 
     GpuImage* mask_CSOS;
     bool      is_allocated_mask_CSOS;

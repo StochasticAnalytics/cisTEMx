@@ -47,6 +47,12 @@ class ParameterMap {
 
 class Particle {
 
+  private:
+    // To minize allocations and copy on the GPU, we need to keep track of whether or not an associated host image has changed.
+    bool has_particle_image_data_changed;
+    bool has_ctf_image_data_changed;
+    bool has_beamtilt_image_data_changed;
+
   public:
     int             origin_micrograph;
     float           origin_x_coordinate; // Particle X coordinate in micrograph, in A
@@ -105,6 +111,7 @@ class Particle {
     bool                 apply_2D_masking;
     bool                 no_ctf_weighting;
     bool                 complex_ctf;
+    bool                 use_half_precision_where_possible;
 
     Particle( );
     Particle(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
@@ -133,7 +140,7 @@ class Particle {
     void  PhaseFlipImage( );
     void  CTFMultiplyImage( );
     void  BeamTiltMultiplyImage( );
-    void  SetIndexForWeightedCorrelation(bool limit_resolution = true);
+    int   SetIndexForWeightedCorrelation(bool limit_resolution = true);
     void  WeightBySSNR(Curve& SSNR, int include_reference_weighting = 1, bool no_ctf = false);
     void  WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_particle_image = true, bool weight_projection_image = true);
     void  CalculateProjection(Image& projection_image, ReconstructedVolume& input_3d);
@@ -156,4 +163,20 @@ class Particle {
                  float best_psi, Image& best_correlation_map, bool calculate_correlation_map_only = false, bool uncrop = true, bool apply_ctf_to_classes = true,
                  Image* image_to_blur = NULL, Image* diff_image_to_blur = NULL, float max_shift_in_angstroms = FLT_MAX);
     void  EstimateSigmaNoise( );
+
+    // These are to be called from methods that bind Image/GpuImage objects. The bools are set in any Partcle::method() where the respective object's data are changed via
+    // maths or memory ops.
+    inline void RecordGpuParticleImageAssociation( ) { has_particle_image_data_changed = false; };
+
+    inline void RecordGpuCTFImageAssociation( ) { has_ctf_image_data_changed = false; };
+
+    inline void RecordGpuBeamTiltImageAssociation( ) { has_beamtilt_image_data_changed = false; };
+
+    inline void RecordNewImageData( ) { has_particle_image_data_changed = true; };
+
+    inline bool HasParticleImageDataChanged( ) { return has_particle_image_data_changed; };
+
+    inline bool HasCTFImageDataChanged( ) { return has_ctf_image_data_changed; };
+
+    inline bool HasBeamTiltImageDataChanged( ) { return has_beamtilt_image_data_changed; };
 };

@@ -26,8 +26,7 @@ export n_threads=6
 apt-get update && apt-get -y install tzdata 
 
 echo "date before $(date)"
-echo $TZ | sudo tee /etc/timezone
-dpkg-reconfigure --frontend noninteractive tzdata
+echo $TZ | sudo tee /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata
 echo "date after $(date)"
 
 echo -e "\nDid the timezone set correctly?\n"

@@ -3,13 +3,15 @@ FROM ubuntu:20.04
 # /groups/himesb/.config/Code\ -\ Insiders/User/globalStorage/ms-vscode-remote.remote-containers/cli-bin/code-insiders build --image-name bhimesbhimes/cistem_build_env:latest ./.devcontainer_build
 
 # For compiling wxWidgets
-ARG n_threads=12
+ARG n_threads=16
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=America/New_York
 ARG GCC_VER=11
 
-RUN apt-get update && apt-get -y install tzdata
-
+RUN apt-get update && apt-get -y install apt-utils tzdata && \ 
+    echo $TZ | tee /etc/timezone && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
+    date
 
 RUN apt-get install -y locales && rm -rf /var/lib/apt/lists/* \
     && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
@@ -29,6 +31,11 @@ RUN apt-get --allow-releaseinfo-change update && apt-get install -y libgtk2.0-de
     libreadline-dev liblzma-dev libssl-dev libncursesw5-dev wget \
     build-essential git xauth zip unzip parallel sqlite3 python3 python3-pip curl gdb  \
     && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir /opt/intel && echo 'int mkl_serv_intel_cpu_true() {return 1;}' > /opt/intel/fakeIntel.c && \
+    gcc -shared -fPIC -o /opt/intel/libfakeIntel.so /opt/intel/fakeIntel.c 
+
+ENV LD_PRELOAD=/opt/intel/libfakeIntel.so    
 
 # Get the MKL and intel compiler: note, this is 19G by default, will try to determine minimal set needed huge waste but works well enough for now, final size is ~5gb
 RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
@@ -100,7 +107,5 @@ RUN tf=`tempfile` && cp /opt/WX/intel-dynamic/include/wx-3.0/wx/longlong.h /opt/
 # Include the lib path in LD_RUN_PATH so on linking, the correct path is known 
 ENV LD_LIBRARY_PATH=/opt/WX/intel-dynamic/lib/:${LD_LIBRARY_PATH}
 
-RUN echo 'int mkl_serv_intel_cpu_true() {return 1;}' > /opt/intel/fakeIntel.c && \
-    . /opt/intel/oneapi/setvars.sh  && icpc -shared -fPIC -o /opt/intel/libfakeIntel.so /opt/intel/fakeIntel.c 
 
-ENV LD_PRELOAD=/opt/intel/libfakeIntel.so
+

@@ -11,6 +11,7 @@
 #include "GpuImage.h"
 
 // #define USE_ASYNC_MALLOC_FREE
+// #define USE_BLOCK_REDUCE
 
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
@@ -1434,7 +1435,8 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
                                                            const int                        NY,
                                                            const float                      filter_radius_low_sq,
                                                            const float                      filter_radius_high_sq,
-                                                           const float signed_CC_limit_sq, float* s1, float* s2, float* s3) {
+                                                           const float                      signed_CC_limit_sq,
+                                                           float* s1, float* s2, float* s3) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
@@ -1463,13 +1465,16 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     int real_idx    = y * output_pitch + x;
     int complex_idx = y * NX + x;
 
+#ifdef USE_BLOCK_REDUCE
     float sum1, sum2, sum3;
-    bool  set_to_zero = false;
+#endif
+    bool set_to_zero = false;
     if ( u >= filter_radius_low_sq && u <= filter_radius_high_sq || x > 1 || y > 1 ) {
         if ( (image_values[complex_idx].x == 0.f && image_values[complex_idx].y == 0.f) || (projection_values[complex_idx].x == 0.f && projection_values[complex_idx].y == 0.f) ) {
             set_to_zero = true;
         }
         else {
+#ifdef USE_BLOCK_REDUCE
             sum1 = ComplexModulusSquared(image_values[complex_idx]);
             sum2 = ComplexModulusSquared(projection_values[complex_idx]);
             if ( u > signed_CC_limit_sq ) {
@@ -1478,14 +1483,16 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
             else {
                 sum3 = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
             }
-            // image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
-            // projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
-            // if ( u > signed_CC_limit_sq ) {
-            //     cross_terms[real_idx] = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
-            // }
-            // else {
-            //     cross_terms[real_idx] = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
-            // }
+#else
+            image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
+            projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
+            if ( u > signed_CC_limit_sq ) {
+                cross_terms[real_idx] = fabsf(RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]));
+            }
+            else {
+                cross_terms[real_idx] = RealPartOfComplexConjMul(image_values[complex_idx], projection_values[complex_idx]);
+            }
+#endif
         }
     }
     else {
@@ -1493,29 +1500,36 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
     }
 
     if ( set_to_zero ) {
+
+#ifdef USE_BLOCK_REDUCE
         sum1 = 0.f;
         sum2 = 0.f;
         sum3 = 0.f;
-
-        // cross_terms[real_idx]   = 0.f;
-        // image_PS[real_idx]      = 0.f;
-        // projection_PS[real_idx] = 0.f;
+#else
+        cross_terms[real_idx]   = 0.f;
+        image_PS[real_idx]      = 0.f;
+        projection_PS[real_idx] = 0.f;
+#endif
     }
     // cross_terms[real_idx]   = sum3;
     // image_PS[real_idx]      = sum1;
     // projection_PS[real_idx] = sum2;
-
+#ifdef USE_BLOCK_REDUCE
     // Just simplest test for now
     sum1 = blockReduce2dSum(sum1);
     sum2 = blockReduce2dSum(sum2);
     sum3 = blockReduce2dSum(sum3);
 
-    // we know the 0th pixel is already zero for now, because we just wrote it
-    if ( threadIdx.x == 0 ) {
-        cross_terms[blockIdx.x + blockIdx.y * gridDim.x]   = sum3;
-        image_PS[blockIdx.x + blockIdx.y * gridDim.x]      = sum1;
-        projection_PS[blockIdx.x + blockIdx.y * gridDim.x] = sum2;
-    }
+    atomicAdd(&s1, sum1);
+    atomicAdd(&s2, sum2);
+    atomicAdd(&s3, sum3);
+#endif
+    // // we know the 0th pixel is already zero for now, because we just wrote it
+    // if ( threadIdx.x == 0 ) {
+    //     cross_terms[blockIdx.x + blockIdx.y * gridDim.x]   = sum3;
+    //     image_PS[blockIdx.x + blockIdx.y * gridDim.x]      = sum1;
+    //     projection_PS[blockIdx.x + blockIdx.y * gridDim.x] = sum2;
+    // }
 }
 
 float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuImage& cross_terms, GpuImage& image_PS, GpuImage& projection_PS, float filter_radius_low_sq, float filter_radius_high_sq, float signed_CC_limit) {
@@ -1575,29 +1589,36 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
                                                                                                       s1, s2, s3);
     postcheck;
 
-    int nBlocks = gridDims.x * gridDims.y;
+    // int nBlocks = gridDims.x * gridDims.y;
 
-    dim3 finalGridDims(1, 1, 1);
-    dim3 finalThreadsPerBlock(1024, 1, 1);
-    precheck;
-    _post_GetWeightedCorrelationWithImageKernel<<<finalGridDims, finalThreadsPerBlock, 0, cudaStreamPerThread>>>(cross_terms.real_values_gpu);
-    postcheck;
+    // dim3 finalGridDims(1, 1, 1);
+    // dim3 finalThreadsPerBlock(1024, 1, 1);
+    // precheck;
+    // _post_GetWeightedCorrelationWithImageKernel<<<finalGridDims, finalThreadsPerBlock, 0, cudaStreamPerThread>>>(cross_terms.real_values_gpu);
+    // postcheck;
 
+    float final_sum;
+#ifdef USE_BLOCK_REDUCE
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    // These should all be in the same stream so no need to synchronize.
-    // float sum3 = cross_terms.ReturnSumOfRealValues( );
-    // float sum1 = image_PS.ReturnSumOfRealValues( );
-    // float sum2 = projection_PS.ReturnSumOfRealValues( );
-
-    // wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
-    // wxPrintf("sums %f %f %f atomic\n", *s1, *s2, *s3);
-
-    float final_sum = *s3;
+    final_sum = *s3;
 
     *s1 *= *s2;
     if ( *s1 != 0.0 )
         final_sum /= sqrtf(*s1);
+#else
+    // These should all be in the same stream so no need to synchronize.
+    float sum3 = cross_terms.ReturnSumOfRealValues( );
+    float sum1 = image_PS.ReturnSumOfRealValues( );
+    float sum2 = projection_PS.ReturnSumOfRealValues( );
 
+    sum1 *= sum2;
+    if ( sum1 != 0.0 )
+        sum3 /= sqrtf(sum1);
+    final_sum = sum3;
+#endif
+
+    // wxPrintf("sums %f %f %f\n", sum1, sum2, sum3);
+    // wxPrintf("sums %f %f %f atomic\n", *s1, *s2, *s3);
     // wxPrintf("sum3 %f\n", sum3);
 
     cudaErr(cudaFree(s1));

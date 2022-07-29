@@ -115,6 +115,7 @@ static __device__ __host__ inline Complex ComplexConjMulAndScale(Complex a, Comp
     return c;
 }
 
+
 // static constexpr int warpSize = 32;
 
 #endif /* GPU_CORE_HEADERS_H_ */

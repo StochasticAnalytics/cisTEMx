@@ -8,6 +8,14 @@ namespace cistem {
 constexpr const int fraction_of_box_size_to_exclude_for_border = 4;
 constexpr const int maximum_number_of_detections               = 1000;
 
+namespace gpu {
+
+constexpr int warp_size             = 32;
+constexpr int min_threads_per_block = warp_size;
+constexpr int max_threads_per_block = 1024;
+
+} // namespace gpu
+
 /*
     SCOPED ENUMS:
         Rather than specifying a scoped enum as enum class, we use the following technique to define scoped enums while

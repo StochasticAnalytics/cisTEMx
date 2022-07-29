@@ -201,6 +201,12 @@ typedef struct
     }
 } square;
 
+typedef __align__(8) struct _ValueAndWeight {
+    static_assert(sizeof(float) == sizeof(int), "sizeof(float) != sizeof(int)");
+    float value;
+    int   weight;
+} _ValueAndWeight;
+
 // #define FULL_MASK 0xffffffff
 
 ////////////////////////
@@ -1316,45 +1322,42 @@ __global__ void WhitenKernel(cufftComplex* input_values,
                              const int     NY,
                              const int     n_bins,
                              const int     n_bins2,
-                             const int     n_blocks_previous_kernel,
                              const float   resolution_limit) {
 
-    int x = physical_X_1d_grid( );
+    int x = physical_X( );
     if ( x >= NX ) {
         return;
     }
-    if ( physical_Y_1d_grid( ) >= NY ) {
+    if ( physical_Y( ) >= NY ) {
         return;
     }
 
-    int linear_idx = physical_Y_1d_grid( ) * NX + x;
+    int linear_idx = physical_Y( ) * NX + x;
 
     extern __shared__ int non_zero_count[];
     float*                radial_average = (float*)&non_zero_count[n_bins];
 
     // initialize temporary accumulation array in shared memory
     // Since this is a 1d block, we only care about the x position in that block
-    for ( int i = threadIdx.x; i < n_bins; i += blockDim.x ) {
+    for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension( ) ) {
         radial_average[i] = 0.f;
         non_zero_count[i] = 0;
     }
     __syncthreads( );
 
-    // Now aggregate out the partial PS to global memory
-
-    //
-    const float* input_radial_average = (float*)&input_non_zero_count[n_bins * n_blocks_previous_kernel];
+    const float* input_radial_average = (float*)&input_non_zero_count[n_bins * LinearBlockIdx_2dGrid( )];
     int          offset;
-    for ( int iBlock = 0; iBlock < n_blocks_previous_kernel; iBlock++ ) {
+#pragma unroll 4
+    for ( int iBlock = 0; iBlock < GridDimension_2d( ); iBlock++ ) {
         offset = n_bins * iBlock;
-        for ( int i = threadIdx.x; i < n_bins; i += blockDim.x ) {
+        for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension( ) ) {
             radial_average[i] += input_radial_average[i + offset];
             non_zero_count[i] += input_non_zero_count[i + offset];
         }
     }
     __syncthreads( );
 
-    int v = physical_Y_1d_grid( );
+    int v = physical_Y( );
 
     // First negative logical fourier component is at NY/2
     if ( v >= NY / 2 ) {
@@ -1417,13 +1420,6 @@ void GpuImage::Whiten(float resolution_limit) {
                                                                                               resolution_limit_pixel);
     postcheck;
 
-    // The first part of this kernel loops over all radial averages (nblocks timers / block) but it is only n_bins large
-    // so limit to a 1d grid which achieves lower occupancy / kernel, but higher useful occupancy when multiple streams are using the device
-    // (which is pretty much always.)
-    const int stride_y = 2;
-    // ReturnLaunchParamters1d_X_strided_Y(dims, false, stride_y);
-    ReturnLaunchParamters1d_X(dims, false);
-
     precheck;
     WhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values_gpu,
                                                                                  rotational_average_ps,
@@ -1431,7 +1427,6 @@ void GpuImage::Whiten(float resolution_limit) {
                                                                                  dims.y,
                                                                                  n_bins,
                                                                                  n_bins2,
-                                                                                 n_blocks,
                                                                                  resolution_limit_pixel);
     postcheck;
 

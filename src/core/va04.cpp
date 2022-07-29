@@ -713,6 +713,7 @@ L106:
         goto L107;
     }
 L20:
+    *num_function_calls = iterc;
     return 0;
 L107:
     inn = 1;
@@ -724,6 +725,7 @@ L999:
     *f = target_function(parameters, x + 1);
     // Removed this statement since it does not seem to be very informative
     // wxPrintf("Warning(VA04): Endless loop safety catch, icnt = %i\n", icnt);
+    *num_function_calls = iterc;
     return 0;
 } /* va04a_ */
 

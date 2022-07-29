@@ -4,7 +4,8 @@ class ConjugateGradient {
   private:
     bool   is_in_memory;
     int    n; //	Number of parameters to refine
-    int    num_function_calls; //	Number of calls to the scoring function
+    int    num_function_calls; //	Number of calls to the scoring function this run
+    long   n_calls_made_by_va04a_; //	Number of calls to the scoring function cummulative
     float* best_values; //	Final best parameters determined by conjugate gradient minimization
     float* e; //	Recalculated accuracy for subroutine va04
     float  escale; //	Anticipated change in the parameters during conjugate gradient minimization
@@ -12,6 +13,7 @@ class ConjugateGradient {
     //
     float (*target_function)(void* parameters, float[]);
     void* parameters;
+
 
   public:
     // Constructors & destructors
@@ -21,6 +23,13 @@ class ConjugateGradient {
     // Methods
     float Init(float (*function_to_minimize)(void* parameters, float[]), void* parameters, int num_dim, float starting_value[], float accuracy[]);
     float Run(int maxit = 50);
+
+    inline long GetNumFunctionCalls( ) { 
+      long tmp = n_calls_made_by_va04a_;
+      n_calls_made_by_va04a_ = 0;
+      num_function_calls = 0;
+      return tmp; 
+    }
 
     inline float GetBestValue(int index) { return best_values[index]; };
 

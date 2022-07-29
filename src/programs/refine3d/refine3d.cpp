@@ -542,6 +542,7 @@ bool Refine3DApp::DoCalculation( ) {
 
     ZeroFloatArray(cg_starting_point, 17);
     ZeroFloatArray(cg_accuracy, 17);
+    long number_of_calls_to_score_function = 0;
 
     if ( (is_running_locally && ! DoesFileExist(input_star_filename)) || (! is_running_locally && ! DoesFileExistWithWait(input_star_filename, 90)) ) {
         SendErrorAndCrash(wxString::Format("Error: Input star file %s not found\n", input_star_filename));
@@ -999,24 +1000,25 @@ bool Refine3DApp::DoCalculation( ) {
 
     current_projection = 0;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(timer, parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                       \
-                                                                   first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, ctf_refinement, defocus_search_range, defocus_step, normalize_input_3d,                                                                                           \
-                                                                   refine_statistics, pixel_size, my_progress, outer_mask_radius, mask_falloff, high_resolution_limit, molecular_mass_kDa, percent_used, output_shifts_file, local_refinement,                                                                                           \
-                                                                   binning_factor_refine, low_resolution_limit, input_statistics, output_star_file, current_projection, local_global_refine, signed_CC_limit, defocus_bias,                                                                                                              \
-                                                                   random_particle, defocus_range_mean2, defocus_range_std, defocus_mean_score, current_class, mask_radius_search, search_reference_3d, high_resolution_limit_search,                                                                                                    \
-                                                                   binning_factor_search, search_statistics, search_box_size, projection_cache, my_symmetry, angular_step, psi_max, psi_step, psi_start, take_random_best_parameter, refine_particle,                                                                                    \
-                                                                   skip_local_refinement, calculate_matching_projections, classification_resolution_limit, output_file, best_parameters_to_keep, ignore_input_angles, global_random_number_generator,                                                                                    \
-                                                                   global_euler_search, binned_image_box_size, binned_search_image_box_size, global_search) private(image_counter, refine_particle_local, current_line_local, input_parameters, temp_float, output_parameters, input_ctf, variance, average,                             \
-                                                                                                                                                                    best_score, defocus_i, score, cg_starting_point, input_image_local, search_particle_local, intermediate_result, gui_result_parameters, image_shift_x, image_shift_y, \
-                                                                                                                                                                    binned_image, projection_image_local, best_defocus_i, defocus_score, temp_image2_local, search_projection_image, cg_accuracy, search_reference_3d_local,             \
-                                                                                                                                                                    temp_image_local, search_parameters, istart, parameter_to_keep, conjugate_gradient_minimizer, i, final_image, input_3d_local, euler_search_local, frealign_score_local)
+#pragma omp parallel num_threads(max_threads) default(none) shared(timer, parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                                                          \
+                                                                   first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, ctf_refinement, defocus_search_range, defocus_step, normalize_input_3d,                                                                                                                              \
+                                                                   refine_statistics, pixel_size, my_progress, outer_mask_radius, mask_falloff, high_resolution_limit, molecular_mass_kDa, percent_used, output_shifts_file, local_refinement,                                                                                                                              \
+                                                                   binning_factor_refine, low_resolution_limit, input_statistics, output_star_file, current_projection, local_global_refine, signed_CC_limit, defocus_bias,                                                                                                                                                 \
+                                                                   random_particle, defocus_range_mean2, defocus_range_std, defocus_mean_score, current_class, mask_radius_search, search_reference_3d, high_resolution_limit_search,                                                                                                                                       \
+                                                                   binning_factor_search, search_statistics, search_box_size, projection_cache, my_symmetry, angular_step, psi_max, psi_step, psi_start, take_random_best_parameter, refine_particle,                                                                                                                       \
+                                                                   skip_local_refinement, calculate_matching_projections, classification_resolution_limit, output_file, best_parameters_to_keep, ignore_input_angles, global_random_number_generator,                                                                                                                       \
+                                                                   global_euler_search, binned_image_box_size, binned_search_image_box_size, global_search, number_of_calls_to_score_function) private(image_counter, refine_particle_local, current_line_local, input_parameters, temp_float, output_parameters, input_ctf, variance, average,                             \
+                                                                                                                                                                                                       best_score, defocus_i, score, cg_starting_point, input_image_local, search_particle_local, intermediate_result, gui_result_parameters, image_shift_x, image_shift_y, \
+                                                                                                                                                                                                       binned_image, projection_image_local, best_defocus_i, defocus_score, temp_image2_local, search_projection_image, cg_accuracy, search_reference_3d_local,             \
+                                                                                                                                                                                                       temp_image_local, search_parameters, istart, parameter_to_keep, conjugate_gradient_minimizer, i, final_image, input_3d_local, euler_search_local, frealign_score_local)
     { // for omp
 
         timer.start("omp copy to local variables");
 
         ProjectionComparisonObjects comparison_object;
 
-        int new_buffer_size = 0;
+        int  new_buffer_size                         = 0;
+        long number_of_calls_to_score_function_local = 0;
 
         //	input_3d_local = input_3d;
         input_3d_local.CopyAllButVolume(&input_3d);
@@ -1493,6 +1495,7 @@ bool Refine3DApp::DoCalculation( ) {
                             input_parameters.score = output_parameters.score;
 
                         temp_float = -100.0 * conjugate_gradient_minimizer.Run(50);
+                        number_of_calls_to_score_function_local += conjugate_gradient_minimizer.GetNumFunctionCalls( );
 #ifdef PRINT_SCORES
                         wxPrintf("Current score is %g, from line %i\n", temp_float, __LINE__);
 #endif
@@ -1526,8 +1529,11 @@ bool Refine3DApp::DoCalculation( ) {
                             }
                             if ( skip_local_refinement )
                                 temp_float = search_parameters.score;
-                            else
+                            else {
                                 temp_float = -100.0 * conjugate_gradient_minimizer.Run(50);
+                                number_of_calls_to_score_function_local += conjugate_gradient_minimizer.GetNumFunctionCalls( );
+                            }
+
 #ifdef PRINT_SCORES
                             wxPrintf("Current score is %g, from line %i\n", temp_float, __LINE__);
 #endif
@@ -1576,6 +1582,8 @@ bool Refine3DApp::DoCalculation( ) {
                     temp_float = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, refine_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
                     //???				if (! global_search) input_parameters[15] = temp_float;
                     output_parameters.score = -100.0 * conjugate_gradient_minimizer.Run(50);
+                    number_of_calls_to_score_function_local += conjugate_gradient_minimizer.GetNumFunctionCalls( );
+
 #ifdef PRINT_SCORES
                     wxPrintf("Current score is %g, from line %i\n", output_parameters.score, __LINE__);
 #endif
@@ -1755,6 +1763,11 @@ bool Refine3DApp::DoCalculation( ) {
         if ( calculate_matching_projections )
             final_image.Deallocate( );
         timer.lap("clean up");
+
+#pragma omp critical
+        {
+            number_of_calls_to_score_function += number_of_calls_to_score_function_local;
+        }
     } // end omp section
 
     if ( is_running_locally == true )
@@ -1778,6 +1791,7 @@ bool Refine3DApp::DoCalculation( ) {
 
     timer.print_times( );
     global_timer.print_times( );
+    wxPrintf("\nNumber of calls to scoring function %ld\n", number_of_calls_to_score_function);
 
     return true;
 }

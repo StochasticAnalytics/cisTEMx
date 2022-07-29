@@ -1340,6 +1340,8 @@ __global__ void WhitenKernel(cufftComplex* input_values,
     for ( int iBlock = 0; iBlock < gridDim.x * gridDim.y; iBlock++ ) {
         offset = n_bins * iBlock;
         for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
+            // FIXME: Coalescing
+
             radial_average[i] += input_radial_average[i + offset];
             non_zero_count[i] += input_non_zero_count[i + offset];
         }
@@ -3103,7 +3105,7 @@ bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
             // everything is already done..
             is_in_real_space = should_be_in_real_space;
             //			wxPrintf("returning\n");
-            return;
+            return false;
         }
         else {
             Deallocate( );

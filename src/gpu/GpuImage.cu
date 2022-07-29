@@ -1363,32 +1363,33 @@ __global__ void WhitenKernel(cufftComplex* input_values,
 
     extern __shared__ ValueAndWeight shared_rotational_average_ps[];
 
-    // initialize temporary accumulation array in shared memory
-    // Since this is a 1d block, we only care about the x position in that block
-    for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
-        shared_rotational_average_ps[i].value  = 0.f;
-        shared_rotational_average_ps[i].weight = 0;
-    }
-    __syncthreads( );
-
     int offset;
 #ifdef USE_FP16_FOR_WHITENPS
     ValueAndWeight_half tmp;
 #endif
 
-#pragma unroll 4
+    // Note this only works if n_threads_per_block > n_bins. Then every thread in the block only accesses one address in shared mem.
+    // This allows us to skip initializing the shared mem to zero, accumulate in thread registers (*skipping nBlocks writes to shared mem)
+    // and then only call one sync at the end.
+    float value  = 0.f;
+    int   weight = 0;
     for ( int iBlock = 0; iBlock < GridDimension_2d( ); iBlock++ ) {
         offset = n_bins * iBlock;
         for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
 #ifdef USE_FP16_FOR_WHITENPS
             tmp = rotational_average_ps[offset + i];
-            shared_rotational_average_ps[i].value += __bfloat162float(tmp.value);
-            shared_rotational_average_ps[i].weight += int(tmp.weight);
+            value += __bfloat162float(tmp.value);
+            weight += int(tmp.weight);
 #else
-            shared_rotational_average_ps[i].value += rotational_average_ps[i + offset].value;
-            shared_rotational_average_ps[i].weight += rotational_average_ps[i + offset].weight;
+            value += rotational_average_ps[i + offset].value;
+            weight += rotational_average_ps[i + offset].weight;
 #endif
         }
+    }
+
+    for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
+        shared_rotational_average_ps[i].value  = value;
+        shared_rotational_average_ps[i].weight = weight;
     }
     __syncthreads( );
 
@@ -1424,13 +1425,15 @@ void GpuImage::Whiten(float resolution_limit) {
     MyDebugAssertTrue(dims.z == 1, "Whitening is only setup to work in 2D");
 
     // First we need to get the rotationally averaged PS, which we'll store in global memory
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParamters<ntds_x_WhitenPS, ntds_y_WhitenPS>(dims, false);
 
     // assuming square images, otherwise this would be largest dimension
     const int number_of_bins = dims.y / 2 + 1;
     // Extend table to include corners in 3D Fourier space
     const int n_bins  = int(number_of_bins * sqrtf(3.0)) + 1;
     const int n_bins2 = 2 * (number_of_bins - 1);
+
+    MyAssertFalse(n_bins > ntds_x_WhitenPS * ntds_y_WhitenPS, "n_bins is too large and would require an array for local variable storage. The size must be  known at compile time so make a template specialization  of the kernel.");
 // For bin resolution of one pixel, uint16 should be plenty
 #ifdef USE_FP16_FOR_WHITENPS
     ValueAndWeight_half* rotational_average_ps;

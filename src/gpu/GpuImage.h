@@ -238,12 +238,15 @@ class GpuImage {
     void SetupInitialValues( );
     void UpdateBoolsToDefault( );
 
+    template <int ntds_x = 32, int ntds_y = 32>
     __inline__ void ReturnLaunchParamters(int4 input_dims, bool real_space) {
+        static_assert(ntds_x % cistem::gpu::warp_size == 0);
+        static_assert(ntds_x * ntds_y <= cistem::gpu::max_threads_per_block);
         int div = 1;
         if ( ! real_space )
             div++;
 
-        threadsPerBlock = dim3(32, 32, 1);
+        threadsPerBlock = dim3(ntds_x, ntds_y, 1);
         gridDims        = dim3((input_dims.w / div + threadsPerBlock.x - 1) / threadsPerBlock.x,
                                (input_dims.y + threadsPerBlock.y - 1) / threadsPerBlock.y,
                                input_dims.z);

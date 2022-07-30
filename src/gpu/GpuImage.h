@@ -8,6 +8,8 @@
 #ifndef GPUIMAGE_H_
 #define GPUIMAGE_H_
 
+#include "../core/cistem_constants.h"
+
 class GpuImage {
 
   public:
@@ -236,15 +238,41 @@ class GpuImage {
     void SetupInitialValues( );
     void UpdateBoolsToDefault( );
 
+    template <int ntds_x = 32, int ntds_y = 32>
     __inline__ void ReturnLaunchParamters(int4 input_dims, bool real_space) {
-        int div;
-        if ( real_space ) {
-            div = 1;
-        }
-        else {
-            div = 2;
-        }
-        threadsPerBlock = dim3(32, 32, 1);
+        static_assert(ntds_x % cistem::gpu::warp_size == 0);
+        static_assert(ntds_x * ntds_y <= cistem::gpu::max_threads_per_block);
+        int div = 1;
+        if ( ! real_space )
+            div++;
+
+        threadsPerBlock = dim3(ntds_x, ntds_y, 1);
+        gridDims        = dim3((input_dims.w / div + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                               (input_dims.y + threadsPerBlock.y - 1) / threadsPerBlock.y,
+                               input_dims.z);
+    };
+
+    __inline__ void ReturnLaunchParamters1d_X(const int4 input_dims, const bool real_space) {
+        int div = 1;
+        if ( ! real_space )
+            div++;
+
+        using namespace cistem::gpu;
+        // Note: that second set of parens changes the division!
+        threadsPerBlock = dim3(std::max(min_threads_per_block, std::min(max_threads_per_block, warp_size * ((input_dims.w / div + warp_size - 1) / warp_size))), 1, 1);
+        gridDims        = dim3((input_dims.w / div + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                               (input_dims.y + threadsPerBlock.y - 1) / threadsPerBlock.y,
+                               input_dims.z);
+    };
+
+    __inline__ void ReturnLaunchParamters1d_X_strided_Y(const int4 input_dims, const bool real_space, const int stride_y) {
+        int div = 1;
+        if ( ! real_space )
+            div++;
+
+        using namespace cistem::gpu;
+        // Note: that second set of parens changes the division!
+        threadsPerBlock = dim3(std::max(min_threads_per_block, std::min(max_threads_per_block / stride_y, warp_size * ((input_dims.w / div + warp_size - 1) / warp_size))), stride_y, 1);
         gridDims        = dim3((input_dims.w / div + threadsPerBlock.x - 1) / threadsPerBlock.x,
                                (input_dims.y + threadsPerBlock.y - 1) / threadsPerBlock.y,
                                input_dims.z);

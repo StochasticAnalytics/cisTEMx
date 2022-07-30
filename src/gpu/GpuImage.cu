@@ -9,9 +9,14 @@
 
 #include "gpu_core_headers.h"
 #include "GpuImage.h"
-
+#include "gpu_indexing_functions.h"
 // #define USE_ASYNC_MALLOC_FREE
 // #define USE_BLOCK_REDUCE
+#define USE_FP16_FOR_WHITENPS
+
+#ifdef USE_FP16_FOR_WHITENPS
+#include <cuda_bf16.h>
+#endif
 
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
@@ -200,6 +205,19 @@ typedef struct
         return x * x;
     }
 } square;
+
+typedef __align__(4) struct _ValueAndWeight_half {
+
+    static_assert(sizeof(nv_bfloat16) == sizeof(short), "sizeof(__half) != sizeof(short)");
+    nv_bfloat16 value;
+    short       weight;
+} ValueAndWeight_half;
+
+typedef __align__(8) struct _ValueAndWeight {
+    static_assert(sizeof(float) == sizeof(int), "sizeof(float) != sizeof(int)");
+    float value;
+    int   weight;
+} ValueAndWeight;
 
 // #define FULL_MASK 0xffffffff
 
@@ -1249,29 +1267,35 @@ __global__ void ApplyBFactorKernel(cufftComplex* d_input,
 }
 
 __global__ void RotationalAveragePSKernel(const __restrict__ cufftComplex* input_values,
-                                          int*                             rotational_average_ps,
-                                          const int                        NX,
-                                          const int                        NY,
-                                          const int                        n_bins,
-                                          const int                        n_bins2,
-                                          const float                      resolution_limit) {
+#ifdef USE_FP16_FOR_WHITENPS
+                                          ValueAndWeight_half* rotational_average_ps,
+#else
+                                          ValueAndWeight* rotational_average_ps,
+#endif
+                                          const int   NX,
+                                          const int   NY,
+                                          const int   n_bins,
+                                          const int   n_bins2,
+                                          const float resolution_limit) {
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int x = physical_X_2d_grid( );
     if ( x >= NX ) {
         return;
     }
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int y = physical_Y_2d_grid( );
     if ( y >= NY ) {
         return;
     }
 
-    extern __shared__ int non_zero_count[];
-    float*                radial_average = (float*)&non_zero_count[n_bins];
+    // Organize the shared memory as packed int for count, followed by packed float for rotational average
+    extern __shared__ ValueAndWeight shared_rotational_average_ps[];
 
     // initialize temporary accumulation array in shared memory
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        radial_average[i] = 0.f;
-        non_zero_count[i] = 0;
+    // Every thread in the block writes in, and if the block is < n_bins, the slack will be picked up by the strided loop
+    // TODO: LaunchParameters that adjusts the size to reduce thread stalling by reducing the remainder of block size and n_bins
+    for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
+        shared_rotational_average_ps[i].value  = 0.f;
+        shared_rotational_average_ps[i].weight = 0;
     }
     __syncthreads( );
 
@@ -1291,87 +1315,107 @@ __global__ void RotationalAveragePSKernel(const __restrict__ cufftComplex* input
     int   bin       = int(sqrtf(u * u + v * v) / float(NY) * n_bins2);
     // This check is from Image::Whiten, but should it really be checking a float like this?
     if ( abs_value != 0.0 && bin <= resolution_limit ) {
-        atomicAdd(&non_zero_count[bin], 1);
-        atomicAdd(&radial_average[bin], abs_value);
+        atomicAdd(&shared_rotational_average_ps[bin].value, abs_value);
+        atomicAdd(&shared_rotational_average_ps[bin].weight, 1);
     }
     __syncthreads( );
 
-    // Now write out the partial PS to global memory
-    int*   output_non_zero_count = &rotational_average_ps[n_bins * (blockIdx.x + blockIdx.y * gridDim.x)];
-    float* output_radial_average = (float*)&output_non_zero_count[n_bins * gridDim.x * gridDim.y];
-
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        output_radial_average[i] = radial_average[i];
-        output_non_zero_count[i] = non_zero_count[i];
+// Now write out the partial PS to global memory
+// All the int values are packed for each block, followed by the float values
+#ifdef USE_FP16_FOR_WHITENPS
+    ValueAndWeight_half* output_rotational_average_ps = &rotational_average_ps[n_bins * LinearBlockIdx_2dGrid( )];
+    ValueAndWeight_half  tmp;
+    for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
+        tmp.value                       = __float2bfloat16(shared_rotational_average_ps[i].value);
+        tmp.weight                      = short(shared_rotational_average_ps[i].weight);
+        output_rotational_average_ps[i] = tmp;
     }
+#else
+    ValueAndWeight* output_rotational_average_ps = &rotational_average_ps[n_bins * LinearBlockIdx_2dGrid( )];
+    for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
+        output_rotational_average_ps[i] = shared_rotational_average_ps[i];
+    }
+#endif
 };
 
 __global__ void WhitenKernel(cufftComplex* input_values,
-                             int*          input_non_zero_count,
-                             const int     NX,
-                             const int     NY,
-                             const int     n_bins,
-                             const int     n_bins2,
-                             const float   resolution_limit) {
+#ifdef USE_FP16_FOR_WHITENPS
+                             ValueAndWeight_half* rotational_average_ps,
+#else
+                             ValueAndWeight* rotational_average_ps,
+#endif
+                             const int   NX,
+                             const int   NY,
+                             const int   n_bins,
+                             const int   n_bins2,
+                             const float resolution_limit) {
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int x = physical_X_2d_grid( );
     if ( x >= NX ) {
         return;
     }
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int y = physical_Y_2d_grid( );
     if ( y >= NY ) {
         return;
     }
 
-    extern __shared__ int non_zero_count[];
-    float*                radial_average = (float*)&non_zero_count[n_bins];
+    int linear_idx = y * NX + x;
 
-    // initialize temporary accumulation array in shared memory
-    for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-        radial_average[i] = 0.f;
-        non_zero_count[i] = 0;
-    }
-    __syncthreads( );
+    extern __shared__ ValueAndWeight shared_rotational_average_ps[];
 
-    // Now aggregate out the partial PS to global memory
+    int offset;
+#ifdef USE_FP16_FOR_WHITENPS
+    ValueAndWeight_half tmp;
+#endif
 
-    const float* input_radial_average = (float*)&input_non_zero_count[n_bins * gridDim.x * gridDim.y];
-    int          offset;
-    for ( int iBlock = 0; iBlock < gridDim.x * gridDim.y; iBlock++ ) {
+    // Note this only works if n_threads_per_block > n_bins. Then every thread in the block only accesses one address in shared mem.
+    // This allows us to skip initializing the shared mem to zero, accumulate in thread registers (*skipping nBlocks writes to shared mem)
+    // and then only call one sync at the end.
+    float value  = 0.f;
+    int   weight = 0;
+    for ( int iBlock = 0; iBlock < GridDimension_2d( ); iBlock++ ) {
         offset = n_bins * iBlock;
-        for ( int i = threadIdx.x + threadIdx.y * blockDim.x; i < n_bins; i += blockDim.x * blockDim.y ) {
-            radial_average[i] += input_radial_average[i + offset];
-            non_zero_count[i] += input_non_zero_count[i + offset];
+        for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
+#ifdef USE_FP16_FOR_WHITENPS
+            tmp = rotational_average_ps[offset + i];
+            value += __bfloat162float(tmp.value);
+            weight += int(tmp.weight);
+#else
+            value += rotational_average_ps[i + offset].value;
+            weight += rotational_average_ps[i + offset].weight;
+#endif
         }
     }
+
+    for ( int i = LinearThreadIdxInBlock_2dGrid( ); i < n_bins; i += BlockDimension_2d( ) ) {
+        shared_rotational_average_ps[i].value  = value;
+        shared_rotational_average_ps[i].weight = weight;
+    }
     __syncthreads( );
 
-    int v;
+    int v = y;
 
     // First negative logical fourier component is at NY/2
-    if ( y >= NY / 2 ) {
-        v = y - NY;
-    }
-    else {
-        v = y;
+    if ( v >= NY / 2 ) {
+        v -= NY;
     }
 
     int bin = int(sqrtf(float(x * x + v * v) / float(NY) * n_bins2));
     // float min_value = sqrtf(radial_average[1] / float(non_zero_count[1]) * 10e-2f);
-    if ( bin <= resolution_limit && non_zero_count[bin] != 0 ) {
-        float norm = sqrtf(non_zero_count[bin] / radial_average[bin]);
+    if ( bin <= resolution_limit && shared_rotational_average_ps[bin].weight != 0 ) {
+        float norm = sqrtf((shared_rotational_average_ps[bin].weight) / (shared_rotational_average_ps[bin].value));
         if ( isfinite(norm) ) {
-            input_values[y * NX + x].x *= norm;
-            input_values[y * NX + x].y *= norm;
+            input_values[linear_idx].x *= norm;
+            input_values[linear_idx].y *= norm;
         }
         else {
-            input_values[y * NX + x].x = 0.f;
-            input_values[y * NX + x].y = 0.f;
+            input_values[linear_idx].x = 0.f;
+            input_values[linear_idx].y = 0.f;
         }
     }
     else {
-        input_values[y * NX + x].x = 0.f;
-        input_values[y * NX + x].y = 0.f;
+        input_values[linear_idx].x = 0.f;
+        input_values[linear_idx].y = 0.f;
     }
 }
 
@@ -1381,20 +1425,27 @@ void GpuImage::Whiten(float resolution_limit) {
     MyDebugAssertTrue(dims.z == 1, "Whitening is only setup to work in 2D");
 
     // First we need to get the rotationally averaged PS, which we'll store in global memory
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParamters<ntds_x_WhitenPS, ntds_y_WhitenPS>(dims, false);
 
     // assuming square images, otherwise this would be largest dimension
-    int number_of_bins = dims.y / 2 + 1;
+    const int number_of_bins = dims.y / 2 + 1;
     // Extend table to include corners in 3D Fourier space
-    int n_bins  = int(number_of_bins * sqrtf(3.0)) + 1;
-    int n_bins2 = 2 * (number_of_bins - 1);
-    // For bin resolution of one pixel, uint16 should be plenty
-    int shared_mem = n_bins * (sizeof(float) + sizeof(int));
-    // For coalescing in global memory (2d grid)
-    int   n_blocks               = gridDims.x * gridDims.y;
-    float resolution_limit_pixel = resolution_limit * dims.x;
+    const int n_bins  = int(number_of_bins * sqrtf(3.0)) + 1;
+    const int n_bins2 = 2 * (number_of_bins - 1);
 
-    int* rotational_average_ps;
+    MyAssertFalse(n_bins > ntds_x_WhitenPS * ntds_y_WhitenPS, "n_bins is too large and would require an array for local variable storage. The size must be  known at compile time so make a template specialization  of the kernel.");
+// For bin resolution of one pixel, uint16 should be plenty
+#ifdef USE_FP16_FOR_WHITENPS
+    ValueAndWeight_half* rotational_average_ps;
+#else
+    ValueAndWeight* rotational_average_ps;
+#endif
+
+    const int shared_mem = n_bins * sizeof(ValueAndWeight);
+
+    // For coalescing in global memory (2d grid)
+    const int   n_blocks               = gridDims.x * gridDims.y;
+    const float resolution_limit_pixel = resolution_limit * dims.x;
 
 #ifdef USE_ASYNC_MALLOC_FREE
     cudaErr(cudaMallocAsync(&rotational_average_ps, shared_mem * n_blocks, cudaStreamPerThread));
@@ -1484,7 +1535,7 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
                 sum3 = v;
             }
 #else
-            image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
+            image_PS[real_idx] = ComplexModulusSquared(image_values[complex_idx]);
             projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
             if ( u > signed_CC_limit_sq ) {
                 cross_terms[real_idx] = fabsf(v);
@@ -1506,8 +1557,8 @@ __global__ void _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cu
         sum2 = 0.f;
         sum3 = 0.f;
 #else
-        cross_terms[real_idx]   = 0.f;
-        image_PS[real_idx]      = 0.f;
+        cross_terms[real_idx] = 0.f;
+        image_PS[real_idx] = 0.f;
         projection_PS[real_idx] = 0.f;
 #endif
     }
@@ -3103,7 +3154,7 @@ bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
             // everything is already done..
             is_in_real_space = should_be_in_real_space;
             //			wxPrintf("returning\n");
-            return;
+            return false;
         }
         else {
             Deallocate( );

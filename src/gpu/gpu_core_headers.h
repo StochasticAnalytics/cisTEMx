@@ -33,6 +33,9 @@ const int MAX_GPU_COUNT = 32;
 
 // clang-format on
 
+// Limits for specific kernels
+constexpr int ntds_x_WhitenPS = 32;
+constexpr int ntds_y_WhitenPS = 32;
 // Complex data type
 typedef float2                            Complex;
 static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);

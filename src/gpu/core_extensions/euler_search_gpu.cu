@@ -110,6 +110,10 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     bool should_pin_tmp_rot      = true;
     bool should_pin_mirrored_rot = true;
     for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
+        // Reset these flags since we are re-using the same buffer
+        tmp_rot.is_in_real_space         = true;
+        tmp_rot.object_is_centred_in_box = true;
+
         if ( parameter_map.psi ) {
             angles.GenerateRotationMatrix2D(psi_i * psi_step + psi_start);
         }
@@ -119,7 +123,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         padded_image->Rotate2DSample(tmp_rot, angles);
         tmp_rot.ForwardFFT( );
         tmp_rot.SwapRealSpaceQuadrants( );
-        tmp_rot.Conj( );
         tmp_rot.complex_values[0] = 0.0f + I * 0.0f;
         rotation_cache[psi_m].Init(tmp_rot, should_pin_tmp_rot, true);
         should_pin_tmp_rot = false;
@@ -129,10 +132,9 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         if ( test_mirror ) {
 
             mirrored.MirrorYFourier2D(tmp_rot);
-            mirrored.Conj( );
-            rotation_cache[psi_m - 1].Init(mirrored, should_pin_mirrored_rot, true);
+            rotation_cache[psi_m].Init(mirrored, should_pin_mirrored_rot, true);
             should_pin_mirrored_rot = false;
-            rotation_cache[psi_m - 1].CopyHostToDevice(true);
+            rotation_cache[psi_m].CopyHostToDevice(true);
 
             psi_m++;
         }
@@ -140,7 +142,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     timer.lap("Make rotation cache");
 
     for ( i = 0; i < number_of_search_positions; i++ ) {
-        if ( projections == NULL ) {
+        if ( true ) { //projections == NULL ) {
             //			wxPrintf("i, phi, theta = %i, %f, %f\n", i, list_of_search_parameters[i][0], list_of_search_parameters[i][1]);
             timer.start("Make Projection");
             angles.Init(list_of_search_parameters[i][0], list_of_search_parameters[i][1], 0.0, 0.0, 0.0);
@@ -148,33 +150,40 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             projection_image->Whiten(resolution_limit);
             projection_image->ApplyBFactor(effective_bfactor);
             timer.lap("Make Projection");
-            gpu_projection_image.CopyHostToDevice(*projection_image, false)
+            gpu_projection_image.CopyHostToDevice(true);
         }
-        else {
-            timer.start("Copy back projection");
-            gpu_projection_image.CopyFrom(&projections[i]);
-            timer.lap("Copy back projection");
-        }
+        // else {
+        //     timer.start("Copy back projection");
+        //     gpu_projection_image.CopyFrom(&projections[i]);
+        //     timer.lap("Copy back projection");
+        // }
         timer.start("Copy cpu to gpu projection");
 
-        timer.start("Cross Correlate");
         best_inplane_score = -std::numeric_limits<float>::max( );
         psi_m              = 0;
         for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
 
-            // Note 1: I have always taken the conjugate of the reference, but in the CPU code it is of the rotated particle. Here the conjgate is already taken in the cache step.
-            gpu_projection_image.MultiplyPixelWise(rotation_cache[psi_m], gpu_correlation_map);
+            timer.start("Cross Correlate");
 
+            correlation_map.is_in_real_space     = false;
             gpu_correlation_map.is_in_real_space = false;
+            rotation_cache[psi_m].MultiplyPixelWiseComplexConjugate(gpu_projection_image, gpu_correlation_map);
+
             timer.lap("Cross Correlate");
 
             timer.start("FFT Correlation Map");
             gpu_correlation_map.BackwardFFT( );
             timer.lap("FFT Correlation Map");
 
+            correlation_map.is_in_real_space             = true;
+            correlation_map.object_is_centred_in_box     = false;
+            gpu_correlation_map.is_in_real_space         = true;
+            gpu_correlation_map.object_is_centred_in_box = false;
+
             timer.start("Copy Correlation Map");
             gpu_correlation_map.CopyHostToDevice(true);
             timer.lap("Copy Correlation Map");
+            // gpu_correlation_map.QuickAndDirtyWriteSlices("/tmp/correlation_map_gpu.mrc", 1, 1);
 
             timer.start("Fine Peak Search");
             found_peak = correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
@@ -192,15 +201,23 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
             if ( test_mirror ) {
                 psi_m++;
-                // Note 1: I have always taken the conjugate of the reference, but in the CPU code it is of the rotated particle. Here the conjgate is already taken in the cache step.
-                gpu_projection_image.MultiplyPixelWise(rotation_cache[psi_m], gpu_correlation_map);
+                // Note 1: I have always taken the conjugate of the reference, but in the CPU code it is of the rotated particle. Here the conjgate is already taken in the cache step.\
 
+                correlation_map.is_in_real_space     = false;
                 gpu_correlation_map.is_in_real_space = false;
+
+                rotation_cache[psi_m].MultiplyPixelWiseComplexConjugate(gpu_projection_image, gpu_correlation_map);
+
                 timer.lap("Cross Correlate");
 
                 timer.start("FFT Correlation Map");
                 gpu_correlation_map.BackwardFFT( );
                 timer.lap("FFT Correlation Map");
+
+                correlation_map.is_in_real_space             = true;
+                correlation_map.object_is_centred_in_box     = false;
+                gpu_correlation_map.is_in_real_space         = true;
+                gpu_correlation_map.object_is_centred_in_box = false;
 
                 timer.start("Copy Correlation Map");
                 gpu_correlation_map.CopyHostToDevice(true);
@@ -263,12 +280,19 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     }
     // *******************************
 
+    float best_score = 0.0;
+    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+        if ( list_of_best_parameters[i][5] > best_score ) {
+            best_score = list_of_best_parameters[i][5];
+        }
+    }
+    wxPrintf("BestScore is %f\n", best_score);
+
     timer.start("Clean up");
     delete flipped_image;
     delete padded_image;
     delete rotated_image;
     delete projection_image;
-    delete correlation_map;
     psi_i = number_of_psi_positions;
     if ( test_mirror )
         psi_i *= 2;
@@ -276,8 +300,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         rotation_cache[i].Deallocate( );
     }
     delete[] rotation_cache;
-#ifndef MKL
-    delete[] temp_k1;
-#endif
+
     timer.lap("Clean up");
 }

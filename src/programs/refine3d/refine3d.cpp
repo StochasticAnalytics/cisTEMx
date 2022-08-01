@@ -470,7 +470,7 @@ bool Refine3DApp::DoCalculation( ) {
     ProgressBar*          my_progress;
 
 #ifdef ENABLEGPU
-    GpuImage* gpu_projection_cache = NULL;
+    GpuImage* gpu_projection_cache;
 #else
     // Dummy for the OMP shared clause
     int gpu_projection_cache = 0;
@@ -814,9 +814,11 @@ bool Refine3DApp::DoCalculation( ) {
         //if (angular_step <= 0) angular_step = 360.0 * high_resolution_limit_search / PI / outer_mask_radius;
         if ( angular_step <= 0 )
             angular_step = CalculateAngularStep(high_resolution_limit_search, outer_mask_radius);
-        psi_step  = rad_2_deg(search_reference_3d.pixel_size / outer_mask_radius);
-        psi_step  = 360.0 / int(360.0 / psi_step + 0.5);
-        psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
+        psi_step = rad_2_deg(search_reference_3d.pixel_size / outer_mask_radius);
+        psi_step = 360.0 / int(360.0 / psi_step + 0.5);
+        // FIXME: Override this for now to get a deterministic output for comparing cpu and gpu immplementationsin devs
+        // psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
+        psi_start = 0.0;
         psi_max   = 0.0;
         if ( refine_particle.parameter_map.psi )
             psi_max = 360.0;
@@ -1000,6 +1002,7 @@ bool Refine3DApp::DoCalculation( ) {
             }
 #endif
         }
+
         //		search_projection_image.RotateFourier2DGenerateIndex(kernel_index, psi_max, psi_step, psi_start);
 
         if ( search_particle.parameter_map.x_shift )
@@ -1814,7 +1817,7 @@ bool Refine3DApp::DoCalculation( ) {
     if ( global_search ) {
         delete[] projection_cache;
 #ifdef ENABLEGPU
-        delete[] projection_cache_gpu;
+        delete[] gpu_projection_cache;
 #endif
         //		search_projection_image.RotateFourier2DDeleteIndex(kernel_index, psi_max, psi_step);
     }

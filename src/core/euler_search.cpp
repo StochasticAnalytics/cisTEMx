@@ -605,7 +605,8 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
             timer.start("FFT Correlation Map");
             correlation_map->BackwardFFT( );
             timer.lap("FFT Correlation Map");
-
+            correlation_map->QuickAndDirtyWriteSlices("/tmp/correlation_map_cpu.mrc", 1, 1);
+            exit(0);
             timer.start("Fine Peak Search");
             found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
             timer.lap("Fine Peak Search");
@@ -721,6 +722,14 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
 	projection_image->PhaseShift(angles.ReturnShiftX() / particle.pixel_size, angles.ReturnShiftY() / particle.pixel_size);
 	projection_image->SwapRealSpaceQuadrants();
 	projection_image->QuickAndDirtyWriteSlice("proj.mrc", particle.origin_micrograph); */
+
+    float best_score = 0.0f;
+    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+        if ( list_of_best_parameters[i][5] > best_score ) {
+            best_score = list_of_best_parameters[i][5];
+        }
+    }
+    wxPrintf("BestScore is %f\n", best_score);
 
     timer.start("Clean up");
     delete flipped_image;

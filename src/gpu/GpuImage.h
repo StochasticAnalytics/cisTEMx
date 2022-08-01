@@ -154,7 +154,7 @@ class GpuImage {
     void MultiplyPixelWise(GpuImage& other_image); /**CPU_eq**/
     void MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image); /**CPU_eq**/
 
-    void MultiplyPixelWiseComplexConjugate(GpuImage& other_image);
+    void MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image);
 
     void SwapFourierSpaceQuadrants( );
     void SwapRealSpaceQuadrants( ); /**CPU_eq**/

@@ -689,9 +689,9 @@ void Image::Conj( ) {
     MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image is not in Fourier space");
 
-    float* imag_part = real_values + 1;
+    float* imag_part = &real_values[1];
 
-    for ( long pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter += 2 ) {
+    for ( long pixel_counter = 0; pixel_counter < real_memory_allocated - 1; pixel_counter += 2 ) {
         imag_part[pixel_counter] = -imag_part[pixel_counter];
     }
 }

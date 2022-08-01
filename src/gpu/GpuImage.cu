@@ -21,7 +21,7 @@
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, int4 dims, int3 physical_upper_bound_complex);
+__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, cufftComplex* result_values, int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_output, const int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufftReal* phi, cufftReal* theta,
                                    int4 dims, float c_psi, float c_phi, float c_theta);
@@ -275,11 +275,11 @@ __inline__ __device__ float blockReduce2dSum(float val) {
 }
 
 __device__ __forceinline__ int warpReduceMin(int minVal) {
-    minVal = gMin(minVal, __shfl_xor(minVal, 16));
-    minVal = gMin(minVal, __shfl_xor(minVal, 8));
-    minVal = gMin(minVal, __shfl_xor(minVal, 4));
-    minVal = gMin(minVal, __shfl_xor(minVal, 2));
-    minVal = gMin(minVal, __shfl_xor(minVal, 1));
+    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 16));
+    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 8));
+    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 4));
+    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 2));
+    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 1));
     return minVal;
 }
 
@@ -470,11 +470,13 @@ bool GpuImage::HasSameDimensionsAs(GpuImage* other_image) {
         return false;
 }
 
-void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image) {
+void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image) {
     // FIXME when adding real space complex images
     MyDebugAssertFalse(is_in_real_space, "Image is in real space");
     MyDebugAssertFalse(other_image.is_in_real_space, "Other image is in real space");
+    MyDebugAssertTrue(result_image.is_in_memory_gpu, "Images not in memory");
     MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
+    MyDebugAssertTrue(HasSameDimensionsAs(&result_image), "Images have different dimensions");
 
     //  NppInit();
     //  Conj();
@@ -482,7 +484,7 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image) {
 
     precheck;
     ReturnLaunchParamters(dims, false);
-    MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, this->dims, this->physical_upper_bound_complex);
+    MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
     postcheck;
 }
 
@@ -1095,17 +1097,18 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
     //	return (float)(returnValue * 2.0f);
 }
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, int4 dims, int3 physical_upper_bound_complex) {
-    int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
-                            blockIdx.y * blockDim.y + threadIdx.y,
-                            blockIdx.z);
+__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, cufftComplex* result_values, int4 dims) {
 
-    if ( coords.x < dims.w / 2 && coords.y < dims.y && coords.z < dims.z ) {
+    if ( physical_X( ) > dims.w / 2 )
+        return;
+    if ( physical_Y( ) > dims.y )
+        return;
+    if ( physical_Z( ) > dims.z )
+        return;
 
-        int address = d_ReturnFourier1DAddressFromPhysicalCoord(coords, physical_upper_bound_complex);
+    int address = physical_X( ) + (dims.w / 2) * (physical_Y( ) + physical_Z( ) * dims.y);
 
-        ref_complex_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[address], (Complex)ref_complex_values[address]);
-    }
+    result_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[address], (Complex)ref_complex_values[address]);
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {
@@ -1879,14 +1882,27 @@ void GpuImage::MeanStdDev( ) {
 
 void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-
+    wxPrintf("MPW\n");
     NppInit( );
+    NppStatus ret_val;
     if ( is_in_real_space ) {
-        nppErr(nppiMul_32f_C1IR_Ctx((Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
+        ret_val = nppiMul_32f_C1IR_Ctx((Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream);
     }
     else {
-        nppErr(nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
+        ret_val = nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream);
     }
+    wxPrintf("Ret val %d\n", ret_val);
+    wxPrintf("ROI %d %d\n", npp_ROI.width, npp_ROI.height);
+    wxPrintf("Pitch %ld\n", pitch);
+    wxPrintf("Is in real space %d\n", is_in_real_space);
+    wxPrintf("Other is in real space %d\n", other_image.is_in_real_space);
+    exit(0);
+    // if ( is_in_real_space ) {
+    //     nppErr(nppiMul_32f_C1IR_Ctx((Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
+    // }
+    // else {
+    //     nppErr(nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
+    // }
 }
 
 // Same as above but out of place
@@ -1894,6 +1910,7 @@ void GpuImage::MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image) 
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 
     NppInit( );
+    precheck;
     if ( is_in_real_space ) {
         nppErr(nppiMul_32f_C1R_Ctx((Npp32f*)other_image.real_values_gpu, pitch,
                                    (Npp32f*)real_values_gpu, pitch,
@@ -1906,6 +1923,7 @@ void GpuImage::MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image) 
                                     (Npp32fc*)output_image.complex_values_gpu, pitch,
                                     npp_ROI, nppStream));
     }
+    postcheck;
 }
 
 void GpuImage::AddConstant(const float add_val) {
@@ -2081,14 +2099,20 @@ void GpuImage::Zeros( ) {
 void GpuImage::CopyHostToDevice(bool should_block_until_complete) {
 
     MyDebugAssertTrue(is_in_memory, "Host memory not allocated");
-
     if ( ! is_in_memory_gpu ) {
         Allocate(dims.x, dims.y, dims.z, host_image_ptr->is_in_real_space);
     }
 
-    precheck;
-    cudaErr(cudaMemcpyAsync(real_values_gpu, pinnedPtr, real_memory_allocated * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
-    postcheck;
+    if ( is_host_memory_pinned ) {
+        precheck;
+        cudaErr(cudaMemcpyAsync(real_values_gpu, pinnedPtr, real_memory_allocated * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+        postcheck;
+    }
+    else {
+        precheck;
+        cudaErr(cudaMemcpyAsync(real_values_gpu, host_image_ptr->real_values, real_memory_allocated * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+        postcheck;
+    }
 
     CopyCpuImageMetaData(*host_image_ptr);
     if ( should_block_until_complete ) {

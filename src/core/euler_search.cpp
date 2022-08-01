@@ -741,7 +741,7 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
 }
 
 template <>
-void EulerSearch::RunGPU<Image>(Image* testCompile, Particle& particle, Image& input_3d, Image* projections) {
+void EulerSearch::RunGPU<Image>(Particle& particle, Image& input_3d, Image* projections, Image* gpu_images) {
     wxPrintf("Hello from the CPU code?\n");
     return;
 }

@@ -302,16 +302,16 @@ GpuImage& GpuImage::operator=(const GpuImage* other_gpu_image) {
     if ( this != other_gpu_image ) {
 
         MyDebugAssertTrue(other_gpu_image->is_in_memory_gpu, "Other image Memory not allocated");
-
         if ( is_in_memory_gpu == true ) {
-
             if ( dims.x != other_gpu_image->dims.x || dims.y != other_gpu_image->dims.y || dims.z != other_gpu_image->dims.z ) {
                 Deallocate( );
+                SetupInitialValues( );
                 CopyGpuImageMetaData(other_gpu_image);
                 Allocate(other_gpu_image->dims.x, other_gpu_image->dims.y, other_gpu_image->dims.z, other_gpu_image->is_in_real_space);
             }
         }
         else {
+            SetupInitialValues( );
             CopyGpuImageMetaData(other_gpu_image);
             Allocate(other_gpu_image->dims.x, other_gpu_image->dims.y, other_gpu_image->dims.z, other_gpu_image->is_in_real_space);
         }
@@ -359,8 +359,8 @@ void GpuImage::SetupInitialValues( ) {
 
     number_of_real_space_pixels = 0;
 
-    real_values    = NULL;
-    complex_values = NULL;
+    real_values    = nullptr;
+    complex_values = nullptr;
 
     real_memory_allocated = 0;
 
@@ -370,13 +370,21 @@ void GpuImage::SetupInitialValues( ) {
 
     // weighted_correlation_buffer_size = 0; // TODO: Should this be with b uffer stuff
 
-    real_values_gpu    = NULL; // !<  Real array to hold values for REAL images.
-    complex_values_gpu = NULL; // !<  Complex array to hold values for COMP images.
+    real_values_gpu    = nullptr; // !<  Real array to hold values for REAL images.
+    complex_values_gpu = nullptr; // !<  Complex array to hold values for COMP images.
+
+    real_values_16f        = nullptr;
+    complex_values_16f     = nullptr;
+    ctf_buffer_16f         = nullptr;
+    ctf_complex_buffer_16f = nullptr;
 
     gpu_plan_id = -1;
 
     insert_into_which_reconstruction = 0;
-    host_image_ptr                   = NULL;
+    host_image_ptr                   = nullptr;
+
+    image_buffer = nullptr;
+    mask_CSOS    = nullptr;
 
     cudaErr(cudaGetDevice(&device_idx));
     cudaErr(cudaDeviceGetAttribute(&number_of_streaming_multiprocessors, cudaDevAttrMultiProcessorCount, device_idx));
@@ -401,6 +409,10 @@ bool GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory,
             gpu_memory_was_changed = true;
         }
         return gpu_memory_was_changed;
+    }
+    else {
+        // This is the first time we are initializing the GpuImage
+        SetupInitialValues( );
     }
 
     CopyCpuImageMetaData(cpu_image);
@@ -794,6 +806,8 @@ void GpuImage::BufferDestroy( ) {
         cudaErr(cudaFree(real_values_16f));
 #endif
         is_allocated_16f_buffer = false;
+        real_values_16f         = nullptr;
+        complex_values_16f      = nullptr;
     }
 
     if ( is_allocated_weighted_correlation_buffer ) {
@@ -809,6 +823,8 @@ void GpuImage::BufferDestroy( ) {
         cudaErr(cudaFree(ctf_buffer_16f));
 #endif
         is_allocated_ctf_16f_buffer = false;
+        ctf_buffer_16f              = nullptr;
+        ctf_complex_buffer_16f      = nullptr;
     }
 
     if ( is_allocated_sum_buffer ) {
@@ -3031,7 +3047,9 @@ void GpuImage::Deallocate( ) {
 #else
         cudaErr(cudaFree(real_values_gpu));
 #endif
-        is_in_memory_gpu = false;
+        is_in_memory_gpu   = false;
+        real_values_gpu    = nullptr;
+        complex_values_gpu = nullptr;
     }
 
     if ( is_in_memory_managed_tmp_vals ) {

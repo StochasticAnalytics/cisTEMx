@@ -1052,7 +1052,9 @@ bool Refine3DApp::DoCalculation( ) {
 
         // ifndef ENABLEGPU this is a noop
 
+        // Try only thread 0 and sharing the object
         comparison_object.PrepareGpuVolumeProjection(input_3d_local, false);
+// #pragma omp barrier
 
         image_counter = 0;
         timer.lap("omp copy to local variables");
@@ -1379,16 +1381,11 @@ bool Refine3DApp::DoCalculation( ) {
                     //				search_particle_local.CosineMask(false, true, 0.0);
                     search_particle_local.CosineMask( );
                     search_particle_local.PhaseShift( );
-//				search_particle_local.CenterInCorner();
-//				search_particle_local.WeightBySSNR(search_reference_3d_local.statistics.part_SSNR);
-#ifdef ENABLEGPU
+                    //				search_particle_local.CenterInCorner();
+                    //				search_particle_local.WeightBySSNR(search_reference_3d_local.statistics.part_SSNR);
 
-                    GpuImage* dummy;
-#else
-                    Image* dummy;
-#endif
-                    global_euler_search.RunGPU(dummy, search_particle_local, *search_reference_3d_local.density_map, projection_cache);
-                    exit(0);
+                    // global_euler_search.RunGPU(search_particle_local, *search_reference_3d_local.density_map, projection_cache, dummy);
+                    // exit(0);
                     if ( search_particle_local.parameter_map.phi && ! search_particle_local.parameter_map.theta ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         if ( euler_search_local.best_parameters_to_keep != best_parameters_to_keep )

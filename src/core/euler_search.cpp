@@ -1,3 +1,5 @@
+
+#include <cistem_config.h>
 #include "core_headers.h"
 
 EulerSearch::EulerSearch( ) {
@@ -451,12 +453,15 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
     Image*          rotated_image    = new Image;
     Image*          correlation_map  = new Image;
     Image*          rotation_cache   = NULL;
+
+    timer.start("Initial Allocations");
     flipped_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     padded_image->Allocate(padding_factor_2d * flipped_image->logical_x_dimension, padding_factor_2d * flipped_image->logical_y_dimension, true);
     projection_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     rotated_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     correlation_map->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     correlation_map->object_is_centred_in_box = false;
+    timer.lap("Initial Allocations");
 #ifndef MKL
     float* temp_k1 = new float[flipped_image->real_memory_allocated];
     float* temp_k2;
@@ -498,11 +503,15 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
     psi_i = number_of_psi_positions;
     if ( test_mirror )
         psi_i *= 2;
+
+    timer.start("allocate rotation cache");
     rotation_cache = new Image[psi_i];
     for ( i = 0; i < psi_i; i++ ) {
         rotation_cache[i].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     }
+    timer.lap("allocate rotation cache");
 
+    timer.start("Copy CTF Pad iFFT");
     flipped_image->CopyFrom(particle.particle_image);
     //	flipped_image->MultiplyPixelWiseReal(*particle.ctf_image, particle.is_phase_flipped);
     flipped_image->MultiplyPixelWiseReal(*particle.ctf_image, true);
@@ -511,7 +520,9 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
     // if the periphery of the image is a bit attenuated for the search
     //	padded_image.CorrectSinc();
     padded_image->BackwardFFT( );
+    timer.lap("Copy CTF Pad iFFT");
 
+    timer.start("Make rotation cache");
     psi_m = 0;
     for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
         //		wxPrintf("rotation_cache[psi_m].logical_z_dimension = %i\n", rotation_cache[psi_m].logical_z_dimension);
@@ -533,17 +544,23 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
             psi_m++;
         }
     }
+    timer.lap("Make rotation cache");
 
     for ( i = 0; i < number_of_search_positions; i++ ) {
         if ( projections == NULL ) {
             //			wxPrintf("i, phi, theta = %i, %f, %f\n", i, list_of_search_parameters[i][0], list_of_search_parameters[i][1]);
+            timer.start("Make Projection");
             angles.Init(list_of_search_parameters[i][0], list_of_search_parameters[i][1], 0.0, 0.0, 0.0);
             input_3d.ExtractSlice(*projection_image, angles, resolution_limit);
             projection_image->Whiten(resolution_limit);
             projection_image->ApplyBFactor(effective_bfactor);
+            timer.lap("Make Projection");
         }
-        else
+        else {
+            timer.start("Copy back projection");
             projection_image->CopyFrom(&projections[i]);
+            timer.lap("Copy back projection");
+        }
 
 #ifndef MKL
         for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
@@ -560,6 +577,7 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
         //		rotation_cache[0].QuickAndDirtyWriteSlice("part.mrc", 1);
         //		exit(0);
 
+        timer.start("Cross Correlate");
         best_inplane_score = -std::numeric_limits<float>::max( );
         psi_m              = 0;
         for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
@@ -581,8 +599,15 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
 #endif
             correlation_map->is_in_real_space  = false;
             correlation_map->complex_values[0] = 0.0;
+            timer.lap("Cross Correlate");
+
+            timer.start("FFT Correlation Map");
             correlation_map->BackwardFFT( );
+            timer.lap("FFT Correlation Map");
+
+            timer.start("Fine Peak Search");
             found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+            timer.lap("Fine Peak Search");
             //				sample_rate++;
             //				projection_image->SwapRealSpaceQuadrants();
             //				rotation_cache[psi_m].SwapRealSpaceQuadrants();
@@ -602,7 +627,7 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
 
             if ( test_mirror ) {
                 psi_m++;
-
+                timer.start("Cross Correlate");
 #ifndef MKL
                 real_c = rotation_cache[psi_m].real_values;
                 real_d = rotation_cache[psi_m].real_values + 1;
@@ -621,8 +646,15 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
 #endif
                 correlation_map->is_in_real_space  = false;
                 correlation_map->complex_values[0] = 0.0;
+                timer.lap("Cross Correlate");
+
+                timer.start("FFT Correlation Map");
                 correlation_map->BackwardFFT( );
+                timer.lap("FFT Correlation Map");
+
+                timer.start("Fine Peak Search");
                 found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+                timer.lap("Fine Peak Search");
                 //					sample_rate++;
                 //					projection_image->SwapRealSpaceQuadrants();
                 //					rotation_cache[psi_m].SwapRealSpaceQuadrants();
@@ -689,6 +721,7 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
 	projection_image->SwapRealSpaceQuadrants();
 	projection_image->QuickAndDirtyWriteSlice("proj.mrc", particle.origin_micrograph); */
 
+    timer.start("Clean up");
     delete flipped_image;
     delete padded_image;
     delete projection_image;
@@ -704,4 +737,11 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
 #ifndef MKL
     delete[] temp_k1;
 #endif
+    timer.lap("Clean up");
+}
+
+template <>
+void EulerSearch::RunGPU<Image>(Image* testCompile, Particle& particle, Image& input_3d, Image* projections) {
+    wxPrintf("Hello from the CPU code?\n");
+    return;
 }

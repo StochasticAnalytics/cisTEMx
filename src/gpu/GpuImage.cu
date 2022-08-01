@@ -2059,13 +2059,7 @@ void GpuImage::CopyHostToDeviceTextureComplex3d( ) {
     MyDebugAssertTrue(dims.x == dims.y && dims.y == dims.z, "CopyHostToDeviceTextureComplex3d only supports cubic 3d host images");
     MyDebugAssertTrue(is_fft_centered_in_box, "CopyHostToDeviceTextureComplex3d only supports fft_centered_in_box");
 
-    int                 k, j, i;
-    int                 px, py, pz;
-    int                 padded_x_dimension = dims.w / 2; // TODO: rename as it is no longer padded
-    long                address            = 0;
-    long                address_padded     = 0;
-    std::complex<float> tmp_value;
-
+    int padded_x_dimension = dims.w / 2;
     // We need a temporary host array so we can both de-interlace the real and imaginary parts as well as including x = -1 padding.
     float* host_array_real = new float[padded_x_dimension * dims.y * dims.z];
     float* host_array_imag = new float[padded_x_dimension * dims.y * dims.z];
@@ -2301,8 +2295,7 @@ Image GpuImage::CopyDeviceToNewHost(bool should_block_until_complete, bool free_
 void GpuImage::CopyVolumeHostToDevice( ) {
 
     // FIXME not working
-    bool is_working = false;
-    MyDebugAssertTrue(is_working, "CopyVolumeHostToDevice is not properly worked out");
+    MyAssertTrue(false, "CopyVolumeHostToDevice is not properly worked out");
 
     d_pitchedPtr = {0};
     d_extent     = make_cudaExtent(dims.x * sizeof(float), dims.y, dims.z);
@@ -2320,8 +2313,7 @@ void GpuImage::CopyVolumeHostToDevice( ) {
 void GpuImage::CopyVolumeDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
 
     // FIXME not working
-    bool is_working = false;
-    MyDebugAssertTrue(is_working, "CopyVolumeDeviceToHost is not properly worked out");
+    MyAssertTrue(false, "CopyVolumeDeviceToHost is not properly worked out");
 
     if ( ! is_in_memory ) {
         cudaErr(cudaMallocHost(&real_values, real_memory_allocated * sizeof(float)));
@@ -3147,7 +3139,6 @@ bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
 
     // check to see if we need to do anything?
     bool memory_was_allocated = false;
-    bool set_all_metadata     = true;
     if ( is_in_memory_gpu == true ) {
         is_in_real_space = should_be_in_real_space;
         if ( wanted_x_size == dims.x && wanted_y_size == dims.y && wanted_z_size == dims.z ) {
@@ -3790,18 +3781,6 @@ __global__ void ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
     // Be carefule!! There are a lot of integer/float conversions in this function. If you change anything, make sure it is still correct.
     extern __shared__ int non_zero_count[];
     float*                radial_average = (float*)&non_zero_count[n_bins];
-
-    int t = threadIdx.x + threadIdx.y * blockDim.x;
-
-    // total threads in 2D block
-    int nt = blockDim.x * blockDim.y;
-
-    // // initialize temporary accumulation array in shared memory
-    // for ( int i = t; i < n_bins; i += nt / 2 ) {
-    //     radial_average[i] = 0.f;
-    //     non_zero_count[i] = 0;
-    // }
-    // __syncthreads( );
 
     // initialize temporary accumulation array in shared memory
     //FIXME

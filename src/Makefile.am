@@ -1,4 +1,5 @@
-noinst_HEADERS = core/asset_group.h \
+noinst_HEADERS = core/stopwatch.h \
+                 core/asset_group.h \
                  core/core_headers.h \
                  core/defines.h \
                  core/functions.h \
@@ -63,7 +64,6 @@ noinst_HEADERS = core/asset_group.h \
                  core/json/jsonval.h \
                  core/json/jsonreader.h \
                  core/json/jsonwriter.h \
-                 core/stopwatch.h \
                  core/ccl3d.h \
                  core/eer_file.h \
                  gui/job_panel.h \
@@ -266,7 +266,8 @@ noinst_LIBRARIES += libgpucore.a
 libgpucore_a_SOURCES  =       gpu/Histogram.cu \
                              gpu/TemplateMatchingCore.cu \
                              gpu/DeviceManager.cu \
-                             gpu/GpuImage.cu 
+                             gpu/GpuImage.cu \
+                             gpu/core_extensions/euler_search_gpu.cu
 if ENABLE_FASTFFT_AM
     libgpucore_a_SOURCES += ext/FastFFT/src/FastFFT.cu
 endif
@@ -286,9 +287,10 @@ gpu/gpudevicecode.o: $(libgpucore_OBJECTS)
 
 endif
 
-libcore_a_SOURCES  =    core/functions.cpp \
-		       core/globals.cpp \
-		       core/randomnumbergenerator.cpp \
+libcore_a_SOURCES  = core/stopwatch.cpp \
+                     core/functions.cpp \
+		             core/globals.cpp \
+                     core/randomnumbergenerator.cpp \
                        core/userinput.cpp \
                        core/angles_and_shifts.cpp \
                        core/parameter_constraints.cpp \
@@ -341,7 +343,6 @@ libcore_a_SOURCES  =    core/functions.cpp \
                        core/json/jsonval.cpp \
                        core/json/jsonreader.cpp \
                        core/json/jsonwriter.cpp \
-                       core/stopwatch.cpp \
                        core/ccl3d.cpp \
                        core/template_matching.cpp \
                        core/eer_file.cpp

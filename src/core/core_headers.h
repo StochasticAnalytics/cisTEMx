@@ -113,6 +113,7 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 };
 
 #include "defines.h"
+#include "stopwatch.h"
 #include "cistem_parameters.h"
 #include "cistem_star_file_reader.h"
 #include "assets.h"
@@ -170,7 +171,6 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 #include "json/jsonwriter.h"
 #include "json/jsonreader.h"
 #include "json/jsonval.h"
-#include "stopwatch.h"
 #include "ccl3d.h"
 
 // TODO: can these be more local to their usage?

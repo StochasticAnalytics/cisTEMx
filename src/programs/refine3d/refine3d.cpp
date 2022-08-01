@@ -1379,9 +1379,16 @@ bool Refine3DApp::DoCalculation( ) {
                     //				search_particle_local.CosineMask(false, true, 0.0);
                     search_particle_local.CosineMask( );
                     search_particle_local.PhaseShift( );
-                    //				search_particle_local.CenterInCorner();
-                    //				search_particle_local.WeightBySSNR(search_reference_3d_local.statistics.part_SSNR);
+//				search_particle_local.CenterInCorner();
+//				search_particle_local.WeightBySSNR(search_reference_3d_local.statistics.part_SSNR);
+#ifdef ENABLEGPU
 
+                    GpuImage* dummy;
+#else
+                    Image* dummy;
+#endif
+                    global_euler_search.RunGPU(dummy, search_particle_local, *search_reference_3d_local.density_map, projection_cache);
+                    exit(0);
                     if ( search_particle_local.parameter_map.phi && ! search_particle_local.parameter_map.theta ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         if ( euler_search_local.best_parameters_to_keep != best_parameters_to_keep )

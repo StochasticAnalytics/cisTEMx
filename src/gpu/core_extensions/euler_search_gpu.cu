@@ -19,7 +19,7 @@
  * @param projections 
  */
 template <>
-void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* projections, GpuImage* gpu_images) {
+void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* projections) {
 
     MyDebugAssertTrue(number_of_search_positions > 0, "EulerSearch not initialized");
     MyDebugAssertTrue(particle.particle_image->is_in_memory, "Particle image not allocated");
@@ -49,41 +49,24 @@ void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* p
     Image*          padded_image     = new Image;
     Image*          projection_image = new Image;
     Image*          rotated_image    = new Image;
-    Image*          correlation_map  = new Image;
-    Image*          rotation_cache   = NULL;
+    GpuImage*       rotation_cache   = NULL;
 
     timer.start("Initial Allocations");
     flipped_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     padded_image->Allocate(padding_factor_2d * flipped_image->logical_x_dimension, padding_factor_2d * flipped_image->logical_y_dimension, true);
     projection_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     rotated_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
-    correlation_map->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
-    correlation_map->object_is_centred_in_box = false;
-    timer.lap("Initial Allocations");
-#ifndef MKL
-    float* temp_k1 = new float[flipped_image->real_memory_allocated];
-    float* temp_k2;
-    temp_k2 = temp_k1 + 1;
-    float* real_a;
-    float* real_b;
-    float* real_c;
-    float* real_d;
-    float* real_r;
-    float* real_i;
-    real_a = projection_image->real_values;
-    real_b = projection_image->real_values + 1;
-    real_r = correlation_map->real_values;
-    real_i = correlation_map->real_values + 1;
-#endif
 
-    //	if (resolution_limit != 0.0)
-    //	{
-    //		effective_bfactor = 2.0 * 4.0 * powf(1.0 / resolution_limit, 2);
-    //	}
-    //	else
-    //	{
-    //		effective_bfactor = 0.0;
-    //	}
+    timer.lap("Initial Allocations");
+
+    // Setup and allocate our gpu image, but do not pin the ost memory since we'll copy from many different images in the intial implementation.
+    GpuImage gpu_projection_image;
+    gpu_projection_image.Init(*projection_image, false, true);
+
+    Image correlation_map;
+    correlation_map.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
+    GpuImage gpu_correlation_map;
+    gpu_correlation_map.Init(correlation_map, true, true);
 
     for ( i = 0; i < best_parameters_to_keep + 1; ++i ) {
         ZeroFloatArray(list_of_best_parameters[i], 5);
@@ -102,12 +85,14 @@ void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* p
     if ( test_mirror )
         psi_i *= 2;
 
-    timer.start("allocate rotation cache");
-    rotation_cache = new Image[psi_i];
-    for ( i = 0; i < psi_i; i++ ) {
-        rotation_cache[i].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
+    rotation_cache = new GpuImage[psi_i];
+    Image tmp_rot;
+    Image mirrored;
+
+    tmp_rot.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
+    if ( test_mirror ) {
+        mirrored.CopyFrom(&tmp_rot);
     }
-    timer.lap("allocate rotation cache");
 
     timer.start("Copy CTF Pad iFFT");
     flipped_image->CopyFrom(particle.particle_image);
@@ -121,24 +106,34 @@ void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* p
     timer.lap("Copy CTF Pad iFFT");
 
     timer.start("Make rotation cache");
-    psi_m = 0;
+    psi_m                        = 0;
+    bool should_pin_tmp_rot      = true;
+    bool should_pin_mirrored_rot = true;
     for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
-        //		wxPrintf("rotation_cache[psi_m].logical_z_dimension = %i\n", rotation_cache[psi_m].logical_z_dimension);
         if ( parameter_map.psi ) {
-            //			flipped_image->RotateFourier2DFromIndex(rotation_cache[psi_m], kernel_index[psi_i]);
             angles.GenerateRotationMatrix2D(psi_i * psi_step + psi_start);
         }
         else {
             angles.GenerateRotationMatrix2D(psi_start);
-            //			flipped_image->RotateFourier2D(rotation_cache[psi_m], angles);
         }
-        padded_image->Rotate2DSample(rotation_cache[psi_m], angles);
-        rotation_cache[psi_m].ForwardFFT( );
-        rotation_cache[psi_m].SwapRealSpaceQuadrants( );
+        padded_image->Rotate2DSample(tmp_rot, angles);
+        tmp_rot.ForwardFFT( );
+        tmp_rot.SwapRealSpaceQuadrants( );
+        tmp_rot.Conj( );
+        tmp_rot.complex_values[0] = 0.0f + I * 0.0f;
+        rotation_cache[psi_m].Init(tmp_rot, should_pin_tmp_rot, true);
+        should_pin_tmp_rot = false;
+        rotation_cache[psi_m].CopyHostToDevice(true);
 
         psi_m++;
         if ( test_mirror ) {
-            rotation_cache[psi_m - 1].MirrorYFourier2D(rotation_cache[psi_m]);
+
+            mirrored.MirrorYFourier2D(tmp_rot);
+            mirrored.Conj( );
+            rotation_cache[psi_m - 1].Init(mirrored, should_pin_mirrored_rot, true);
+            should_pin_mirrored_rot = false;
+            rotation_cache[psi_m - 1].CopyHostToDevice(true);
+
             psi_m++;
         }
     }
@@ -153,70 +148,42 @@ void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* p
             projection_image->Whiten(resolution_limit);
             projection_image->ApplyBFactor(effective_bfactor);
             timer.lap("Make Projection");
+            gpu_projection_image.CopyHostToDevice(*projection_image, false)
         }
         else {
             timer.start("Copy back projection");
-            projection_image->CopyFrom(&projections[i]);
+            gpu_projection_image.CopyFrom(&projections[i]);
             timer.lap("Copy back projection");
         }
-
-#ifndef MKL
-        for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
-            temp_k1[pixel_counter] = real_a[pixel_counter] + real_b[pixel_counter];
-        };
-        for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
-            temp_k2[pixel_counter] = real_b[pixel_counter] - real_a[pixel_counter];
-        };
-#endif
-
-        //		projection_image->SwapRealSpaceQuadrants();
-        //		rotation_cache[0].SwapRealSpaceQuadrants();
-        //		projection_image->QuickAndDirtyWriteSlice("proj.mrc", 1);
-        //		rotation_cache[0].QuickAndDirtyWriteSlice("part.mrc", 1);
-        //		exit(0);
+        timer.start("Copy cpu to gpu projection");
 
         timer.start("Cross Correlate");
         best_inplane_score = -std::numeric_limits<float>::max( );
         psi_m              = 0;
         for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
-#ifndef MKL
-            real_c = rotation_cache[psi_m].real_values;
-            real_d = rotation_cache[psi_m].real_values + 1;
-#endif
 
-#ifdef MKL
-            // Use the MKL
-            vmcMulByConj(flipped_image->real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(projection_image->complex_values), reinterpret_cast<MKL_Complex8*>(rotation_cache[psi_m].complex_values), reinterpret_cast<MKL_Complex8*>(correlation_map->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
-#else
-            for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
-                real_r[pixel_counter] = real_a[pixel_counter] * (real_c[pixel_counter] - real_d[pixel_counter]) + real_d[pixel_counter] * temp_k1[pixel_counter];
-            };
-            for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
-                real_i[pixel_counter] = real_a[pixel_counter] * (real_c[pixel_counter] - real_d[pixel_counter]) + real_c[pixel_counter] * temp_k2[pixel_counter];
-            };
-#endif
-            correlation_map->is_in_real_space  = false;
-            correlation_map->complex_values[0] = 0.0;
+            // Note 1: I have always taken the conjugate of the reference, but in the CPU code it is of the rotated particle. Here the conjgate is already taken in the cache step.
+            gpu_projection_image.MultiplyPixelWise(rotation_cache[psi_m], gpu_correlation_map);
+
+            gpu_correlation_map.is_in_real_space = false;
             timer.lap("Cross Correlate");
 
             timer.start("FFT Correlation Map");
-            correlation_map->BackwardFFT( );
+            gpu_correlation_map.BackwardFFT( );
             timer.lap("FFT Correlation Map");
 
+            timer.start("Copy Correlation Map");
+            gpu_correlation_map.CopyHostToDevice(true);
+            timer.lap("Copy Correlation Map");
+
             timer.start("Fine Peak Search");
-            found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+            found_peak = correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
             timer.lap("Fine Peak Search");
-            //				sample_rate++;
-            //				projection_image->SwapRealSpaceQuadrants();
-            //				rotation_cache[psi_m].SwapRealSpaceQuadrants();
-            //				projection_image->QuickAndDirtyWriteSlice("proj.mrc", sample_rate);
-            //				rotation_cache[psi_m].QuickAndDirtyWriteSlice("part.mrc", sample_rate);
-            //				projection_image->SwapRealSpaceQuadrants();
-            //				rotation_cache[psi_m].SwapRealSpaceQuadrants();
-            //				wxPrintf("peak  = %g  psi = %g  theta = %g  phi = %g  x = %g  y = %g\n", found_peak.value, 360.0 - (psi_i * psi_step + psi_start),
-            //						list_of_search_parameters[i][1], list_of_search_parameters[i][0], found_peak.x, found_peak.y);
+
             if ( found_peak.value > best_inplane_score ) {
-                best_inplane_score     = found_peak.value;
+                best_inplane_score = found_peak.value;
+                // In the image method, the image is rotated int he projection cache, (not the reference), so we need the negative of the best in-plane angle.
+                // I'm not sure why this is written as angle = 360 - angle vs just angle = -angle.
                 best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
                 best_inplane_values[1] = found_peak.x;
                 best_inplane_values[2] = found_peak.y;
@@ -225,43 +192,24 @@ void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* p
 
             if ( test_mirror ) {
                 psi_m++;
-                timer.start("Cross Correlate");
-#ifndef MKL
-                real_c = rotation_cache[psi_m].real_values;
-                real_d = rotation_cache[psi_m].real_values + 1;
-#endif
+                // Note 1: I have always taken the conjugate of the reference, but in the CPU code it is of the rotated particle. Here the conjgate is already taken in the cache step.
+                gpu_projection_image.MultiplyPixelWise(rotation_cache[psi_m], gpu_correlation_map);
 
-#ifdef MKL
-                // Use the MKL
-                vmcMulByConj(flipped_image->real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(projection_image->complex_values), reinterpret_cast<MKL_Complex8*>(rotation_cache[psi_m].complex_values), reinterpret_cast<MKL_Complex8*>(correlation_map->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
-#else
-                for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
-                    real_r[pixel_counter] = real_a[pixel_counter] * (real_c[pixel_counter] - real_d[pixel_counter]) + real_d[pixel_counter] * temp_k1[pixel_counter];
-                };
-                for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
-                    real_i[pixel_counter] = real_a[pixel_counter] * (real_c[pixel_counter] - real_d[pixel_counter]) + real_c[pixel_counter] * temp_k2[pixel_counter];
-                };
-#endif
-                correlation_map->is_in_real_space  = false;
-                correlation_map->complex_values[0] = 0.0;
+                gpu_correlation_map.is_in_real_space = false;
                 timer.lap("Cross Correlate");
 
                 timer.start("FFT Correlation Map");
-                correlation_map->BackwardFFT( );
+                gpu_correlation_map.BackwardFFT( );
                 timer.lap("FFT Correlation Map");
 
+                timer.start("Copy Correlation Map");
+                gpu_correlation_map.CopyHostToDevice(true);
+                timer.lap("Copy Correlation Map");
+
                 timer.start("Fine Peak Search");
-                found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+                found_peak = correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
                 timer.lap("Fine Peak Search");
-                //					sample_rate++;
-                //					projection_image->SwapRealSpaceQuadrants();
-                //					rotation_cache[psi_m].SwapRealSpaceQuadrants();
-                //					projection_image->QuickAndDirtyWriteSlice("proj.mrc", sample_rate);
-                //					rotation_cache[psi_m].QuickAndDirtyWriteSlice("part.mrc", sample_rate);
-                //					projection_image->SwapRealSpaceQuadrants();
-                //					rotation_cache[psi_m].SwapRealSpaceQuadrants();
-                //					wxPrintf("peakm = %g  psi = %g  theta = %g  phi = %g  x = %g  y = %g\n", found_peak.value, 360.0 - (psi_i * psi_step + psi_start),
-                //							list_of_search_parameters[i][1] + 180.0, list_of_search_parameters[i][0], found_peak.x, found_peak.y);
+
                 if ( found_peak.value > best_inplane_score ) {
                     best_inplane_score     = found_peak.value;
                     best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
@@ -283,6 +231,11 @@ void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* p
                 list_of_best_parameters[best_parameters_to_keep][4] = (-best_inplane_values[1] * sinf(deg_2_rad(best_inplane_values[0])) - best_inplane_values[2] * cosf(deg_2_rad(best_inplane_values[0]))) * particle.pixel_size;
             }
             else {
+                /* Because we found the peak in the rotated reference frame, we neet to rotate the shifts back, convert from pixels to angstrom and also negate.
+                [ cos + sin      [ - x , -y ]' * pixel_size
+                              * 
+                -sin + cos ]
+                */
                 list_of_best_parameters[best_parameters_to_keep][0] = list_of_search_parameters[i][0];
                 list_of_best_parameters[best_parameters_to_keep][1] = list_of_search_parameters[i][1];
                 list_of_best_parameters[best_parameters_to_keep][2] = best_inplane_values[0];
@@ -309,21 +262,12 @@ void EulerSearch::RunGPU<GpuImage>(Particle& particle, Image& input_3d, Image* p
         }
     }
     // *******************************
-    /*	if (particle.origin_micrograph < 0) particle.origin_micrograph = 0;
-	particle.origin_micrograph++;
-	particle.particle_image->QuickAndDirtyWriteSlice("part.mrc", particle.origin_micrograph);
-	angles.Init(list_of_best_parameters[1][0], list_of_best_parameters[1][1], list_of_best_parameters[1][2], list_of_best_parameters[1][3], list_of_best_parameters[1][4]);
-	wxPrintf("params, score = %i %g %g %g %g %g %g\n", particle.origin_micrograph, list_of_best_parameters[1][0], list_of_best_parameters[1][1], list_of_best_parameters[1][2], list_of_best_parameters[1][3], list_of_best_parameters[1][4], list_of_best_parameters[1][5]);
-	input_3d.ExtractSlice(*projection_image, angles, resolution_limit);
-	projection_image->PhaseShift(angles.ReturnShiftX() / particle.pixel_size, angles.ReturnShiftY() / particle.pixel_size);
-	projection_image->SwapRealSpaceQuadrants();
-	projection_image->QuickAndDirtyWriteSlice("proj.mrc", particle.origin_micrograph); */
 
     timer.start("Clean up");
     delete flipped_image;
     delete padded_image;
-    delete projection_image;
     delete rotated_image;
+    delete projection_image;
     delete correlation_map;
     psi_i = number_of_psi_positions;
     if ( test_mirror )

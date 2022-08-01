@@ -274,6 +274,15 @@ __inline__ __device__ float blockReduce2dSum(float val) {
     return val;
 }
 
+__device__ __forceinline__ int warpReduceMin(int minVal) {
+    minVal = gMin(minVal, __shfl_xor(minVal, 16));
+    minVal = gMin(minVal, __shfl_xor(minVal, 8));
+    minVal = gMin(minVal, __shfl_xor(minVal, 4));
+    minVal = gMin(minVal, __shfl_xor(minVal, 2));
+    minVal = gMin(minVal, __shfl_xor(minVal, 1));
+    return minVal;
+}
+
 GpuImage::GpuImage( ) {
     is_meta_data_initialized = false;
     SetupInitialValues( );
@@ -1336,8 +1345,8 @@ __global__ void RotationalAveragePSKernel(const __restrict__ cufftComplex* input
     }
     __syncthreads( );
 
-// Now write out the partial PS to global memory
-// All the int values are packed for each block, followed by the float values
+    // Now write out the partial PS to global memory
+    // All the int values are packed for each block, followed by the float values
 #ifdef USE_FP16_FOR_WHITENPS
     ValueAndWeight_half* output_rotational_average_ps = &rotational_average_ps[n_bins * LinearBlockIdx_2dGrid( )];
     ValueAndWeight_half  tmp;
@@ -1450,7 +1459,7 @@ void GpuImage::Whiten(float resolution_limit) {
     const int n_bins2 = 2 * (number_of_bins - 1);
 
     MyAssertFalse(n_bins > ntds_x_WhitenPS * ntds_y_WhitenPS, "n_bins is too large and would require an array for local variable storage. The size must be  known at compile time so make a template specialization  of the kernel.");
-// For bin resolution of one pixel, uint16 should be plenty
+    // For bin resolution of one pixel, uint16 should be plenty
 #ifdef USE_FP16_FOR_WHITENPS
     ValueAndWeight_half* rotational_average_ps;
 #else
@@ -1877,6 +1886,25 @@ void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
     }
     else {
         nppErr(nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
+    }
+}
+
+// Same as above but out of place
+void GpuImage::MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+
+    NppInit( );
+    if ( is_in_real_space ) {
+        nppErr(nppiMul_32f_C1R_Ctx((Npp32f*)other_image.real_values_gpu, pitch,
+                                   (Npp32f*)real_values_gpu, pitch,
+                                   (Npp32f*)output_image.real_values_gpu, pitch,
+                                   npp_ROI, nppStream));
+    }
+    else {
+        nppErr(nppiMul_32fc_C1R_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch,
+                                    (Npp32fc*)complex_values_gpu, pitch,
+                                    (Npp32fc*)output_image.complex_values_gpu, pitch,
+                                    npp_ROI, nppStream));
     }
 }
 
@@ -3185,10 +3213,10 @@ bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
     real_memory_allocated *= wanted_y_size * wanted_z_size; // other dimensions
     real_memory_allocated *= 2; // room for complex
 
-// TODO consider option to add host mem here. For now, just do gpu mem.
-//////	real_values = (float *) fftwf_malloc(sizeof(float) * real_memory_allocated);
-//////	complex_values = (std::complex<float>*) real_values;  // Set the complex_values to point at the newly allocated real values;
-//	wxPrintf("\n\n\tAllocating mem\t\n\n");
+    // TODO consider option to add host mem here. For now, just do gpu mem.
+    //////	real_values = (float *) fftwf_malloc(sizeof(float) * real_memory_allocated);
+    //////	complex_values = (std::complex<float>*) real_values;  // Set the complex_values to point at the newly allocated real values;
+    //	wxPrintf("\n\n\tAllocating mem\t\n\n");
 #ifdef USE_ASYNC_MALLOC_FREE
     cudaErr(cudaMallocAsync(&real_values_gpu, real_memory_allocated * sizeof(cufftReal), cudaStreamPerThread));
 #else

@@ -422,12 +422,14 @@ void EulerSearch::SetSymmetryLimits( ) {
  * @param input_3d 
  * @param projections 
  */
-void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
+
+template <>
+void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* projections) {
     MyDebugAssertTrue(number_of_search_positions > 0, "EulerSearch not initialized");
     MyDebugAssertTrue(particle.particle_image->is_in_memory, "Particle image not allocated");
     MyDebugAssertTrue(input_3d.is_in_memory, "3D reference map not allocated");
     //	MyDebugAssertTrue(particle.particle_image->logical_x_dimension == input_3d.logical_x_dimension && particle.particle_image->logical_y_dimension == input_3d.logical_y_dimension, "Error: Image and 3D reference incompatible");
-
+    timer.mark_entry_or_exit_point( );
     int i;
     int j;
     int k;
@@ -577,7 +579,6 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
         //		rotation_cache[0].QuickAndDirtyWriteSlice("part.mrc", 1);
         //		exit(0);
 
-        timer.start("Cross Correlate");
         best_inplane_score = -std::numeric_limits<float>::max( );
         psi_m              = 0;
         for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
@@ -585,7 +586,7 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
             real_c = rotation_cache[psi_m].real_values;
             real_d = rotation_cache[psi_m].real_values + 1;
 #endif
-
+            timer.start("Cross Correlate");
 #ifdef MKL
             // Use the MKL
             vmcMulByConj(flipped_image->real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(projection_image->complex_values), reinterpret_cast<MKL_Complex8*>(rotation_cache[psi_m].complex_values), reinterpret_cast<MKL_Complex8*>(correlation_map->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
@@ -738,10 +739,6 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
     delete[] temp_k1;
 #endif
     timer.lap("Clean up");
-}
 
-template <>
-void EulerSearch::RunGPU<Image>(Particle& particle, Image& input_3d, Image* projections, Image* gpu_images) {
-    wxPrintf("Hello from the CPU code?\n");
-    return;
+    timer.mark_entry_or_exit_point( );
 }

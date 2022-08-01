@@ -685,6 +685,17 @@ void Image::MultiplyPixelWiseReal(Image& other_image, bool absolute) {
     }
 }
 
+void Image::Conj( ) {
+    MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image is not in Fourier space");
+
+    float* imag_part = real_values + 1;
+
+    for ( long pixel_counter = 0; pixel_counter < real_memory_allocated; pixel_counter += 2 ) {
+        imag_part[pixel_counter] = -imag_part[pixel_counter];
+    }
+}
+
 void Image::ConjugateMultiplyPixelWise(Image& other_image) {
     MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
     MyDebugAssertTrue(other_image.is_in_memory, "Other image memory not allocated");

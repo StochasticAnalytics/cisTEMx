@@ -144,7 +144,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     timer.lap("Make rotation cache");
 
     for ( i = 0; i < number_of_search_positions; i++ ) {
-        if ( true ) {
+        if ( projections == NULL ) {
             timer.start("Make Projection");
             angles.Init(list_of_search_parameters[i][0], list_of_search_parameters[i][1], 0.0, 0.0, 0.0);
             input_3d.ExtractSlice(*projection_image, angles, resolution_limit);
@@ -190,7 +190,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
             timer.start("Fine Peak Search");
             found_peak = correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
-            found_peak.value /= 36.f;
 
             timer.lap("Fine Peak Search");
 
@@ -232,10 +231,10 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
                 timer.start("Fine Peak Search");
                 found_peak = correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
-                found_peak.value /= 36.f;
                 timer.lap("Fine Peak Search");
 
                 if ( found_peak.value > best_inplane_score ) {
+
                     best_inplane_score     = found_peak.value;
                     best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
                     best_inplane_values[1] = found_peak.x;

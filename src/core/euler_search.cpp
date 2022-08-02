@@ -547,6 +547,11 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
         }
     }
     timer.lap("Make rotation cache");
+    int   debug_psim              = 0;
+    int   debug_search_position   = 0;
+    int   l_debug_psim            = 0;
+    int   l_debug_search_position = 0;
+    float debug_score             = 0.0f;
 
     for ( i = 0; i < number_of_search_positions; i++ ) {
         if ( projections == NULL ) {
@@ -589,6 +594,14 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
             timer.start("Cross Correlate");
 #ifdef MKL
             // Use the MKL
+            /*  Flags for reference from from http://cali2.unilim.fr/intel-xe/mkl/mklman/GUID-08DD1124-912F-4AB2-9E0E-90E988379D5E.htm
+                VML_HA 	high accuracy versions of VML functions
+                VML_LA 	low accuracy versions of VML functions
+                VML_EP 	enhanced performance accuracy versions of VML functions
+                Denormalized Numbers Handling Control
+                VML_FTZDAZ_ON 	Faster processing of denormalized inputs is enabled.
+                VML_FTZDAZ_OFF 	Faster processing of denormalized inputs is disabled. 
+            */
             vmcMulByConj(flipped_image->real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(projection_image->complex_values), reinterpret_cast<MKL_Complex8*>(rotation_cache[psi_m].complex_values), reinterpret_cast<MKL_Complex8*>(correlation_map->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
 #else
             for ( pixel_counter = 0; pixel_counter < flipped_image->real_memory_allocated; pixel_counter += 2 ) {
@@ -598,6 +611,7 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
                 real_i[pixel_counter] = real_a[pixel_counter] * (real_c[pixel_counter] - real_d[pixel_counter]) + real_c[pixel_counter] * temp_k2[pixel_counter];
             };
 #endif
+
             correlation_map->is_in_real_space  = false;
             correlation_map->complex_values[0] = 0.0;
             timer.lap("Cross Correlate");
@@ -605,8 +619,7 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
             timer.start("FFT Correlation Map");
             correlation_map->BackwardFFT( );
             timer.lap("FFT Correlation Map");
-            correlation_map->QuickAndDirtyWriteSlices("/tmp/correlation_map_cpu.mrc", 1, 1);
-            exit(0);
+
             timer.start("Fine Peak Search");
             found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
             timer.lap("Fine Peak Search");
@@ -620,11 +633,14 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
             //				wxPrintf("peak  = %g  psi = %g  theta = %g  phi = %g  x = %g  y = %g\n", found_peak.value, 360.0 - (psi_i * psi_step + psi_start),
             //						list_of_search_parameters[i][1], list_of_search_parameters[i][0], found_peak.x, found_peak.y);
             if ( found_peak.value > best_inplane_score ) {
-                best_inplane_score     = found_peak.value;
-                best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
-                best_inplane_values[1] = found_peak.x;
-                best_inplane_values[2] = found_peak.y;
-                mirrored_match         = false;
+                l_debug_psim            = psi_m;
+                l_debug_search_position = i;
+                debug_score             = found_peak.value;
+                best_inplane_score      = found_peak.value;
+                best_inplane_values[0]  = 360.0 - (psi_i * psi_step + psi_start);
+                best_inplane_values[1]  = found_peak.x;
+                best_inplane_values[2]  = found_peak.y;
+                mirrored_match          = false;
             }
 
             if ( test_mirror ) {
@@ -667,11 +683,14 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
                 //					wxPrintf("peakm = %g  psi = %g  theta = %g  phi = %g  x = %g  y = %g\n", found_peak.value, 360.0 - (psi_i * psi_step + psi_start),
                 //							list_of_search_parameters[i][1] + 180.0, list_of_search_parameters[i][0], found_peak.x, found_peak.y);
                 if ( found_peak.value > best_inplane_score ) {
-                    best_inplane_score     = found_peak.value;
-                    best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
-                    best_inplane_values[1] = found_peak.x;
-                    best_inplane_values[2] = found_peak.y;
-                    mirrored_match         = true;
+                    l_debug_psim            = psi_m;
+                    l_debug_search_position = i;
+                    debug_score             = found_peak.value;
+                    best_inplane_score      = found_peak.value;
+                    best_inplane_values[0]  = 360.0 - (psi_i * psi_step + psi_start);
+                    best_inplane_values[1]  = found_peak.x;
+                    best_inplane_values[2]  = found_peak.y;
+                    mirrored_match          = true;
                 }
             }
             //			}
@@ -679,6 +698,8 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
         }
         if ( best_inplane_score > list_of_best_parameters[best_parameters_to_keep][5] ) {
             list_of_best_parameters[best_parameters_to_keep][5] = best_inplane_score;
+            debug_psim                                          = l_debug_psim;
+            debug_search_position                               = l_debug_search_position;
             if ( mirrored_match ) {
                 list_of_best_parameters[best_parameters_to_keep][0] = list_of_search_parameters[i][0];
                 list_of_best_parameters[best_parameters_to_keep][1] = list_of_search_parameters[i][1] + 180.0;
@@ -730,6 +751,18 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
         }
     }
     wxPrintf("BestScore is %f\n", best_score);
+    wxPrintf("Debug score is %f\n", debug_score);
+
+    projection_image->CopyFrom(&projections[debug_search_position]);
+    vmcMulByConj(flipped_image->real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(projection_image->complex_values), reinterpret_cast<MKL_Complex8*>(rotation_cache[debug_psim].complex_values), reinterpret_cast<MKL_Complex8*>(correlation_map->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
+
+    correlation_map->is_in_real_space  = false;
+    correlation_map->complex_values[0] = 0.0;
+    correlation_map->BackwardFFT( );
+    correlation_map->QuickAndDirtyWriteSlices("/tmp/correlation_map_cpu.mrc", 1, 1);
+    found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+    wxPrintf("Debug found pead %f\n", found_peak.value);
+    exit(0);
 
     timer.start("Clean up");
     delete flipped_image;

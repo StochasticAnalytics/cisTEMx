@@ -1551,6 +1551,10 @@ bool Refine3DApp::DoCalculation( ) {
                                 search_parameters.y_shift = input_parameters.y_shift;
                             search_particle_local.SetParameters(search_parameters);
                             search_particle_local.MapParameters(cg_starting_point);
+
+                            comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
+                            comparison_object.PrepareGpuCTFImages(search_particle_local, true);
+                            
                             search_parameters.score = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
 
                             if ( i == istart ) {

@@ -1099,16 +1099,24 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
 __global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, cufftComplex* result_values, int4 dims) {
 
-    if ( physical_X( ) > dims.w / 2 )
+    int x = physical_X( );
+    if ( x > dims.w / 2 )
         return;
-    if ( physical_Y( ) > dims.y )
+    int y = physical_Y( );
+    if ( y > dims.y )
         return;
-    if ( physical_Z( ) > dims.z )
+    int z = physical_Z( );
+    if ( z > dims.z )
         return;
 
-    int address = physical_X( ) + (dims.w / 2) * (physical_Y( ) + physical_Z( ) * dims.y);
+    int address = x + (dims.w / 2) * (y + z * dims.y);
 
-    result_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[address], (Complex)ref_complex_values[address]);
+    if ( x > 0 || y > 0 || z > 0 ) {
+        result_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[address], (Complex)ref_complex_values[address]);
+    }
+    else {
+        result_values[address] = (cufftComplex)make_float2(0.0f, 0.0f);
+    }
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {

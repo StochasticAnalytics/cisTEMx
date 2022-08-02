@@ -250,7 +250,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
 
             // If we altered the gpu memory, or if the host particle has recorded a change to its underlying data, we need to copy host - > device.
             if ( gpu_memory_was_changed || host_particle_data_has_changed ) {
-                tmp_gpu_particle_image->CopyHostToDevice( ); // TODO: does this need to be synchronize?
+                tmp_gpu_particle_image->CopyHostToDeviceAndSynchronize( ); // TODO: does this need to be synchronize?
             }
 
             // Now the same for the projection image, except we only care about it's size and pointer association, not the host data so no need for a copy.

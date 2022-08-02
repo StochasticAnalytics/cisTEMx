@@ -57,8 +57,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     projection_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
     rotated_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
 
-    timer.lap("Initial Allocations");
-
     // Setup and allocate our gpu image, but do not pin the ost memory since we'll copy from many different images in the intial implementation.
     GpuImage gpu_projection_image;
     gpu_projection_image.Init(*projection_image, false, true);
@@ -68,6 +66,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     correlation_map.object_is_centred_in_box = false;
     GpuImage gpu_correlation_map;
     gpu_correlation_map.Init(correlation_map, true, true);
+    timer.lap("Initial Allocations");
 
     for ( i = 0; i < best_parameters_to_keep + 1; ++i ) {
         ZeroFloatArray(list_of_best_parameters[i], 5);
@@ -86,6 +85,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     if ( test_mirror )
         psi_i *= 2;
 
+    timer.start("Allocate rotation cache");
     rotation_cache = new GpuImage[psi_i];
     Image tmp_rot;
     Image mirrored;
@@ -94,6 +94,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     if ( test_mirror ) {
         mirrored.CopyFrom(&tmp_rot);
     }
+    timer.lap("Allocate rotation cache");
 
     timer.start("Copy CTF Pad iFFT");
     flipped_image->CopyFrom(particle.particle_image);
@@ -151,14 +152,15 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             projection_image->Whiten(resolution_limit);
             projection_image->ApplyBFactor(effective_bfactor);
             timer.lap("Make Projection");
+            timer.start("Copy Projection");
             gpu_projection_image.CopyHostToDevice(true);
+            timer.lap("Copy Projection");
         }
         else {
             timer.start("Copy back projection");
             gpu_projection_image.CopyFrom(&projections[i]);
             timer.lap("Copy back projection");
         }
-        timer.start("Copy cpu to gpu projection");
 
         best_inplane_score = -std::numeric_limits<float>::max( );
         psi_m              = 0;
@@ -183,13 +185,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             gpu_correlation_map.is_in_real_space         = true;
             gpu_correlation_map.object_is_centred_in_box = false;
 
-            timer.start("Copy Correlation Map");
-            gpu_correlation_map.CopyDeviceToHostAndSynchronize(false, false);
-            timer.lap("Copy Correlation Map");
-            // gpu_correlation_map.QuickAndDirtyWriteSlices("/tmp/correlation_map_gpu.mrc", 1, 1);
-
             timer.start("Fine Peak Search");
-            found_peak = correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
 
             timer.lap("Fine Peak Search");
 
@@ -209,6 +206,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
                 correlation_map.is_in_real_space     = false;
                 gpu_correlation_map.is_in_real_space = false;
+                timer.start("Cross Correlate");
 
                 // Multiply conj(rot) * proj -> gpu_correlation_map. Normally, I would always take the conjugate of the
                 // reference but the legacy code instead does this and then inverts the shift.
@@ -225,12 +223,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
                 gpu_correlation_map.is_in_real_space         = true;
                 gpu_correlation_map.object_is_centred_in_box = false;
 
-                timer.start("Copy Correlation Map");
-                gpu_correlation_map.CopyDeviceToHostAndSynchronize(false, false);
-                timer.lap("Copy Correlation Map");
-
                 timer.start("Fine Peak Search");
-                found_peak = correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+                found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
                 timer.lap("Fine Peak Search");
 
                 if ( found_peak.value > best_inplane_score ) {
@@ -287,13 +281,16 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     }
     // *******************************
 
-    // float best_score = 0.0;
+    // float best_score = 0.0f;
+    // float best_x, best_y;
     // for ( int i = 0; i < best_parameters_to_keep; i++ ) {
     //     if ( list_of_best_parameters[i][5] > best_score ) {
     //         best_score = list_of_best_parameters[i][5];
+    //         best_x     = list_of_best_parameters[i][3];
+    //         best_y     = list_of_best_parameters[i][4];
     //     }
     // }
-    // wxPrintf("BestScore is %f %f\n", best_score);
+    // wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
 
     timer.start("Clean up");
     delete flipped_image;

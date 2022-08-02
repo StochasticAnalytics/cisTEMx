@@ -234,6 +234,7 @@ class GpuImage {
 
     void CalculateCrossCorrelationImageWith(GpuImage* other_image);
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
+    Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y);
 
     bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void SetCufftPlan(bool use_half_precision = false);
@@ -241,7 +242,7 @@ class GpuImage {
     void UpdateBoolsToDefault( );
 
     template <int ntds_x = 32, int ntds_y = 32>
-    __inline__ void ReturnLaunchParamters(int4 input_dims, bool real_space) {
+    __inline__ void ReturnLaunchParameters(int4 input_dims, bool real_space) {
         static_assert(ntds_x % cistem::gpu::warp_size == 0);
         static_assert(ntds_x * ntds_y <= cistem::gpu::max_threads_per_block);
         int div = 1;
@@ -254,7 +255,7 @@ class GpuImage {
                                input_dims.z);
     };
 
-    __inline__ void ReturnLaunchParamters1d_X(const int4 input_dims, const bool real_space) {
+    __inline__ void ReturnLaunchParameters1d_X(const int4 input_dims, const bool real_space) {
         int div = 1;
         if ( ! real_space )
             div++;
@@ -267,7 +268,7 @@ class GpuImage {
                                input_dims.z);
     };
 
-    __inline__ void ReturnLaunchParamters1d_X_strided_Y(const int4 input_dims, const bool real_space, const int stride_y) {
+    __inline__ void ReturnLaunchParameters1d_X_strided_Y(const int4 input_dims, const bool real_space, const int stride_y) {
         int div = 1;
         if ( ! real_space )
             div++;
@@ -280,7 +281,7 @@ class GpuImage {
                                input_dims.z);
     };
 
-    __inline__ void ReturnLaunchParamtersLimitSMs(float N, int M) {
+    __inline__ void ReturnLaunchParametersLimitSMs(float N, int M) {
         // This should only be called for kernels with grid stride loops setup. The idea
         // is to limit the number of SMs available for some kernels so that other threads on the device can run in parallel.
         // limit_SMs_by_threads is default 1, so this must be set prior to this call.

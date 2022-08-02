@@ -547,11 +547,6 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
         }
     }
     timer.lap("Make rotation cache");
-    int   debug_psim              = 0;
-    int   debug_search_position   = 0;
-    int   l_debug_psim            = 0;
-    int   l_debug_search_position = 0;
-    float debug_score             = 0.0f;
 
     for ( i = 0; i < number_of_search_positions; i++ ) {
         if ( projections == NULL ) {
@@ -633,14 +628,11 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
             //				wxPrintf("peak  = %g  psi = %g  theta = %g  phi = %g  x = %g  y = %g\n", found_peak.value, 360.0 - (psi_i * psi_step + psi_start),
             //						list_of_search_parameters[i][1], list_of_search_parameters[i][0], found_peak.x, found_peak.y);
             if ( found_peak.value > best_inplane_score ) {
-                l_debug_psim            = psi_m;
-                l_debug_search_position = i;
-                debug_score             = found_peak.value;
-                best_inplane_score      = found_peak.value;
-                best_inplane_values[0]  = 360.0 - (psi_i * psi_step + psi_start);
-                best_inplane_values[1]  = found_peak.x;
-                best_inplane_values[2]  = found_peak.y;
-                mirrored_match          = false;
+                best_inplane_score     = found_peak.value;
+                best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
+                best_inplane_values[1] = found_peak.x;
+                best_inplane_values[2] = found_peak.y;
+                mirrored_match         = false;
             }
 
             if ( test_mirror ) {
@@ -683,14 +675,11 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
                 //					wxPrintf("peakm = %g  psi = %g  theta = %g  phi = %g  x = %g  y = %g\n", found_peak.value, 360.0 - (psi_i * psi_step + psi_start),
                 //							list_of_search_parameters[i][1] + 180.0, list_of_search_parameters[i][0], found_peak.x, found_peak.y);
                 if ( found_peak.value > best_inplane_score ) {
-                    l_debug_psim            = psi_m;
-                    l_debug_search_position = i;
-                    debug_score             = found_peak.value;
-                    best_inplane_score      = found_peak.value;
-                    best_inplane_values[0]  = 360.0 - (psi_i * psi_step + psi_start);
-                    best_inplane_values[1]  = found_peak.x;
-                    best_inplane_values[2]  = found_peak.y;
-                    mirrored_match          = true;
+                    best_inplane_score     = found_peak.value;
+                    best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
+                    best_inplane_values[1] = found_peak.x;
+                    best_inplane_values[2] = found_peak.y;
+                    mirrored_match         = true;
                 }
             }
             //			}
@@ -698,8 +687,6 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
         }
         if ( best_inplane_score > list_of_best_parameters[best_parameters_to_keep][5] ) {
             list_of_best_parameters[best_parameters_to_keep][5] = best_inplane_score;
-            debug_psim                                          = l_debug_psim;
-            debug_search_position                               = l_debug_search_position;
             if ( mirrored_match ) {
                 list_of_best_parameters[best_parameters_to_keep][0] = list_of_search_parameters[i][0];
                 list_of_best_parameters[best_parameters_to_keep][1] = list_of_search_parameters[i][1] + 180.0;
@@ -744,25 +731,16 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
 	projection_image->SwapRealSpaceQuadrants();
 	projection_image->QuickAndDirtyWriteSlice("proj.mrc", particle.origin_micrograph); */
 
-    float best_score = 0.0f;
-    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
-        if ( list_of_best_parameters[i][5] > best_score ) {
-            best_score = list_of_best_parameters[i][5];
-        }
-    }
-    wxPrintf("BestScore is %f\n", best_score);
-    wxPrintf("Debug score is %f\n", debug_score);
-
-    projection_image->CopyFrom(&projections[debug_search_position]);
-    vmcMulByConj(flipped_image->real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(projection_image->complex_values), reinterpret_cast<MKL_Complex8*>(rotation_cache[debug_psim].complex_values), reinterpret_cast<MKL_Complex8*>(correlation_map->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
-
-    correlation_map->is_in_real_space  = false;
-    correlation_map->complex_values[0] = 0.0;
-    correlation_map->BackwardFFT( );
-    correlation_map->QuickAndDirtyWriteSlices("/tmp/correlation_map_cpu.mrc", 1, 1);
-    found_peak = correlation_map->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
-    wxPrintf("Debug found pead %f\n", found_peak.value);
-    exit(0);
+    // float best_score = 0.0f;
+    // float best_x, best_y;
+    // for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+    //     if ( list_of_best_parameters[i][5] > best_score ) {
+    //         best_score = list_of_best_parameters[i][5];
+    //         best_x     = list_of_best_parameters[i][3];
+    //         best_y     = list_of_best_parameters[i][4];
+    //     }
+    // }
+    // wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
 
     timer.start("Clean up");
     delete flipped_image;

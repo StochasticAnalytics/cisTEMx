@@ -274,13 +274,74 @@ __inline__ __device__ float blockReduce2dSum(float val) {
     return val;
 }
 
-__device__ __forceinline__ int warpReduceMin(int minVal) {
-    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 16));
-    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 8));
-    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 4));
-    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 2));
-    minVal = gMin(minVal, __shfl_xor_sync(0xffffffff, minVal, 1));
-    return minVal;
+__device__ __forceinline__ float warpReduceMax(float val) {
+
+#pragma unroll 5
+    for ( int offset = cistem::gpu::warp_size / 2; offset > 0; offset /= 2 )
+        val = gMax(val, __shfl_xor_sync(0xffffffff, val, offset));
+    return val;
+}
+
+__inline__ __device__ float blockReduceMax(float val) {
+
+    static __shared__ float shared[32]; // Shared mem for 32 partial sums
+    int                     lane = threadIdx.x % warpSize;
+    int                     wid  = threadIdx.x / warpSize;
+
+    val = warpReduceMax(val); // Each warp performs partial reduction
+
+    if ( lane == 0 )
+        shared[wid] = val; // Write reduced value to shared memory
+
+    __syncthreads( ); // Wait for all partial reductions
+
+    //read from shared memory only if that warp existed
+    val = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
+
+    if ( wid == 0 )
+        val = warpReduceMax(val); //Final reduce within first warp
+
+    return val;
+}
+
+__device__ __forceinline__ void warpReduceMax(float& val, int& index) {
+
+    float tmp_val   = val;
+    int   tmp_index = index;
+#pragma unroll 5
+    for ( int offset = cistem::gpu::warp_size / 2; offset > 0; offset /= 2 ) {
+        tmp_val   = __shfl_xor_sync(0xffffffff, val, offset);
+        tmp_index = __shfl_xor_sync(0xffffffff, index, offset);
+        if ( tmp_val > val ) {
+            val   = tmp_val;
+            index = tmp_index;
+        }
+    }
+}
+
+__inline__ __device__ void blockReduceMax(float& val, int& index) {
+
+    static __shared__ float shared[64]; // Shared mem for 32 partial sums
+    int                     lane = threadIdx.x % cistem::gpu::warp_size;
+    int                     wid  = threadIdx.x / cistem::gpu::warp_size;
+
+    warpReduceMax(val, index); // Each warp performs partial reduction
+
+    if ( lane == 0 ) {
+        shared[wid]      = val; // Write reduced value to shared memory
+        shared[wid + 32] = index; // Write reduced value to shared memory
+    }
+
+    __syncthreads( ); // Wait for all partial reductions
+
+    //read from shared memory only if that warp existed
+    val   = (threadIdx.x < blockDim.x / cistem::gpu::warp_size) ? shared[lane] : 0;
+    index = (threadIdx.x < blockDim.x / cistem::gpu::warp_size) ? shared[lane + 32] : 0;
+
+    if ( wid == 0 )
+        warpReduceMax(val, index); //Final reduce within first warp
+
+    return;
 }
 
 GpuImage::GpuImage( ) {
@@ -483,7 +544,7 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
     //  npp_stat = nppiMul_32sc_C1IRSfs((const Npp32sc *)complex_values_gpu, 1, (Npp32sc*)other_image.complex_values_gpu, 1, npp_ROI_complex, 0);
 
     precheck;
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParameters(dims, false);
     MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
     postcheck;
 }
@@ -1123,7 +1184,7 @@ void GpuImage::MipPixelWise(GpuImage& other_image) {
 
     MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
     precheck;
-    ReturnLaunchParamters(dims, true);
+    ReturnLaunchParameters(dims, true);
     MipPixelWiseKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, other_image.real_values_gpu, this->dims);
     postcheck;
 }
@@ -1145,7 +1206,7 @@ void GpuImage::MipPixelWise(GpuImage& other_image, GpuImage& psi, GpuImage& phi,
 
     MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
     precheck;
-    ReturnLaunchParamters(dims, true);
+    ReturnLaunchParameters(dims, true);
     MipPixelWiseKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, other_image.real_values_gpu,
                                                                               psi.real_values_gpu, phi.real_values_gpu, theta.real_values_gpu, defocus.real_values_gpu, pixel.real_values_gpu,
                                                                               this->dims, c_psi, c_phi, c_theta, c_defocus, c_pixel);
@@ -1177,7 +1238,7 @@ void GpuImage::MipPixelWise(GpuImage& other_image, GpuImage& psi, GpuImage& phi,
 
     MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimension.");
     precheck;
-    ReturnLaunchParamters(dims, true);
+    ReturnLaunchParameters(dims, true);
     MipPixelWiseKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, other_image.real_values_gpu,
                                                                               psi.real_values_gpu, phi.real_values_gpu, theta.real_values_gpu,
                                                                               this->dims, c_psi, c_phi, c_theta);
@@ -1207,7 +1268,7 @@ void GpuImage::ApplyBFactor(float bfactor) {
     MyDebugAssertFalse(is_in_real_space, "This function is only for Fourier space images.");
 
     precheck;
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParameters(dims, false);
     ApplyBFactorKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
                                                                               dims,
                                                                               physical_index_of_first_negative_frequency,
@@ -1253,7 +1314,7 @@ void GpuImage::ApplyBFactor(float bfactor, const float vertical_mask_size, const
     MyDebugAssertTrue(vertical_mask_size > 0 && horizontal_mask_size > 0, "Half width must be greater than 0");
 
     precheck;
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParameters(dims, false);
     ApplyBFactorKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
                                                                               dims,
                                                                               physical_index_of_first_negative_frequency,
@@ -1461,7 +1522,7 @@ void GpuImage::Whiten(float resolution_limit) {
     MyDebugAssertTrue(dims.z == 1, "Whitening is only setup to work in 2D");
 
     // First we need to get the rotationally averaged PS, which we'll store in global memory
-    ReturnLaunchParamters<ntds_x_WhitenPS, ntds_y_WhitenPS>(dims, false);
+    ReturnLaunchParameters<ntds_x_WhitenPS, ntds_y_WhitenPS>(dims, false);
 
     // assuming square images, otherwise this would be largest dimension
     const int number_of_bins = dims.y / 2 + 1;
@@ -1644,7 +1705,7 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
     */
 
     // First we need to get the rotationally averaged PS, which we'll store in global memory
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParameters(dims, false);
 
     cross_terms.Zeros( );
     image_PS.Zeros( );
@@ -1765,6 +1826,93 @@ Peak GpuImage::FindPeakWithParabolaFit(float inner_radius_for_peak_search, float
     Image cpu_buffer                  = buffer.CopyDeviceToNewHost(should_block_until_complete, free_gpu_memory);
     my_peak                           = cpu_buffer.FindPeakWithParabolaFit(inner_radius_for_peak_search, outer_radius_for_peak_search);
     wxPrintf("Peak found at %f, %f\n", my_peak.x, my_peak.y);
+
+    return my_peak;
+}
+
+__global__ void FindPeakAtOriginFast2DKernel(const cufftReal* __restrict__ real_values,
+                                             Peak*     device_peak,
+                                             const int wanted_max_pix_x,
+                                             const int wanted_max_pix_y,
+                                             const int NX,
+                                             const int NY,
+                                             const int pixel_pitch) {
+
+    // To avoid divergence, rather than returning, just let all threads participate, assigning lowlow to those that would
+    // otherwise return.
+    int x;
+    int y;
+    int physical_linear_idx;
+
+    float max_val     = std::numeric_limits<float>::min( );
+    float tmp_max_val = std::numeric_limits<float>::min( );
+    int   my_max_idx  = 0;
+
+    for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * NY; logical_linear_idx += blockDim.x ) {
+        x                   = logical_linear_idx % NX;
+        y                   = logical_linear_idx / NX;
+        physical_linear_idx = x + y * pixel_pitch;
+        if ( x >= NX / 2 )
+            x -= NX;
+        if ( y >= NY / 2 )
+            y -= NY;
+
+        if ( x < wanted_max_pix_x && x > -wanted_max_pix_x && y < wanted_max_pix_y && y > -wanted_max_pix_y ) {
+
+            tmp_max_val = gMax(float(real_values[physical_linear_idx]), max_val);
+            if ( tmp_max_val > max_val ) {
+                max_val    = tmp_max_val;
+                my_max_idx = physical_linear_idx;
+            }
+        }
+    }
+
+    blockReduceMax(max_val, my_max_idx);
+
+    if ( threadIdx.x == 0 ) {
+        device_peak->value                         = max_val;
+        device_peak->physical_address_within_image = my_max_idx;
+    }
+    return;
+
+    // Okay, we are in bounds so lets find the max value
+}
+
+Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
+    MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
+    MyDebugAssertTrue(dims.z == 1, "Image is not 2D");
+
+    Peak  my_peak;
+    Peak* device_peak;
+    cudaErr(cudaMalloc(&device_peak, sizeof(Peak)));
+
+    if ( wanted_max_pix_x > dims.x / 2 )
+        wanted_max_pix_x = dims.x / 2;
+    if ( wanted_max_pix_y > dims.y / 2 )
+        wanted_max_pix_y = dims.y / 2;
+
+    // we only want one block to keep the reduction simple and to a single kernel
+    dim3 gd;
+    gd = dim3(1, 1, 1);
+    dim3 tpb;
+    tpb = dim3(1024, 1, 1);
+
+    precheck;
+    FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+    postcheck;
+
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    cudaErr(cudaMemcpy(&my_peak, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost));
+    cudaErr(cudaFree(device_peak));
+
+    my_peak.x = my_peak.physical_address_within_image % (dims.w);
+    my_peak.y = my_peak.physical_address_within_image / (dims.w);
+    if ( my_peak.x >= dims.x / 2 )
+        my_peak.x -= dims.x;
+    if ( my_peak.y >= dims.y / 2 )
+        my_peak.y -= dims.y;
 
     return my_peak;
 }
@@ -2675,7 +2823,7 @@ void GpuImage::PhaseShift(float wanted_x_shift, float wanted_y_shift, float want
     float3 shifts = make_float3(wanted_x_shift, wanted_y_shift, wanted_z_shift);
     // TODO set the TPB and inline function for grid
 
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParameters(dims, false);
 
     precheck;
     PhaseShiftKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
@@ -2937,7 +3085,7 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
 
         MyDebugAssertTrue(object_is_centred_in_box, "real space image, not centred in box");
 
-        ReturnLaunchParamters(other_image->dims, true);
+        ReturnLaunchParameters(other_image->dims, true);
 
         precheck;
         ClipIntoRealKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu,
@@ -2972,7 +3120,7 @@ void GpuImage::ClipIntoReturnMask(GpuImage* other_image) {
 
         MyDebugAssertTrue(object_is_centred_in_box, "real space image, not centred in box");
 
-        ReturnLaunchParamters(other_image->dims, true);
+        ReturnLaunchParameters(other_image->dims, true);
 
         precheck;
         ClipIntoMaskKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(other_image->clip_into_mask,
@@ -3159,11 +3307,11 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
 
     precheck;
     if ( is_in_real_space ) {
-        ReturnLaunchParamters(dims, true);
+        ReturnLaunchParameters(dims, true);
         ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_16f, this->dims);
     }
     else {
-        ReturnLaunchParamters(dims, false);
+        ReturnLaunchParameters(dims, false);
         ConvertToHalfPrecisionKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_16f, this->dims, this->physical_upper_bound_complex);
     }
     postcheck;
@@ -3755,7 +3903,7 @@ void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_pa
     destination_image->object_is_centred_in_box = object_is_centred_in_box;
     destination_image->is_fft_centered_in_box   = is_fft_centered_in_box;
 
-    ReturnLaunchParamters(destination_image->dims, false);
+    ReturnLaunchParameters(destination_image->dims, false);
 
     precheck;
     ClipIntoFourierSpaceKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
@@ -3968,7 +4116,7 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     MyDebugAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
 
     // Get launch params for a complex non-redundant half image
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParameters(dims, false);
 
     /*
     Since we only rotate 2d coords, we only need 6 floats from the rotation matrix. Reduce register pressure.
@@ -4153,7 +4301,7 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
     }
 
     // Get launch params for a complex non-redundant half image
-    ReturnLaunchParamters(dims, false);
+    ReturnLaunchParameters(dims, false);
 
     /*
     Since we only rotate 2d coords, we only need 6 floats from the rotation matrix. Reduce register pressure.

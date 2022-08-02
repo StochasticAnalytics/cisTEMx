@@ -1068,6 +1068,7 @@ bool Refine3DApp::DoCalculation( ) {
         if ( global_search_local || local_global_refine ) {
             search_reference_3d_local.CopyAllButVolume(&search_reference_3d);
             search_reference_3d_local.density_map = search_reference_3d.density_map;
+            comparison_object.PrepareGpuVolumeProjection(search_reference_3d_local, true);
 
             search_particle_local.CopyAllButImages(&search_particle);
             search_particle_local.Allocate(binned_search_image_box_size, binned_search_image_box_size);
@@ -1471,6 +1472,9 @@ bool Refine3DApp::DoCalculation( ) {
                     new_buffer_size = search_particle_local.SetIndexForWeightedCorrelation( );
                     comparison_object.AllocateBuffers(new_buffer_size);
 
+                    comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
+                    comparison_object.PrepareGpuCTFImages(search_particle_local, true);
+
                     search_particle_local.SetParameters(input_parameters);
                     search_particle_local.MapParameters(cg_starting_point);
                     search_particle_local.mask_radius = outer_mask_radius;
@@ -1517,9 +1521,6 @@ bool Refine3DApp::DoCalculation( ) {
                         search_particle_local.SetParameters(search_parameters);
                         search_particle_local.MapParameters(cg_starting_point);
 
-                        comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
-                        comparison_object.PrepareGpuCTFImages(search_particle_local, true);
-
                         search_parameters.score = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
                         output_parameters.score = search_parameters.score;
                         if ( ! local_refinement_local )
@@ -1552,9 +1553,6 @@ bool Refine3DApp::DoCalculation( ) {
                             search_particle_local.SetParameters(search_parameters);
                             search_particle_local.MapParameters(cg_starting_point);
 
-                            comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
-                            comparison_object.PrepareGpuCTFImages(search_particle_local, true);
-                            
                             search_parameters.score = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
 
                             if ( i == istart ) {

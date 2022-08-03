@@ -44,6 +44,7 @@ const std::complex<float> I(0.0, 1.0);
 #include <iterator>
 #include <utility>
 #include <vector>
+#include <unordered_map>
 #include <random>
 #include <functional>
 // These are in $MKLROOT/include
@@ -189,7 +190,7 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 #ifdef ENABLEGPU
 #include <cuda_runtime.h>
 #include <cuda.h>
-#include <cublas_v2.h>
+#include <cutensor.h>
 #include <cuda_fp16.h>
 #include <cuda_profiler_api.h>
 #include <cufft.h>

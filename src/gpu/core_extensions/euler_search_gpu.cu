@@ -85,6 +85,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     if ( test_mirror )
         psi_i *= 2;
 
+    wxPrintf("Psi_i is %i\n", psi_i);
+    exit(0);
     timer.start("Allocate rotation cache");
     rotation_cache = new GpuImage[psi_i];
     Image tmp_rot;

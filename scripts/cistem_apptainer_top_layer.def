@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: bhimesbhimes/cistem_build_env:base_image_v1.1
+From: bhimesbhimes/cistem_build_env:base_image_v1.2
 #Stage: spython-base
 
 %setup 
@@ -40,6 +40,16 @@ pip3 install gdown && cd / && gdown https://drive.google.com/drive/folders/1PO9t
 #     rm -rf /var/lib/apt/lists/*  && \
 #     npm install -g pnpm
 # echo 'export LD_PRELOAD=/opt/intel/libfakeIntel.so' >> $APPTAINER_ENVIRONMENT
+
+# Install cutensor
+
+export CUTENSOR_VERSION=libcutensor-linux-x86_64-1.6.0.3-archive
+export CUTENSOR_LIB=11
+cd /tmp &&   wget https://developer.download.nvidia.com/compute/cutensor/redist/libcutensor/linux-x86_64/${CUTENSOR_VERSION}.tar.xz && \
+    mkdir /opt/cuTensor && tar -xf ${CUTENSOR_VERSION}.tar.xz --strip 1 -C /opt/cuTensor && \
+    cd /opt/cuTensor/lib && ln -s ${CUTENSOR_LIB} cistem_version && \
+    echo 'export CUTENSOR_ROOT=/opt/cuTensor'  >>$APPTAINER_ENVIRONMENT && \ 
+    echo 'export LD_LIBRARY_PATH=${CUTENSOR_ROOT}/lib/${cistem_version}/:${LD_LIBRARY_PATH}'  >>$APPTAINER_ENVIRONMENT
 
 
 echo 'export MKLROOT=/opt/intel/oneapi/mkl/2021.4.0/' >>$APPTAINER_ENVIRONMENT

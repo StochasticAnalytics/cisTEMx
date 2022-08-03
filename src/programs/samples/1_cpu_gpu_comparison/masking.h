@@ -3,5 +3,7 @@
 
 bool CPUvsGPUMaskingTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);
 bool DoCosineMaskingTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);
+bool DoTestCuTensorCompilation(const wxString& hiv_image_80x80x1_filename, const wxString& temp_directory);
+bool DoTestCuTensorReduction(const wxString& hiv_image_80x80x1_filename, const wxString& temp_directory);
 
 #endif

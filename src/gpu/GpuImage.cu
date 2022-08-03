@@ -2041,7 +2041,7 @@ void GpuImage::MinMaxAndCoords( ) {
 
 void GpuImage::Mean( ) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyDebugAssertTrue(is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(is_in_real_space, "Not in reall space");
 
     NppInit( );
     BufferInit(b_mean);

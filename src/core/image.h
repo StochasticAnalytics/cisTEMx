@@ -138,6 +138,31 @@ class Image {
 
     void AddNoiseFromGammaDistribution(float wanted_alpha_value, float wanted_beta_value) { AddNoise(GAMMA, wanted_alpha_value, wanted_beta_value); }
 
+    void FillWithNoiseFromUniformDistribution(float wanted_minimum_value, float wanted_maximum_value) {
+        SetToConstant(0.f);
+        AddNoise(UNIFORM, wanted_minimum_value, wanted_maximum_value);
+    }
+
+    void FillWithNoiseFromNormalDistribution(float wanted_mean_value, float wanted_sigma_value) {
+        SetToConstant(0.f);
+        AddNoise(GAUSSIAN, wanted_mean_value, wanted_sigma_value);
+    }
+
+    void FillWithNoiseFromPoissonDistribution(float wanted_mean_value) {
+        SetToConstant(0.f);
+        AddNoise(POISSON, wanted_mean_value, 0.1f);
+    }
+
+    void FillWithNoiseFromExponentialDistribution(float wanted_lambda_value) {
+        SetToConstant(0.f);
+        AddNoise(EXPONENTIAL, wanted_lambda_value, 0.1f);
+    }
+
+    void FillWithNoiseFromGammaDistribution(float wanted_alpha_value, float wanted_beta_value) {
+        SetToConstant(0.f);
+        AddNoise(GAMMA, wanted_alpha_value, wanted_beta_value);
+    }
+
     long                  ZeroFloat(float wanted_mask_radius = 0.0, bool outsize = false);
     long                  ZeroFloatAndNormalize(float wanted_sigma_value = 1.0, float wanted_mask_radius = 0.0, bool outside = false);
     long                  Normalize(float wanted_sigma_value = 1.0, float wanted_mask_radius = 0.0, bool outside = false);

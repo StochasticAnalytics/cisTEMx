@@ -24,8 +24,8 @@ const int MAX_GPU_COUNT = 32;
 #define postcheck 
 #define precheck 
 #else
-// For now, you have to look up NPP error codes here https://docs.nvidia.com/cuda/npp/nppdefs_8h_source.html
-#define nppErr(npp_stat)  {if (npp_stat != NPP_SUCCESS) { wxPrintf("NPP_CHECK_NPP - npp_stat = %s at line %d in file %s\n", (npp_stat), __LINE__,__FILE__); DEBUG_ABORT} }
+// The static path to the error code definitions is brittle, but better than the internet. At least you can click in VSCODE to get there.
+#define nppErr(npp_stat)  {if (npp_stat != NPP_SUCCESS) { std::cerr << "NPP_CHECK_NPP - npp_stat = " << npp_stat ; wxPrintf(" at %s:(%d)\nFind error codes at /usr/local/cuda-11.7/targets/x86_64-linux/include/nppdefs.h:(170)\n\n",__FILE__,__LINE__); DEBUG_ABORT} }
 #define cudaErr(error) { auto status = static_cast<cudaError_t>(error); if (status != cudaSuccess) { std::cerr << cudaGetErrorString(status) << " :-> "; MyPrintWithDetails(""); DEBUG_ABORT} }
 #define postcheck { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaStreamSynchronize(cudaStreamPerThread); cudaErr(error); }
 #define precheck { cudaErr(cudaGetLastError()) }

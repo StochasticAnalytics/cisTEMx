@@ -513,11 +513,35 @@ void GpuImage::UpdateCpuFlags( ) {
 void GpuImage::printVal(std::string msg, int idx) {
 
     float h_printVal = -9999.0f;
+    if ( idx < 0 ) {
+        // -1 = last index and counting backward
+        idx = real_memory_allocated + idx - 1;
+    }
 
     cudaErr(cudaMemcpy(&h_printVal, &real_values_gpu[idx], sizeof(float), cudaMemcpyDeviceToHost));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    MyDebugAssertFalse(h_printVal == -9999.0f, "Error: printVal failed");
     wxPrintf("%s %6.6e\n", msg, h_printVal);
 };
+
+void GpuImage::PrintNppStreamContext( ) {
+
+    MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
+
+    wxPrintf("NPP stream context:\n");
+    wxPrintf("  npp device id %d\n", nppStream.nCudaDeviceId);
+    wxPrintf("  npp multi processor count %d\n", nppStream.nMultiProcessorCount);
+    wxPrintf("  npp max threads per multi processor %d\n", nppStream.nMaxThreadsPerMultiProcessor);
+    wxPrintf("  npp max threads per block %d\n", nppStream.nMaxThreadsPerBlock);
+    wxPrintf("  npp max shared memory per block %ld\n", nppStream.nSharedMemPerBlock);
+    wxPrintf("  npp compute capability %d.%d\n", nppStream.nCudaDevAttrComputeCapabilityMajor, nppStream.nCudaDevAttrComputeCapabilityMinor);
+
+    wxPrintf("\n NPP ROI:\n");
+
+    wxPrintf("  npp_ROI_real_space: %d %d\n", npp_ROI_real_space.width, npp_ROI_real_space.height);
+    wxPrintf("  npp_ROI_fourier_space: %d %d\n", npp_ROI_fourier_space.width, npp_ROI_fourier_space.height);
+    wxPrintf("  GpuImage.pitch bytes/ elements %ld/ %ld\n", pitch, pitch / sizeof(float));
+}
 
 bool GpuImage::HasSameDimensionsAs(GpuImage* other_image) {
     // Functions that call this method also assume these asserts are being called here, so do not remove.
@@ -813,7 +837,6 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
                 is_allocated_mean_buffer = true;
             }
             break;
-
         case b_meanstddev:
             if ( ! is_allocated_meanstddev_buffer ) {
                 int n_elem;
@@ -1903,12 +1926,17 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
     postcheck;
 
+    cudaErr(cudaMemcpyAsync(pinnedPtr, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaFreeAsync(device_peak, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    cudaErr(cudaMemcpy(&my_peak, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost));
-    cudaErr(cudaFree(device_peak));
 
-    my_peak.x = my_peak.physical_address_within_image % (dims.w);
-    my_peak.y = my_peak.physical_address_within_image / (dims.w);
+    Peak* tmp_peak;
+    tmp_peak = reinterpret_cast<Peak*>(&host_image_ptr->real_values[0]);
+
+    my_peak.value                         = tmp_peak->value;
+    my_peak.physical_address_within_image = tmp_peak->physical_address_within_image;
+    my_peak.x                             = tmp_peak->physical_address_within_image % (dims.w);
+    my_peak.y                             = tmp_peak->physical_address_within_image / (dims.w);
     if ( my_peak.x >= dims.x / 2 )
         my_peak.x -= dims.x;
     if ( my_peak.y >= dims.y / 2 )
@@ -2017,10 +2045,17 @@ void GpuImage::Mean( ) {
 
     NppInit( );
     BufferInit(b_mean);
-    nppErr(nppiMean_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, mean_buffer, npp_mean, nppStream));
+    // // wxPrintf("Pitch, roi: %d, %d, %d\n", pitch, npp_ROI.width, npp_ROI.height);
+    wxPrintf("Mean %f\n", npp_mean);
+    wxPrintf("Mean buffer %p\n", mean_buffer);
+    printVal("My vaalue at 0", 0);
+    printVal("My vaalue at end", -1);
+    PrintNppStreamContext( );
+
+    nppErr(nppiMean_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, mean_buffer, &npp_mean, nppStream));
     cudaErr(cudaStreamSynchronize(nppStream.hStream));
 
-    this->img_mean = (float)*npp_mean;
+    this->img_mean = float(npp_mean);
 }
 
 void GpuImage::MeanStdDev( ) {
@@ -2029,11 +2064,11 @@ void GpuImage::MeanStdDev( ) {
 
     NppInit( );
     BufferInit(b_meanstddev);
-    nppErr(nppiMean_StdDev_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, meanstddev_buffer, npp_mean, npp_stdDev, nppStream));
+    nppErr(nppiMean_StdDev_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, meanstddev_buffer, &npp_mean, &npp_stdDev, nppStream));
     cudaErr(cudaStreamSynchronize(nppStream.hStream));
 
-    this->img_mean   = (float)*npp_mean;
-    this->img_stdDev = (float)*npp_stdDev;
+    this->img_mean   = float(npp_mean);
+    this->img_stdDev = float(npp_stdDev);
 }
 
 void GpuImage::MultiplyPixelWise(GpuImage& other_image) {

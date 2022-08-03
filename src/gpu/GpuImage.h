@@ -128,6 +128,8 @@ class GpuImage {
     cudaStream_t     copyStream;
     NppStreamContext nppStream;
 
+    void PrintNppStreamContext( );
+
     bool is_fft_planned;
     //	bool is_cublas_loaded;
     bool is_npp_loaded;
@@ -330,8 +332,8 @@ class GpuImage {
     float     max_value;
     float     img_mean;
     float     img_stdDev;
-    Npp64f*   npp_mean;
-    Npp64f*   npp_stdDev;
+    Npp64f    npp_mean;
+    Npp64f    npp_stdDev;
     int       number_of_pixels_in_range;
     void      Min( );
     void      MinAndCoords( );

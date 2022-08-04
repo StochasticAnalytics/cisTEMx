@@ -109,6 +109,12 @@ class TensorManager {
         }
     }
 
+    inline void SetUnaryOperator(cistem::gpu::tensor_id tid, cutensorOperator_t wanted_unary_op) {
+        MyDebugAssertTrue(is_tensor_active[tid], "Tensor ID not active.");
+        unary_op[tid]        = wanted_unary_op;
+        is_set_unary_op[tid] = true;
+    };
+
   private:
     std::array<std::vector<int32_t>, cistem::gpu::max_tensor_manager_tensors> modes;
     std::array<bool, cistem::gpu::max_tensor_manager_tensors>                 is_set_modes;
@@ -121,11 +127,11 @@ class TensorManager {
     std::array<std::vector<int64_t>, cistem::gpu::max_tensor_manager_tensors> extents_of_each_tensor;
     std::array<bool, cistem::gpu::max_tensor_manager_tensors>                 is_set_extents_of_each_tensor;
 
-    std::array<std::vector<cutensorTensorDescriptor_t>, cistem::gpu::max_tensor_manager_tensors> tensor_descriptor;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                                    is_set_tensor_descriptor;
+    std::array<cutensorTensorDescriptor_t, cistem::gpu::max_tensor_manager_tensors> tensor_descriptor;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                       is_set_tensor_descriptor;
 
-    std::array<std::vector<cutensorOperator_t>, cistem::gpu::max_tensor_manager_tensors> unary_operator;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                            is_set_unary_operator;
+    std::array<cutensorOperator_t, cistem::gpu::max_tensor_manager_tensors> unary_operator;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>               is_set_unary_operator;
 
     std::array<size_t, cistem::gpu::max_tensor_manager_tensors> n_elements_in_each_tensor;
     std::array<bool, cistem::gpu::max_tensor_manager_tensors>   is_set_n_elements_in_each_tensor;

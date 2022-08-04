@@ -86,7 +86,7 @@ TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorDescriptors( ) 
                                                      &tensor_descriptor[i],
                                                      n_modes[i],
                                                      extents_of_each_tensor[i].data( ),
-                                                     NULL /* stride */,
+                                                     NULL /* stride assuming a packed layout including FFTW padding*/,
                                                      TypeA,
                                                      unary_operator[i]));
         }

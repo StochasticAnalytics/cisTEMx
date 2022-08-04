@@ -3,6 +3,6 @@
 
 bool DoBasicTensorOpsTest(const wxString& hiv_images_80x80x10_filename, wxString& temp_directory);
 bool TestCudaSample(const wxString& hiv_images_80x80x10_filename, wxString& temp_directory);
-bool TestTensorManagerManual(hiv_images_80x80x10_filename, temp_directory);
+bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxString& temp_directory);
 
 #endif

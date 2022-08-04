@@ -31,6 +31,9 @@ struct TensorTypes<float, float, float, float, float> {
     cutensorComputeType_t _compute_type = CUTENSOR_COMPUTE_32F;
 };
 
+namespace cg   = cistem::gpu;
+using TensorID = cg::tensor_id::Enum;
+
 template <class TypeA = float, class TypeB = float, class TypeC = float, class TypeD = float, class TypeCompute = float>
 class TensorManager {
 
@@ -39,7 +42,13 @@ class TensorManager {
     TensorManager(const GpuImage& wanted_props);
     ~TensorManager( );
 
-    inline void SetMacroOP(cistem::gpu::tensor_op::Enum wanted_macro_op) { macro_op = wanted_macro_op; };
+    cutensorHandle_t handle;
+
+    void SetDefaultValues( );
+    template <class ThisType>
+    void SetTensorCudaType(TensorID tid);
+
+    inline void SetMacroOP(cg::tensor_op::Enum wanted_macro_op) { macro_op = wanted_macro_op; };
 
     inline void SetAlphaAndBeta(TypeCompute wanted_alpha, TypeCompute wanted_beta) {
         alpha = wanted_alpha;
@@ -52,6 +61,12 @@ class TensorManager {
             extent_of_each_mode[mode] = wanted_extent;
         }
         else {
+            wxPrintf("Found the following modes: ");
+            for ( auto m : extent_of_each_mode ) {
+                wxPrintf("%c, %d ", m.first, m.second);
+            }
+            wxPrintf("\n");
+            wxPrintf("mode requested %c for extent %i\n", mode, int(wanted_extent));
             MyAssertTrue(false, "Could not find mode in wanted_extent");
         }
     };
@@ -62,28 +77,42 @@ class TensorManager {
             return extent_of_each_mode[mode];
         }
         else {
+            wxPrintf("mode requested %c\n", mode);
+
             MyAssertTrue(false, "Could not find mode in wanted_extent");
         }
     };
 
-    template <cistem::gpu::tensor_id::Enum TID, char Mode>
-    inline void SetModes(TID tid, Mode mode) {
-        modes[tid].push_back(mode);
+    template <char Mode>
+    void SetModes(TensorID tid) {
+        // wxPrintf("Setting mode %c, for tensor %i\n", Mode, int(tid));
+        modes[tid].push_back(Mode);
         n_modes[tid]        = modes[tid].size( );
         is_set_modes[tid]   = true;
         is_set_n_modes[tid] = true;
-        MyDebugAssert(modes[tid].size( ) <= cistem::gpu::max_tensor_manager_dimensions, "Too many modes for a given tensor ID.");
-        extent_of_each_mode.try_emplace(mode, 0); // This will be checked later for proper setting, but don't overwrite if it already exists
+        // MyDebugAssert(modes[tid].size( ) <= cg::max_tensor_manager_dimensions, "Too many modes for a given tensor ID.");
+        extent_of_each_mode.try_emplace(Mode, 0); // This will be checked later for proper setting, but don't overwrite if it already exists
         is_tensor_active[tid] = true;
     };
 
-    template <cistem::gpu::tensor_id::Enum TID, char Mode, char... OtherModes>
-    inline void SetModes(TID tid, Mode mode, OtherModes... other_modes) {
-        modes[tid].push_back(mode);
-        SetModes<TID, OtherModes...>(tid, other_modes...);
+    template <char Mode, char... OtherModes>
+    void SetModes(TensorID tid) {
+        // wxPrintf("Setting mode %c, for tensor %i\n", Mode, int(tid));
+
+        modes[tid].push_back(Mode);
+        extent_of_each_mode.try_emplace(Mode, 0); // This will be checked later for proper setting, but don't overwrite if it already exists
+        SetModes<OtherModes...>(tid);
     };
 
-    inline void SetExtentOfTensor(cistem::gpu::tensor_id tid) {
+    // template <char Mode>
+    // void SetModes(TensorID tid);
+
+    // template <char Mode, char... OtherModes>
+    // void SetModes(TensorID tid);
+
+    void SetTensorDescriptors( );
+
+    inline void SetExtentOfTensor(TensorID tid) {
         MyDebugAssertTrue(is_set_modes[tid], "Tensor ID not set.");
         MyDebugAssertTrue(is_set_n_modes[tid], "Number of modes not set.");
         for ( auto mode : modes[tid] )
@@ -93,65 +122,69 @@ class TensorManager {
         is_set_extents_of_each_tensor[tid] = true;
     }
 
-    inline void SetNElementsInEachTensor(cistem::gpu::tensor_id tid) {
+    inline void SetNElementsInEachTensor(TensorID tid) {
         MyDebugAssertTrue(is_set_extents_of_each_tensor[tid], "Extents of each tensor not set.");
         MyDebugAssertFalse(is_set_n_elements_in_each_tensor[tid], "Number of elements in each tensor already set.");
         for ( auto extent : extents_of_each_tensor[tid] )
             n_elements_in_each_tensor[tid] *= extent;
 
-        is_set_n_elements_in_each_tensor = true;
+        is_set_n_elements_in_each_tensor[tid] = true;
     }
 
     inline void SetNElementsForAllActiveTensors( ) {
-        for ( int tid = 0; tid < cistem::gpu::max_tensor_manager_tensors; tid++ ) {
+        for ( int tid = 0; tid < cg::max_tensor_manager_tensors; tid++ ) {
             if ( is_tensor_active[tid] )
-                SetNElementsInEachTensor(tid);
+                SetNElementsInEachTensor(TensorID(tid));
         }
     }
 
-    inline void SetUnaryOperator(cistem::gpu::tensor_id tid, cutensorOperator_t wanted_unary_op) {
+    inline size_t GetNElementsInTensor(TensorID tid) {
         MyDebugAssertTrue(is_tensor_active[tid], "Tensor ID not active.");
-        unary_op[tid]        = wanted_unary_op;
-        is_set_unary_op[tid] = true;
+        MyDebugAssertTrue(is_set_n_elements_in_each_tensor[tid], "Number of elements in each tensor not set.");
+        return n_elements_in_each_tensor[tid];
+    }
+
+    inline void SetUnaryOperator(TensorID tid, cutensorOperator_t wanted_unary_op) {
+        MyDebugAssertTrue(is_tensor_active[tid], "Tensor ID not active.");
+        unary_operator[tid]        = wanted_unary_op;
+        is_set_unary_operator[tid] = true;
+        // wxPrintf("Set unary operator for tensor %i\n", int(tid));
     };
 
-  private:
-    std::array<std::vector<int32_t>, cistem::gpu::max_tensor_manager_tensors> modes;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                 is_set_modes;
+    std::array<std::vector<int32_t>, cg::max_tensor_manager_tensors> modes;
+    std::array<bool, cg::max_tensor_manager_tensors>                 is_set_modes;
 
-    std::array<int32_t, cistem::gpu::max_tensor_manager_tensors> n_modes;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>    is_set_n_modes;
+    std::array<int32_t, cg::max_tensor_manager_tensors> n_modes;
+    std::array<bool, cg::max_tensor_manager_tensors>    is_set_n_modes;
 
     std::unordered_map<int32_t, int64_t> extent_of_each_mode;
 
-    std::array<std::vector<int64_t>, cistem::gpu::max_tensor_manager_tensors> extents_of_each_tensor;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                 is_set_extents_of_each_tensor;
+    std::array<std::vector<int64_t>, cg::max_tensor_manager_tensors> extents_of_each_tensor;
+    std::array<bool, cg::max_tensor_manager_tensors>                 is_set_extents_of_each_tensor;
 
-    std::array<cutensorTensorDescriptor_t, cistem::gpu::max_tensor_manager_tensors> tensor_descriptor;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                       is_set_tensor_descriptor;
+    std::array<cutensorTensorDescriptor_t, cg::max_tensor_manager_tensors> tensor_descriptor;
+    std::array<bool, cg::max_tensor_manager_tensors>                       is_set_tensor_descriptor;
 
-    std::array<cutensorOperator_t, cistem::gpu::max_tensor_manager_tensors> unary_operator;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>               is_set_unary_operator;
+    std::array<cutensorOperator_t, cg::max_tensor_manager_tensors> unary_operator;
+    std::array<bool, cg::max_tensor_manager_tensors>               is_set_unary_operator;
 
-    std::array<size_t, cistem::gpu::max_tensor_manager_tensors> n_elements_in_each_tensor;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors>   is_set_n_elements_in_each_tensor;
+    std::array<size_t, cg::max_tensor_manager_tensors> n_elements_in_each_tensor;
+    std::array<bool, cg::max_tensor_manager_tensors>   is_set_n_elements_in_each_tensor;
 
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors> is_tensor_allocated;
-    std::array<bool, cistem::gpu::max_tensor_manager_tensors> is_tensor_active;
+    std::array<bool, cg::max_tensor_manager_tensors> is_tensor_allocated;
+    std::array<bool, cg::max_tensor_manager_tensors> is_tensor_active;
 
-    TensorTypes<TypeA, TypeB, TypeC, TypeD, TypeCompute> tensor_types;
+    std::array<cudaDataType_t, cg::max_tensor_manager_tensors> tensor_cuda_types;
 
     TypeCompute alpha;
     TypeCompute beta;
 
-    cutensorHandle_t handle;
-
-    template <int ArraySize, class ArrayType>
+    template <class ArrayType>
     bool CheckForSetMetaData(ArrayType& is_property_set);
 
     uint64_t workspace_size;
     void*    workspace_ptr;
 
-    cistem::gpu::tensor_op::Enum macro_op;
+    cg::tensor_op::Enum macro_op;
 };
 #endif

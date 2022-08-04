@@ -273,12 +273,13 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
 
     SamplesBeginTest("TensorManager manual setup", passed);
 
-    TensorManager my_tm<float, float, float, float>;
+    cutensorComputeType_t                     ComputeType = CUTENSOR_COMPUTE_32F;
+    TensorManager<float, float, float, float> my_tm;
 
     my_tm.SetAlphaAndBeta(1.f, 0.f);
 
-    my_tm.SetModes(cistem::gpu::tensor_id::A, 'm', 'h', 'k');
-    my_tm.SetModes(cistem::gpu::tensor_id::C, 'n');
+    my_tm.SetModes<'m', 'h', 'k'>(cistem::gpu::tensor_id::A);
+    my_tm.SetModes<'n'>(cistem::gpu::tensor_id::C);
 
     // int32_t nmodeA = modeA.size( );
     // int32_t nmodeC = modeC.size( );
@@ -302,16 +303,13 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
     Image    image_A;
     GpuImage gpu_image_A;
 
-    float  C   = 0;
+    float  C   = 0.;
     float* d_C = nullptr;
 
     image_A.Allocate(my_tm.GetExtent('m') - 2, my_tm.GetExtent('h'), my_tm.GetExtent('k'), true);
     gpu_image_A.Init(image_A);
 
-    size_t sizeA = sizeof(floatTypeA) * elementsA;
-    size_t sizeC = sizeof(floatTypeC) * elementsC;
-
-    cudaErr(cudaMalloc((void**)&d_C, my_tm.GetNElementsForTensor(cistem::gpu::tensor_id::C)));
+    cudaErr(cudaMalloc((void**)&d_C, sizeof(float) * my_tm.GetNElementsInTensor(cistem::gpu::tensor_id::C)));
 
     /*******************
      * Initialize data
@@ -320,12 +318,20 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
     // Record initialization values to compare to the results of the tensor ops.
 
     image_A.FillWithNoiseFromNormalDistribution(0.f, 1.f);
-    EmpiricalDistribution my_dist = image_A.ReturnDistributionOfRealValues( );
 
-    float mean_a = my_dist.GetSampleMean( );
-    float min_a  = my_dist.GetSampleMin( );
-    float max_a  = my_dist.GetSampleMax( );
-    float n_a    = my_dist.GetSampleCount( );
+    float mean_a = 0.f;
+    float min_a  = std::numeric_limits<float>::max( );
+    float max_a  = std::numeric_limits<float>::min( );
+    int   n_a    = 0;
+    for ( int i = 0; i < image_A.real_memory_allocated; i++ ) {
+        mean_a += image_A.real_values[i];
+        if ( image_A.real_values[i] < min_a )
+            min_a = image_A.real_values[i];
+        if ( image_A.real_values[i] > max_a )
+            max_a = image_A.real_values[i];
+        n_a++;
+    }
+    mean_a /= float(n_a);
 
     gpu_image_A.CopyHostToDevice(true);
 
@@ -333,9 +339,10 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
      * Create Tensor Descriptors
      **********************/
 
-    my_tm.SetTensorDescriptors( );
+    my_tm.SetUnaryOperator(cistem::gpu::tensor_id::A, CUTENSOR_OP_IDENTITY);
+    my_tm.SetUnaryOperator(cistem::gpu::tensor_id::C, CUTENSOR_OP_IDENTITY);
 
-    SetUnaryOperator(cistem::gpu::tensor_id::A, CUTENSOR_OP_IDENTITY);
+    my_tm.SetTensorDescriptors( );
 
     const cutensorOperator_t opReduce  = CUTENSOR_OP_ADD;
     const cutensorOperator_t opCompute = CUTENSOR_OP_MUL;
@@ -349,7 +356,7 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
                                                   gpu_image_A.real_values_gpu, &my_tm.tensor_descriptor[cistem::gpu::tensor_id::A], my_tm.modes[cistem::gpu::tensor_id::A].data( ),
                                                   d_C, &my_tm.tensor_descriptor[cistem::gpu::tensor_id::C], my_tm.modes[cistem::gpu::tensor_id::C].data( ),
                                                   d_C, &my_tm.tensor_descriptor[cistem::gpu::tensor_id::C], my_tm.modes[cistem::gpu::tensor_id::C].data( ),
-                                                  opReduce, float, &worksize));
+                                                  opReduce, CUTENSOR_COMPUTE_32F, &worksize));
     void* work = nullptr;
     if ( worksize > 0 ) {
         if ( cudaSuccess != cudaMalloc(&work, worksize) ) {
@@ -362,14 +369,14 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
      **********************/
     cutensorStatus_t err;
     for ( int i = 0; i < 3; ++i ) {
-        cudaErr(cudaMemcpy(d_C, C, my_tm.n_elements_in_each_tensor[cistem::gpu::tensor_id::C], cudaMemcpyHostToDevice));
+        cudaErr(cudaMemcpy(d_C, &C, my_tm.n_elements_in_each_tensor[cistem::gpu::tensor_id::C] * sizeof(float), cudaMemcpyHostToDevice));
         cudaErr(cudaDeviceSynchronize( ));
 
         err = cutensorReduction(&my_tm.handle,
                                 (const void*)&my_tm.alpha, gpu_image_A.real_values_gpu, &my_tm.tensor_descriptor[cistem::gpu::tensor_id::A], my_tm.modes[cistem::gpu::tensor_id::A].data( ),
                                 (const void*)&my_tm.beta, d_C, &my_tm.tensor_descriptor[cistem::gpu::tensor_id::C], my_tm.modes[cistem::gpu::tensor_id::C].data( ),
                                 d_C, &my_tm.tensor_descriptor[cistem::gpu::tensor_id::C], my_tm.modes[cistem::gpu::tensor_id::C].data( ),
-                                opReduce, float, work, worksize, 0 /* stream */);
+                                opReduce, CUTENSOR_COMPUTE_32F, work, worksize, 0 /* stream */);
 
         if ( err != CUTENSOR_STATUS_SUCCESS ) {
             wxPrintf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
@@ -378,10 +385,11 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
     /*************************/
 
     cudaErr(cudaDeviceSynchronize( ));
-    cudaErr(cudaMemcpy(C, d_C, my_tm.n_elements_in_each_tensor[cistem::gpu::tensor_id::C], cudaMemcpyDeviceToHost));
+    cudaErr(cudaMemcpy(&C, d_C, my_tm.n_elements_in_each_tensor[cistem::gpu::tensor_id::C] * sizeof(float), cudaMemcpyDeviceToHost));
 
     // Check the reduced value
-    passed = passed && FloatsAreAlmostTheSame(C[0] / n_sum, sum_a / n_sum);
+    passed = passed && FloatsAreAlmostTheSame(C / n_a, mean_a);
+    // wxPrintf("Mean: %f\n, from cutensor %f\n", mean_a, C / n_a);
 
     // worksize = 0;
     // cuTensorErr(cutensorReductionGetWorkspaceSize(&handle,

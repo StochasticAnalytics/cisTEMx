@@ -263,9 +263,10 @@ if WANT_CISTEM_GPU_AM
 bin_PROGRAMS +=  gpu_devices
 noinst_LIBRARIES += libgpucore.a  
 
-libgpucore_a_SOURCES  =       gpu/Histogram.cu \
+libgpucore_a_SOURCES  =      gpu/Histogram.cu \
                              gpu/TemplateMatchingCore.cu \
                              gpu/DeviceManager.cu \
+                             gpu/TensorManager.cu \
                              gpu/GpuImage.cu \
                              gpu/core_extensions/euler_search_gpu.cu
 if ENABLE_FASTFFT_AM

@@ -421,7 +421,7 @@ void RotationMatrix::ConvertToValidEulerAngles(float& output_phi_in_degrees, flo
     }
 
     // if in debug mode do a final check
-    /*#ifdef DEBUG
+    /*#ifdef CISTEM_DEBUG
 	test_matrix.SetToEulerRotation(output_phi_in_degrees, output_theta_in_degrees, output_psi_in_degrees);
 
 	should_throw_error = false;

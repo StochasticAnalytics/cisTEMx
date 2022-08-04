@@ -9,6 +9,7 @@
 #define GPUIMAGE_H_
 
 #include "../core/cistem_constants.h"
+#include "TensorManager.h"
 
 class GpuImage {
 

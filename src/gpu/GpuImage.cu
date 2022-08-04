@@ -14,10 +14,6 @@
 // #define USE_BLOCK_REDUCE
 #define USE_FP16_FOR_WHITENPS
 
-#ifdef USE_FP16_FOR_WHITENPS
-#include <cuda_bf16.h>
-#endif
-
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 

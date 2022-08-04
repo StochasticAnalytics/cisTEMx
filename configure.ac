@@ -206,11 +206,14 @@ AS_HELP_STRING([--with-wx-config=FILE],[Use the given path to wx-config when det
 
 
 # debugmode
-
+# DEBUG/ NDEBUG used by the embedded SQLITE3
+# Others used by cistem prog and libs
 AC_ARG_ENABLE(debugmode, AS_HELP_STRING([--enable-debugmode],[Compile in debug mode [default=no]]),
 [
   if test "$enableval" = yes; then
-    AC_DEFINE([DEBUG], [], [Define the debug flag])
+    AC_DEFINE([CISTEM_DEBUG], [], [Define the debug flag])
+        AC_DEFINE([DEBUG], [], [Define the debug flag])
+
     if test "x$CXX" = "xicpc"; then   
         # The cpp std is currently diffent between cuda and gcc so we set this at the end
         CXXFLAGS="-O2 -debug -no-prec-div -no-prec-sqrt $WARNINGS_ON -wd1125"
@@ -221,12 +224,16 @@ AC_ARG_ENABLE(debugmode, AS_HELP_STRING([--enable-debugmode],[Compile in debug m
         CXXFLAGS="-O2 -g -fmodules-ts -flang-info-module-cmi $WARNINGS_ON $INPUT_CXXFLAGS"
     fi
   else
-    AC_DEFINE([NDEBUG], [], [Define the nodebug flag for either g++ or clang builds])
+    AC_DEFINE([CISTEM_NDEBUG], [], [Define the nodebug flag for either g++ or clang builds])
+        AC_DEFINE([NDEBUG], [], [Define the nodebug flag for either g++ or clang builds])
+
   fi
  ], 
 [
     # Action if not given
-    AC_DEFINE([NDEBUG], [], [Define the nodebug flag for either g++ or clang builds])
+    AC_DEFINE([CISTEM_NDEBUG], [], [Define the nodebug flag for either g++ or clang builds])
+            AC_DEFINE([NDEBUG], [], [Define the nodebug flag for either g++ or clang builds])
+
 ])
   
 

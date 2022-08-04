@@ -1424,7 +1424,7 @@ void AutoRefinementManager::SetupRefinementJob( ) {
                 //if (number_of_rounds_run == 0) percent_used = 1.0f;
                 //else percent_used = current_percent_used * 0.01;
                 //if (percent_used > 1) percent_used = 1;
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             wxString output_parameter_file = wxString::Format("/tmp/output_par_%li_%li.star", first_particle, last_particle);
 #else
             wxString output_parameter_file = "/dev/null";

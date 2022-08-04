@@ -6753,7 +6753,7 @@ void Image::ApplyLocalResolutionFilter(Image& local_resolution_map, float pixel_
         }
         lp_volume.BackwardFFT( );
         /*
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 		lp_volume.QuickAndDirtyWriteSlices(wxString::Format("dbg_fil_%02i.mrc",filter_counter).ToStdString(), 1, lp_volume.logical_z_dimension);
 #endif
 		*/
@@ -11098,7 +11098,7 @@ void Image::CreateOrthogonalProjectionsImage(Image* image_to_create, bool includ
     MyDebugAssertTrue(this->IsCubic( ) == true, "Only Cubic Volumes Supported");
     // don't allocate so i can use Allocateaspointing to slice in 3d.
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     if ( include_projections == true ) {
         MyDebugAssertTrue(image_to_create->logical_x_dimension == myroundint(float(logical_x_dimension) * scale_factor) * 3.0 && image_to_create->logical_y_dimension == myroundint(float(logical_y_dimension) * scale_factor) * 2 && image_to_create->is_in_real_space == true, "Output image not setup correctly");
     }

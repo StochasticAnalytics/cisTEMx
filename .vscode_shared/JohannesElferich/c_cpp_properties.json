@@ -10,7 +10,7 @@
                 "_FILE_OFFSET_BITS=64",
                 "WXUSINGDLL",
                 "__WXGTK__",
-                "DEBUG"
+                "CISTEM_DEBUG"
             ],
             "compilerPath": "/groups/himesb/intel/compilers_and_libraries_2020.2.254/linux/bin/intel64/icpc",
             "cStandard": "c17",

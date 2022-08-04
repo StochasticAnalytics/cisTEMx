@@ -8,14 +8,6 @@ namespace cistem {
 constexpr const int fraction_of_box_size_to_exclude_for_border = 4;
 constexpr const int maximum_number_of_detections               = 1000;
 
-namespace gpu {
-
-constexpr int warp_size             = 32;
-constexpr int min_threads_per_block = warp_size;
-constexpr int max_threads_per_block = 1024;
-
-} // namespace gpu
-
 /*
     SCOPED ENUMS:
         Rather than specifying a scoped enum as enum class, we use the following technique to define scoped enums while
@@ -43,6 +35,35 @@ enum Enum : int { reference_volume_t,
                   ctf_image_t,
                   beamtilt_image_t };
 }
+
+namespace gpu {
+
+constexpr int warp_size             = 32;
+constexpr int min_threads_per_block = warp_size;
+constexpr int max_threads_per_block = 1024;
+
+// Currently we just support up to 3d tensors to match the Image class
+constexpr int max_tensor_manager_dimensions = 3;
+constexpr int max_tensor_manager_tensors    = 4;
+
+namespace tensor_op {
+enum Enum : int {
+    reduction,
+    contraction,
+    binary,
+    ternary,
+};
+} // namespace tensor_op
+
+namespace tensor_id {
+enum Enum : int {
+    A,
+    B,
+    C,
+    D,
+};
+} // namespace tensor_id
+} // namespace gpu
 
 } // namespace cistem
 

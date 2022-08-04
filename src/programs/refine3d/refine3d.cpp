@@ -191,7 +191,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     float tmp_penalty = comparison_object->particle->ReturnParameterPenalty(comparison_object->particle->temp_parameters);
     global_timer.lap("ReturnPenalty");
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     if ( isnan(tmp_corr) || isnan(tmp_penalty) ) {
         MyPrintWithDetails("FrealignObjectiveFunction about to return NaN. Details to follow.\n");
         wxPrintf("shift x = %f\nshift y = %f\npsi   = %f\nphi   = %f\ntheta = %f\n",

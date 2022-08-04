@@ -190,8 +190,6 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 #ifdef ENABLEGPU
 #include <cuda_runtime.h>
 #include <cuda.h>
-#include <cutensor.h>
-#include <cuda_fp16.h>
 #include <cuda_profiler_api.h>
 #include <cufft.h>
 #include <cufftXt.h>

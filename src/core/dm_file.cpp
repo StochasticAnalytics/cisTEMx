@@ -160,7 +160,7 @@ int DMFile::readFixedDMHeader(std::ifstream* fimg, unsigned char* p, bool readda
         return -2;
 
     if ( show )
-        MyDebugPrint("DEBUG readFixedDMHeader: macheader= %i width = %i height = %i\n", macheader, macheader->width, macheader->height);
+        MyDebugPrint("CISTEM_DEBUG readFixedDMHeader: macheader= %i width = %i height = %i\n", macheader, macheader->width, macheader->height);
 
     data_offset(8);
     if ( (macheader->width < 1) || (macheader->height < 1) ) {
@@ -169,7 +169,7 @@ int DMFile::readFixedDMHeader(std::ifstream* fimg, unsigned char* p, bool readda
     }
 
     if ( show )
-        MyDebugPrint("DEBUG readFixedDMHeader: macheader= %i width = %i height = %i\n", macheader, macheader->width, macheader->height);
+        MyDebugPrint("CISTEM_DEBUG readFixedDMHeader: macheader= %i width = %i height = %i\n", macheader, macheader->width, macheader->height);
 
     // Determine header type
     int i, fixed(1), sb(0);

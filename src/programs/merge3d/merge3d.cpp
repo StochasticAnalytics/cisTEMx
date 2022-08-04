@@ -250,7 +250,7 @@ bool Merge3DApp::DoCalculation( ) {
 			MyDebugPrint("About to compute mask\n");
 
 			size_image.Binarise(size_image.ReturnMaximumValue() - 1.0f);
-	#ifdef DEBUG
+	#ifdef CISTEM_DEBUG
 	size_image.QuickAndDirtyWriteSlices("/tmp/locres_mask.mrc", 1, size_image.logical_z_dimension);
 		#endif
 
@@ -293,14 +293,14 @@ bool Merge3DApp::DoCalculation( ) {
             Image size_image;
             size_image.CopyFrom(output_3d.density_map);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             size_image.QuickAndDirtyWriteSlices("/tmp/locres_filtered_input.mrc", 1, size_image.logical_z_dimension, true, original_pixel_size);
 #endif
 
             float original_average_value = size_image.ReturnAverageOfRealValues(outer_mask_radius / original_pixel_size, true);
             size_image.ConvertToAutoMask(original_pixel_size, outer_mask_radius, original_pixel_size * 2.0f, 0.2f);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             size_image.QuickAndDirtyWriteSlices("/tmp/locres_mask.mrc", 1, size_image.logical_z_dimension, true, original_pixel_size);
 #endif
 
@@ -403,7 +403,7 @@ bool Merge3DApp::DoCalculation( ) {
             local_resolution_volume_all.DivideByConstant(number_averaged);
             local_resolution_volume.CopyFrom(&local_resolution_volume_all);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             local_resolution_volume.QuickAndDirtyWriteSlices("/tmp/locres.mrc", 1, size_image.logical_z_dimension, true, original_pixel_size);
 #endif
 
@@ -466,7 +466,7 @@ bool Merge3DApp::DoCalculation( ) {
 
             local_resolution_volume.SetMaximumValue(20.0f);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             local_resolution_volume.QuickAndDirtyWriteSlices("/tmp/locres_scaled.mrc", 1, size_image.logical_z_dimension, true, pixel_size);
 #endif
 
@@ -498,7 +498,7 @@ bool Merge3DApp::DoCalculation( ) {
 			}
 			*/
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             local_resolution_volume.QuickAndDirtyWriteSlices("/tmp/locres_scaled_filter_mask.mrc", 1, size_image.logical_z_dimension, true, pixel_size);
 #endif
 

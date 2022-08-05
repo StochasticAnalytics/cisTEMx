@@ -71,8 +71,24 @@ class GpuImage {
     __half*  ctf_buffer_16f;
     __half2* ctf_complex_buffer_16f;
 
+    // inline float ReturnAsFloat(float* h) {
+    //     *tmpVal = h;
+    //     return *tmpVal;
+    // };
+
+    // inline float ReturnAsFloat(__half* h) {
+    //     *tmpVal = __half2float(h);
+    //     return *tmpVal;
+    // };
+
+    // inline float ReturnAsFloat(nv_bfloat16* h) {
+    //     *tmpVal = __bfloat162float(h);
+    //     return *tmpVal;
+    // };
+
     // We want to be able to re-use the texture object, so only set it up once.
     cudaTextureObject_t tex_real;
+
     cudaTextureObject_t tex_imag;
     cudaArray*          cuArray_real = 0;
     cudaArray*          cuArray_imag = 0;
@@ -237,7 +253,7 @@ class GpuImage {
 
     void CalculateCrossCorrelationImageWith(GpuImage* other_image);
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
-    Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y);
+    Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, bool load_half_precision = false);
 
     bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void SetCufftPlan(bool use_half_precision = false);

@@ -1849,7 +1849,8 @@ Peak GpuImage::FindPeakWithParabolaFit(float inner_radius_for_peak_search, float
     return my_peak;
 }
 
-__global__ void FindPeakAtOriginFast2DKernel(const cufftReal* __restrict__ real_values,
+template <typename T>
+__global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
                                              Peak*     device_peak,
                                              const int wanted_max_pix_x,
                                              const int wanted_max_pix_y,
@@ -1878,7 +1879,12 @@ __global__ void FindPeakAtOriginFast2DKernel(const cufftReal* __restrict__ real_
 
         if ( x < wanted_max_pix_x && x > -wanted_max_pix_x && y < wanted_max_pix_y && y > -wanted_max_pix_y ) {
 
-            tmp_max_val = gMax(float(real_values[physical_linear_idx]), max_val);
+            if constexpr ( std::is_same<T, __half>::value ) {
+                tmp_max_val = gMax(__half2float(real_values[physical_linear_idx]), max_val);
+            }
+            else {
+                tmp_max_val = gMax(float(real_values[physical_linear_idx]), max_val);
+            }
             if ( tmp_max_val > max_val ) {
                 max_val    = tmp_max_val;
                 my_max_idx = physical_linear_idx;
@@ -1897,7 +1903,7 @@ __global__ void FindPeakAtOriginFast2DKernel(const cufftReal* __restrict__ real_
     // Okay, we are in bounds so lets find the max value
 }
 
-Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y) {
+Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, bool load_half_precision) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
@@ -1906,6 +1912,11 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     Peak  my_peak;
     Peak* device_peak;
     cudaErr(cudaMalloc(&device_peak, sizeof(Peak)));
+
+    half_float::half* tmpPinnedPtr;
+
+    // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
+    cudaErr(cudaHostRegister(&my_peak, sizeof(Peak), cudaHostRegisterDefault));
 
     if ( wanted_max_pix_x > dims.x / 2 )
         wanted_max_pix_x = dims.x / 2;
@@ -1918,21 +1929,29 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     dim3 tpb;
     tpb = dim3(1024, 1, 1);
 
-    precheck;
-    FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
-    postcheck;
+    if ( load_half_precision ) {
+        precheck;
+        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_16f, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+        postcheck;
+    }
+    else {
+        precheck;
+        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+        postcheck;
+    }
 
-    cudaErr(cudaMemcpyAsync(pinnedPtr, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync(&my_peak, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(device_peak, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    cudaErr(cudaHostUnregister(&my_peak));
 
-    Peak* tmp_peak;
-    tmp_peak = reinterpret_cast<Peak*>(&host_image_ptr->real_values[0]);
+    // Peak* tmp_peak;
+    // tmp_peak = reinterpret_cast<Peak*>(&host_image_ptr->real_values[0]);
 
-    my_peak.value                         = tmp_peak->value;
-    my_peak.physical_address_within_image = tmp_peak->physical_address_within_image;
-    my_peak.x                             = tmp_peak->physical_address_within_image % (dims.w);
-    my_peak.y                             = tmp_peak->physical_address_within_image / (dims.w);
+    // my_peak.value                         = tmp_peak->value;
+    // my_peak.physical_address_within_image = tmp_peak->physical_address_within_image;
+    my_peak.x = my_peak.physical_address_within_image % (dims.w);
+    my_peak.y = my_peak.physical_address_within_image / (dims.w);
     if ( my_peak.x >= dims.x / 2 )
         my_peak.x -= dims.x;
     if ( my_peak.y >= dims.y / 2 )
@@ -2069,7 +2088,6 @@ void GpuImage::MeanStdDev( ) {
 
 void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    wxPrintf("MPW\n");
     NppInit( );
     NppStatus ret_val;
     if ( is_in_real_space ) {
@@ -2078,12 +2096,12 @@ void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
     else {
         ret_val = nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream);
     }
-    wxPrintf("Ret val %d\n", ret_val);
-    wxPrintf("ROI %d %d\n", npp_ROI.width, npp_ROI.height);
-    wxPrintf("Pitch %ld\n", pitch);
-    wxPrintf("Is in real space %d\n", is_in_real_space);
-    wxPrintf("Other is in real space %d\n", other_image.is_in_real_space);
-    exit(0);
+    // wxPrintf("Ret val %d\n", ret_val);
+    // wxPrintf("ROI %d %d\n", npp_ROI.width, npp_ROI.height);
+    // wxPrintf("Pitch %ld\n", pitch);
+    // wxPrintf("Is in real space %d\n", is_in_real_space);
+    // wxPrintf("Other is in real space %d\n", other_image.is_in_real_space);
+    // exit(0);
     // if ( is_in_real_space ) {
     //     nppErr(nppiMul_32f_C1IR_Ctx((Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
     // }

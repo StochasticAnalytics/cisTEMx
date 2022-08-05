@@ -31,9 +31,28 @@ struct TensorTypes<float, float, float, float, float> {
     cutensorComputeType_t _compute_type = CUTENSOR_COMPUTE_32F;
 };
 
+template <>
+struct TensorTypes<nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16> {
+    cudaDataType_t        _a_type       = CUDA_R_16BF;
+    cudaDataType_t        _b_type       = CUDA_R_16BF;
+    cudaDataType_t        _c_type       = CUDA_R_16BF;
+    cudaDataType_t        _d_type       = CUDA_R_16BF;
+    cutensorComputeType_t _compute_type = CUTENSOR_COMPUTE_16BF;
+};
+
+template <>
+struct TensorTypes<__half, __half, __half, __half, __half> {
+    cudaDataType_t        _a_type       = CUDA_R_16F;
+    cudaDataType_t        _b_type       = CUDA_R_16F;
+    cudaDataType_t        _c_type       = CUDA_R_16F;
+    cudaDataType_t        _d_type       = CUDA_R_16F;
+    cutensorComputeType_t _compute_type = CUTENSOR_COMPUTE_16F;
+};
+
 template <typename TypeA, typename TypeB, typename TypeC, typename TypeD>
 struct TensorPtrs {
     // Use this to catch unsupported input/ compute types and throw exception.
+
     int* _a_ptr = nullptr;
     int* _b_ptr = nullptr;
     int* _c_ptr = nullptr;
@@ -49,10 +68,26 @@ struct TensorPtrs<float, float, float, float> {
     float* _d_ptr;
 };
 
+template <>
+struct TensorPtrs<__half, __half, __half, __half> {
+    __half* _a_ptr;
+    __half* _b_ptr;
+    __half* _c_ptr;
+    __half* _d_ptr;
+};
+
+template <>
+struct TensorPtrs<nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16> {
+    nv_bfloat16* _a_ptr;
+    nv_bfloat16* _b_ptr;
+    nv_bfloat16* _c_ptr;
+    nv_bfloat16* _d_ptr;
+};
+
 using TensorID = cistem::gpu::tensor_id::Enum;
 using TensorOP = cistem::gpu::tensor_op::Enum;
 
-template <class TypeA = float, class TypeB = float, class TypeC = float, class TypeD = float, class TypeCompute = float>
+template <class TypeA, class TypeB, class TypeC, class TypeD, class TypeCompute>
 class TensorManager {
 
   public:
@@ -65,8 +100,9 @@ class TensorManager {
     cutensorHandle_t handle;
 
     void SetDefaultValues( );
-    template <class ThisType>
-    void SetTensorCudaType(TensorID tid);
+
+    // template <class ThisType>
+    // void SetTensorCudaType(TensorID tid);
 
     template <class WantedPtr>
     inline bool CheckPtrType(TensorID tid, WantedPtr* wanted_ptr) {
@@ -121,7 +157,7 @@ class TensorManager {
         else {
             wxPrintf("Found the following modes: ");
             for ( auto m : extent_of_each_mode ) {
-                wxPrintf("%c, %d ", m.first, m.second);
+                wxPrintf("%c, %d ", char(m.first), int(m.second));
             }
             wxPrintf("\n");
             wxPrintf("mode requested %c for extent %i\n", mode, int(wanted_extent));
@@ -224,8 +260,9 @@ class TensorManager {
         MyDebugAssertFalse(is_set_operation, "Tensor operation already set.");
         operation = wanted_op;
         // TODO: set this in another function with case
-        cutensor_op      = CUTENSOR_OP_ADD;
+        cutensor_op      = CUTENSOR_OP_MAX;
         is_set_operation = true;
+        std::cerr << "Set tensor operation to " << operation << "\n";
     }
 
     std::array<std::vector<int32_t>, cistem::gpu::max_tensor_manager_tensors> modes;
@@ -251,8 +288,6 @@ class TensorManager {
     std::array<bool, cistem::gpu::max_tensor_manager_tensors> is_tensor_allocated;
     std::array<bool, cistem::gpu::max_tensor_manager_tensors> is_tensor_active;
 
-    std::array<cudaDataType_t, cistem::gpu::max_tensor_manager_tensors> tensor_cuda_types;
-
     TypeCompute alpha;
     TypeCompute beta;
 
@@ -271,5 +306,20 @@ class TensorManager {
 
     TensorTypes<TypeA, TypeB, TypeC, TypeD, TypeCompute> my_types;
     TensorPtrs<TypeA, TypeB, TypeC, TypeD>               my_ptrs;
+
+    inline cudaDataType_t GetCudaDataType(TensorID tid) {
+        switch ( tid ) {
+            case TensorID::A:
+                return my_types._a_type;
+            case TensorID::B:
+                return my_types._b_type;
+            case TensorID::C:
+                return my_types._c_type;
+            case TensorID::D:
+                return my_types._d_type;
+            default:
+                MyDebugAssertTrue(false, "Invalid tensor ID.");
+        }
+    }
 };
 #endif

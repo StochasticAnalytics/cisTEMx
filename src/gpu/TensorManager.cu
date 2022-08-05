@@ -2,11 +2,23 @@
 
 #include "TensorManager.h"
 
+// #define N_CACHE_LINES 32
+
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
 TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::TensorManager( ) {
 
     cuTensorErr(cutensorInit(&handle));
     SetDefaultValues( );
+
+#ifdef N_CACHE_LINES
+    // Set number of cache lines
+    constexpr int32_t numCachelines = N_CACHE_LINES;
+    // Set cache size and allocate
+    const size_t             sizeCache  = numCachelines * sizeof(cutensorPlanCacheline_t);
+    cutensorPlanCacheline_t* cachelines = (cutensorPlanCacheline_t*)malloc(sizeCache);
+    // Attach cache
+    cuTensorErr(cutensorHandleAttachPlanCachelines(&handle, cachelines, numCachelines));
+#endif
 }
 
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
@@ -23,6 +35,10 @@ TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::~TensorManager( ) {
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
 void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::Deallocate( ) {
 
+#ifdef N_CACHE_LINES
+    // Detach cache and free-up resources
+    cuTensorErr(cutensorHandleDetachPlanCachelines(&handle));
+#endif
     // By design the TensorManager is non-owning, so the only thing to free is the workspace if it is allocated
     if ( workspace_ptr ) {
         cudaErr(cudaFree(workspace_ptr));
@@ -46,8 +62,8 @@ bool TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::CheckForSetMetaData
 
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
 void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetDefaultValues( ) {
-    alpha = ComputeType(0);
-    beta  = ComputeType(0);
+    alpha = ComputeType(0.f);
+    beta  = ComputeType(0.f);
 
     workspace_size = 0;
     workspace_ptr  = nullptr;
@@ -83,46 +99,37 @@ void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetDefaultValues( )
     for ( i = 0; i != is_set_n_elements_in_each_tensor.size( ); ++i ) {
         is_set_n_elements_in_each_tensor[i] = false;
     }
-
-    SetTensorCudaType<TypeA>(TensorID::A);
-    SetTensorCudaType<TypeB>(TensorID::B);
-    SetTensorCudaType<TypeC>(TensorID::C);
-    SetTensorCudaType<TypeD>(TensorID::D);
 }
 
-template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
-template <class ThisType>
-void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorCudaType(TensorID tid) {
+// template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
+// template <class ThisType>
+// void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorCudaType(TensorID tid) {
 
-    if ( std::is_same_v<ThisType, float> )
-        tensor_cuda_types[tid] = CUDA_R_32F;
-    return;
+//     if ( std::is_same_v<ThisType, float2> )
+//         tensor_cuda_types[tid] = CUDA_C_32F;
+//     return;
 
-    if ( std::is_same_v<ThisType, float2> )
-        tensor_cuda_types[tid] = CUDA_C_32F;
-    return;
+//     if ( std::is_same_v<ThisType, nv_bfloat16> )
+//         tensor_cuda_types[tid] = CUDA_R_16BF;
+//     return;
 
-    if ( std::is_same_v<ThisType, nv_bfloat16> )
-        tensor_cuda_types[tid] = CUDA_R_16BF;
-    return;
+//     if ( std::is_same_v<ThisType, nv_bfloat162> )
+//         tensor_cuda_types[tid] = CUDA_C_16BF;
+//     return;
 
-    if ( std::is_same_v<ThisType, nv_bfloat162> )
-        tensor_cuda_types[tid] = CUDA_C_16BF;
-    return;
+//     if ( std::is_same_v<ThisType, __half> )
+//         tensor_cuda_types[tid] = CUDA_R_16F;
+//     return;
 
-    if ( std::is_same_v<ThisType, __half> )
-        tensor_cuda_types[tid] = CUDA_R_16F;
-    return;
+//     if ( std::is_same_v<ThisType, __half2> )
+//         tensor_cuda_types[tid] = CUDA_C_16F;
+//     return;
 
-    if ( std::is_same_v<ThisType, __half2> )
-        tensor_cuda_types[tid] = CUDA_C_16F;
-    return;
+//     // If we got here there is a problem.
 
-    // If we got here there is a problem.
-
-    std::cerr << "Error: TensorManager::SetTensorCudaType: Unsupported type.\n";
-    exit(1);
-}
+//     std::cerr << "Error: TensorManager::SetTensorCudaType: Unsupported type.\n";
+//     exit(1);
+// }
 
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
 void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorDescriptors( ) {
@@ -145,7 +152,7 @@ void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorDescriptor
                                                                 n_modes[i],
                                                                 extents_of_each_tensor[i].data( ),
                                                                 NULL /* stride assuming a packed layout including FFTW padding*/,
-                                                                tensor_cuda_types[i],
+                                                                GetCudaDataType(TensorID(i)),
                                                                 unary_operator[i]);
 
             cuTensorErr(CUTENSOR_STATUS_SUCCESS); // Only matters in debug mode;
@@ -159,7 +166,7 @@ void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorDescriptor
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
 void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::GetWorkSpaceSize( ) {
 
-    MyDebugAssertTrue((is_set_operation), "Set operation before getting work space size");
+    MyDebugAssertTrue(is_set_operation, "Set operations before getting work space size");
     workspace_size = 0;
     if ( workspace_ptr ) {
         cudaErr(cudaFree(workspace_ptr));
@@ -247,6 +254,8 @@ void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::GetWorkSpaceSize( )
 
 // So we can do separate compilation
 template class TensorManager<float, float, float, float, float>;
+template class TensorManager<nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16>;
+template class TensorManager<__half, __half, __half, __half, __half>;
 
 // template void TensorManager<float, float, float, float, float>::SetModes<char>(TensorID tid);
 // template void TensorManager<float, float, float, float, float>::SetModes<char, char>(TensorID tid);

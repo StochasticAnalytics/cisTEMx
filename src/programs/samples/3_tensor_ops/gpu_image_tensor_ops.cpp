@@ -278,8 +278,8 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
 
     SamplesBeginTest("TensorManager manual setup", passed);
 
-    cutensorComputeType_t                     ComputeType = CUTENSOR_COMPUTE_32F;
-    TensorManager<float, float, float, float> my_tm;
+    cutensorComputeType_t                            ComputeType = CUTENSOR_COMPUTE_32F;
+    TensorManager<float, float, float, float, float> my_tm;
 
     my_tm.SetAlphaAndBeta(1.f, 0.f);
 
@@ -351,7 +351,7 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
 
     my_tm.SetUnaryOperator(TensorID::A, CUTENSOR_OP_IDENTITY);
     my_tm.SetUnaryOperator(TensorID::B, CUTENSOR_OP_IDENTITY);
-    
+
     my_tm.SetTensorOperation(TensorOP::reduction);
 
     my_tm.SetTensorDescriptors( );

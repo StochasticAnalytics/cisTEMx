@@ -9013,6 +9013,59 @@ void Image::CalculateCrossCorrelationImageWith(Image* other_image) {
         other_image->BackwardFFT( );
 }
 
+void Image::FindPeakAtOriginFast2DMask(int wanted_max_pix_x, int wanted_max_pix_y) {
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
+    MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
+
+    int j;
+    int i;
+    int jj;
+    int pixel_counter;
+    int y_dim     = logical_y_dimension + padding_jump_value;
+    int max_pix_x = wanted_max_pix_x;
+    int max_pix_y = wanted_max_pix_y;
+
+    if ( max_pix_x > physical_address_of_box_center_x )
+        max_pix_x = physical_address_of_box_center_x;
+    if ( max_pix_y > physical_address_of_box_center_y )
+        max_pix_y = physical_address_of_box_center_y;
+
+    for ( j = 0; j <= max_pix_y; j++ ) {
+        jj = j * y_dim;
+        for ( i = 0; i <= max_pix_x; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    for ( j = logical_y_dimension - max_pix_y - 1; j <= logical_y_dimension - 1; j++ ) {
+        jj = j * y_dim;
+        for ( i = 0; i <= max_pix_x; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    for ( j = 0; j <= max_pix_y; j++ ) {
+        jj = j * y_dim;
+        for ( i = logical_x_dimension - max_pix_x - 1; i <= logical_x_dimension - 1; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    for ( j = logical_y_dimension - max_pix_y - 1; j <= logical_y_dimension - 1; j++ ) {
+        jj = j * y_dim;
+        for ( i = logical_x_dimension - max_pix_x - 1; i <= logical_x_dimension - 1; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    return;
+}
+
 Peak Image::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");

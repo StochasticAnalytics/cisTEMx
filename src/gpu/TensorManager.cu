@@ -17,16 +17,26 @@ TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::TensorManager(const GpuI
 
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
 TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::~TensorManager( ) {
+    Deallocate( );
+}
 
-    // TODO: should there be any cleanup of the handle?
+template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
+void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::Deallocate( ) {
+
+    // By design the TensorManager is non-owning, so the only thing to free is the workspace if it is allocated
+    if ( workspace_ptr ) {
+        cudaErr(cudaFree(workspace_ptr));
+        workspace_ptr = nullptr;
+    }
 }
 
 template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
 template <class ArrayType>
 bool TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::CheckForSetMetaData(ArrayType& is_property_set) {
 
-    for ( int i = 0; i < cg::max_tensor_manager_tensors; i++ ) {
+    for ( int i = 0; i < cistem::gpu::max_tensor_manager_tensors; i++ ) {
         if ( is_tensor_active[i] && ! is_property_set[i] ) {
+            wxPrintf("\nTensor %c is active but not all properties are set.\n", cistem::gpu::tensor_id::tensor_names[i]);
             return false;
             break;
         }
@@ -41,6 +51,8 @@ void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetDefaultValues( )
 
     workspace_size = 0;
     workspace_ptr  = nullptr;
+
+    is_set_operation = false;
 
     std::size_t i;
 
@@ -121,20 +133,91 @@ void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorDescriptor
 
     for ( std::size_t i = 0; i != tensor_descriptor.size( ); ++i ) {
         if ( is_tensor_active[i] ) {
-            // std::cerr << "Trying to set descriptor for tensor " << i << "\n";
+            // std::cerr << "Trying to set descriptor for tensor " << cistem::gpu::tensor_id::tensor_names[i] << "\n";
             // std::cerr << "n_modes: " << n_modes[i] << "\n";
             // for ( auto v : extents_of_each_tensor[i] ) {
             //     std::cerr << "extent is " << v << "\n";
             // }
             // std::cerr << "Cuda data type is " << tensor_cuda_types[i] << "\n";
             // std::cerr << "unary operator is " << unary_operator[i] << "\n";
-            cuTensorErr(cutensorInitTensorDescriptor(&handle,
-                                                     &tensor_descriptor[i],
-                                                     n_modes[i],
-                                                     extents_of_each_tensor[i].data( ),
-                                                     NULL /* stride assuming a packed layout including FFTW padding*/,
-                                                     tensor_cuda_types[i],
-                                                     unary_operator[i]));
+            cutensorStatus_t err = cutensorInitTensorDescriptor(&handle,
+                                                                &tensor_descriptor[i],
+                                                                n_modes[i],
+                                                                extents_of_each_tensor[i].data( ),
+                                                                NULL /* stride assuming a packed layout including FFTW padding*/,
+                                                                tensor_cuda_types[i],
+                                                                unary_operator[i]);
+
+            cuTensorErr(CUTENSOR_STATUS_SUCCESS); // Only matters in debug mode;
+            if ( err == CUTENSOR_STATUS_SUCCESS ) {
+                is_set_tensor_descriptor[i] = true; // if not true will trigger other asserts but should be redundant at this point in the logic.
+            }
+        }
+    }
+}
+
+template <class TypeA, class TypeB, class TypeC, class TypeD, class ComputeType>
+void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::GetWorkSpaceSize( ) {
+
+    MyDebugAssertTrue((is_set_operation), "Set operation before getting work space size");
+    workspace_size = 0;
+    if ( workspace_ptr ) {
+        cudaErr(cudaFree(workspace_ptr));
+        workspace_ptr = nullptr;
+    }
+
+    switch ( operation ) {
+        case TensorOP::reduction: {
+            MyDebugAssertTrue(CheckForSetMetaData(is_set_tensor_descriptor), "Set tensor descriptor before getting work space size");
+            MyDebugAssertTrue(CheckForSetMetaData(is_tensor_allocated), "Set tensor allocated before getting work space size");
+            if ( is_tensor_active[TensorID::A] && is_tensor_active[TensorID::B] && ! is_tensor_active[TensorID::C] ) {
+
+                cuTensorErr(cutensorReductionGetWorkspaceSize(&handle,
+                                                              my_ptrs._a_ptr, &tensor_descriptor[TensorID::A], modes[TensorID::A].data( ),
+                                                              my_ptrs._b_ptr, &tensor_descriptor[TensorID::B], modes[TensorID::B].data( ),
+                                                              my_ptrs._b_ptr, &tensor_descriptor[TensorID::B], modes[TensorID::B].data( ),
+                                                              cutensor_op, my_types._compute_type, &workspace_size));
+            }
+            else if ( is_tensor_active[TensorID::A] && is_tensor_active[TensorID::B] && is_tensor_active[TensorID::C] ) {
+                cuTensorErr(cutensorReductionGetWorkspaceSize(&handle,
+                                                              my_ptrs._a_ptr, &tensor_descriptor[TensorID::A], modes[TensorID::A].data( ),
+                                                              my_ptrs._b_ptr, &tensor_descriptor[TensorID::B], modes[TensorID::B].data( ),
+                                                              my_ptrs._c_ptr, &tensor_descriptor[TensorID::C], modes[TensorID::C].data( ),
+                                                              cutensor_op, my_types._compute_type, &workspace_size));
+            }
+            else {
+                wxPrintf("Active tensors expected to be A and B, or A and B and C.\n");
+                PrintActiveTensorNames( );
+                wxPrintf("Error: TensorManager::GetWorkSpaceSize: Unsupported operation.\n\n");
+                wxSleep(2);
+                DEBUG_ABORT;
+            }
+            break;
+        }
+        case TensorOP::contraction: {
+            MyDebugAssertTrue(false, "Contraction not implemented");
+            break;
+        }
+        case TensorOP::binary: {
+            MyDebugAssertTrue(false, "Binary not implemented");
+            break;
+        }
+        case TensorOP::ternary: {
+            MyDebugAssertTrue(false, "Ternary not implemented");
+            break;
+        }
+        default: {
+            wxPrintf("Unknown operation type in TensorManager::GetWorkSpaceSize\n");
+            wxSleep(2);
+            DEBUG_ABORT;
+            break;
+        }
+    }
+
+    if ( workspace_size > 0 ) {
+        if ( cudaSuccess != cudaMalloc(&workspace_ptr, workspace_size) ) {
+            workspace_ptr  = nullptr;
+            workspace_size = 0;
         }
     }
 }
@@ -146,7 +229,7 @@ void TensorManager<TypeA, TypeB, TypeC, TypeD, ComputeType>::SetTensorDescriptor
 //     n_modes[tid]        = modes[tid].size( );
 //     is_set_modes[tid]   = true;
 //     is_set_n_modes[tid] = true;
-//     // MyDebugAssert(modes[tid].size( ) <= cg::max_tensor_manager_dimensions, "Too many modes for a given tensor ID.");
+//     // MyDebugAssert(modes[tid].size( ) <= cistem::gpu::max_tensor_manager_dimensions, "Too many modes for a given tensor ID.");
 //     extent_of_each_mode.try_emplace(Mode, 0); // This will be checked later for proper setting, but don't overwrite if it already exists
 //     is_tensor_active[tid] = true;
 // };

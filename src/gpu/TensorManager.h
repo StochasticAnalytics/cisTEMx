@@ -31,8 +31,26 @@ struct TensorTypes<float, float, float, float, float> {
     cutensorComputeType_t _compute_type = CUTENSOR_COMPUTE_32F;
 };
 
-namespace cg   = cistem::gpu;
-using TensorID = cg::tensor_id::Enum;
+template <typename TypeA, typename TypeB, typename TypeC, typename TypeD>
+struct TensorPtrs {
+    // Use this to catch unsupported input/ compute types and throw exception.
+    int* _a_ptr = nullptr;
+    int* _b_ptr = nullptr;
+    int* _c_ptr = nullptr;
+    int* _d_ptr = nullptr;
+};
+
+// Input real, compute single-precision
+template <>
+struct TensorPtrs<float, float, float, float> {
+    float* _a_ptr;
+    float* _b_ptr;
+    float* _c_ptr;
+    float* _d_ptr;
+};
+
+using TensorID = cistem::gpu::tensor_id::Enum;
+using TensorOP = cistem::gpu::tensor_op::Enum;
 
 template <class TypeA = float, class TypeB = float, class TypeC = float, class TypeD = float, class TypeCompute = float>
 class TensorManager {
@@ -42,13 +60,53 @@ class TensorManager {
     TensorManager(const GpuImage& wanted_props);
     ~TensorManager( );
 
+    void Deallocate( );
+
     cutensorHandle_t handle;
 
     void SetDefaultValues( );
     template <class ThisType>
     void SetTensorCudaType(TensorID tid);
 
-    inline void SetMacroOP(cg::tensor_op::Enum wanted_macro_op) { macro_op = wanted_macro_op; };
+    template <class WantedPtr>
+    inline bool CheckPtrType(TensorID tid, WantedPtr* wanted_ptr) {
+        switch ( tid ) {
+            case TensorID::A:
+                return std::is_same_v<WantedPtr*, decltype(my_ptrs._a_ptr)>;
+            case TensorID::B:
+                return std::is_same_v<WantedPtr*, decltype(my_ptrs._b_ptr)>;
+            case TensorID::C:
+                return std::is_same_v<WantedPtr*, decltype(my_ptrs._c_ptr)>;
+            case TensorID::D:
+                return std::is_same_v<WantedPtr*, decltype(my_ptrs._d_ptr)>;
+            default:
+                static_assert("TensorID not supported");
+        }
+    };
+
+    template <class ThisType>
+    inline void SetTensorPointers(TensorID tid, ThisType* ptr) {
+        MyDebugAssertTrue(CheckPtrType<ThisType>(tid, ptr), "Type mismatch in pointer assignment");
+
+        switch ( tid ) {
+            case TensorID::A:
+                my_ptrs._a_ptr = ptr;
+                break;
+            case TensorID::B:
+                my_ptrs._b_ptr = ptr;
+                break;
+            case TensorID::C:
+                my_ptrs._c_ptr = ptr;
+                break;
+            case TensorID::D:
+                my_ptrs._d_ptr = ptr;
+                break;
+            default:
+                static_assert("TensorID not supported");
+        }
+    }
+
+    void GetWorkSpaceSize( );
 
     inline void SetAlphaAndBeta(TypeCompute wanted_alpha, TypeCompute wanted_beta) {
         alpha = wanted_alpha;
@@ -90,7 +148,7 @@ class TensorManager {
         n_modes[tid]        = modes[tid].size( );
         is_set_modes[tid]   = true;
         is_set_n_modes[tid] = true;
-        // MyDebugAssert(modes[tid].size( ) <= cg::max_tensor_manager_dimensions, "Too many modes for a given tensor ID.");
+        // MyDebugAssert(modes[tid].size( ) <= cistem::gpu::max_tensor_manager_dimensions, "Too many modes for a given tensor ID.");
         extent_of_each_mode.try_emplace(Mode, 0); // This will be checked later for proper setting, but don't overwrite if it already exists
         is_tensor_active[tid] = true;
     };
@@ -132,7 +190,7 @@ class TensorManager {
     }
 
     inline void SetNElementsForAllActiveTensors( ) {
-        for ( int tid = 0; tid < cg::max_tensor_manager_tensors; tid++ ) {
+        for ( int tid = 0; tid < cistem::gpu::max_tensor_manager_tensors; tid++ ) {
             if ( is_tensor_active[tid] )
                 SetNElementsInEachTensor(TensorID(tid));
         }
@@ -151,30 +209,49 @@ class TensorManager {
         // wxPrintf("Set unary operator for tensor %i\n", int(tid));
     };
 
-    std::array<std::vector<int32_t>, cg::max_tensor_manager_tensors> modes;
-    std::array<bool, cg::max_tensor_manager_tensors>                 is_set_modes;
+    void PrintActiveTensorNames( ) {
+        for ( auto tid : is_tensor_active ) {
+            std::cerr << "Tensor " << cistem::gpu::tensor_id::tensor_names[tid] << " is " << (is_tensor_active[tid] ? "active" : "not active") << "\n";
+        }
+    }
 
-    std::array<int32_t, cg::max_tensor_manager_tensors> n_modes;
-    std::array<bool, cg::max_tensor_manager_tensors>    is_set_n_modes;
+    inline void TensorIsAllocated(TensorID allocated_id) {
+        MyDebugAssertTrue(is_tensor_active[allocated_id], "Tensor ID not active.");
+        is_tensor_allocated[allocated_id] = true;
+    }
+
+    inline void SetTensorOperation(TensorOP wanted_op) {
+        MyDebugAssertFalse(is_set_operation, "Tensor operation already set.");
+        operation = wanted_op;
+        // TODO: set this in another function with case
+        cutensor_op      = CUTENSOR_OP_ADD;
+        is_set_operation = true;
+    }
+
+    std::array<std::vector<int32_t>, cistem::gpu::max_tensor_manager_tensors> modes;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                 is_set_modes;
+
+    std::array<int32_t, cistem::gpu::max_tensor_manager_tensors> n_modes;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>    is_set_n_modes;
 
     std::unordered_map<int32_t, int64_t> extent_of_each_mode;
 
-    std::array<std::vector<int64_t>, cg::max_tensor_manager_tensors> extents_of_each_tensor;
-    std::array<bool, cg::max_tensor_manager_tensors>                 is_set_extents_of_each_tensor;
+    std::array<std::vector<int64_t>, cistem::gpu::max_tensor_manager_tensors> extents_of_each_tensor;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                 is_set_extents_of_each_tensor;
 
-    std::array<cutensorTensorDescriptor_t, cg::max_tensor_manager_tensors> tensor_descriptor;
-    std::array<bool, cg::max_tensor_manager_tensors>                       is_set_tensor_descriptor;
+    std::array<cutensorTensorDescriptor_t, cistem::gpu::max_tensor_manager_tensors> tensor_descriptor;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>                       is_set_tensor_descriptor;
 
-    std::array<cutensorOperator_t, cg::max_tensor_manager_tensors> unary_operator;
-    std::array<bool, cg::max_tensor_manager_tensors>               is_set_unary_operator;
+    std::array<cutensorOperator_t, cistem::gpu::max_tensor_manager_tensors> unary_operator;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>               is_set_unary_operator;
 
-    std::array<size_t, cg::max_tensor_manager_tensors> n_elements_in_each_tensor;
-    std::array<bool, cg::max_tensor_manager_tensors>   is_set_n_elements_in_each_tensor;
+    std::array<size_t, cistem::gpu::max_tensor_manager_tensors> n_elements_in_each_tensor;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors>   is_set_n_elements_in_each_tensor;
 
-    std::array<bool, cg::max_tensor_manager_tensors> is_tensor_allocated;
-    std::array<bool, cg::max_tensor_manager_tensors> is_tensor_active;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors> is_tensor_allocated;
+    std::array<bool, cistem::gpu::max_tensor_manager_tensors> is_tensor_active;
 
-    std::array<cudaDataType_t, cg::max_tensor_manager_tensors> tensor_cuda_types;
+    std::array<cudaDataType_t, cistem::gpu::max_tensor_manager_tensors> tensor_cuda_types;
 
     TypeCompute alpha;
     TypeCompute beta;
@@ -182,9 +259,17 @@ class TensorManager {
     template <class ArrayType>
     bool CheckForSetMetaData(ArrayType& is_property_set);
 
-    uint64_t workspace_size;
-    void*    workspace_ptr;
+    // We could have multiple operations handled by the same tensor manager.
+    TensorOP           operation;
+    bool               is_set_operation;
+    cutensorOperator_t cutensor_op;
 
-    cg::tensor_op::Enum macro_op;
+    uint64_t workspace_size;
+    bool     is_set_workspace_size;
+
+    void* workspace_ptr;
+
+    TensorTypes<TypeA, TypeB, TypeC, TypeD, TypeCompute> my_types;
+    TensorPtrs<TypeA, TypeB, TypeC, TypeD>               my_ptrs;
 };
 #endif

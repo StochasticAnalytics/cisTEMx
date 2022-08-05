@@ -1,6 +1,8 @@
 #ifndef _src_core_cistem_constants_h_
 #define _src_core_cistem_constants_h_
 
+#include <array>
+
 // Place system wide constants and enums here. Gradually, we would like to replace the many defines.
 namespace cistem {
 
@@ -62,7 +64,11 @@ enum Enum : int {
     C,
     D,
 };
+
+// must match the above enum tensor_id
+constexpr std::array<char, 4> tensor_names = {'A', 'B', 'C', 'D'};
 } // namespace tensor_id
+
 } // namespace gpu
 
 } // namespace cistem

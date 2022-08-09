@@ -63,8 +63,12 @@ class GpuImage {
     // end  MEMBER VARIABLES FROM THE cpu IMAGE CLASS
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    cufftReal*    real_values_gpu; // !<  Real array to hold values for REAL images.
-    cufftComplex* complex_values_gpu; // !<  Complex array to hold values for COMP images.
+    float*  real_values_gpu; // !<  Real array to hold values for REAL images.
+    float2* complex_values_gpu; // !<  Complex array to hold values for COMP images.
+
+    // To make it easier to switch between different types of FFT plans we have void pointers for them here
+    void* position_space_ptr;
+    void* momentum_space_ptr;
 
     // The half precision buffers may be used as fp16 or bfloat16 and it is up to the user to track what is what.
     // This of course assumes they have the same size, which they should.
@@ -149,7 +153,6 @@ class GpuImage {
 
     void PrintNppStreamContext( );
 
-    bool is_fft_planned;
     //	bool is_cublas_loaded;
     bool is_npp_loaded;
     //	cublasStatus_t cublas_stat;
@@ -188,6 +191,13 @@ class GpuImage {
     void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value);
 
     void ClipIntoReturnMask(GpuImage* other_image);
+
+    // Used with explicit specializtion
+    template <class InputType, class OutputType>
+    void _ForwardFFT( );
+
+    template <class InputType, class OutputType>
+    void _BackwardFFT( );
 
     void ForwardFFT(bool should_scale = true); /**CPU_eq**/
     void BackwardFFT( ); /**CPU_eq**/
@@ -257,10 +267,11 @@ class GpuImage {
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
     Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, bool load_half_precision = false);
 
-    bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
-    void SetCufftPlan(bool use_half_precision = false);
-    void SetupInitialValues( );
-    void UpdateBoolsToDefault( );
+    bool                   Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
+    void                   SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer, void* output_buffer);
+    cistem::fft_type::Enum set_plan_type;
+    void                   SetupInitialValues( );
+    void                   UpdateBoolsToDefault( );
 
     template <int ntds_x = 32, int ntds_y = 32>
     __inline__ void ReturnLaunchParameters(int4 input_dims, bool real_space) {

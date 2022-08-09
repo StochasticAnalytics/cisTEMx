@@ -2523,6 +2523,15 @@ void GpuImage::CopyVolumeDeviceToHost(bool free_gpu_memory, bool unpin_host_memo
     }
 }
 
+template <class InputType, class OutputType>
+void GpuImage::_ForwardFFT( ) {
+}
+
+template <>
+void GpuImage::_ForwardFFT<float, float2>( ) {
+    cudaErr(cufftExecR2C(cuda_plan_forward, (cufftReal*)position_space_ptr, (cufftComplex*)momentum_space_ptr));
+}
+
 void GpuImage::ForwardFFT(bool should_scale) {
 
     bool is_half_precision = false;
@@ -2530,9 +2539,7 @@ void GpuImage::ForwardFFT(bool should_scale) {
     MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
     MyDebugAssertTrue(is_in_real_space, "Image alread in Fourier space");
 
-    if ( ! is_fft_planned ) {
-        SetCufftPlan( );
-    }
+    SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f, (void*)real_values_gpu, (void*)complex_values_gpu);
 
     // For reference to clear cufftXtClearCallback(cufftHandle lan, cufftXtCallbackType type);
     if ( is_half_precision && ! is_set_convertInputf16Tof32 ) {
@@ -2564,7 +2571,8 @@ void GpuImage::ForwardFFT(bool should_scale) {
     //	BufferInit(b_image);
     //    cudaErr(cufftExecR2C(this->cuda_plan_forward, (cufftReal*)real_values_gpu, (cufftComplex*)image_buffer->complex_values));
 
-    cudaErr(cufftExecR2C(this->cuda_plan_forward, (cufftReal*)real_values_gpu, (cufftComplex*)complex_values_gpu));
+    _ForwardFFT<float, float2>( );
+    // cudaErr(cufftExecR2C(this->cuda_plan_forward, position_space_ptr, momentum_space_ptr));
 
     is_in_real_space                 = false;
     host_image_ptr->is_in_real_space = false;
@@ -2578,9 +2586,7 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
     MyDebugAssertTrue(is_in_real_space, "Image alread in Fourier space");
     MyDebugAssertTrue(image_to_insert.is_in_real_space, "I in image to insert alread in Fourier space");
 
-    if ( ! is_fft_planned ) {
-        SetCufftPlan( );
-    }
+    SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f, (void*)real_values_gpu, (void*)complex_values_gpu);
 
     // For reference to clear cufftXtClearCallback(cufftHandle lan, cufftXtCallbackType type);
     if ( ! is_set_realLoadAndClipInto ) {
@@ -2617,7 +2623,9 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
     //	BufferInit(b_image);
     //    cudaErr(cufftExecR2C(this->cuda_plan_forward, (cufftReal*)real_values_gpu, (cufftComplex*)image_buffer->complex_values));
 
-    cudaErr(cufftExecR2C(this->cuda_plan_forward, (cufftReal*)real_values_gpu, (cufftComplex*)complex_values_gpu));
+    _ForwardFFT<float, float2>( );
+
+    // cudaErr(cufftExecR2C(this->cuda_plan_forward, position_space_ptr, momentum_space_ptr));
 
     is_in_real_space                 = false;
     host_image_ptr->is_in_real_space = false;
@@ -2625,19 +2633,23 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
     npp_ROI = npp_ROI_fourier_space;
 }
 
+template <>
+void GpuImage::_BackwardFFT<float, float2>( ) {
+    cudaErr(cufftExecC2R(cuda_plan_inverse, (cufftComplex*)momentum_space_ptr, (cufftReal*)position_space_ptr));
+}
+
 void GpuImage::BackwardFFT( ) {
 
     MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image is already in real space");
 
-    if ( ! is_fft_planned ) {
-        SetCufftPlan( );
-    }
+    SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f, (void*)real_values_gpu, (void*)complex_values_gpu);
 
     //  BufferInit(b_image);
     //  cudaErr(cufftExecC2R(this->cuda_plan_inverse, (cufftComplex*)image_buffer->complex_values, (cufftReal*)real_values_gpu));
 
-    cudaErr(cufftExecC2R(this->cuda_plan_inverse, (cufftComplex*)complex_values_gpu, (cufftReal*)real_values_gpu));
+    _BackwardFFT<float, float2>( );
+    // cudaErr(cufftExecC2R(this->cuda_plan_inverse, momentum_space_ptr, position_space_ptr));
 
     is_in_real_space                 = true;
     host_image_ptr->is_in_real_space = true;
@@ -2652,9 +2664,8 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
     MyDebugAssertFalse(is_in_real_space, "Image is already in real space");
     MyDebugAssertTrue(load_half_precision ? is_allocated_16f_buffer : true, "FP16 memory is not allocated, but is requested.");
 
-    if ( ! is_fft_planned ) {
-        SetCufftPlan( );
-    }
+    SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f, (void*)real_values_gpu, (void*)complex_values_gpu);
+
     if ( ! is_set_complexConjMulLoad ) {
         cufftCallbackStoreC              h_complexConjMulLoad;
         cufftCallbackStoreR              h_mipCCGStore;
@@ -2688,7 +2699,8 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
     //  BufferInit(b_image);
     //  cudaErr(cufftExecC2R(this->cuda_plan_inverse, (cufftComplex*)image_buffer->complex_values, (cufftReal*)real_values_gpu));
 
-    cudaErr(cufftExecC2R(this->cuda_plan_inverse, (cufftComplex*)complex_values_gpu, (cufftReal*)real_values_gpu));
+    _BackwardFFT<float, float2>( );
+    // cudaErr(cufftExecC2R(this->cuda_plan_inverse, momentum_space_ptr, position_space_ptr));
 
     is_in_real_space                 = true;
     host_image_ptr->is_in_real_space = true;
@@ -3113,7 +3125,32 @@ void GpuImage::QuickAndDirtyWriteSlices(std::string filename, int first_slice, i
     buffer_img.Deallocate( );
 }
 
-void GpuImage::SetCufftPlan(bool use_half_precision) {
+void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer, void* output_buffer) {
+
+    // We need to set the appropriate pointer types for the requested plan.
+    // We also want to record the type of plan requested to see if re-planning is necessary.
+    using ft = cistem::fft_type::Enum;
+
+    if ( plan_type == set_plan_type ) {
+        // We are good to go.
+        return;
+    }
+    else {
+        // We need to re-plan.
+        switch ( plan_type ) {
+            case ft::inplace_32f_32f_32f: {
+                position_space_ptr = reinterpret_cast<cufftReal*>(input_buffer);
+                momentum_space_ptr = reinterpret_cast<cufftComplex*>(output_buffer);
+                break;
+            }
+            default: {
+                std::cerr << "Want to set plan type " << cistem::fft_type::names[plan_type] << "\n";
+                MyDebugAssertTrue(false, "Unsupported plan type");
+                break;
+            }
+        }
+    }
+
     int            rank;
     long long int* fftDims;
     long long int* inembed;
@@ -3175,35 +3212,42 @@ void GpuImage::SetCufftPlan(bool use_half_precision) {
     // As far as I can tell, the padded layout must be assumed and onembed/inembed
     // are not needed. TODO ask John about this.
 
-    if ( use_half_precision ) {
-        cudaErr(cufftXtMakePlanMany(cuda_plan_forward, rank, fftDims,
-                                    NULL, NULL, NULL, CUDA_R_16F,
-                                    NULL, NULL, NULL, CUDA_C_16F, iBatch, &cuda_plan_worksize_forward, CUDA_C_16F));
-        cudaErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, fftDims,
-                                    NULL, NULL, NULL, CUDA_C_16F,
-                                    NULL, NULL, NULL, CUDA_R_16F, iBatch, &cuda_plan_worksize_inverse, CUDA_R_16F));
-    }
-    else {
-        cudaErr(cufftXtMakePlanMany(cuda_plan_forward, rank, fftDims,
-                                    NULL, NULL, NULL, CUDA_R_32F,
-                                    NULL, NULL, NULL, CUDA_C_32F, iBatch, &cuda_plan_worksize_forward, CUDA_C_32F));
-        cudaErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, fftDims,
-                                    NULL, NULL, NULL, CUDA_C_32F,
-                                    NULL, NULL, NULL, CUDA_R_32F, iBatch, &cuda_plan_worksize_inverse, CUDA_R_32F));
-    }
+    // if ( use_half_precision ) {
+    //     cudaErr(cufftXtMakePlanMany(cuda_plan_forward, rank, fftDims,
+    //                                 NULL, NULL, NULL, CUDA_R_16F,
+    //                                 NULL, NULL, NULL, CUDA_C_16F, iBatch, &cuda_plan_worksize_forward, CUDA_C_16F));
+    //     cudaErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, fftDims,
+    //                                 NULL, NULL, NULL, CUDA_C_16F,
+    //                                 NULL, NULL, NULL, CUDA_R_16F, iBatch, &cuda_plan_worksize_inverse, CUDA_R_16F));
+    // }
+    // else {
+    cudaErr(cufftXtMakePlanMany(cuda_plan_forward, rank, fftDims,
+                                NULL, NULL, NULL,
+                                CUDA_R_32F,
+                                NULL, NULL, NULL,
+                                CUDA_C_32F,
+                                iBatch, &cuda_plan_worksize_forward,
+                                CUDA_C_32F));
 
-    //    cufftPlanMany(&dims.cuda_plan_forward, rank, fftDims,
-    //                  inembed, iStride, iDist,
-    //                  onembed, oStride, oDist, CUFFT_R2C, iBatch);
-    //    cufftPlanMany(&dims.cuda_plan_inverse, rank, fftDims,
-    //                  onembed, oStride, oDist,
-    //                  inembed, iStride, iDist, CUFFT_C2R, iBatch);
+    cudaErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, fftDims,
+                                NULL, NULL, NULL,
+                                CUDA_C_32F,
+                                NULL, NULL, NULL,
+                                CUDA_R_32F,
+                                iBatch, &cuda_plan_worksize_inverse,
+                                CUDA_R_32F));
+    // }
+
+    // //    cufftPlanMany(&dims.cuda_plan_forward, rank, fftDims,
+    // //                  inembed, iStride, iDist,
+    // //                  onembed, oStride, oDist, CUFFT_R2C, iBatch);
+    // //    cufftPlanMany(&dims.cuda_plan_inverse, rank, fftDims,
+    // //                  onembed, oStride, oDist,
+    // //                  inembed, iStride, iDist, CUFFT_C2R, iBatch);
 
     delete[] fftDims;
     delete[] inembed;
     delete[] onembed;
-
-    is_fft_planned = true;
 }
 
 void GpuImage::Deallocate( ) {
@@ -3237,10 +3281,10 @@ void GpuImage::Deallocate( ) {
     // Separat method for all the buffer memory spaces, not sure it this makes sense
     BufferDestroy( );
 
-    if ( is_fft_planned ) {
+    if ( set_plan_type != cistem::fft_type::Enum::unset ) {
         cudaErr(cufftDestroy(cuda_plan_inverse));
         cudaErr(cufftDestroy(cuda_plan_forward));
-        is_fft_planned            = false;
+        set_plan_type             = cistem::fft_type::Enum::unset;
         is_set_complexConjMulLoad = false;
     }
 
@@ -3407,7 +3451,7 @@ void GpuImage::UpdateBoolsToDefault( ) {
     is_host_memory_pinned = false;
 
     // libraries
-    is_fft_planned = false;
+    set_plan_type = cistem::fft_type::Enum::unset;
     //	is_cublas_loaded = false;
     is_npp_loaded = false;
 
@@ -3842,7 +3886,7 @@ void GpuImage::Consume(GpuImage* other_image) {
 
     cuda_plan_forward = other_image->cuda_plan_forward;
     cuda_plan_inverse = other_image->cuda_plan_inverse;
-    is_fft_planned    = other_image->is_fft_planned;
+    set_plan_type     = other_image->set_plan_type;
 
     // We neeed to override the other image pointers so that it doesn't deallocate the memory.
     other_image->real_values_gpu    = NULL;
@@ -3851,7 +3895,7 @@ void GpuImage::Consume(GpuImage* other_image) {
 
     other_image->cuda_plan_forward = NULL;
     other_image->cuda_plan_inverse = NULL;
-    other_image->is_fft_planned    = false;
+    other_image->set_plan_type     = cistem::fft_type::Enum::unset;
 
     return;
 }

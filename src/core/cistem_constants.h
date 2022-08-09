@@ -2,6 +2,7 @@
 #define _src_core_cistem_constants_h_
 
 #include <array>
+#include <string_view>
 
 // Place system wide constants and enums here. Gradually, we would like to replace the many defines.
 namespace cistem {
@@ -37,6 +38,19 @@ enum Enum : int { reference_volume_t,
                   ctf_image_t,
                   beamtilt_image_t };
 }
+
+namespace fft_type {
+// inplace/outofplace
+// input type
+// compute_type
+// output_type
+
+enum Enum : int { unset,
+                  inplace_32f_32f_32f,
+                  outofplace_32f_32f_32f };
+
+constexpr std::array<std::string_view, 3> names = {"unset", "inplace_32f_32f_32f", "outofplace_32f_32f_32f"};
+} // namespace fft_type
 
 namespace gpu {
 

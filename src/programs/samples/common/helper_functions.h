@@ -10,7 +10,9 @@ void print2DArray(Image& image);
 
 void PrintArray(float* p, int maxLoops = 10);
 
-bool  CompareRealValues(Image& first_image, Image& second_image, float minimum_ccc = 0.999f, float mask_radius = 0.f);
+bool CompareRealValues(Image& first_image, Image& second_image, float minimum_ccc = 0.999f, float mask_radius = 0.f);
+bool CompareComplexValues(Image& first_image, Image& second_image, float minimum_ccc = 0.999f, float mask_radius = 0.f);
+
 Image GetAbsOfFourierTransformAsRealImage(Image& input_image);
 
 void SamplesPrintTestStartMessage(wxString message, bool bold = false);

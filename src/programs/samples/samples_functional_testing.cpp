@@ -19,6 +19,7 @@
 #include "1_cpu_gpu_comparison/masking.h"
 #include "1_cpu_gpu_comparison/statistical_ops.h"
 #include "3_tensor_ops/gpu_image_tensor_ops.h"
+#include "4_ffts/simple_cufft.h"
 
 // Test data
 #include "../console_test/hiv_image_80x80x1.cpp"
@@ -42,7 +43,8 @@ bool SamplesTestingApp::DoCalculation( ) {
 #ifdef ENABLEGPU
     // These are broken, I'm not quite sure where, seems to be allocation issues related to consme that Shiran wrote. Revisit.
     // FIXME, turn back on the tests when done debugging
-    all_tests_passed = all_tests_passed && DoBasicTensorOpsTest(hiv_images_80x80x10_filename, temp_directory);
+    all_tests_passed = all_tests_passed && GpuFftOps(hiv_image_80x80x1_filename, temp_directory);
+    // all_tests_passed = all_tests_passed && DoBasicTensorOpsTest(hiv_images_80x80x10_filename, temp_directory);
     // all_tests_passed = all_tests_passed && CPUvsGPUMaskingTest(hiv_image_80x80x1_filename, temp_directory);
     // all_tests_passed = all_tests_passed && DoCPUvsGPUResize(hiv_image_80x80x1_filename, temp_directory);
     // all_tests_passed = all_tests_passed && CPUvsGPUProjectionTest(temp_directory);

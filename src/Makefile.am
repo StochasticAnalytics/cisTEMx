@@ -745,6 +745,7 @@ if ENABLESAMPLES_AM
 if WANT_CISTEM_GPU_AM
         samples_functional_testing_SOURCES += programs/samples/1_cpu_gpu_comparison/resize_comparison.cpp programs/samples/1_cpu_gpu_comparison/projection_comparison.cpp programs/samples/1_cpu_gpu_comparison/masking.cpp programs/samples/1_cpu_gpu_comparison/statistical_ops.cpp 
         samples_functional_testing_SOURCES += programs/samples/3_tensor_ops/gpu_image_tensor_ops.cpp
+        samples_functional_testing_SOURCES += programs/samples/4_ffts/simple_cufft.cpp
 endif
 
 if WANT_CISTEM_GPU_AM 

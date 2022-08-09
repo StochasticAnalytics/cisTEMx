@@ -2355,9 +2355,8 @@ void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
 
     MyDebugAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
     // TODO other asserts on size etc.
-    precheck;
+
     cudaErr(cudaMemcpyAsync(pinnedPtr, real_values_gpu, real_memory_allocated * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
-    postcheck;
     //  cudaErr(cudaMemcpyAsync(real_values, real_values_gpu, real_memory_allocated*sizeof(float),cudaMemcpyDeviceToHost,cudaStreamPerThread));
     // TODO add asserts etc.
     if ( free_gpu_memory ) {
@@ -2567,8 +2566,9 @@ void GpuImage::ForwardFFT(bool should_scale) {
 
     cudaErr(cufftExecR2C(this->cuda_plan_forward, (cufftReal*)real_values_gpu, (cufftComplex*)complex_values_gpu));
 
-    is_in_real_space = false;
-    npp_ROI          = npp_ROI_fourier_space;
+    is_in_real_space                 = false;
+    host_image_ptr->is_in_real_space = false;
+    npp_ROI                          = npp_ROI_fourier_space;
 }
 
 void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale) {
@@ -2619,8 +2619,10 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
 
     cudaErr(cufftExecR2C(this->cuda_plan_forward, (cufftReal*)real_values_gpu, (cufftComplex*)complex_values_gpu));
 
-    is_in_real_space = false;
-    npp_ROI          = npp_ROI_fourier_space;
+    is_in_real_space                 = false;
+    host_image_ptr->is_in_real_space = false;
+
+    npp_ROI = npp_ROI_fourier_space;
 }
 
 void GpuImage::BackwardFFT( ) {
@@ -2637,8 +2639,10 @@ void GpuImage::BackwardFFT( ) {
 
     cudaErr(cufftExecC2R(this->cuda_plan_inverse, (cufftComplex*)complex_values_gpu, (cufftReal*)real_values_gpu));
 
-    is_in_real_space = true;
-    npp_ROI          = npp_ROI_real_space;
+    is_in_real_space                 = true;
+    host_image_ptr->is_in_real_space = true;
+
+    npp_ROI = npp_ROI_real_space;
 }
 
 template <typename T>
@@ -2686,8 +2690,9 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
 
     cudaErr(cufftExecC2R(this->cuda_plan_inverse, (cufftComplex*)complex_values_gpu, (cufftReal*)real_values_gpu));
 
-    is_in_real_space = true;
-    npp_ROI          = npp_ROI_real_space;
+    is_in_real_space                 = true;
+    host_image_ptr->is_in_real_space = true;
+    npp_ROI                          = npp_ROI_real_space;
 }
 
 template void GpuImage::BackwardFFTAfterComplexConjMul(__half2* image_to_multiply, bool load_half_precision);

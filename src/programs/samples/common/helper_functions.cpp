@@ -77,6 +77,32 @@ bool CompareRealValues(Image& first_image, Image& second_image, float minimum_cc
     }
 }
 
+bool CompareComplexValues(Image& first_image, Image& second_image, float minimum_ccc, float mask_radius) {
+
+    MyDebugAssertTrue(first_image.is_in_memory, "First image is not in memory");
+    MyDebugAssertTrue(second_image.is_in_memory, "Second image is not in memory");
+    MyDebugAssertFalse(first_image.is_in_real_space, "First image is not in real space");
+    MyDebugAssertFalse(second_image.is_in_real_space, "Second image is not in real space");
+    MyDebugAssertTrue(first_image.HasSameDimensionsAs(&second_image), "Images must have same dimensions");
+
+    // use everything within nyquist (maybe the corners should be checked too?)
+    constexpr float low_limit2       = 0.f;
+    constexpr float high_limit2      = 0.25f;
+    constexpr float signed_cc_limit2 = 0.25f;
+
+    float score = first_image.GetWeightedCorrelationWithImage(second_image, low_limit2, high_limit2, signed_cc_limit2);
+
+    if ( score < minimum_ccc ) {
+        wxPrintf("\nFailed CCC is %g\n", score);
+        first_image.QuickAndDirtyWriteSlice("first_image.mrc", 1);
+        second_image.QuickAndDirtyWriteSlice("second_image.mrc", 1);
+        return false;
+    }
+    else {
+        return true;
+    }
+}
+
 // void SamplesPrintResult(wxString testName, bool result) {
 
 //   wxPrintf("\t%s",testName);

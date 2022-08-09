@@ -63,28 +63,34 @@ class GpuImage {
     // end  MEMBER VARIABLES FROM THE cpu IMAGE CLASS
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    cufftReal*    real_values_gpu; // !<  Real array to hold values for REAL images.
-    cufftComplex* complex_values_gpu; // !<  Complex array to hold values for COMP images.
+    float*  real_values_gpu; // !<  Real array to hold values for REAL images.
+    float2* complex_values_gpu; // !<  Complex array to hold values for COMP images.
 
-    __half*  real_values_16f;
-    __half2* complex_values_16f;
-    __half*  ctf_buffer_16f;
-    __half2* ctf_complex_buffer_16f;
+    // To make it easier to switch between different types of FFT plans we have void pointers for them here
+    void* position_space_ptr;
+    void* momentum_space_ptr;
 
-    // inline float ReturnAsFloat(float* h) {
-    //     *tmpVal = h;
-    //     return *tmpVal;
-    // };
+    // The half precision buffers may be used as fp16 or bfloat16 and it is up to the user to track what is what.
+    // This of course assumes they have the same size, which they should.
+    static constexpr size_t size_of_half = sizeof(__half);
+    static_assert(size_of_half == sizeof(nv_bfloat16), "it is assumed sizeof(fp16) == sizeof(bfloat16)");
+    static_assert(size_of_half * 2 == sizeof(nv_bfloat162), "it is assumed sizeof(fp16) == sizeof(bfloat16)");
+    static_assert(size_of_half == sizeof(half_float::half), "GPU and CPU half precision types must be the same size");
 
-    // inline float ReturnAsFloat(__half* h) {
-    //     *tmpVal = __half2float(h);
-    //     return *tmpVal;
-    // };
+    void* real_values_16f;
+    void* complex_values_16f;
+    void* ctf_buffer_16f;
+    void* ctf_complex_buffer_16f;
 
-    // inline float ReturnAsFloat(nv_bfloat16* h) {
-    //     *tmpVal = __bfloat162float(h);
-    //     return *tmpVal;
-    // };
+    __half*  real_values_fp16        = reinterpret_cast<__half*>(real_values_16f);
+    __half2* complex_values_fp16     = reinterpret_cast<__half2*>(complex_values_16f);
+    __half*  ctf_buffer_fp16         = reinterpret_cast<__half*>(ctf_buffer_16f);
+    __half2* ctf_complex_buffer_fp16 = reinterpret_cast<__half2*>(ctf_complex_buffer_16f);
+
+    nv_bfloat16*  real_values_bf16        = reinterpret_cast<nv_bfloat16*>(real_values_16f);
+    nv_bfloat162* complex_values_bf16     = reinterpret_cast<nv_bfloat162*>(complex_values_16f);
+    nv_bfloat16*  ctf_buffer_bf16         = reinterpret_cast<nv_bfloat16*>(ctf_buffer_16f);
+    nv_bfloat162* ctf_complex_buffer_bf16 = reinterpret_cast<nv_bfloat162*>(ctf_complex_buffer_16f);
 
     // We want to be able to re-use the texture object, so only set it up once.
     cudaTextureObject_t tex_real;
@@ -140,6 +146,8 @@ class GpuImage {
     size_t      cuda_plan_worksize_forward;
     size_t      cuda_plan_worksize_inverse;
 
+    int cufft_batch_size;
+
     //Stream for asynchronous command execution
     cudaStream_t     calcStream;
     cudaStream_t     copyStream;
@@ -147,7 +155,6 @@ class GpuImage {
 
     void PrintNppStreamContext( );
 
-    bool is_fft_planned;
     //	bool is_cublas_loaded;
     bool is_npp_loaded;
     //	cublasStatus_t cublas_stat;
@@ -187,8 +194,19 @@ class GpuImage {
 
     void ClipIntoReturnMask(GpuImage* other_image);
 
+    // Used with explicit specializtion
+    template <class InputType, class OutputType>
+    void _ForwardFFT( );
+
+    template <class InputType, class OutputType>
+    void _BackwardFFT( );
+
     void ForwardFFT(bool should_scale = true); /**CPU_eq**/
+    void ForwardFFTBatched(bool should_scale = true);
+
     void BackwardFFT( ); /**CPU_eq**/
+    void BackwardFFTBatched( );
+
     void ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale);
     template <typename T>
     void BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision);
@@ -255,10 +273,11 @@ class GpuImage {
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
     Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, bool load_half_precision = false);
 
-    bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
-    void SetCufftPlan(bool use_half_precision = false);
-    void SetupInitialValues( );
-    void UpdateBoolsToDefault( );
+    bool                   Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
+    void                   SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer, void* output_buffer);
+    cistem::fft_type::Enum set_plan_type;
+    void                   SetupInitialValues( );
+    void                   UpdateBoolsToDefault( );
 
     template <int ntds_x = 32, int ntds_y = 32>
     __inline__ void ReturnLaunchParameters(int4 input_dims, bool real_space) {

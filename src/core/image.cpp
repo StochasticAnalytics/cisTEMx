@@ -581,6 +581,9 @@ float Image::GetWeightedCorrelationWithImage(Image& projection_image, float low_
     int   i, j, k, pixel_counter;
     float x, y, z, frequency_squared;
     pixel_counter = 0;
+    int doing_it  = 0;
+    int doing_it2 = 0;
+    int doing_it3 = 0;
     for ( k = 0; k <= physical_upper_bound_complex_z; k++ ) {
         z = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k) * fourier_voxel_size_z, 2);
         for ( j = 0; j <= physical_upper_bound_complex_y; j++ ) {
@@ -588,13 +591,15 @@ float Image::GetWeightedCorrelationWithImage(Image& projection_image, float low_
             for ( i = 0; i <= physical_upper_bound_complex_x; i++ ) {
                 x                 = powf(i * fourier_voxel_size_x, 2);
                 frequency_squared = x + y + z;
-                if ( frequency_squared >= low_limit2 && frequency_squared <= high_limit2 && (i > 1 && j > 1 && k > 1) ) {
+                doing_it3++;
+                if ( frequency_squared >= low_limit2 && frequency_squared <= high_limit2 && ! (i == 0 && j == 0 && k == 0) ) {
+                    doing_it++;
                     if ( (c_img[pixel_counter] == 0.f && c_img[pixel_counter + 1] == 0.0f) ||
                          (p_img[pixel_counter] == 0.f && p_img[pixel_counter + 1] == 0.0f) ) {
                         // Do nothing
                     }
                     else {
-
+                        doing_it2++;
                         sum1 += (powf(c_img[pixel_counter], 2) + powf(c_img[pixel_counter + 1], 2));
                         sum2 += (powf(p_img[pixel_counter], 2) + powf(p_img[pixel_counter + 1], 2));
                         if ( frequency_squared > signed_CC_limit2 ) {

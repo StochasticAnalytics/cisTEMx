@@ -2,6 +2,7 @@
 #define _src_core_cistem_constants_h_
 
 #include <array>
+#include <string_view>
 
 // Place system wide constants and enums here. Gradually, we would like to replace the many defines.
 namespace cistem {
@@ -38,6 +39,25 @@ enum Enum : int { reference_volume_t,
                   beamtilt_image_t };
 }
 
+namespace fft_type {
+// inplace/outofplace
+// input type
+// compute_type
+// output_type
+
+enum Enum : int { unset,
+                  inplace_32f_32f_32f,
+                  outofplace_32f_32f_32f,
+                  inplace_32f_32f_32f_batched,
+                  outofplace_32f_32f_32f_batched };
+
+constexpr std::array<std::string_view, 5> names = {"unset",
+                                                   "inplace_32f_32f_32f",
+                                                   "outofplace_32f_32f_32f",
+                                                   "inplace_32f_32f_32f_batched",
+                                                   "outofplace_32f_32f_32f_batched"};
+} // namespace fft_type
+
 namespace gpu {
 
 constexpr int warp_size             = 32;
@@ -69,6 +89,25 @@ enum Enum : int {
 constexpr std::array<char, 4> tensor_names = {'A', 'B', 'C', 'D'};
 } // namespace tensor_id
 
+// valid as of cuda 11.7 from cufft.h definition of cufftResult_t
+constexpr std::array<std::string_view, 17> cufft_error_types = {
+        "CUFFT_SUCCESS",
+        "CUFFT_INVALID_PLAN",
+        "CUFFT_ALLOC_FAILED",
+        "CUFFT_INVALID_TYPE",
+        "CUFFT_INVALID_VALUE",
+        "CUFFT_INTERNAL_ERROR",
+        "CUFFT_EXEC_FAILED",
+        "CUFFT_SETUP_FAILED",
+        "CUFFT_INVALID_SIZE ",
+        "CUFFT_UNALIGNED_DATA",
+        "CUFFT_INCOMPLETE_PARAMETER_LIST",
+        "CUFFT_INVALID_DEVICE",
+        "CUFFT_PARSE_ERROR",
+        "CUFFT_NO_WORKSPACE",
+        "CUFFT_NOT_IMPLEMENTED",
+        "CUFFT_LICENSE_ERROR",
+        "CUFFT_NOT_SUPPORTED"};
 } // namespace gpu
 
 } // namespace cistem

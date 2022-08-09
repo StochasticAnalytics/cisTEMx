@@ -12,6 +12,13 @@
 #include "../common/common.h"
 #include "simple_cufft.h"
 
+#define RUN_TIMING_TESTS
+#ifdef RUN_TIMING_TESTS
+using namespace cistem_timer;
+#else
+using namespace cistem_timer_noop;
+#endif
+
 bool GpuFftOps(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     bool passed;
@@ -20,6 +27,7 @@ bool GpuFftOps(const wxString& hiv_image_80x80x1_filename, wxString& temp_direct
     SamplesPrintTestStartMessage("Starting GPU FFT tests:", false);
 
     all_passed = all_passed && DoInPlaceR2CandC2R(hiv_image_80x80x1_filename, temp_directory);
+    all_passed = all_passed && DoInPlaceR2CandC2RBatched(hiv_image_80x80x1_filename, temp_directory);
 
     SamplesBeginTest("GPU FFT tests overall", passed);
     SamplesPrintResult(all_passed, __LINE__);
@@ -132,6 +140,108 @@ bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& te
 
     all_passed = all_passed && passed;
     SamplesTestResult(passed);
+
+    return all_passed;
+}
+
+bool DoInPlaceR2CandC2RBatched(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
+
+    bool passed     = true;
+    bool all_passed = true;
+
+    SamplesBeginTest("Batched 2d ffts (accuracy)", passed);
+
+    constexpr size_t image_size = 256;
+    constexpr size_t batch_size = 400;
+
+
+    std::array<Image, batch_size>    cpu_individual;
+    std::array<GpuImage, batch_size> gpu_individual;
+
+    // Create two 3d images to mirror the stack of 2ds, but with contiguous image datas memory.
+    Image    cpu_batch;
+    GpuImage gpu_batch;
+
+    constexpr bool should_allocate_in_real_space = true;
+    constexpr bool should_make_fftw_plan         = true;
+
+    // Allocate and fill the 3d with random data, and then we will point each of the individual 2ds at the
+    // correct place in the 3d's image memory.
+
+    cpu_batch.Allocate(image_size, image_size, batch_size, should_allocate_in_real_space, should_make_fftw_plan);
+    cpu_batch.FillWithNoiseFromNormalDistribution(0.f, 1.f);
+
+    gpu_batch.Init(cpu_batch, true, true);
+    gpu_batch.CopyHostToDeviceAndSynchronize( );
+
+    int stride = (cpu_batch.padding_jump_value + cpu_batch.logical_x_dimension) * cpu_batch.logical_y_dimension;
+    for ( int i = 0; i < batch_size; i++ ) {
+        cpu_individual[i].Allocate(image_size, image_size, 1, should_allocate_in_real_space, should_make_fftw_plan);
+        cpu_individual[i].real_values    = &cpu_batch.real_values[i * stride];
+        cpu_individual[i].complex_values = (std::complex<float>*)cpu_individual[i].real_values;
+
+        // The cpu memory is already pinned
+        gpu_individual[i].Init(cpu_individual[i], false, true);
+        gpu_individual[i].CopyHostToDeviceAndSynchronize( );
+    }
+
+    StopWatch timer;
+
+    timer.start("GPU 2d");
+    for ( int i = 0; i < batch_size; i++ ) {
+        gpu_individual[i].ForwardFFT( );
+    }
+    timer.lap_sync("GPU 2d");
+
+    timer.start("Gpu 2d batched");
+    gpu_batch.ForwardFFTBatched( );
+    timer.lap_sync("Gpu 2d batched");
+
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+
+    // Create some clean images for our equality test.
+    Image    tmp_ind, tmp_batch;
+    GpuImage tmp_gpu_batch;
+
+    // Again, this memory is already pinned on the host, so don't attempt to re-pin it here.
+    tmp_gpu_batch.Init(cpu_individual[0], false, true);
+    for ( int i = 0; i < batch_size; i++ ) {
+        // if we add the BackwardFFT to the test, we may not want to clear the memory here
+        tmp_ind                       = gpu_individual[i].CopyDeviceToNewHost(true, true, true);
+        tmp_gpu_batch.real_values_gpu = &gpu_batch.real_values_gpu[stride * i];
+        tmp_batch                     = tmp_gpu_batch.CopyDeviceToNewHost(true, false, false);
+
+        passed = passed && CompareComplexValues(tmp_ind, tmp_batch);
+    }
+
+    // We can't safely leave these pointers at memory the don't own.
+    // I guess this also means the memory allocated originally is not cleared? I suppose some type of "borrowmemory"
+    // Function that upone destruction "returns" the memory (just doesn't free it) and then *does* free it's own memory
+    // would be useful.
+    tmp_gpu_batch.real_values_gpu = nullptr;
+    for ( int i = 0; i < batch_size; i++ ) {
+        cpu_individual[i].real_values = nullptr;
+    }
+
+    float ratio_seq_to_batched = timer.get_ratio_of_times("GPU 2d", "Gpu 2d batched");
+    // wxPrintf("Ratio of tims is %f\n", ratio_seq_to_batched);
+    // timer.print_times( );
+
+    all_passed = all_passed && passed;
+    SamplesTestResult(passed);
+
+    SamplesBeginTest("Batched 2d ffts (performance)", passed);
+
+    // For size 256 on Salina (rtx 3080 ti and AMD 5950 this is usually 65-70 )
+    passed = passed && ratio_seq_to_batched > 50.f;
+
+    all_passed = all_passed && passed;
+    SamplesTestResult(passed);
+    // for ( int i = 0; i < batch_size; i++ ) {
+    //     gpu_individual[i].Deallocate( );
+    // }
+    // delete[] cpu_individual;
+    // delete[] gpu_individual;
 
     return all_passed;
 }

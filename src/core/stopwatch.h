@@ -23,6 +23,8 @@ class StopWatch {
     inline void print_times(bool thread_safe = true) { return; }
 
     inline void mark_entry_or_exit_point(bool thread_safe = true) { return; }
+
+    inline void get_ratio_of_times(std::string event_1, std::string event_2, bool threadsafe = true) { return; }
 };
 
 } // namespace cistem_timer_noop
@@ -53,6 +55,8 @@ class StopWatch {
 
     // Start or pause the total elapsed time when passing a stopwatch pointer to a method. Place inside the method at the entry and exit point of the method call.
     void mark_entry_or_exit_point(bool thread_safe = true);
+
+    float get_ratio_of_times(std::string event_1, std::string event_2, bool threadsafe = true);
 
   private:
     enum TimeFormat : int { NANOSECONDS,

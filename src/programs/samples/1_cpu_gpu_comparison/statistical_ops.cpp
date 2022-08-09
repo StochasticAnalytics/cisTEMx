@@ -21,7 +21,7 @@ bool CPUvsGPUStatisticalOpsTest(const wxString& hiv_image_80x80x1_filename, wxSt
 
     SamplesPrintTestStartMessage("Starting CPU vs GPU masking tests:", false);
 
-    all_passed = all_passed && DoStatsticalMomentsTests(hiv_image_80x80x1_filename, temp_directory);
+    // all_passed = all_passed && DoStatsticalMomentsTests(hiv_image_80x80x1_filename, temp_directory);
     // all_passed = all_passed && DoExtremumTests(hiv_image_80x80x1_filename, temp_directory);
 
     SamplesBeginTest("CPU vs GPU overall", passed);

@@ -3,5 +3,6 @@
 
 bool GpuFftOps(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);
 bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);
+bool DoInPlaceR2CandC2RBatched(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);
 
 #endif

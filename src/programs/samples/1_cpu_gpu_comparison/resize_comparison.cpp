@@ -44,7 +44,7 @@ bool DoCPUvsGPURealSpaceResize(wxString hiv_image_80x80x1_filename, wxString tem
     wxString tmp_img_filename = temp_directory + "/tmp1.mrc";
 
     MRCFile input_file(hiv_image_80x80x1_filename.ToStdString( ), false);
-    MRCFile output_file(tmp_img_filename.ToStdString( ), false);
+    MRCFile output_file(tmp_img_filename.ToStdString( ), true);
 
     all_passed = all_passed && passed;
 
@@ -126,7 +126,7 @@ bool DoCPUvsGPUFourierResize(wxString hiv_image_80x80x1_filename, wxString temp_
 
     wxString tmp_img_filename = temp_directory + "/tmp1.mrc";
 
-    MRCFile output_file(tmp_img_filename.ToStdString( ), false);
+    MRCFile output_file(tmp_img_filename.ToStdString( ), true);
 
     SamplesBeginTest("Fourier Crop CPU and GPU images", passed);
     Image cpu_image;

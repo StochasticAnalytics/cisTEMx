@@ -2548,9 +2548,10 @@ void GpuImage::ForwardFFTBatched(bool should_scale) {
     _ForwardFFT<float, float2>( );
     // cudaErr(cufftExecR2C(this->cuda_plan_forward, position_space_ptr, momentum_space_ptr));
 
-    is_in_real_space                 = false;
-    host_image_ptr->is_in_real_space = false;
-    npp_ROI                          = npp_ROI_fourier_space;
+    is_in_real_space = false;
+    if ( host_image_ptr )
+        host_image_ptr->is_in_real_space = false;
+    npp_ROI = npp_ROI_fourier_space;
 }
 
 void GpuImage::ForwardFFT(bool should_scale) {
@@ -2595,9 +2596,10 @@ void GpuImage::ForwardFFT(bool should_scale) {
     _ForwardFFT<float, float2>( );
     // cudaErr(cufftExecR2C(this->cuda_plan_forward, position_space_ptr, momentum_space_ptr));
 
-    is_in_real_space                 = false;
-    host_image_ptr->is_in_real_space = false;
-    npp_ROI                          = npp_ROI_fourier_space;
+    is_in_real_space = false;
+    if ( host_image_ptr )
+        host_image_ptr->is_in_real_space = false;
+    npp_ROI = npp_ROI_fourier_space;
 }
 
 void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale) {
@@ -2648,8 +2650,9 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
 
     // cudaErr(cufftExecR2C(this->cuda_plan_forward, position_space_ptr, momentum_space_ptr));
 
-    is_in_real_space                 = false;
-    host_image_ptr->is_in_real_space = false;
+    is_in_real_space = false;
+    if ( host_image_ptr )
+        host_image_ptr->is_in_real_space = false;
 
     npp_ROI = npp_ROI_fourier_space;
 }
@@ -2672,8 +2675,9 @@ void GpuImage::BackwardFFT( ) {
     _BackwardFFT<float, float2>( );
     // cudaErr(cufftExecC2R(this->cuda_plan_inverse, momentum_space_ptr, position_space_ptr));
 
-    is_in_real_space                 = true;
-    host_image_ptr->is_in_real_space = true;
+    is_in_real_space = true;
+    if ( host_image_ptr )
+        host_image_ptr->is_in_real_space = true;
 
     npp_ROI = npp_ROI_real_space;
 }
@@ -2724,6 +2728,7 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
     // cudaErr(cufftExecC2R(this->cuda_plan_inverse, momentum_space_ptr, position_space_ptr));
 
     is_in_real_space                 = true;
+    if ( host_image_ptr )
     host_image_ptr->is_in_real_space = true;
     npp_ROI                          = npp_ROI_real_space;
 }

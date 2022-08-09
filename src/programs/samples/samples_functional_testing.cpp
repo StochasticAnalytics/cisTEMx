@@ -45,10 +45,10 @@ bool SamplesTestingApp::DoCalculation( ) {
     // FIXME, turn back on the tests when done debugging
     all_tests_passed = all_tests_passed && GpuFftOps(hiv_image_80x80x1_filename, temp_directory);
     // all_tests_passed = all_tests_passed && DoBasicTensorOpsTest(hiv_images_80x80x10_filename, temp_directory);
-    // all_tests_passed = all_tests_passed && CPUvsGPUMaskingTest(hiv_image_80x80x1_filename, temp_directory);
-    // all_tests_passed = all_tests_passed && DoCPUvsGPUResize(hiv_image_80x80x1_filename, temp_directory);
-    // all_tests_passed = all_tests_passed && CPUvsGPUProjectionTest(temp_directory);
-    // all_tests_passed = all_tests_passed && CPUvsGPUStatisticalOpsTest(hiv_image_80x80x1_filename, temp_directory);
+    // all_tests_passed = all_tests_passed && CPUvsGPUMaskingTest(hiv_image_80x80x1_filename, temp_directory); // these are not working due to the NPPI statistical library issues.
+    all_tests_passed = all_tests_passed && DoCPUvsGPUResize(hiv_image_80x80x1_filename, temp_directory);
+    all_tests_passed = all_tests_passed && CPUvsGPUProjectionTest(temp_directory);
+    all_tests_passed = all_tests_passed && CPUvsGPUStatisticalOpsTest(hiv_image_80x80x1_filename, temp_directory);
 #else
     wxPrintf("GPU support disabled. skipping GPU tests.\n");
 #endif

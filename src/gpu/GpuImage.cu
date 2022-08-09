@@ -2532,6 +2532,27 @@ void GpuImage::_ForwardFFT<float, float2>( ) {
     cudaErr(cufftExecR2C(cuda_plan_forward, (cufftReal*)position_space_ptr, (cufftComplex*)momentum_space_ptr));
 }
 
+void GpuImage::ForwardFFTBatched(bool should_scale) {
+    MyDebugAssertTrue(dims.y > 1 && dims.x > 1 && dims.z > 1, "ForwardFFTBatched is only implemented for a stack of 2D images");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Image alread in Fourier space");
+
+    cufft_batch_size = dims.z;
+
+    SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f_batched, (void*)real_values_gpu, (void*)complex_values_gpu);
+
+    // FIXME, this should be a load call back
+    if ( should_scale ) {
+        this->MultiplyByConstant(ft_normalization_factor * ft_normalization_factor);
+    }
+    _ForwardFFT<float, float2>( );
+    // cudaErr(cufftExecR2C(this->cuda_plan_forward, position_space_ptr, momentum_space_ptr));
+
+    is_in_real_space                 = false;
+    host_image_ptr->is_in_real_space = false;
+    npp_ROI                          = npp_ROI_fourier_space;
+}
+
 void GpuImage::ForwardFFT(bool should_scale) {
 
     bool is_half_precision = false;
@@ -3143,6 +3164,11 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
                 momentum_space_ptr = reinterpret_cast<cufftComplex*>(output_buffer);
                 break;
             }
+            case ft::inplace_32f_32f_32f_batched: {
+                position_space_ptr = reinterpret_cast<cufftReal*>(input_buffer);
+                momentum_space_ptr = reinterpret_cast<cufftComplex*>(output_buffer);
+                break;
+            }
             default: {
                 std::cerr << "Want to set plan type " << cistem::fft_type::names[plan_type] << "\n";
                 MyDebugAssertTrue(false, "Unsupported plan type");
@@ -3152,9 +3178,14 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     }
 
     int            rank;
-    long long int* fftDims;
-    long long int* inembed;
+    long long int* ifftDims;
+    long long int* offtDims;
+    long long int* inembed; // input storage (not logical) dimensions
     long long int* onembed;
+    long long int  iStride = 1;
+    long long int  oStride = 1;
+    long long int  iDist;
+    long long int  oDist;
 
     cudaErr(cufftCreate(&cuda_plan_forward));
     cudaErr(cufftCreate(&cuda_plan_inverse));
@@ -3162,52 +3193,74 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     cudaErr(cufftSetStream(cuda_plan_forward, cudaStreamPerThread));
     cudaErr(cufftSetStream(cuda_plan_inverse, cudaStreamPerThread));
 
-    if ( dims.z > 1 ) {
-        rank    = 3;
-        fftDims = new long long int[rank];
-        inembed = new long long int[rank];
-        onembed = new long long int[rank];
+    if ( dims.z > 1 && cufft_batch_size == 1 ) {
+        rank     = 3;
+        ifftDims = new long long int[rank];
+        offtDims = new long long int[rank];
+        inembed  = new long long int[rank];
+        onembed  = new long long int[rank];
 
-        fftDims[0] = dims.z;
-        fftDims[1] = dims.y;
-        fftDims[2] = dims.x;
+        ifftDims[0] = dims.z;
+        ifftDims[1] = dims.y;
+        ifftDims[2] = dims.x;
 
         inembed[0] = dims.z;
         inembed[1] = dims.y;
         inembed[2] = dims.w; // Storage dimension (padded)
 
+        iDist = inembed[0] * inembed[1] * inembed[2];
+
+        offtDims[0] = dims.z;
+        offtDims[1] = dims.y;
+        offtDims[2] = dims.w / 2;
+
         onembed[0] = dims.z;
         onembed[1] = dims.y;
         onembed[2] = dims.w / 2; // Storage dimension (padded)
+
+        oDist = onembed[0] * onembed[1] * onembed[2];
     }
     else if ( dims.y > 1 ) {
-        rank    = 2;
-        fftDims = new long long int[rank];
-        inembed = new long long int[rank];
-        onembed = new long long int[rank];
+        rank     = 2;
+        ifftDims = new long long int[rank];
+        offtDims = new long long int[rank];
+        inembed  = new long long int[rank];
+        onembed  = new long long int[rank];
 
-        fftDims[0] = dims.y;
-        fftDims[1] = dims.x;
+        ifftDims[0] = dims.y;
+        ifftDims[1] = dims.x;
 
         inembed[0] = dims.y;
         inembed[1] = dims.w;
 
+        iDist = inembed[0] * inembed[1];
+
+        offtDims[0] = dims.y;
+        offtDims[1] = dims.w / 2;
+
         onembed[0] = dims.y;
         onembed[1] = dims.w / 2;
+
+        oDist = onembed[0] * onembed[1];
     }
     else {
-        rank    = 1;
-        fftDims = new long long int[rank];
-        inembed = new long long int[rank];
-        onembed = new long long int[rank];
+        rank     = 1;
+        ifftDims = new long long int[rank];
+        offtDims = new long long int[rank];
+        inembed  = new long long int[rank];
+        onembed  = new long long int[rank];
 
-        fftDims[0] = dims.x;
+        ifftDims[0] = dims.x;
+        iDist       = dims.w;
 
         inembed[0] = dims.w;
-        onembed[0] = dims.w / 2;
-    }
 
-    int iBatch = 1;
+        offtDims[0] = dims.w / 2;
+
+        onembed[0] = dims.w / 2;
+
+        oDist = dims.w / 2;
+    }
 
     // As far as I can tell, the padded layout must be assumed and onembed/inembed
     // are not needed. TODO ask John about this.
@@ -3221,31 +3274,34 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     //                                 NULL, NULL, NULL, CUDA_R_16F, iBatch, &cuda_plan_worksize_inverse, CUDA_R_16F));
     // }
     // else {
-    cudaErr(cufftXtMakePlanMany(cuda_plan_forward, rank, fftDims,
-                                NULL, NULL, NULL,
-                                CUDA_R_32F,
-                                NULL, NULL, NULL,
-                                CUDA_C_32F,
-                                iBatch, &cuda_plan_worksize_forward,
-                                CUDA_C_32F));
 
-    cudaErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, fftDims,
-                                NULL, NULL, NULL,
-                                CUDA_C_32F,
-                                NULL, NULL, NULL,
-                                CUDA_R_32F,
-                                iBatch, &cuda_plan_worksize_inverse,
-                                CUDA_R_32F));
-    // }
+    std::cerr << "FFT plan type " << cistem::fft_type::names[plan_type] << "\n";
+    std::cerr << "inembed " << inembed[0] << " " << inembed[1] << "\n";
+    std::cerr << "onembed " << onembed[0] << " " << onembed[1] << "\n";
+    std::cerr << "iDist " << iDist << "\n";
+    std::cerr << "oDist " << oDist << "\n";
+    std::cerr << "iStride " << iStride << "\n";
+    std::cerr << "oStride " << oStride << "\n";
+    std::cerr << "iBatch " << cufft_batch_size << "\n";
 
-    // //    cufftPlanMany(&dims.cuda_plan_forward, rank, fftDims,
-    // //                  inembed, iStride, iDist,
-    // //                  onembed, oStride, oDist, CUFFT_R2C, iBatch);
-    // //    cufftPlanMany(&dims.cuda_plan_inverse, rank, fftDims,
-    // //                  onembed, oStride, oDist,
-    // //                  inembed, iStride, iDist, CUFFT_C2R, iBatch);
+    cufftErr(cufftXtMakePlanMany(cuda_plan_forward, rank, ifftDims,
+                                 inembed, iStride, iDist,
+                                 CUDA_R_32F,
+                                 onembed, oStride, oDist,
+                                 CUDA_C_32F,
+                                 cufft_batch_size, &cuda_plan_worksize_forward,
+                                 CUDA_C_32F));
 
-    delete[] fftDims;
+    cufftErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, offtDims,
+                                 onembed, oStride, oDist,
+                                 CUDA_C_32F,
+                                 inembed, iStride, iDist,
+                                 CUDA_C_32F,
+                                 cufft_batch_size, &cuda_plan_worksize_inverse,
+                                 CUDA_R_32F));
+
+    delete[] ifftDims;
+    delete[] offtDims;
     delete[] inembed;
     delete[] onembed;
 }
@@ -3285,6 +3341,7 @@ void GpuImage::Deallocate( ) {
         cudaErr(cufftDestroy(cuda_plan_inverse));
         cudaErr(cufftDestroy(cuda_plan_forward));
         set_plan_type             = cistem::fft_type::Enum::unset;
+        cufft_batch_size          = 1;
         is_set_complexConjMulLoad = false;
     }
 
@@ -3451,7 +3508,8 @@ void GpuImage::UpdateBoolsToDefault( ) {
     is_host_memory_pinned = false;
 
     // libraries
-    set_plan_type = cistem::fft_type::Enum::unset;
+    set_plan_type    = cistem::fft_type::Enum::unset;
+    cufft_batch_size = 1;
     //	is_cublas_loaded = false;
     is_npp_loaded = false;
 
@@ -3887,6 +3945,7 @@ void GpuImage::Consume(GpuImage* other_image) {
     cuda_plan_forward = other_image->cuda_plan_forward;
     cuda_plan_inverse = other_image->cuda_plan_inverse;
     set_plan_type     = other_image->set_plan_type;
+    cufft_batch_size  = other_image->cufft_batch_size;
 
     // We neeed to override the other image pointers so that it doesn't deallocate the memory.
     other_image->real_values_gpu    = NULL;

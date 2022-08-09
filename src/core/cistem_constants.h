@@ -47,9 +47,15 @@ namespace fft_type {
 
 enum Enum : int { unset,
                   inplace_32f_32f_32f,
-                  outofplace_32f_32f_32f };
+                  outofplace_32f_32f_32f,
+                  inplace_32f_32f_32f_batched,
+                  outofplace_32f_32f_32f_batched };
 
-constexpr std::array<std::string_view, 3> names = {"unset", "inplace_32f_32f_32f", "outofplace_32f_32f_32f"};
+constexpr std::array<std::string_view, 5> names = {"unset",
+                                                   "inplace_32f_32f_32f",
+                                                   "outofplace_32f_32f_32f",
+                                                   "inplace_32f_32f_32f_batched",
+                                                   "outofplace_32f_32f_32f_batched"};
 } // namespace fft_type
 
 namespace gpu {
@@ -83,6 +89,25 @@ enum Enum : int {
 constexpr std::array<char, 4> tensor_names = {'A', 'B', 'C', 'D'};
 } // namespace tensor_id
 
+// valid as of cuda 11.7 from cufft.h definition of cufftResult_t
+constexpr std::array<std::string_view, 17> cufft_error_types = {
+        "CUFFT_SUCCESS",
+        "CUFFT_INVALID_PLAN",
+        "CUFFT_ALLOC_FAILED",
+        "CUFFT_INVALID_TYPE",
+        "CUFFT_INVALID_VALUE",
+        "CUFFT_INTERNAL_ERROR",
+        "CUFFT_EXEC_FAILED",
+        "CUFFT_SETUP_FAILED",
+        "CUFFT_INVALID_SIZE ",
+        "CUFFT_UNALIGNED_DATA",
+        "CUFFT_INCOMPLETE_PARAMETER_LIST",
+        "CUFFT_INVALID_DEVICE",
+        "CUFFT_PARSE_ERROR",
+        "CUFFT_NO_WORKSPACE",
+        "CUFFT_NOT_IMPLEMENTED",
+        "CUFFT_LICENSE_ERROR",
+        "CUFFT_NOT_SUPPORTED"};
 } // namespace gpu
 
 } // namespace cistem

@@ -146,6 +146,8 @@ class GpuImage {
     size_t      cuda_plan_worksize_forward;
     size_t      cuda_plan_worksize_inverse;
 
+    int cufft_batch_size;
+
     //Stream for asynchronous command execution
     cudaStream_t     calcStream;
     cudaStream_t     copyStream;
@@ -200,7 +202,11 @@ class GpuImage {
     void _BackwardFFT( );
 
     void ForwardFFT(bool should_scale = true); /**CPU_eq**/
+    void ForwardFFTBatched(bool should_scale = true);
+
     void BackwardFFT( ); /**CPU_eq**/
+    void BackwardFFTBatched( );
+
     void ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale);
     template <typename T>
     void BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision);

@@ -1913,12 +1913,7 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     Peak* device_peak;
     cudaErr(cudaMalloc(&device_peak, sizeof(Peak)));
 
-    half_float::half* tmpPinnedPtr;
-
-    // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
-    cudaErr(cudaHostRegister(&my_peak, sizeof(Peak), cudaHostRegisterDefault));
-
-    if ( wanted_max_pix_x > dims.x / 2 )
+        if ( wanted_max_pix_x > dims.x / 2 )
         wanted_max_pix_x = dims.x / 2;
     if ( wanted_max_pix_y > dims.y / 2 )
         wanted_max_pix_y = dims.y / 2;
@@ -1940,18 +1935,17 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
         postcheck;
     }
 
-    cudaErr(cudaMemcpyAsync(&my_peak, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync(pinnedPtr, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(device_peak, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    cudaErr(cudaHostUnregister(&my_peak));
 
-    // Peak* tmp_peak;
-    // tmp_peak = reinterpret_cast<Peak*>(&host_image_ptr->real_values[0]);
+    Peak* tmp_peak;
+    tmp_peak = reinterpret_cast<Peak*>(&host_image_ptr->real_values[0]);
 
-    // my_peak.value                         = tmp_peak->value;
-    // my_peak.physical_address_within_image = tmp_peak->physical_address_within_image;
-    my_peak.x = my_peak.physical_address_within_image % (dims.w);
-    my_peak.y = my_peak.physical_address_within_image / (dims.w);
+    my_peak.value                         = tmp_peak->value;
+    my_peak.physical_address_within_image = tmp_peak->physical_address_within_image;
+    my_peak.x                             = tmp_peak->physical_address_within_image % (dims.w);
+    my_peak.y                             = tmp_peak->physical_address_within_image / (dims.w);
     if ( my_peak.x >= dims.x / 2 )
         my_peak.x -= dims.x;
     if ( my_peak.y >= dims.y / 2 )

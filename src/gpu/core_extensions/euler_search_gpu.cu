@@ -5,6 +5,7 @@
 #include "../../gpu/GpuImage.h"
 
 // #define USE_CUTENSOR_FOR_REDUCTION
+// #define SYNC_TIMER
 
 /**
  * @brief Runs a brute force search over a pre-specified range of Euler angles.
@@ -132,7 +133,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         // The address for tmp_rot is constant, so we only want to pin it once to speed up xfers.
         should_pin_tmp_rot = false;
         rotation_cache[psi_m].CopyHostToDevice(true);
-        rotation_cache[psi_m].ConvertToHalfPrecision(false); // FIXME copy directly to and make it bfloat16
 
         psi_m++;
         if ( test_mirror ) {
@@ -141,7 +141,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             rotation_cache[psi_m].Init(mirrored, should_pin_mirrored_rot, true);
             should_pin_mirrored_rot = false;
             rotation_cache[psi_m].CopyHostToDevice(true);
-            rotation_cache[psi_m].ConvertToHalfPrecision(false); // FIXME copy directly to and make it bfloat16
 
             psi_m++;
         }
@@ -231,9 +230,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             timer.lap("Copy back projection");
         }
 
-        // TODO: just make this half precision to start
-        gpu_projection_image.ConvertToHalfPrecision(false);
-
         best_inplane_score = -std::numeric_limits<float>::max( );
         psi_m              = 0;
         for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
@@ -244,17 +240,20 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             gpu_correlation_map.is_in_real_space = false;
             // Multiply conj(rot) * proj -> gpu_correlation_map. Normally, I would always take the conjugate of the
             // reference but the legacy code instead does this and then inverts the shift.
-            // rotation_cache[psi_m].MultiplyPixelWiseComplexConjugate(gpu_projection_image, gpu_correlation_map);
-
-            // This will load the half precision values from the projection, conj multiply the rotation cache then back FFT storing the results
-            // out of place in the rotation cache's real_values_16f. FIXME: Make this work with bfloat16
-            rotation_cache[psi_m].BackwardFFTAfterComplexConjMul(gpu_projection_image.complex_values_16f, true);
-
+            rotation_cache[psi_m].MultiplyPixelWiseComplexConjugate(gpu_projection_image, gpu_correlation_map);
+#ifdef SYNC_TIMER
             timer.lap_sync("Cross Correlate");
+#else
+            timer.lap("Cross Correlate");
+#endif
 
-            // timer.start("FFT Correlation Map");
-            // gpu_correlation_map.BackwardFFT( );
-            // timer.lap_sync("FFT Correlation Map");
+            timer.start("FFT Correlation Map");
+            gpu_correlation_map.BackwardFFT( );
+#ifdef SYNC_TIMER
+            timer.lap_sync("FFT Correlation Map");
+#else
+            timer.lap("FFT Correlation Map");
+#endif
 
             correlation_map.is_in_real_space             = true;
             correlation_map.object_is_centred_in_box     = false;
@@ -281,11 +280,12 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             timer.lap("Finding peak with cuTensor");
 #endif
             timer.start("Fine Peak Search");
-
-            rotation_cache[psi_m].FindPeakAtOriginFast2D(max_pix_x, max_pix_y, true);
-            // found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
-
+            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+#ifdef SYNC_TIMER
             timer.lap_sync("Fine Peak Search");
+#else
+            timer.lap("Fine Peak Search");
+#endif
 
             if ( found_peak.value > best_inplane_score ) {
                 best_inplane_score = found_peak.value;
@@ -395,7 +395,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             }
         }
     }
-    // *******************************
+    /*******************************/
 
     float best_score = 0.0f;
     float best_x, best_y;

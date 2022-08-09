@@ -2529,7 +2529,7 @@ void GpuImage::_ForwardFFT( ) {
 
 template <>
 void GpuImage::_ForwardFFT<float, float2>( ) {
-    cudaErr(cufftExecR2C(cuda_plan_forward, (cufftReal*)position_space_ptr, (cufftComplex*)momentum_space_ptr));
+    cufftErr(cufftExecR2C(cuda_plan_forward, (cufftReal*)position_space_ptr, (cufftComplex*)momentum_space_ptr));
 }
 
 void GpuImage::ForwardFFTBatched(bool should_scale) {
@@ -2566,7 +2566,7 @@ void GpuImage::ForwardFFT(bool should_scale) {
     if ( is_half_precision && ! is_set_convertInputf16Tof32 ) {
         cufftCallbackLoadR h_ConvertInputf16Tof32Ptr;
         cudaErr(cudaMemcpyFromSymbol(&h_ConvertInputf16Tof32Ptr, d_ConvertInputf16Tof32Ptr, sizeof(h_ConvertInputf16Tof32Ptr)));
-        cudaErr(cufftXtSetCallback(cuda_plan_forward, (void**)&h_ConvertInputf16Tof32Ptr, CUFFT_CB_LD_REAL, 0));
+        cufftErr(cufftXtSetCallback(cuda_plan_forward, (void**)&h_ConvertInputf16Tof32Ptr, CUFFT_CB_LD_REAL, 0));
         is_set_convertInputf16Tof32 = true;
         //	  cudaErr(cudaFree(norm_factor));
         //	  this->MultiplyByConstant(ft_normalization_factor*ft_normalization_factor);
@@ -2631,7 +2631,7 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
         cudaErr(cudaMemcpyFromSymbol(&h_realLoadAndClipInto, d_realLoadAndClipInto, sizeof(h_realLoadAndClipInto)));
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-        cudaErr(cufftXtSetCallback(cuda_plan_forward, (void**)&h_realLoadAndClipInto, CUFFT_CB_LD_REAL, (void**)&d_params));
+        cufftErr(cufftXtSetCallback(cuda_plan_forward, (void**)&h_realLoadAndClipInto, CUFFT_CB_LD_REAL, (void**)&d_params));
         is_set_realLoadAndClipInto = true;
 
         //	  cudaErr(cudaFree(norm_factor));
@@ -2656,7 +2656,7 @@ void GpuImage::ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scal
 
 template <>
 void GpuImage::_BackwardFFT<float, float2>( ) {
-    cudaErr(cufftExecC2R(cuda_plan_inverse, (cufftComplex*)momentum_space_ptr, (cufftReal*)position_space_ptr));
+    cufftErr(cufftExecC2R(cuda_plan_inverse, (cufftComplex*)momentum_space_ptr, (cufftReal*)position_space_ptr));
 }
 
 void GpuImage::BackwardFFT( ) {
@@ -2709,9 +2709,9 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
 
         cudaErr(cudaMemcpyFromSymbol(&h_mipCCGStore, d_mipCCGAndStorePtr, sizeof(h_mipCCGStore)));
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-        cudaErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_complexConjMulLoad, CUFFT_CB_LD_COMPLEX, (void**)&d_params));
+        cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_complexConjMulLoad, CUFFT_CB_LD_COMPLEX, (void**)&d_params));
         //		void** fake_params;real_values_16f
-        cudaErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
+        cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
 
         //		d_complexConjMulLoad;
         is_set_complexConjMulLoad = true;
@@ -3187,11 +3187,11 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     long long int  iDist;
     long long int  oDist;
 
-    cudaErr(cufftCreate(&cuda_plan_forward));
-    cudaErr(cufftCreate(&cuda_plan_inverse));
+    cufftErr(cufftCreate(&cuda_plan_forward));
+    cufftErr(cufftCreate(&cuda_plan_inverse));
 
-    cudaErr(cufftSetStream(cuda_plan_forward, cudaStreamPerThread));
-    cudaErr(cufftSetStream(cuda_plan_inverse, cudaStreamPerThread));
+    cufftErr(cufftSetStream(cuda_plan_forward, cudaStreamPerThread));
+    cufftErr(cufftSetStream(cuda_plan_inverse, cudaStreamPerThread));
 
     if ( dims.z > 1 && cufft_batch_size == 1 ) {
         rank     = 3;
@@ -3275,15 +3275,6 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     // }
     // else {
 
-    std::cerr << "FFT plan type " << cistem::fft_type::names[plan_type] << "\n";
-    std::cerr << "inembed " << inembed[0] << " " << inembed[1] << "\n";
-    std::cerr << "onembed " << onembed[0] << " " << onembed[1] << "\n";
-    std::cerr << "iDist " << iDist << "\n";
-    std::cerr << "oDist " << oDist << "\n";
-    std::cerr << "iStride " << iStride << "\n";
-    std::cerr << "oStride " << oStride << "\n";
-    std::cerr << "iBatch " << cufft_batch_size << "\n";
-
     cufftErr(cufftXtMakePlanMany(cuda_plan_forward, rank, ifftDims,
                                  inembed, iStride, iDist,
                                  CUDA_R_32F,
@@ -3292,13 +3283,13 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
                                  cufft_batch_size, &cuda_plan_worksize_forward,
                                  CUDA_C_32F));
 
-    cufftErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, offtDims,
+    cufftErr(cufftXtMakePlanMany(cuda_plan_inverse, rank, ifftDims,
                                  onembed, oStride, oDist,
                                  CUDA_C_32F,
                                  inembed, iStride, iDist,
-                                 CUDA_C_32F,
+                                 CUDA_R_32F,
                                  cufft_batch_size, &cuda_plan_worksize_inverse,
-                                 CUDA_R_32F));
+                                 CUDA_C_32F));
 
     delete[] ifftDims;
     delete[] offtDims;
@@ -3338,8 +3329,8 @@ void GpuImage::Deallocate( ) {
     BufferDestroy( );
 
     if ( set_plan_type != cistem::fft_type::Enum::unset ) {
-        cudaErr(cufftDestroy(cuda_plan_inverse));
-        cudaErr(cufftDestroy(cuda_plan_forward));
+        cufftErr(cufftDestroy(cuda_plan_inverse));
+        cufftErr(cufftDestroy(cuda_plan_forward));
         set_plan_type             = cistem::fft_type::Enum::unset;
         cufft_batch_size          = 1;
         is_set_complexConjMulLoad = false;

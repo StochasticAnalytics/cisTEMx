@@ -59,10 +59,17 @@ bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& te
         test_image.ForwardFFT( );
         gpu_test_image.ForwardFFT( );
 
-        // This call also frees the GPU memory and unpins the hsot memory
-        Image gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, true, true);
+        Image gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, false, false);
 
-        CompareComplexValues(test_image, gpu_cpu_buffer);
+        passed = passed && CompareComplexValues(test_image, gpu_cpu_buffer);
+
+        test_image.BackwardFFT( );
+        gpu_test_image.BackwardFFT( );
+
+        // This call also frees the GPU memory and unpins the hsot memory
+        gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, true, true);
+
+        passed = passed && CompareRealValues(test_image, gpu_cpu_buffer);
     }
 
     all_passed = all_passed && passed;
@@ -82,10 +89,17 @@ bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& te
         test_image.ForwardFFT( );
         gpu_test_image.ForwardFFT( );
 
-        // This call also frees the GPU memory and unpins the hsot memory
-        Image gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, true, true);
+        Image gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, false, false);
 
-        CompareComplexValues(test_image, gpu_cpu_buffer);
+        passed = passed && CompareComplexValues(test_image, gpu_cpu_buffer);
+
+        test_image.BackwardFFT( );
+        gpu_test_image.BackwardFFT( );
+
+        // This call also frees the GPU memory and unpins the hsot memory
+        gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, true, true);
+
+        passed = passed && CompareRealValues(test_image, gpu_cpu_buffer);
     }
 
     all_passed = all_passed && passed;
@@ -103,10 +117,17 @@ bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& te
         test_image.ForwardFFT( );
         gpu_test_image.ForwardFFT( );
 
-        // This call also frees the GPU memory and unpins the hsot memory
-        Image gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, true, true);
+        Image gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, false, false);
 
-        CompareComplexValues(test_image, gpu_cpu_buffer);
+        passed = passed && CompareComplexValues(test_image, gpu_cpu_buffer);
+
+        test_image.BackwardFFT( );
+        gpu_test_image.BackwardFFT( );
+
+        // This call also frees the GPU memory and unpins the hsot memory
+        gpu_cpu_buffer = gpu_test_image.CopyDeviceToNewHost(true, true, true);
+
+        passed = passed && CompareRealValues(test_image, gpu_cpu_buffer);
     }
 
     all_passed = all_passed && passed;

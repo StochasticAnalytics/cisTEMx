@@ -1,7 +1,7 @@
 #include "core_headers.h"
 
 // Use this define to dump intermediate files
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 #define dump_intermediate_files
 #endif
 
@@ -490,7 +490,7 @@ void ParticleFinder::FindPeaksAndExtractParticles( ) {
     float temp_float[6];
     my_progress_bar = new ProgressBar(100);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     Image           junk_image;
     Image           junk_image_rotate;
     AnglesAndShifts myangle;
@@ -531,7 +531,7 @@ void ParticleFinder::FindPeaksAndExtractParticles( ) {
             rotation_of_matching_template = template_rotation_giving_maximum_score.real_values[my_peak.physical_address_within_image];
 
             /*
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 			junk_image.CopyFrom(&template_image[index_of_matching_template]);
 
 			if (junk_image.is_in_real_space)
@@ -1390,7 +1390,7 @@ void ComputeScheresPickingFunction(Image *micrograph, Image *micrograph_local_me
 {
 	// We assume the template has been normalized such that its mean is 0.0 and its stdev 1.0 outside the mask
 	// (I'm not sure that this is exactly what Sjors does, nor whether this is the correct thing to do)
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 	EmpiricalDistribution template_values_outside_radius = template_image->ReturnDistributionOfRealValues(mask_radius,true);
 	MyDebugAssertTrue(fabs(template_values_outside_radius.GetSampleMean()) < 0.001,"Template should be normalized to have mean value of 0.0 outside radius");
 	const float template_sum_outside_of_mask = template_values_outside_radius.GetSampleSum();

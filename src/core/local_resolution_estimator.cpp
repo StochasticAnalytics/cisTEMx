@@ -246,7 +246,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
     double work_sum_of_cross_products[number_of_fsc_shells];
 
     // Debug
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     const int dbg_i = 0;
     const int dbg_j = 0;
     const int dbg_k = 0;
@@ -268,7 +268,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
         input_volume_two->BackwardFFT( );
     }
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     input_volume_one->QuickAndDirtyWriteSlices("dbg_1.mrc", 1, input_volume_one->logical_z_dimension);
     input_volume_two->QuickAndDirtyWriteSlices("dbg_2.mrc", 1, input_volume_one->logical_z_dimension);
 #endif
@@ -306,7 +306,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
         wxPrintf("Setting Threshold to %.2f for %.2f A\n", fsc_threshold[shell_counter], current_resolution);
     }
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     bool on_dbg_point;
 #endif
 
@@ -315,7 +315,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
             for ( j = 0; j < input_volume_one->logical_y_dimension; j++ ) {
                 if ( j % sampling_step == 0 ) {
                     for ( i = 0; i < input_volume_one->logical_x_dimension; i++ ) {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                         on_dbg_point = i == dbg_i && j == dbg_j && k == dbg_k;
                         if ( on_dbg_point )
                             wxPrintf("On the debug point\n");
@@ -326,7 +326,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                             my_progress_bar->Update(counter_number_of_boxes);
 
                             if ( input_volume_mask->real_values[pixel_counter] == 0.0 || i < center_of_first_box || i > center_of_last_box || j < center_of_first_box || j > center_of_last_box || k < center_of_first_box || k > center_of_last_box ) {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                                 if ( i == dbg_i && j == dbg_j && k == dbg_k )
                                     wxPrintf("At debug point, but mask was 0.0\n");
 #endif
@@ -349,7 +349,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                                 box_one_no_padding.ClipInto(&box_one, 0.0);
                                 box_two_no_padding.ClipInto(&box_two, 0.0);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                                 if ( on_dbg_point ) {
                                     box_one.WriteSlicesAndFillHeader("dbg_vol1.mrc", pixel_size_in_Angstroms);
                                     box_two.WriteSlicesAndFillHeader("dbg_vol2.mrc", pixel_size_in_Angstroms);
@@ -363,7 +363,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                                 box_one.ComputeFSCVectorized(&box_two, &work_box_one, &work_box_two, &work_box_cross, number_of_fsc_shells, shell_number_lut, computed_fsc, work_sum_of_squares, work_sum_of_other_squares, work_sum_of_cross_products);
                                 //box_one.ComputeFSC(&box_two, number_of_fsc_shells, shell_number_lut, computed_fsc, work_sum_of_squares, work_sum_of_other_squares, work_sum_of_cross_products);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                                 // Debug: printout FSC curve
                                 if ( on_dbg_point ) {
                                     wxPrintf("\n\n");
@@ -416,7 +416,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                                             //local_resolution_volume->real_values[pixel_counter] = ReturnResolutionOfIntersectionBetweenFSCAndThreshold(previous_resolution, current_resolution, computed_fsc[shell_counter-1], computed_fsc[shell_counter], fsc_threshold[shell_counter-1], fsc_threshold[shell_counter]);
                                             local_resolution_volume->real_values[pixel_counter] = previous_resolution;
                                         }
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                                         if ( on_dbg_point ) {
                                             wxPrintf("Estimated local resolution: %f Å. Previous resolution: %f Å. Current_resolution: %f Å\n", local_resolution_volume->real_values[pixel_counter], previous_resolution, current_resolution);
                                         }
@@ -425,14 +425,14 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                                     }
                                     else if ( shell_counter == number_of_fsc_shells - 1 ) {
                                         local_resolution_volume->real_values[pixel_counter] = current_resolution;
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                                         if ( on_dbg_point )
                                             wxPrintf("At debug point, but got to last shell\n");
 #endif
                                     }
                                     previous_resolution = current_resolution;
                                 }
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                                 if ( on_dbg_point ) {
                                     wxPrintf("Estimated local resolution: %f Å\n", local_resolution_volume->real_values[pixel_counter]);
                                 }
@@ -442,7 +442,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                         else {
                             // set the local resolution to indicate we didn't measure it
                             local_resolution_volume->real_values[pixel_counter] = resolution_value_between_estimation_points;
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                             if ( on_dbg_point )
                                 wxPrintf("At debug point, but between estimation points\n");
 #endif
@@ -452,7 +452,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                     }
                 }
                 else {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                     if ( on_dbg_point )
                         wxPrintf("At debug point, but not estimating this line\n");
 #endif
@@ -480,7 +480,7 @@ void LocalResolutionEstimator::ComputeLocalFSCAndCompareToThreshold(float fsc_th
                 }
                 pixel_counter += input_volume_one->padding_jump_value;
             }
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             if ( on_dbg_point )
                 wxPrintf("At debug point, but not estimating this slice\n");
 #endif

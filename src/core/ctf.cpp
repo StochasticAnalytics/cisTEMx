@@ -272,7 +272,7 @@ float CTF::ReturnSquaredSpatialFrequencyGivenPhaseShiftAndAzimuth(float phase_sh
             else if ( solution_two > 0 )
                 return solution_two;
             else {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
                 MyPrintWithDetails("Ooops, did not find solutions to the phase aberration equation\n");
                 DEBUG_ABORT;
 #else

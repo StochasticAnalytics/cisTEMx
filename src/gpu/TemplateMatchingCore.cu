@@ -322,7 +322,7 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
 
     precheck;
     // N
-    d_padded_reference.ReturnLaunchParamtersLimitSMs(5.f, 1024);
+    d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
     MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks, (int)d_padded_reference.real_memory_allocated, psi, theta, phi, my_stats, my_new_peaks);
     postcheck;

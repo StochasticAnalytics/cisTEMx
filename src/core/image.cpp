@@ -685,6 +685,17 @@ void Image::MultiplyPixelWiseReal(Image& other_image, bool absolute) {
     }
 }
 
+void Image::Conj( ) {
+    MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image is not in Fourier space");
+
+    float* imag_part = &real_values[1];
+
+    for ( long pixel_counter = 0; pixel_counter < real_memory_allocated - 1; pixel_counter += 2 ) {
+        imag_part[pixel_counter] = -imag_part[pixel_counter];
+    }
+}
+
 void Image::ConjugateMultiplyPixelWise(Image& other_image) {
     MyDebugAssertTrue(is_in_memory, "Image memory not allocated");
     MyDebugAssertTrue(other_image.is_in_memory, "Other image memory not allocated");
@@ -6742,7 +6753,7 @@ void Image::ApplyLocalResolutionFilter(Image& local_resolution_map, float pixel_
         }
         lp_volume.BackwardFFT( );
         /*
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 		lp_volume.QuickAndDirtyWriteSlices(wxString::Format("dbg_fil_%02i.mrc",filter_counter).ToStdString(), 1, lp_volume.logical_z_dimension);
 #endif
 		*/
@@ -9002,6 +9013,59 @@ void Image::CalculateCrossCorrelationImageWith(Image* other_image) {
         other_image->BackwardFFT( );
 }
 
+void Image::FindPeakAtOriginFast2DMask(int wanted_max_pix_x, int wanted_max_pix_y) {
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
+    MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
+
+    int j;
+    int i;
+    int jj;
+    int pixel_counter;
+    int y_dim     = logical_y_dimension + padding_jump_value;
+    int max_pix_x = wanted_max_pix_x;
+    int max_pix_y = wanted_max_pix_y;
+
+    if ( max_pix_x > physical_address_of_box_center_x )
+        max_pix_x = physical_address_of_box_center_x;
+    if ( max_pix_y > physical_address_of_box_center_y )
+        max_pix_y = physical_address_of_box_center_y;
+
+    for ( j = 0; j <= max_pix_y; j++ ) {
+        jj = j * y_dim;
+        for ( i = 0; i <= max_pix_x; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    for ( j = logical_y_dimension - max_pix_y - 1; j <= logical_y_dimension - 1; j++ ) {
+        jj = j * y_dim;
+        for ( i = 0; i <= max_pix_x; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    for ( j = 0; j <= max_pix_y; j++ ) {
+        jj = j * y_dim;
+        for ( i = logical_x_dimension - max_pix_x - 1; i <= logical_x_dimension - 1; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    for ( j = logical_y_dimension - max_pix_y - 1; j <= logical_y_dimension - 1; j++ ) {
+        jj = j * y_dim;
+        for ( i = logical_x_dimension - max_pix_x - 1; i <= logical_x_dimension - 1; i++ ) {
+            pixel_counter              = jj + i;
+            real_values[pixel_counter] = 1.f;
+        }
+    }
+
+    return;
+}
+
 Peak Image::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
@@ -11087,7 +11151,7 @@ void Image::CreateOrthogonalProjectionsImage(Image* image_to_create, bool includ
     MyDebugAssertTrue(this->IsCubic( ) == true, "Only Cubic Volumes Supported");
     // don't allocate so i can use Allocateaspointing to slice in 3d.
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     if ( include_projections == true ) {
         MyDebugAssertTrue(image_to_create->logical_x_dimension == myroundint(float(logical_x_dimension) * scale_factor) * 3.0 && image_to_create->logical_y_dimension == myroundint(float(logical_y_dimension) * scale_factor) * 2 && image_to_create->is_in_real_space == true, "Output image not setup correctly");
     }

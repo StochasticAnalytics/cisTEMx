@@ -40,7 +40,7 @@ void swapbytes(size_t size, unsigned char* v, size_t n) {
     if ( n < 2 )
         return;
 
-    MyDebugPrintWithDetails("DEBUG swapbytes: size = %i n= %i\n", size, n);
+    MyDebugPrintWithDetails("CISTEM_DEBUG swapbytes: size = %i n= %i\n", size, n);
 
     size_t i;
 

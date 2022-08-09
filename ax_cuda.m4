@@ -97,13 +97,14 @@ if test "$want_cuda" = "yes" ; then
   	libdir=lib64
 
 	# set CUDA flags for static compilation. This is required for cufft callbacks.
+	# Note: lcutensor_static requires lcublasLt_static and it must be listed *after* it in the li nk line.
 	if test -n "$cuda_home_path"
 	then
-	  CUDA_CFLAGS="-I$cuda_home_path/include "
-      CUDA_LIBS="-L$cuda_home_path/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lcurand_static -lculibos -lcudart_static -lrt"
+	  CUDA_CFLAGS="-I$cuda_home_path/include -I/opt/cuTensor/include"
+      CUDA_LIBS="-L/opt/cuTensor/lib/cistem_version -L$cuda_home_path/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lcurand_static  -lcutensor_static -lcublasLt_static -lculibos -lcudart_static -lrt"
 	else
-	  CUDA_CFLAGS="-I/usr/local/cuda/include "
-	  CUDA_LIBS="-L/usr/local/cuda/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lcurand_static -lculibos -lcudart_static -lrt"
+	  CUDA_CFLAGS="-I/usr/local/cuda/include -I/opt/cuTensor/include"
+	  CUDA_LIBS="-L/opt/cuTensor/lib/cistem_version -L/usr/local/cuda/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lcurand_static  -lcutensor_static -lcublasLt_static -lculibos -lcudart_static -lrt"
 	fi
 
 

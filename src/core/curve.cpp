@@ -385,7 +385,7 @@ float Curve::ReturnMode( ) {
 
 // Scale the Y values so that the peak is at 1.0 (assumes all Y values >=0)
 void Curve::NormalizeMaximumValue( ) {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     for ( int counter = 0; counter < number_of_points; counter++ ) {
         if ( data_y[counter] < 0.0 )
             MyDebugAssertTrue(false, "This routine assumes all Y values are positive, but value %i is %f\n", counter, data_y[counter]);
@@ -404,7 +404,7 @@ void Curve::NormalizeMaximumValue( ) {
 
 // Replace Y values with their log, base 10
 void Curve::Logarithm( ) {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     for ( int counter = 0; counter < number_of_points; counter++ ) {
         if ( data_y[counter] < 0.0 )
             MyDebugAssertTrue(false, "This routine assumes all Y values are positive, but value %i is %f\n", counter, data_y[counter]);
@@ -417,7 +417,7 @@ void Curve::Logarithm( ) {
 }
 
 void Curve::SquareRoot( ) {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     for ( int counter = 0; counter < number_of_points; counter++ ) {
         if ( data_y[counter] < 0.0 )
             MyDebugAssertTrue(false, "This routine assumes all Y values are positive, but value %i is %f\n", counter, data_y[counter]);
@@ -921,7 +921,7 @@ void Curve::FitGaussianToData(float lower_bound_x, float upper_bound_x, bool app
 }
 
 void Curve::Reciprocal( ) {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     for ( int counter = 0; counter < number_of_points; counter++ ) {
         if ( data_y[counter] < 0.0 )
             MyDebugAssertTrue(false, "This routine assumes all Y values are positive, but value %i is %f\n", counter, data_y[counter]);

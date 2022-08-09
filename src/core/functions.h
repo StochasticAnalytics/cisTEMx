@@ -49,7 +49,7 @@ inline bool WriteToSocket(wxSocketBase* socket, const void* buffer, wxUint32 nby
     if ( socket != NULL ) {
         if ( socket->IsOk( ) == true && socket->IsConnected( ) == true ) {
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             if ( socket->GetFlags( ) != (SOCKET_FLAGS) ) {
                 MyPrintWithDetails("Wait all / block flag not set!");
                 DEBUG_ABORT;
@@ -114,7 +114,7 @@ inline bool ReadFromSocket(wxSocketBase* socket, void* buffer, wxUint32 nbytes, 
 
     if ( socket != NULL ) {
         if ( socket->IsOk( ) == true && socket->IsConnected( ) == true ) {
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             if ( socket->GetFlags( ) != (SOCKET_FLAGS) ) {
                 MyPrintWithDetails("Wait all / block flag not set!");
                 DEBUG_ABORT
@@ -206,7 +206,7 @@ inline void WriteToSocket	(	wxSocketBase *socket, const void * 	buffer, wxUint32
 		if (socket->IsOk() == true && socket->IsConnected() == true)
 		{
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 			//	socket->SetFlags(wxSOCKET_WAITALL | wxSOCKET_BLOCK);
 			//if (socket->GetFlags() != (wxSOCKET_WAITALL) && socket->GetFlags() != (wxSOCKET_WAITALL | wxSOCKET_BLOCK)) 	{MyPrintWithDetails("Wait all flag not set!"); should_abort = true;}
 			if (socket->GetFlags() != (SOCKET_FLAGS)) 	{MyPrintWithDetails("Wait all / block flag not set!"); should_abort = true;}
@@ -258,7 +258,7 @@ inline void WriteToSocket	(	wxSocketBase *socket, const void * 	buffer, wxUint32
 
 			if (should_abort == true)
 			{
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 				wxIPV4address peer_address;
 				socket->GetPeer(peer_address);
 
@@ -288,7 +288,7 @@ inline void ReadFromSocket	(	wxSocketBase *socket, void * 	buffer, wxUint32 nbyt
 	{
 		if (socket->IsOk() == true && socket->IsConnected() == true)
 		{
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 			//	socket->SetFlags(wxSOCKET_WAITALL | wxSOCKET_BLOCK);
 			//if (socket->GetFlags() != (wxSOCKET_WAITALL) && socket->GetFlags() != (wxSOCKET_WAITALL | wxSOCKET_BLOCK)) 	{MyPrintWithDetails("Wait all flag not set!"); should_abort = true;}
 			if (socket->GetFlags() != (SOCKET_FLAGS)) 	{MyPrintWithDetails("Wait all / block flag not set!"); should_abort = true;}
@@ -361,7 +361,7 @@ inline void ReadFromSocket	(	wxSocketBase *socket, void * 	buffer, wxUint32 nbyt
 			if (socket->Error() == true) {MyDebugPrintWithDetails("Socket has an error (%s) ", ReturnSocketErrorText(socket)); should_abort = true;}
 			if (should_abort == true)
 			{
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 				wxIPV4address peer_address;
 				socket->GetPeer(peer_address);
 

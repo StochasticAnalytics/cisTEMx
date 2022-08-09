@@ -1,4 +1,5 @@
-noinst_HEADERS = core/asset_group.h \
+noinst_HEADERS = core/stopwatch.h \
+                 core/asset_group.h \
                  core/core_headers.h \
                  core/defines.h \
                  core/functions.h \
@@ -63,7 +64,6 @@ noinst_HEADERS = core/asset_group.h \
                  core/json/jsonval.h \
                  core/json/jsonreader.h \
                  core/json/jsonwriter.h \
-                 core/stopwatch.h \
                  core/ccl3d.h \
                  core/eer_file.h \
                  gui/job_panel.h \
@@ -263,10 +263,13 @@ if WANT_CISTEM_GPU_AM
 bin_PROGRAMS +=  gpu_devices
 noinst_LIBRARIES += libgpucore.a  
 
-libgpucore_a_SOURCES  =       gpu/Histogram.cu \
+libgpucore_a_SOURCES  =      gpu/core_extensions/stop_watch_gpu.cu \
+                             gpu/Histogram.cu \
                              gpu/TemplateMatchingCore.cu \
                              gpu/DeviceManager.cu \
-                             gpu/GpuImage.cu 
+                             gpu/TensorManager.cu \
+                             gpu/GpuImage.cu \
+                             gpu/core_extensions/euler_search_gpu.cu 
 if ENABLE_FASTFFT_AM
     libgpucore_a_SOURCES += ext/FastFFT/src/FastFFT.cu
 endif
@@ -286,9 +289,10 @@ gpu/gpudevicecode.o: $(libgpucore_OBJECTS)
 
 endif
 
-libcore_a_SOURCES  =    core/functions.cpp \
-		       core/globals.cpp \
-		       core/randomnumbergenerator.cpp \
+libcore_a_SOURCES  = core/stopwatch.cpp \
+                     core/functions.cpp \
+		             core/globals.cpp \
+                     core/randomnumbergenerator.cpp \
                        core/userinput.cpp \
                        core/angles_and_shifts.cpp \
                        core/parameter_constraints.cpp \
@@ -341,7 +345,6 @@ libcore_a_SOURCES  =    core/functions.cpp \
                        core/json/jsonval.cpp \
                        core/json/jsonreader.cpp \
                        core/json/jsonwriter.cpp \
-                       core/stopwatch.cpp \
                        core/ccl3d.cpp \
                        core/template_matching.cpp \
                        core/eer_file.cpp
@@ -740,7 +743,8 @@ if ENABLESAMPLES_AM
     samples_functional_testing_SOURCES += programs/samples/common/helper_functions.cpp programs/samples/common/embedded_test_file.cpp programs/samples/common/numeric_test_file.cpp
     samples_functional_testing_SOURCES += programs/samples/0_simple/disk_io_image.cpp  
 if WANT_CISTEM_GPU_AM
-        samples_functional_testing_SOURCES += programs/samples/1_cpu_gpu_comparison/resize_comparison.cpp programs/samples/1_cpu_gpu_comparison/projection_comparison.cpp programs/samples/1_cpu_gpu_comparison/masking.cpp
+        samples_functional_testing_SOURCES += programs/samples/1_cpu_gpu_comparison/resize_comparison.cpp programs/samples/1_cpu_gpu_comparison/projection_comparison.cpp programs/samples/1_cpu_gpu_comparison/masking.cpp programs/samples/1_cpu_gpu_comparison/statistical_ops.cpp 
+        samples_functional_testing_SOURCES += programs/samples/3_tensor_ops/gpu_image_tensor_ops.cpp
 endif
 
 if WANT_CISTEM_GPU_AM 

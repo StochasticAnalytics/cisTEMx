@@ -34,7 +34,7 @@ ProjectionComparisonObjects::ProjectionComparisonObjects( ) {
     is_allocated_weighted_correlation_buffers = false;
     old_buffer_size                           = 0;
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     nprj = 0;
     // Get some extra info to make sure all the allocation/deallocation is working. I.e. even if we succeed (no segfaults and correct results)
     // we still want to be sure we aren't alloc/dealloc or copying data around unecessarily.
@@ -65,7 +65,7 @@ ProjectionComparisonObjects::ProjectionComparisonObjects( ) {
 ProjectionComparisonObjects::~ProjectionComparisonObjects( ) {
     Deallocate( );
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     wxPrintf("\n----------------------------------------------------\n");
     wxPrintf("Image type : Calls : Allocs : HtoD copies\n");
     wxPrintf("Particley image : %i : %i : %i\n", n_calls_to_prep_images, n_particle_image_allocations, n_particle_image_HtoD_copies);
@@ -250,7 +250,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
 
             // If we altered the gpu memory, or if the host particle has recorded a change to its underlying data, we need to copy host - > device.
             if ( gpu_memory_was_changed || host_particle_data_has_changed ) {
-                tmp_gpu_particle_image->CopyHostToDevice( ); // TODO: does this need to be synchronize?
+                tmp_gpu_particle_image->CopyHostToDeviceAndSynchronize( ); // TODO: does this need to be synchronize?
             }
 
             // Now the same for the projection image, except we only care about it's size and pointer association, not the host data so no need for a copy.
@@ -259,7 +259,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
             // for the projection, we don't care about the host data, just the size and pointer association.
             bool was_gpu_projection_memory_changed = tmp_gpu_projection->Init(host_projection_image, pin_host_memory, allocate_gpu_memory_if_needed);
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             int& particle_alloc                    = is_for_global_search ? n_search_particle_image_allocations : n_particle_image_allocations;
             int& projection_alloc                  = is_for_global_search ? n_search_projection_image_allocations : n_projection_image_allocations;
             int& calls_to                          = is_for_global_search ? n_calls_to_prep_search_images : n_calls_to_prep_images;
@@ -290,7 +290,7 @@ void ProjectionComparisonObjects::PrepareGpuImages(Particle& host_particle, Imag
             }
             host_particle.RecordGpuCTFImageAssociation( );
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             int& ctf_alloc      = is_for_global_search ? n_search_ctf_image_allocations : n_ctf_image_allocations;
             int& calls_to       = is_for_global_search ? n_calls_to_prep_search_ctf_images : n_calls_to_prep_ctf_images;
             int& ctf_copy_calls = is_for_global_search ? n_search_ctf_image_HtoD_copies : n_ctf_image_HtoD_copies;
@@ -333,21 +333,26 @@ void ProjectionComparisonObjects::PrepareGpuCTFImages(Particle& host_particle, c
 }
 
 float ProjectionComparisonObjects::DoGpuProjection( ) {
-    MyDebugAssertTrue(gpu_density_map.is_allocated_texture_cache, "gpu_density_map is not allocated");
-    MyDebugAssertTrue(gpu_projection.is_in_memory_gpu, "gpu_projection is not allocated");
+
+    GpuImage* current_density_map    = current_cpu_pointers_are_for_global_search ? &gpu_search_density_map : &gpu_density_map;
+    GpuImage* current_particle_image = current_cpu_pointers_are_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
+    GpuImage* current_projection     = current_cpu_pointers_are_for_global_search ? &gpu_search_projection : &gpu_projection;
+
+    MyDebugAssertTrue(current_density_map->is_allocated_texture_cache, "gpu_density_map is not allocated");
+    MyDebugAssertTrue(current_projection->is_in_memory_gpu, "gpu_projection is not allocated");
 #ifndef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
-    MyDebugAssertTrue(gpu_particle_image.is_in_memory_gpu, "gpu_particle_image is not allocated");
+    MyDebugAssertTrue(current_particle_image->is_in_memory_gpu, "gpu_particle_image is not allocated");
 #endif
     // wxPrintf("Is host memory pinned (%d\n)", gpu_projection->is_host_memory_pinned);
 
-    gpu_projection.ExtractSliceShiftAndCtf(&gpu_density_map, &gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
-                                           swap_quadrants, apply_shifts, apply_ctf, absolute_ctf);
+    current_projection->ExtractSliceShiftAndCtf(current_density_map, &gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
+                                                swap_quadrants, apply_shifts, apply_ctf, absolute_ctf);
     if ( whiten ) {
-        gpu_projection.Whiten(particle->pixel_size / particle->filter_radius_high);
+        current_projection->Whiten(particle->pixel_size / particle->filter_radius_high);
     }
     if ( mask_radius > 0.f ) {
         // CosineMask is not implemented yet, but we can at least do the backFFT
-        gpu_projection.BackwardFFT( );
+        current_projection->BackwardFFT( );
     }
 
     // #ifdef CISTEM_PROFILING
@@ -357,11 +362,11 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     // #endif
 
     // #if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE_pcos)
-    //     gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
+    //     current_projection->CopyDeviceToHostAndSynchronize(false, false);
     // #endif
 
 #ifdef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
-    gpu_projection.CopyDeviceToHostAndSynchronize(false, false);
+    current_projection->CopyDeviceToHostAndSynchronize(false, false);
     return 0.f;
 #else
     float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
@@ -371,19 +376,19 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
 
     // In the cpu method the bins < 1 and > n_bins - 1 are ignored so incorporate this logic into the filter radius
     // for even sized images, this should just be dims.y
-    int   number_of_bins  = gpu_projection.dims.y / 2 + 1;
+    int   number_of_bins  = current_projection->dims.y / 2 + 1;
     float number_of_bins2 = 2 * (number_of_bins - 1);
     filter_radius_low     = std::max(filter_radius_low, powf(1.f / number_of_bins2, 2));
     filter_radius_high    = std::min(filter_radius_high, powf(float(number_of_bins - 1) / number_of_bins2, 2));
     // int bin             = int(sqrtf(frequency_sq) * number_of_bins2);
 
     if ( ! is_allocated_weighted_correlation_buffers ) {
-        buffer_cross_terms.Allocate(gpu_projection.dims.w / 2, gpu_projection.dims.y, 1, true);
+        buffer_cross_terms.Allocate(current_projection->dims.w / 2, current_projection->dims.y, 1, true);
         buffer_image_ps.CopyFrom(&buffer_cross_terms);
         buffer_projection_ps.CopyFrom(&buffer_cross_terms);
         is_allocated_weighted_correlation_buffers = true;
     }
-    float tmp_corr = gpu_particle_image.GetWeightedCorrelationWithImage(gpu_projection, buffer_cross_terms, buffer_image_ps, buffer_projection_ps, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
+    float tmp_corr = current_particle_image->GetWeightedCorrelationWithImage(*current_projection, buffer_cross_terms, buffer_image_ps, buffer_projection_ps, filter_radius_low, filter_radius_high, particle->pixel_size / particle->signed_CC_limit);
 
     return tmp_corr;
 #endif

@@ -1565,7 +1565,7 @@ void RefinementManager::SetupRefinementJob( ) {
 
             float percent_used = active_percent_used / 100.0;
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             wxString output_parameter_file = wxString::Format("/tmp/output_par_%li_%li_%i.star", first_particle, last_particle, class_counter);
 #else
             wxString output_parameter_file = "/dev/null";

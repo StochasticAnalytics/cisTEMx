@@ -119,6 +119,7 @@ class Image {
     void  PhaseFlipPixelWise(Image& other_image);
     void  MultiplyPixelWiseReal(Image& other_image, bool absolute = false);
     void  MultiplyPixelWise(Image& other_image);
+    void  Conj( );
     void  ConjugateMultiplyPixelWise(Image& other_image);
     void  ComputeFSCVectorized(Image* other_image, Image* work_this_image_squared, Image* work_other_image_squared, Image* work_cross_product_image, int number_of_shells, int* shell_number, float* computed_fsc, double* work_sum_of_squares, double* work_sum_of_other_squares, double* work_sum_of_cross_products);
     void  ComputeFSC(Image* other_image, int number_of_shells, int* shell_number, float* computed_fsc, double* work_sum_of_squares, double* work_sum_of_other_squares, double* work_sum_of_cross_products);
@@ -136,6 +137,31 @@ class Image {
     void AddNoiseFromExponentialDistribution(float wanted_lambda_value) { AddNoise(EXPONENTIAL, wanted_lambda_value, 0.1f); }
 
     void AddNoiseFromGammaDistribution(float wanted_alpha_value, float wanted_beta_value) { AddNoise(GAMMA, wanted_alpha_value, wanted_beta_value); }
+
+    void FillWithNoiseFromUniformDistribution(float wanted_minimum_value, float wanted_maximum_value) {
+        SetToConstant(0.f);
+        AddNoise(UNIFORM, wanted_minimum_value, wanted_maximum_value);
+    }
+
+    void FillWithNoiseFromNormalDistribution(float wanted_mean_value, float wanted_sigma_value) {
+        SetToConstant(0.f);
+        AddNoise(GAUSSIAN, wanted_mean_value, wanted_sigma_value);
+    }
+
+    void FillWithNoiseFromPoissonDistribution(float wanted_mean_value) {
+        SetToConstant(0.f);
+        AddNoise(POISSON, wanted_mean_value, 0.1f);
+    }
+
+    void FillWithNoiseFromExponentialDistribution(float wanted_lambda_value) {
+        SetToConstant(0.f);
+        AddNoise(EXPONENTIAL, wanted_lambda_value, 0.1f);
+    }
+
+    void FillWithNoiseFromGammaDistribution(float wanted_alpha_value, float wanted_beta_value) {
+        SetToConstant(0.f);
+        AddNoise(GAMMA, wanted_alpha_value, wanted_beta_value);
+    }
 
     long                  ZeroFloat(float wanted_mask_radius = 0.0, bool outsize = false);
     long                  ZeroFloatAndNormalize(float wanted_sigma_value = 1.0, float wanted_mask_radius = 0.0, bool outside = false);
@@ -475,6 +501,7 @@ class Image {
     // Interpolation
     void GetRealValueByLinearInterpolationNoBoundsCheckImage(float& x, float& y, float& interpolated_value);
 
+    void FindPeakAtOriginFast2DMask(int max_pix_x, int max_pix_y);
     Peak FindPeakAtOriginFast2D(int max_pix_x, int max_pix_y);
     Peak FindPeakWithIntegerCoordinates(float wanted_min_radius = 0.0, float wanted_max_radius = FLT_MAX, int wanted_min_distance_from_edges = 0);
     Peak FindPeakWithParabolaFit(float wanted_min_radius = 0.0, float wanted_max_radius = FLT_MAX);

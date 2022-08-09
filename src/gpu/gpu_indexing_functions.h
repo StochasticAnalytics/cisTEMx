@@ -17,6 +17,14 @@ __device__ __forceinline__ int LinearThreadIdxInBlock_3dGrid( ) {
     return threadIdx.x + blockDim.x * (threadIdx.y + threadIdx.z * blockDim.y);
 }
 
+__device__ __forceinline__ int GridStride_1dGrid( ) {
+    return gridDim.x * blockDim.x;
+}
+
+__device__ __forceinline__ int GridStride_2dGrid( ) {
+    return gridDim.x * blockDim.x + gridDim.y * blockDim.y;
+}
+
 __device__ __forceinline__ int GridDimension_2d( ) {
     return gridDim.x * gridDim.y;
 }

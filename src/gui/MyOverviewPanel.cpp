@@ -142,8 +142,8 @@ void MyOverviewPanel::SetWelcomeInfo( ) {
 #endif
 
 // If compiled with debug and any other special configure flags are set, display them here
-#ifdef DEBUG
-    InfoText->WriteText(wxString::Format("Compiled in DEBUG mode with additional configure flags: "));
+#ifdef CISTEM_DEBUG
+    InfoText->WriteText(wxString::Format("Compiled in CISTEM_DEBUG mode with additional configure flags: "));
 #ifdef SHOW_CISTEM_GPU_OPTIONS
     InfoText->WriteText(wxString::Format("ENABLEGPU "));
 #endif

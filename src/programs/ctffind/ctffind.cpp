@@ -1997,7 +1997,7 @@ bool CtffindApp::DoCalculation( ) {
             average_spectrum->WriteSlicesAndFillHeader("dbg_spectrum_for_fitting.mrc", pixel_size_for_fitting);
 
 #ifdef threshold_spectrum
-        wxPrintf("DEBUG: thresholding spectrum\n");
+        wxPrintf("CISTEM_DEBUG: thresholding spectrum\n");
         for ( counter = 0; counter < average_spectrum->real_memory_allocated; counter++ ) {
             average_spectrum->real_values[counter] = std::max(average_spectrum->real_values[counter], -0.0f);
             average_spectrum->real_values[counter] = std::min(average_spectrum->real_values[counter], 1.0f);
@@ -2571,7 +2571,7 @@ bool CtffindApp::DoCalculation( ) {
         else {
             last_bin_with_good_fit = 1;
         }
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
         //MyDebugAssertTrue(last_bin_with_good_fit >= 0 && last_bin_with_good_fit < number_of_bins_in_1d_spectra,"Did not find last bin with good fit: %i", last_bin_with_good_fit);
         if ( ! (last_bin_with_good_fit >= 0 && last_bin_with_good_fit < number_of_bins_in_1d_spectra) ) {
             wxPrintf("WARNING: Did not find last bin with good fit: %i\n", last_bin_with_good_fit);
@@ -3516,7 +3516,7 @@ int ReturnSpectrumBinNumber(int number_of_bins, float number_of_extrema_profile[
     }
     if ( chosen_bin == -1 ) {
         //TODO: return false
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
         MyPrintfRed("Could not find bin\n");
         DEBUG_ABORT;
 #endif

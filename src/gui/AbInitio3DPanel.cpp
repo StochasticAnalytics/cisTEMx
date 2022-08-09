@@ -1685,7 +1685,7 @@ void AbInitioManager::SetupRefinementJob( ) {
             //percent_used = 1.0;
             //percent_used							= current_percent_used / 100.0;
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
             wxString output_parameter_file = wxString::Format("/tmp/output_par_%li_%li.star", first_particle, last_particle);
 #else
             wxString output_parameter_file = "/dev/null";

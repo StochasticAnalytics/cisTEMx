@@ -122,7 +122,7 @@ void MyMainFrame::OnCharHook(wxKeyEvent& event) {
         }
     }
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
 
     if ( event.GetKeyCode( ) == WXK_F12 ) {
         SetSize(wxDefaultCoord, wxDefaultCoord, 1855, 1025);

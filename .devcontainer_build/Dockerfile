@@ -1,4 +1,4 @@
-FROM bhimesbhimes/cistem_build_env:base_image_v1.1
+FROM bhimesbhimes/cistem_build_env:base_image_v1.2
 
 
 # Get reference images for testing and debugging
@@ -27,6 +27,17 @@ ENV CISTEM_REF_IMAGES /cistem_reference_images
 #     apt-get update && apt-get install -y nodejs && \
 #     rm -rf /var/lib/apt/lists/*  && \
 #     npm install -g pnpm
+
+
+# Install cutensor
+ARG CUTENSOR_VERSION=libcutensor-linux-x86_64-1.6.0.3-archive
+ARG CUTENSOR_LIB=11
+RUN cd /tmp &&   wget https://developer.download.nvidia.com/compute/cutensor/redist/libcutensor/linux-x86_64/${CUTENSOR_VERSION}.tar.xz && \
+    mkdir /opt/cuTensor && tar -xf ${CUTENSOR_VERSION}.tar.xz --strip 1 -C /opt/cuTensor && \
+    cd /opt/cuTensor/lib && ln -s ${CUTENSOR_LIB} cistem_version && \
+    echo 'export CUTENSOR_ROOT=/opt/cuTensor' >> /home/cisTEMx/.bashrc && \ 
+    echo 'export LD_LIBRARY_PATH=${CUTENSOR_ROOT}/lib/${cistem_version}/:${LD_LIBRARY_PATH}' >> /home/cisTEMx/.bashrc 
+
 
 
 USER cisTEMx

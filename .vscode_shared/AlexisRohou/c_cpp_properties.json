@@ -15,9 +15,11 @@
                 //"__WXOSX__",
                 "__WXOSX_COCOA__",
                 "__ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=1",
-                "DEBUG"
+                "CISTEM_DEBUG"
             ],
-            "macFrameworkPath": ["/System/Library/Frameworks"],
+            "macFrameworkPath": [
+                "/System/Library/Frameworks"
+            ],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c11",
             "cppStandard": "gnu++11",
@@ -35,7 +37,7 @@
                 "_FILE_OFFSET_BITS=64",
                 "WXUSINGDLL",
                 "__WXGTK__",
-                "DEBUG"
+                "CISTEM_DEBUG"
             ],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "c11",

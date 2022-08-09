@@ -89,7 +89,7 @@ ARG DRIVER_VER=515.43.04
 RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
     sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit && \
     rm cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
-    cd /usr/local/cuda/targets/x86_64-linux/lib && rm libcublas* libcuspars* libcusolver*
+    cd /usr/local/cuda/targets/x86_64-linux/lib && rm libcuspars* libcusolver*
 
 RUN echo 'alias lt="ls -lrth"' >> /home/cisTEMx/.bashrc && \
     echo 'alias dU="du -ch --max-depth=1 | sort -h"' >> /home/cisTEMx/.bashrc && \

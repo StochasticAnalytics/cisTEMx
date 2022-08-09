@@ -18,6 +18,8 @@ class StopWatch {
 
     inline void lap(std::string name, bool thread_safe = true) { return; }
 
+    inline void lap_sync(std::string name, bool thread_safe = true) { return; }
+
     inline void print_times(bool thread_safe = true) { return; }
 
     inline void mark_entry_or_exit_point(bool thread_safe = true) { return; }
@@ -37,6 +39,14 @@ class StopWatch {
 
     // Record the elapsed time since last "start" for this event. Add to cummulative time.
     void lap(std::string name, bool thread_safe = true);
+
+#ifdef ENABLEGPU
+    // defined in stop_watch_gpu.cpp
+    void lap_sync(std::string name, bool thread_safe = true);
+#else
+    // Same as above for cpu only builds,
+    void lap_sync(std::string name, bool thread_safe = true) { lap(name, thread_safe); };
+#endif
 
     // Print out all event times, including stopwatch overhead time.
     void print_times(bool thread_safe = true);

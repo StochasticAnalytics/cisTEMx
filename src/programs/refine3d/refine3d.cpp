@@ -191,7 +191,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     float tmp_penalty = comparison_object->particle->ReturnParameterPenalty(comparison_object->particle->temp_parameters);
     global_timer.lap("ReturnPenalty");
 
-#ifdef DEBUG
+#ifdef CISTEM_DEBUG
     if ( isnan(tmp_corr) || isnan(tmp_penalty) ) {
         MyPrintWithDetails("FrealignObjectiveFunction about to return NaN. Details to follow.\n");
         wxPrintf("shift x = %f\nshift y = %f\npsi   = %f\nphi   = %f\ntheta = %f\n",
@@ -468,6 +468,13 @@ bool Refine3DApp::DoCalculation( ) {
     Curve                 number_of_terms;
     RandomNumberGenerator random_particle(true);
     ProgressBar*          my_progress;
+
+#ifdef ENABLEGPU
+    GpuImage* gpu_projection_cache;
+#else
+    // Dummy for the OMP shared clause
+    int gpu_projection_cache = 0;
+#endif
 
     JobResult* intermediate_result;
 
@@ -807,9 +814,11 @@ bool Refine3DApp::DoCalculation( ) {
         //if (angular_step <= 0) angular_step = 360.0 * high_resolution_limit_search / PI / outer_mask_radius;
         if ( angular_step <= 0 )
             angular_step = CalculateAngularStep(high_resolution_limit_search, outer_mask_radius);
-        psi_step  = rad_2_deg(search_reference_3d.pixel_size / outer_mask_radius);
-        psi_step  = 360.0 / int(360.0 / psi_step + 0.5);
-        psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
+        psi_step = rad_2_deg(search_reference_3d.pixel_size / outer_mask_radius);
+        psi_step = 360.0 / int(360.0 / psi_step + 0.5);
+        // FIXME: Override this for now to get a deterministic output for comparing cpu and gpu immplementationsin devs
+        // psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
+        psi_start = 0.0;
         psi_max   = 0.0;
         if ( refine_particle.parameter_map.psi )
             psi_max = 360.0;
@@ -978,7 +987,22 @@ bool Refine3DApp::DoCalculation( ) {
             }
             search_reference_3d.density_map->GenerateReferenceProjections(projection_cache, global_euler_search, search_reference_3d.pixel_size / high_resolution_limit_search);
             wxPrintf("\nNumber of global search views = %i (best_parameters to keep = %i)\n", global_euler_search.number_of_search_positions, global_euler_search.best_parameters_to_keep);
+
+#ifdef ENABLEGPU
+            gpu_projection_cache = new GpuImage[global_euler_search.number_of_search_positions];
+            for ( i = 0; i < global_euler_search.number_of_search_positions; i++ ) {
+                gpu_projection_cache[i].Init(projection_cache[i], true, true);
+                if ( i == global_euler_search.number_of_search_positions - 1 ) {
+                    // block on the last copy to let everything complete.
+                    gpu_projection_cache[i].CopyHostToDevice(true);
+                }
+                else {
+                    gpu_projection_cache[i].CopyHostToDevice(false);
+                }
+            }
+#endif
         }
+
         //		search_projection_image.RotateFourier2DGenerateIndex(kernel_index, psi_max, psi_step, psi_start);
 
         if ( search_particle.parameter_map.x_shift )
@@ -1005,7 +1029,7 @@ bool Refine3DApp::DoCalculation( ) {
                                                                    refine_statistics, pixel_size, my_progress, outer_mask_radius, mask_falloff, high_resolution_limit, molecular_mass_kDa, percent_used, output_shifts_file, local_refinement,                                                                                                                              \
                                                                    binning_factor_refine, low_resolution_limit, input_statistics, output_star_file, current_projection, local_global_refine, signed_CC_limit, defocus_bias,                                                                                                                                                 \
                                                                    random_particle, defocus_range_mean2, defocus_range_std, defocus_mean_score, current_class, mask_radius_search, search_reference_3d, high_resolution_limit_search,                                                                                                                                       \
-                                                                   binning_factor_search, search_statistics, search_box_size, projection_cache, my_symmetry, angular_step, psi_max, psi_step, psi_start, take_random_best_parameter, refine_particle,                                                                                                                       \
+                                                                   binning_factor_search, search_statistics, search_box_size, projection_cache, gpu_projection_cache, my_symmetry, angular_step, psi_max, psi_step, psi_start, take_random_best_parameter, refine_particle,                                                                                                 \
                                                                    skip_local_refinement, calculate_matching_projections, classification_resolution_limit, output_file, best_parameters_to_keep, ignore_input_angles, global_random_number_generator,                                                                                                                       \
                                                                    global_euler_search, binned_image_box_size, binned_search_image_box_size, global_search, number_of_calls_to_score_function) private(image_counter, refine_particle_local, current_line_local, input_parameters, temp_float, output_parameters, input_ctf, variance, average,                             \
                                                                                                                                                                                                        best_score, defocus_i, score, cg_starting_point, input_image_local, search_particle_local, intermediate_result, gui_result_parameters, image_shift_x, image_shift_y, \
@@ -1016,6 +1040,11 @@ bool Refine3DApp::DoCalculation( ) {
         timer.start("omp copy to local variables");
 
         ProjectionComparisonObjects comparison_object;
+#ifdef ENABLEGPU
+        GpuImage* use_this_cache = gpu_projection_cache;
+#else
+        Image* use_this_cache = projection_cache;
+#endif
 
         int  new_buffer_size                         = 0;
         long number_of_calls_to_score_function_local = 0;
@@ -1039,6 +1068,7 @@ bool Refine3DApp::DoCalculation( ) {
         if ( global_search_local || local_global_refine ) {
             search_reference_3d_local.CopyAllButVolume(&search_reference_3d);
             search_reference_3d_local.density_map = search_reference_3d.density_map;
+            comparison_object.PrepareGpuVolumeProjection(search_reference_3d_local, true);
 
             search_particle_local.CopyAllButImages(&search_particle);
             search_particle_local.Allocate(binned_search_image_box_size, binned_search_image_box_size);
@@ -1052,7 +1082,9 @@ bool Refine3DApp::DoCalculation( ) {
 
         // ifndef ENABLEGPU this is a noop
 
+        // Try only thread 0 and sharing the object
         comparison_object.PrepareGpuVolumeProjection(input_3d_local, false);
+        // #pragma omp barrier
 
         image_counter = 0;
         timer.lap("omp copy to local variables");
@@ -1388,7 +1420,7 @@ bool Refine3DApp::DoCalculation( ) {
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
                         if ( ! search_particle_local.parameter_map.phi )
                             euler_search_local.psi_start = 360.0 - input_parameters.phi;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, projection_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
                     }
                     else if ( ! search_particle_local.parameter_map.phi && search_particle_local.parameter_map.theta ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, input_parameters.psi, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
@@ -1396,7 +1428,7 @@ bool Refine3DApp::DoCalculation( ) {
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
                         if ( ! search_particle_local.parameter_map.psi )
                             euler_search_local.psi_start = 360.0 - input_parameters.phi;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, projection_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
                     }
                     else if ( search_particle_local.parameter_map.phi && search_particle_local.parameter_map.theta ) {
                         if ( ! search_particle_local.parameter_map.psi )
@@ -1406,13 +1438,13 @@ bool Refine3DApp::DoCalculation( ) {
                         //					for (i = 0; i < euler_search_local.number_of_search_positions; i++) {projection_cache[i].SwapRealSpaceQuadrants(); projection_cache[i].QuickAndDirtyWriteSlice("projection.mrc", i + 1);}
                         //					search_particle_local.particle_image->QuickAndDirtyWriteSlice("particle_image.mrc", 1);
                         //					exit(0);
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, projection_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
                     }
                     else if ( search_particle_local.parameter_map.psi ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         if ( euler_search_local.best_parameters_to_keep != best_parameters_to_keep )
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, projection_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
                     }
                     else {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
@@ -1439,6 +1471,9 @@ bool Refine3DApp::DoCalculation( ) {
                     search_particle_local.CenterInCorner( );
                     new_buffer_size = search_particle_local.SetIndexForWeightedCorrelation( );
                     comparison_object.AllocateBuffers(new_buffer_size);
+
+                    comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
+                    comparison_object.PrepareGpuCTFImages(search_particle_local, true);
 
                     search_particle_local.SetParameters(input_parameters);
                     search_particle_local.MapParameters(cg_starting_point);
@@ -1486,9 +1521,6 @@ bool Refine3DApp::DoCalculation( ) {
                         search_particle_local.SetParameters(search_parameters);
                         search_particle_local.MapParameters(cg_starting_point);
 
-                        comparison_object.PrepareGpuImages(search_particle_local, search_projection_image, true);
-                        comparison_object.PrepareGpuCTFImages(search_particle_local, true);
-
                         search_parameters.score = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
                         output_parameters.score = search_parameters.score;
                         if ( ! local_refinement_local )
@@ -1520,6 +1552,7 @@ bool Refine3DApp::DoCalculation( ) {
                                 search_parameters.y_shift = input_parameters.y_shift;
                             search_particle_local.SetParameters(search_parameters);
                             search_particle_local.MapParameters(cg_starting_point);
+
                             search_parameters.score = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
 
                             if ( i == istart ) {
@@ -1768,6 +1801,9 @@ bool Refine3DApp::DoCalculation( ) {
         {
             number_of_calls_to_score_function += number_of_calls_to_score_function_local;
         }
+
+        euler_search_local.timer.print_times( );
+
     } // end omp section
 
     if ( is_running_locally == true )
@@ -1782,6 +1818,9 @@ bool Refine3DApp::DoCalculation( ) {
     //	delete global_euler_search;
     if ( global_search ) {
         delete[] projection_cache;
+#ifdef ENABLEGPU
+        delete[] gpu_projection_cache;
+#endif
         //		search_projection_image.RotateFourier2DDeleteIndex(kernel_index, psi_max, psi_step);
     }
     if ( calculate_matching_projections )

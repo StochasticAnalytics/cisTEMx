@@ -8,13 +8,14 @@
                 // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
                 // "/usr/include/wx-3.1-unofficial",
                 "/opt/WX/intel-dynamic/include/wx-3.0/",
-                "/usr/local/cuda/include"
+                "/usr/local/cuda/include",
+                "/opt/cuTensor/include"
             ],
             "defines": [
                 "_FILE_OFFSET_BITS=64",
                 "WXUSINGDLL",
                 "__WXGTK__",
-                "DEBUG"
+                "CISTEM_DEBUG"
             ],
             "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
             "cStandard": "c17",
@@ -31,7 +32,8 @@
                 // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
                 // "/usr/include/wx-3.1-unofficial",
                 "/opt/WX/intel-dynamic/include/wx-3.0/",
-                "/usr/local/cuda/include"
+                "/usr/local/cuda/include",
+                "/opt/cuTensor/include"
             ],
             "defines": [
                 "_FILE_OFFSET_BITS=64",
@@ -54,13 +56,14 @@
                 // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
                 // "/usr/include/wx-3.1-unofficial",
                 "/opt/WX/intel-dynamic/include/wx-3.0/",
-                "/usr/local/cuda/include"
+                "/usr/local/cuda/include",
+                "/opt/cuTensor/include"
             ],
             "defines": [
                 "_FILE_OFFSET_BITS=64",
                 "WXUSINGDLL",
                 "__WXGTK__",
-                "DEBUG",
+                "CISTEM_DEBUG",
                 "ENABLEGPU"
             ],
             "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",

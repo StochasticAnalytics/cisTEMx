@@ -1,5 +1,8 @@
 #ifndef _SRC_CORE_EULER_SEARCH_H_
 #define _SRC_CORE_EULER_SEARCH_H_
+#include <cistem_config.h>
+
+class GpuImage;
 
 class EulerSearch {
     // Brute-force search to find matching projections
@@ -29,6 +32,12 @@ class EulerSearch {
     bool         test_mirror;
     wxString     symmetry_symbol;
 
+#ifdef CISTEM_PROFILING
+    cistem_timer::StopWatch timer;
+#else
+    cistem_timer_noop::Stopwatch timer;
+#endif
+
     // Constructors & destructors
     EulerSearch( );
     ~EulerSearch( );
@@ -42,8 +51,12 @@ class EulerSearch {
     void Init(float wanted_resolution_limit, ParameterMap& wanted_parameter_map, int wanted_parameters_to_keep);
     void InitGrid(wxString wanted_symmetry_symbol, float angular_step_size, float wanted_phi_start, float wanted_theta_start, float wanted_psi_max, float wanted_psi_step, float wanted_psi_start, float wanted_resolution_limit, ParameterMap& parameter_map, int wanted_parameters_to_keep);
     void InitRandom(wxString wanted_symmetry_symbol, float wanted_psi_step, int wanted_number_of_search_positions, float wanted_resolution_limit, ParameterMap& wanted_parameter_map, int wanted_parameters_to_keep);
-    void Run(Particle& particle, Image& input_3d, Image* projections);
-    void CalculateGridSearchPositions(bool random_start_angle = true);
+
+    template <class ImageType>
+    void Run(Particle& particle, Image& input_3d, ImageType* projections);
+
+    // FIXME, set default fals to get lk;s djlkklh;jgsdasdghjksagdlh;
+    void CalculateGridSearchPositions(bool random_start_angle = false);
     void CalculateRandomSearchPositions( );
     void SetSymmetryLimits( );
     //	void RotateFourier2DFromIndex(Image &image_to_rotate, Image &rotated_image, Kernel2D &kernel_index);

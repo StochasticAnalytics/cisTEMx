@@ -10,6 +10,8 @@
 #include "gpu_core_headers.h"
 #include "GpuImage.h"
 #include "gpu_indexing_functions.h"
+#include "gpu_image_cuFFT_callbacks.h"
+
 // #define USE_ASYNC_MALLOC_FREE
 // #define USE_BLOCK_REDUCE
 #define USE_FP16_FOR_WHITENPS
@@ -52,94 +54,6 @@ __global__ void ClipIntoRealKernel(cufftReal* real_values_gpu,
                                    int3       other_physical_address_of_box_center,
                                    int3       wanted_coordinate_of_box_center,
                                    float      wanted_padding_value);
-
-// cuFFT callbacks
-__device__ cufftReal CB_ConvertInputf16Tof32(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr);
-
-__device__ cufftReal CB_ConvertInputf16Tof32(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr) {
-
-    const __half element = ((__half*)dataIn)[offset];
-    return (cufftReal)(__half2float(element));
-}
-
-__device__ cufftCallbackLoadR d_ConvertInputf16Tof32Ptr = CB_ConvertInputf16Tof32;
-
-__device__ void CB_scaleFFTAndStore(void* dataOut, size_t offset, cufftComplex element, void* callerInfo, void* sharedPtr);
-
-__device__ void CB_scaleFFTAndStore(void* dataOut, size_t offset, cufftComplex element, void* callerInfo, void* sharedPtr) {
-    float scale_factor = *(float*)callerInfo;
-
-    ((cufftComplex*)dataOut)[offset] = (cufftComplex)ComplexScale(element, scale_factor);
-}
-
-//__device__ cufftCallbackLoadR d_ConvertInputf16Tof32Ptr = CB_ConvertInputf16Tof32;
-__device__ cufftCallbackStoreC d_scaleFFTAndStorePtr = CB_scaleFFTAndStore;
-
-__device__ void CB_mipCCGAndStore(void* dataOut, size_t offset, cufftReal element, void* callerInfo, void* sharedPtr);
-
-__device__ void CB_mipCCGAndStore(void* dataOut, size_t offset, cufftReal element, void* callerInfo, void* sharedPtr) {
-
-    __half* data_out_half = (__half*)callerInfo;
-    //	data_out_half[offset] = __float2half(element);
-    //	((cufftReal *)dataOut)[offset] = element;
-
-#ifdef DISABLECACHEHINTS
-    ((__half*)data_out_half)[offset] = __float2half(element);
-#else
-    __stcs(&data_out_half[offset], __float2half(element));
-#endif
-
-    //	)_(dataOut)[offset] = __float2half(element);
-    //
-}
-
-__device__ cufftCallbackStoreR d_mipCCGAndStorePtr = CB_mipCCGAndStore;
-
-template <typename T>
-struct CB_complexConjMulLoad_params {
-    T*    target;
-    float scale;
-};
-
-static __device__ cufftComplex CB_complexConjMulLoad_32f(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr);
-static __device__ cufftComplex CB_complexConjMulLoad_16f(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr);
-
-static __device__ cufftComplex CB_complexConjMulLoad_32f(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr) {
-    CB_complexConjMulLoad_params<cufftComplex>* my_params = (CB_complexConjMulLoad_params<cufftComplex>*)callerInfo;
-    return (cufftComplex)ComplexConjMulAndScale(my_params->target[offset], ((Complex*)dataIn)[offset], my_params->scale);
-    //    return (cufftComplex)make_float2(my_params->scale * __fmaf_rn(my_params->target[offset].x ,  ((Complex *)dataIn)[offset].x, my_params->target[offset].y * ((Complex *)dataIn)[offset].y),
-    //    		my_params->scale * __fmaf_rn(my_params->target[offset].y , -((Complex *)dataIn)[offset].x, my_params->target[offset].x * ((Complex *)dataIn)[offset].y));
-}
-
-static __device__ cufftComplex CB_complexConjMulLoad_16f(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr) {
-    CB_complexConjMulLoad_params<__half2>* my_params = (CB_complexConjMulLoad_params<__half2>*)callerInfo;
-    return (cufftComplex)ComplexConjMulAndScale((cufftComplex)__half22float2(my_params->target[offset]), ((Complex*)dataIn)[offset], my_params->scale);
-}
-
-__device__ cufftCallbackLoadC d_complexConjMulLoad_32f = CB_complexConjMulLoad_32f;
-__device__ cufftCallbackLoadC d_complexConjMulLoad_16f = CB_complexConjMulLoad_16f;
-
-typedef struct _CB_realLoadAndClipInto_params {
-    int*       mask;
-    cufftReal* target;
-
-} CB_realLoadAndClipInto_params;
-
-static __device__ cufftReal CB_realLoadAndClipInto(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr);
-
-static __device__ cufftReal CB_realLoadAndClipInto(void* dataIn, size_t offset, void* callerInfo, void* sharedPtr) {
-
-    CB_realLoadAndClipInto_params* my_params = (CB_realLoadAndClipInto_params*)callerInfo;
-    int                            idx       = my_params->mask[offset];
-    if ( idx == 0 ) {
-        return 0.0f;
-    }
-    else {
-        return my_params->target[idx];
-    }
-}
-
-__device__ cufftCallbackLoadR d_realLoadAndClipInto = CB_realLoadAndClipInto;
 
 // Inline declarations
 __device__ __forceinline__ int
@@ -689,11 +603,11 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_16f:
             if ( ! is_allocated_16f_buffer ) {
 #ifdef USE_ASYNC_MALLOC_FREE
-                cudaErr(cudaMallocAsync(&real_values_16f, sizeof(__half) * real_memory_allocated, cudaStreamPerThread));
+                cudaErr(cudaMallocAsync(&real_values_16f, size_of_half * real_memory_allocated, cudaStreamPerThread));
 #else
-                cudaErr(cudaMalloc(&real_values_16f, sizeof(__half) * real_memory_allocated));
+                cudaErr(cudaMalloc(&real_values_16f, size_of_half * real_memory_allocated));
 #endif
-                complex_values_16f      = (__half2*)real_values_16f;
+                complex_values_16f      = (void*)real_values_16f;
                 is_allocated_16f_buffer = true;
             }
             break;
@@ -720,11 +634,11 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
             if ( ! is_allocated_ctf_16f_buffer ) {
                 MyDebugAssertTrue(n_elements > 0, "For allocating the ctf_16f buffer, you must specify the number of elements");
 #ifdef USE_ASYNC_MALLOC_FREE
-                cudaErr(cudaMallocAsync(&ctf_buffer_16f, sizeof(__half) * n_elements, cudaStreamPerThread));
+                cudaErr(cudaMallocAsync(&ctf_buffer_16f, size_of_half * n_elements, cudaStreamPerThread));
 #else
-                cudaErr(cudaMalloc(&ctf_buffer_16f, sizeof(__half) * n_elements));
+                cudaErr(cudaMalloc(&ctf_buffer_16f, size_of_half * n_elements));
 #endif
-                ctf_complex_buffer_16f      = (__half2*)ctf_buffer_16f;
+                ctf_complex_buffer_16f      = (void*)ctf_buffer_16f;
                 is_allocated_ctf_16f_buffer = true;
             }
             break;
@@ -1913,7 +1827,7 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     Peak* device_peak;
     cudaErr(cudaMalloc(&device_peak, sizeof(Peak)));
 
-        if ( wanted_max_pix_x > dims.x / 2 )
+    if ( wanted_max_pix_x > dims.x / 2 )
         wanted_max_pix_x = dims.x / 2;
     if ( wanted_max_pix_y > dims.y / 2 )
         wanted_max_pix_y = dims.y / 2;
@@ -1926,7 +1840,7 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
 
     if ( load_half_precision ) {
         precheck;
-        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_16f, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
         postcheck;
     }
     else {
@@ -3351,11 +3265,11 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
     precheck;
     if ( is_in_real_space ) {
         ReturnLaunchParameters(dims, true);
-        ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_16f, this->dims);
+        ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_fp16, this->dims);
     }
     else {
         ReturnLaunchParameters(dims, false);
-        ConvertToHalfPrecisionKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_16f, this->dims, this->physical_upper_bound_complex);
+        ConvertToHalfPrecisionKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_fp16, this->dims, this->physical_upper_bound_complex);
     }
     postcheck;
 

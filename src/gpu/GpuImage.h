@@ -66,25 +66,27 @@ class GpuImage {
     cufftReal*    real_values_gpu; // !<  Real array to hold values for REAL images.
     cufftComplex* complex_values_gpu; // !<  Complex array to hold values for COMP images.
 
-    __half*  real_values_16f;
-    __half2* complex_values_16f;
-    __half*  ctf_buffer_16f;
-    __half2* ctf_complex_buffer_16f;
+    // The half precision buffers may be used as fp16 or bfloat16 and it is up to the user to track what is what.
+    // This of course assumes they have the same size, which they should.
+    static constexpr size_t size_of_half = sizeof(__half);
+    static_assert(size_of_half == sizeof(nv_bfloat16), "it is assumed sizeof(fp16) == sizeof(bfloat16)");
+    static_assert(size_of_half * 2 == sizeof(nv_bfloat162), "it is assumed sizeof(fp16) == sizeof(bfloat16)");
+    static_assert(size_of_half == sizeof(half_float::half), "GPU and CPU half precision types must be the same size");
 
-    // inline float ReturnAsFloat(float* h) {
-    //     *tmpVal = h;
-    //     return *tmpVal;
-    // };
+    void* real_values_16f;
+    void* complex_values_16f;
+    void* ctf_buffer_16f;
+    void* ctf_complex_buffer_16f;
 
-    // inline float ReturnAsFloat(__half* h) {
-    //     *tmpVal = __half2float(h);
-    //     return *tmpVal;
-    // };
+    __half*  real_values_fp16        = reinterpret_cast<__half*>(real_values_16f);
+    __half2* complex_values_fp16     = reinterpret_cast<__half2*>(complex_values_16f);
+    __half*  ctf_buffer_fp16         = reinterpret_cast<__half*>(ctf_buffer_16f);
+    __half2* ctf_complex_buffer_fp16 = reinterpret_cast<__half2*>(ctf_complex_buffer_16f);
 
-    // inline float ReturnAsFloat(nv_bfloat16* h) {
-    //     *tmpVal = __bfloat162float(h);
-    //     return *tmpVal;
-    // };
+    nv_bfloat16*  real_values_bf16        = reinterpret_cast<nv_bfloat16*>(real_values_16f);
+    nv_bfloat162* complex_values_bf16     = reinterpret_cast<nv_bfloat162*>(complex_values_16f);
+    nv_bfloat16*  ctf_buffer_bf16         = reinterpret_cast<nv_bfloat16*>(ctf_buffer_16f);
+    nv_bfloat162* ctf_complex_buffer_bf16 = reinterpret_cast<nv_bfloat162*>(ctf_complex_buffer_16f);
 
     // We want to be able to re-use the texture object, so only set it up once.
     cudaTextureObject_t tex_real;

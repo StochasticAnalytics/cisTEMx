@@ -470,10 +470,13 @@ bool Refine3DApp::DoCalculation( ) {
     ProgressBar*          my_progress;
 
 #ifdef ENABLEGPU
+    // TODO: take a wanted_batch size and balance n_threads vs GPU memory availablity in refine3d and pass in to this method.
+    const int wanted_batch_size = 1;
     GpuImage* gpu_projection_cache;
 #else
-    // Dummy for the OMP shared clause
-    int gpu_projection_cache = 0;
+    // Dummy for the OMP shared cla
+    const int wanted_batch_size    = 1;
+    int       gpu_projection_cache = 0;
 #endif
 
     JobResult* intermediate_result;
@@ -1420,7 +1423,7 @@ bool Refine3DApp::DoCalculation( ) {
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
                         if ( ! search_particle_local.parameter_map.phi )
                             euler_search_local.psi_start = 360.0 - input_parameters.phi;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
                     }
                     else if ( ! search_particle_local.parameter_map.phi && search_particle_local.parameter_map.theta ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, input_parameters.psi, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
@@ -1428,7 +1431,7 @@ bool Refine3DApp::DoCalculation( ) {
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
                         if ( ! search_particle_local.parameter_map.psi )
                             euler_search_local.psi_start = 360.0 - input_parameters.phi;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
                     }
                     else if ( search_particle_local.parameter_map.phi && search_particle_local.parameter_map.theta ) {
                         if ( ! search_particle_local.parameter_map.psi )
@@ -1438,13 +1441,13 @@ bool Refine3DApp::DoCalculation( ) {
                         //					for (i = 0; i < euler_search_local.number_of_search_positions; i++) {projection_cache[i].SwapRealSpaceQuadrants(); projection_cache[i].QuickAndDirtyWriteSlice("projection.mrc", i + 1);}
                         //					search_particle_local.particle_image->QuickAndDirtyWriteSlice("particle_image.mrc", 1);
                         //					exit(0);
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
                     }
                     else if ( search_particle_local.parameter_map.psi ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         if ( euler_search_local.best_parameters_to_keep != best_parameters_to_keep )
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
                     }
                     else {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);

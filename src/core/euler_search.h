@@ -52,8 +52,9 @@ class EulerSearch {
     void InitGrid(wxString wanted_symmetry_symbol, float angular_step_size, float wanted_phi_start, float wanted_theta_start, float wanted_psi_max, float wanted_psi_step, float wanted_psi_start, float wanted_resolution_limit, ParameterMap& parameter_map, int wanted_parameters_to_keep);
     void InitRandom(wxString wanted_symmetry_symbol, float wanted_psi_step, int wanted_number_of_search_positions, float wanted_resolution_limit, ParameterMap& wanted_parameter_map, int wanted_parameters_to_keep);
 
+    // batch_size is ignored in the CPU code path and used to accelerate the inner loop over in-plane angles for the GPU search
     template <class ImageType>
-    void Run(Particle& particle, Image& input_3d, ImageType* projections);
+    void Run(Particle& particle, Image& input_3d, ImageType* projections, int batch_size = 1);
 
     // FIXME, set default fals to get lk;s djlkklh;jgsdasdghjksagdlh;
     void CalculateGridSearchPositions(bool random_start_angle = false);

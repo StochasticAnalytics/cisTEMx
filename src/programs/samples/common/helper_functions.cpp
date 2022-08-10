@@ -81,8 +81,8 @@ bool CompareComplexValues(Image& first_image, Image& second_image, float minimum
 
     MyDebugAssertTrue(first_image.is_in_memory, "First image is not in memory");
     MyDebugAssertTrue(second_image.is_in_memory, "Second image is not in memory");
-    MyDebugAssertFalse(first_image.is_in_real_space, "First image is not in real space");
-    MyDebugAssertFalse(second_image.is_in_real_space, "Second image is not in real space");
+    MyDebugAssertFalse(first_image.is_in_real_space, "First image is in real space");
+    MyDebugAssertFalse(second_image.is_in_real_space, "Second image is in real space");
     MyDebugAssertTrue(first_image.HasSameDimensionsAs(&second_image), "Images must have same dimensions");
 
     // use everything within nyquist (maybe the corners should be checked too?)

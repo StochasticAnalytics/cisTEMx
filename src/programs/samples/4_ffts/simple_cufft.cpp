@@ -154,7 +154,6 @@ bool DoInPlaceR2CandC2RBatched(const wxString& hiv_image_80x80x1_filename, wxStr
     constexpr size_t image_size = 256;
     constexpr size_t batch_size = 400;
 
-
     std::array<Image, batch_size>    cpu_individual;
     std::array<GpuImage, batch_size> gpu_individual;
 
@@ -190,11 +189,13 @@ bool DoInPlaceR2CandC2RBatched(const wxString& hiv_image_80x80x1_filename, wxStr
     timer.start("GPU 2d");
     for ( int i = 0; i < batch_size; i++ ) {
         gpu_individual[i].ForwardFFT( );
+        gpu_individual[i].BackwardFFT( );
     }
     timer.lap_sync("GPU 2d");
 
     timer.start("Gpu 2d batched");
     gpu_batch.ForwardFFTBatched( );
+    gpu_batch.BackwardFFTBatched( );
     timer.lap_sync("Gpu 2d batched");
 
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
@@ -211,7 +212,7 @@ bool DoInPlaceR2CandC2RBatched(const wxString& hiv_image_80x80x1_filename, wxStr
         tmp_gpu_batch.real_values_gpu = &gpu_batch.real_values_gpu[stride * i];
         tmp_batch                     = tmp_gpu_batch.CopyDeviceToNewHost(true, false, false);
 
-        passed = passed && CompareComplexValues(tmp_ind, tmp_batch);
+        passed = passed && CompareRealValues(tmp_ind, tmp_batch);
     }
 
     // We can't safely leave these pointers at memory the don't own.

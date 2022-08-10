@@ -19,7 +19,7 @@
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, cufftComplex* result_values, int4 dims);
+__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, int img_z, cufftComplex* result_values, int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_output, const int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufftReal* phi, cufftReal* theta,
                                    int4 dims, float c_psi, float c_phi, float c_theta);
@@ -470,16 +470,19 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
     MyDebugAssertFalse(is_in_real_space, "Image is in real space");
     MyDebugAssertFalse(other_image.is_in_real_space, "Other image is in real space");
     MyDebugAssertTrue(result_image.is_in_memory_gpu, "Images not in memory");
-    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
-    MyDebugAssertTrue(HasSameDimensionsAs(&result_image), "Images have different dimensions");
+    MyDebugAssertTrue(dims.x == other_image.dims.x && dims.y == other_image.dims.y, "Images have different dimensions");
+    MyDebugAssertTrue(dims.x == result_image.dims.x && dims.y == result_image.dims.y, "Images have different dimensions");
 
     //  NppInit();
     //  Conj();
     //  npp_stat = nppiMul_32sc_C1IRSfs((const Npp32sc *)complex_values_gpu, 1, (Npp32sc*)other_image.complex_values_gpu, 1, npp_ROI_complex, 0);
 
+    // Multiplier to avoid conditionals in the kernel, if size z == 1 image z is zero resulting in a broadcast of the 2d through the batch.
+    int img_z = (other_image.dims.z == 1) ? 0 : 1;
+
     precheck;
     ReturnLaunchParameters(dims, false);
-    MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
+    MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, img_z, result_image.complex_values_gpu, this->dims);
     postcheck;
 }
 
@@ -1091,7 +1094,9 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
     //	return (float)(returnValue * 2.0f);
 }
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, cufftComplex* result_values, int4 dims) {
+__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values,
+                                                        cufftComplex* img_complex_values, int img_z,
+                                                        cufftComplex* result_values, int4 dims) {
 
     int x = physical_X( );
     if ( x > dims.w / 2 )
@@ -1103,14 +1108,10 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_comple
     if ( z > dims.z )
         return;
 
+    // The result z dimension will always match this, optionally broadcast the img if it is NZ == 1 (img_z == 0)
     int address = x + (dims.w / 2) * (y + z * dims.y);
 
-    if ( x > 0 || y > 0 || z > 0 ) {
-        result_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[address], (Complex)ref_complex_values[address]);
-    }
-    else {
-        result_values[address] = (cufftComplex)make_float2(0.0f, 0.0f);
-    }
+    result_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[x + (dims.w / 2) * (y + (z * img_z) * dims.y)], (Complex)ref_complex_values[address]);
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {
@@ -1785,7 +1786,7 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * NY; logical_linear_idx += blockDim.x ) {
         x                   = logical_linear_idx % NX;
         y                   = logical_linear_idx / NX;
-        physical_linear_idx = x + y * pixel_pitch;
+        physical_linear_idx = x + pixel_pitch * (y + NY * blockIdx.z);
         if ( x >= NX / 2 )
             x -= NX;
         if ( y >= NY / 2 )
@@ -1809,23 +1810,24 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     blockReduceMax(max_val, my_max_idx);
 
     if ( threadIdx.x == 0 ) {
-        device_peak->value                         = max_val;
-        device_peak->physical_address_within_image = my_max_idx;
+        device_peak[blockIdx.z].value                         = max_val;
+        device_peak[blockIdx.z].physical_address_within_image = my_max_idx;
+        device_peak[blockIdx.z].z                             = blockIdx.z;
     }
     return;
 
     // Okay, we are in bounds so lets find the max value
 }
 
-Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, bool load_half_precision) {
+Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size, bool load_half_precision) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
-    MyDebugAssertTrue(dims.z == 1, "Image is not 2D");
+    MyDebugAssertTrue((wanted_batch_size > 1 || dims.z == 1), "Image is not 2D or a stack of 2Ds");
 
-    Peak  my_peak;
-    Peak* device_peak;
-    cudaErr(cudaMalloc(&device_peak, sizeof(Peak)));
+    MyAssertTrue(long(dims.y) * long(dims.w) * long(wanted_batch_size) < std::numeric_limits<int>::max( ), "int counters will overflow for this call");
+
+    Peak my_peak;
 
     if ( wanted_max_pix_x > dims.x / 2 )
         wanted_max_pix_x = dims.x / 2;
@@ -1834,37 +1836,41 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
 
     // we only want one block to keep the reduction simple and to a single kernel
     dim3 gd;
-    gd = dim3(1, 1, 1);
+    gd = dim3(1, 1, wanted_batch_size);
     dim3 tpb;
     tpb = dim3(1024, 1, 1);
 
     if ( load_half_precision ) {
         precheck;
-        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, device_buffer, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
         postcheck;
     }
     else {
         precheck;
-        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_peak, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_buffer, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
         postcheck;
     }
 
-    cudaErr(cudaMemcpyAsync(pinnedPtr, device_peak, sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
-    cudaErr(cudaFreeAsync(device_peak, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync(pinned_host_buffer, device_buffer, wanted_batch_size * sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-    Peak* tmp_peak;
-    tmp_peak = reinterpret_cast<Peak*>(&host_image_ptr->real_values[0]);
+    float max_val = std::numeric_limits<float>::min( );
+    for ( int iPeak = 0; iPeak < wanted_batch_size; iPeak++ ) {
+        if ( pinned_host_buffer[iPeak].value > max_val ) {
+            max_val = pinned_host_buffer[iPeak].value;
+            my_peak = pinned_host_buffer[iPeak];
+        }
+    }
 
-    my_peak.value                         = tmp_peak->value;
-    my_peak.physical_address_within_image = tmp_peak->physical_address_within_image;
-    my_peak.x                             = tmp_peak->physical_address_within_image % (dims.w);
-    my_peak.y                             = tmp_peak->physical_address_within_image / (dims.w);
+    int offset_for_batch_address_in_2d = (dims.y) * (dims.w) * myroundint(my_peak.z);
+    my_peak.physical_address_within_image -= offset_for_batch_address_in_2d;
+    my_peak.x = my_peak.physical_address_within_image % (dims.w);
+    my_peak.y = my_peak.physical_address_within_image / (dims.w);
+
     if ( my_peak.x >= dims.x / 2 )
         my_peak.x -= dims.x;
     if ( my_peak.y >= dims.y / 2 )
         my_peak.y -= dims.y;
-
     return my_peak;
 }
 
@@ -2662,6 +2668,25 @@ void GpuImage::_BackwardFFT<float, float2>( ) {
     cufftErr(cufftExecC2R(cuda_plan_inverse, (cufftComplex*)momentum_space_ptr, (cufftReal*)position_space_ptr));
 }
 
+void GpuImage::BackwardFFTBatched(int wanted_batch_size) {
+    // MyDebugAssertTrue(dims.y > 1 && dims.x > 1 && dims.z > 1, "ForwardFFTBatched is only implemented for a stack of 2D images");
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image is already in real space");
+
+    cufft_batch_size = (wanted_batch_size == 0) ? dims.z : wanted_batch_size;
+
+    SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f_batched, (void*)real_values_gpu, (void*)complex_values_gpu);
+
+    _BackwardFFT<float, float2>( );
+    // cudaErr(cufftExecC2R(this->cuda_plan_inverse, momentum_space_ptr, position_space_ptr));
+
+    is_in_real_space = true;
+    if ( host_image_ptr )
+        host_image_ptr->is_in_real_space = true;
+
+    npp_ROI = npp_ROI_real_space;
+}
+
 void GpuImage::BackwardFFT( ) {
 
     MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
@@ -2727,10 +2752,10 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
     _BackwardFFT<float, float2>( );
     // cudaErr(cufftExecC2R(this->cuda_plan_inverse, momentum_space_ptr, position_space_ptr));
 
-    is_in_real_space                 = true;
+    is_in_real_space = true;
     if ( host_image_ptr )
-    host_image_ptr->is_in_real_space = true;
-    npp_ROI                          = npp_ROI_real_space;
+        host_image_ptr->is_in_real_space = true;
+    npp_ROI = npp_ROI_real_space;
 }
 
 template void GpuImage::BackwardFFTAfterComplexConjMul(__half2* image_to_multiply, bool load_half_precision);
@@ -3180,6 +3205,7 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
                 break;
             }
         }
+        set_plan_type = plan_type;
     }
 
     int            rank;

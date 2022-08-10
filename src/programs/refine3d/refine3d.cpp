@@ -471,7 +471,7 @@ bool Refine3DApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
     // TODO: take a wanted_batch size and balance n_threads vs GPU memory availablity in refine3d and pass in to this method.
-    const int wanted_batch_size = 1;
+    const int wanted_batch_size = 83;
     GpuImage* gpu_projection_cache;
 #else
     // Dummy for the OMP shared cla
@@ -1093,6 +1093,7 @@ bool Refine3DApp::DoCalculation( ) {
         timer.lap("omp copy to local variables");
 #pragma omp for schedule(dynamic, 1)
         for ( current_line_local = 0; current_line_local < input_star_file.ReturnNumberofLines( ); current_line_local++ ) {
+
             input_parameters = input_star_file.ReturnLine(current_line_local);
             if ( input_parameters.position_in_stack < first_particle || input_parameters.position_in_stack > last_particle )
                 continue;

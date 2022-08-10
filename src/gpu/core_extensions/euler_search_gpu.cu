@@ -93,13 +93,11 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     // Make sure we have enough batches to cover all search positions.
     const int n_search_images = psi_i;
     const int n_batches       = (n_search_images + batch_size - 1) / batch_size;
-    int       n_full_batches  = 0;
     int       n_in_last_batch = 0;
     timer.start("Allocate rotation cache");
     rotation_cache = new GpuImage[n_batches];
     for ( int i = 0; i < n_batches - 1; i++ ) {
         rotation_cache[i].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch_size, false);
-        n_full_batches++;
     }
 
     // Even though gpu_projection_image and correlation_image have >= z slices as rotation cache, the dims.z will limit the algos and ignore the "extra" slices.
@@ -111,11 +109,11 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     // std::cerr << "batch_size : " << batch_size << std::endl;
     // std::cerr << "n_batches : " << n_batches << std::endl;
     MyDebugAssertTrue(n_in_last_batch >= 0, "Error: psi_i is too large for the number of batches");
-    rotation_cache[n_full_batches].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, n_in_last_batch, false);
+    rotation_cache[n_batches - 1].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, n_in_last_batch, false);
 
     // Allocate device buffer and pinned buffer for the peak search results
-    cudaErr(cudaMallocHost(&peak_buffer, n_batches * sizeof(Peak)));
-    cudaErr(cudaMalloc(&d_peak_buffer, n_batches * sizeof(Peak)));
+    cudaErr(cudaMallocHost(&peak_buffer, batch_size * sizeof(Peak)));
+    cudaErr(cudaMalloc(&d_peak_buffer, batch_size * sizeof(Peak)));
 
     Image tmp_rot;
     Image mirrored;
@@ -131,7 +129,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     float* pinned_rot_ptr;
     float* pinned_mirrored_ptr;
     // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
-    // FIXME unpin this at the end
+
     cudaErr(cudaHostRegister(tmp_rot.real_values, sizeof(float) * stride, cudaHostRegisterDefault));
     cudaErr(cudaHostGetDevicePointer(&pinned_rot_ptr, tmp_rot.real_values, 0));
     if ( test_mirror ) {
@@ -274,6 +272,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         }
         else {
             timer.start("Copy back projection");
+
             gpu_projection_image.CopyFrom(&projections[i]);
             timer.lap("Copy back projection");
         }
@@ -298,9 +297,9 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 #endif
 
             timer.start("FFT Correlation Map");
-            int wanted_batch_size = (iBatch < n_batches - 1) ? batch_size : n_in_last_batch;
+            int i_batch_size = (iBatch < n_batches - 1) ? batch_size : n_in_last_batch;
             // std::cerr << "wanted_batch_size: " << wanted_batch_size << std::endl;
-            gpu_correlation_map.BackwardFFTBatched(wanted_batch_size);
+            gpu_correlation_map.BackwardFFTBatched(i_batch_size);
 #ifdef SYNC_TIMER
             timer.lap_sync("FFT Correlation Map");
 #else
@@ -330,7 +329,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             timer.lap("Finding peak with cuTensor");
 #endif
             timer.start("Fine Peak Search");
-            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y, peak_buffer, d_peak_buffer, rotation_cache[iBatch].dims.z);
+            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y, peak_buffer, d_peak_buffer, i_batch_size);
 #ifdef SYNC_TIMER
             timer.lap_sync("Fine Peak Search");
 #else
@@ -346,7 +345,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
                 best_inplane_values[2] = found_peak.y;
                 mirrored_match         = is_a_mirror[offset];
             }
-            psi_m += rotation_cache[iBatch].dims.z;
+            psi_m += i_batch_size;
         }
 
         if ( best_inplane_score > list_of_best_parameters[best_parameters_to_keep][5] ) {
@@ -391,32 +390,35 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     }
     /*******************************/
 
-    float best_score = 0.0f;
-    float best_x, best_y;
-    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
-        if ( list_of_best_parameters[i][5] > best_score ) {
-            best_score = list_of_best_parameters[i][5];
-            best_x     = list_of_best_parameters[i][3];
-            best_y     = list_of_best_parameters[i][4];
-        }
-    }
-    wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
+    // float best_score = 0.0f;
+    // float best_x, best_y;
+    // for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+    //     if ( list_of_best_parameters[i][5] > best_score ) {
+    //         best_score = list_of_best_parameters[i][5];
+    //         best_x     = list_of_best_parameters[i][3];
+    //         best_y     = list_of_best_parameters[i][4];
+    //     }
+    // }
+    // wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
 
     timer.start("Clean up");
     delete flipped_image;
     delete padded_image;
     delete rotated_image;
     delete projection_image;
-    psi_i = number_of_psi_positions;
-    if ( test_mirror )
-        psi_i *= 2;
-    for ( i = 0; i < psi_i; ++i ) {
-        rotation_cache[i].Deallocate( );
-    }
+
+    // for ( int iBatch = 0; iBatch < n_batches; iBatch++ ) {
+    //     rotation_cache[iBatch].Deallocate( );
+    // }
     delete[] rotation_cache;
 
     cudaErr(cudaFreeHost(peak_buffer));
     cudaErr(cudaFree(d_peak_buffer));
+
+    cudaErr(cudaHostUnregister(pinned_rot_ptr));
+    if ( test_mirror ) {
+        cudaErr(cudaHostUnregister(pinned_mirrored_ptr));
+    }
 
     timer.lap("Clean up");
 }

@@ -1823,7 +1823,6 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
-    MyDebugAssertTrue((wanted_batch_size > 1 || dims.z == 1), "Image is not 2D or a stack of 2Ds");
 
     MyAssertTrue(long(dims.y) * long(dims.w) * long(wanted_batch_size) < std::numeric_limits<int>::max( ), "int counters will overflow for this call");
 

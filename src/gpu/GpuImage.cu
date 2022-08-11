@@ -19,7 +19,7 @@
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values, const cufftComplex* __restrict__ img_complex_values, int img_z, cufftComplex* result_values, int4 dims);
+__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values, const cufftComplex* __restrict__ img_complex_values, cufftComplex* result_values, int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_output, const int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufftReal* phi, cufftReal* theta,
                                    int4 dims, float c_psi, float c_phi, float c_theta);
@@ -479,13 +479,17 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
 
     // Multiplier to avoid conditionals in the kernel, if size z == 1 image z is zero resulting in a broadcast of the 2d through the batch.
     // FIXME: somehow this doesn't work.
-    int img_z = (other_image.dims.z == 1) ? 0 : 1;
 
     precheck;
     ReturnLaunchParameters(dims, false);
-    MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, img_z, result_image.complex_values_gpu, this->dims);
+
+    // Override and loop over z in kernel allowing re-use of the image value if broadcast.
+    gridDims.z = 1;
+    MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
     postcheck;
 }
+
+
 
 __global__ void ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values_gpu, int4 dims, int padding_jump_value, float* returnValue);
 
@@ -1097,8 +1101,8 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
 __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
                                                         const cufftComplex* __restrict__ img_complex_values,
-                                                        int           img_z,
-                                                        cufftComplex* result_values, int4 dims) {
+                                                        cufftComplex* result_values, 
+                                                        int4 dims) {
 
     int x = physical_X( );
     if ( x > dims.w / 2 )
@@ -1106,15 +1110,18 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __re
     int y = physical_Y( );
     if ( y > dims.y )
         return;
-    int z = physical_Z( );
-    if ( z > dims.z )
-        return;
 
-    // The result z dimension will always be >=  this.z , optionally broadcast the img if it is NZ == 1 (img_z == 0)
-    int     address = x + (dims.w / 2) * (y + z * dims.y);
-    Complex tmp_val = (Complex)img_complex_values[x + (dims.w / 2) * (y + (z * img_z) * dims.y)];
 
-    result_values[address] = (cufftComplex)ComplexConjMul(tmp_val, (Complex)ref_complex_values[address]);
+    int address = x + (dims.w / 2) * y;
+    int stride = (dims.w/2) * dims.y;
+
+    const Complex img_val = (Complex)img_complex_values[address];
+
+    for (int k = 0; k < dims.z ; k++) {
+        result_values[address] = (cufftComplex)ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
+        address += stride;
+    }
+
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {

@@ -13,7 +13,7 @@
 #include "../common/common.h"
 #include "batched_correlation.h"
 
-#define DO_EXPLICIT_BROADCAST
+// #define DO_EXPLICIT_BROADCAST
 
 bool BatchedCorrelationTests(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
@@ -124,10 +124,11 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
 
     batch.Init(d_ref_img, n_search_images, batch_size, test_mirror);
 
-    GpuImage d_reference_img, d_correlation_img;
+    GpuImage d_correlation_img;
     d_correlation_img.Allocate(d_ref_img.dims.x, d_ref_img.dims.y, batch_size, false);
 
 #ifdef DO_EXPLICIT_BROADCAST
+    GpuImage d_reference_img;
     d_reference_img.Allocate(d_ref_img.dims.x, d_ref_img.dims.y, batch_size, false);
 
     for ( int iTest = 0; iTest < batch_size; iTest++ ) {
@@ -149,13 +150,12 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
     }
 
 #ifndef DO_EXPLICIT_BROADCAST
-    d_reference_img.CopyFrom(&d_ref_img);
+    GpuImage d_reference_img(d_ref_img);
 #endif
 
     // Second loop is to actually do the correlations
     bool repeat = true;
     for ( int iBatch = 0; iBatch < batch.n_batches( ); iBatch++ ) {
-
         d_correlation_img.is_in_real_space = false;
 
         // dims.z of calling image (roation cache) determines what extent of the correlation map to use

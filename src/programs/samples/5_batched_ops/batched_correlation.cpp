@@ -13,6 +13,8 @@
 #include "../common/common.h"
 #include "batched_correlation.h"
 
+#define DO_EXPLICIT_BROADCAST
+
 bool BatchedCorrelationTests(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     bool passed;
@@ -125,29 +127,34 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
     GpuImage d_reference_img, d_correlation_img;
     d_correlation_img.Allocate(d_ref_img.dims.x, d_ref_img.dims.y, batch_size, false);
 
+#ifdef DO_EXPLICIT_BROADCAST
+    d_reference_img.Allocate(d_ref_img.dims.x, d_ref_img.dims.y, batch_size, false);
+
+    for ( int iTest = 0; iTest < batch_size; iTest++ ) {
+        cudaErr(cudaMemcpy(&d_reference_img.real_values_gpu[batch.stride( ) * iTest], d_ref_img.real_values, sizeof(float) * batch.stride( ), cudaMemcpyDeviceToDevice));
+    }
+#endif
     // First loop is to setup the rotation cache with n_batches of <= batchsize 3D images
     // This is so each batch is contiguous in the memory.
     GpuImage* rotation_cache = new GpuImage[batch.n_batches( )];
     int       counter        = 0;
     for ( int iBatch = 0; iBatch < batch.n_batches( ); iBatch++ ) {
-        int intra_loop_batch_size = batch.loop_batch_size(iBatch);
-        rotation_cache[iBatch].Allocate(d_seq_rotation_cache[0].dims.x, d_seq_rotation_cache[0].dims.y, intra_loop_batch_size, false);
-        for ( int intra_batch_idx = 0; intra_batch_idx < intra_loop_batch_size; intra_batch_idx += batch.intra_loop_inc( ) ) {
-            // std::cerr << "Copying iBatch intraBatch stride pointer " << iBatch << " " << intra_batch_idx << " " << counter << " " << batch.stride( ) << std::endl;
+        rotation_cache[iBatch].Allocate(d_seq_rotation_cache[0].dims.x, d_seq_rotation_cache[0].dims.y, batch.loop_batch_size(iBatch), false);
+        for ( int intra_batch_idx = 0; intra_batch_idx < batch.loop_batch_size(iBatch); intra_batch_idx++ ) {
             cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[batch.stride( ) * intra_batch_idx], d_seq_rotation_cache[counter].real_values, sizeof(float) * batch.stride( ), cudaMemcpyDeviceToDevice));
-            // d_seq_rotation_cache[counter].QuickAndDirtyWriteSlices("/tmp/d_seq_rotation_cache_" + std::to_string(counter) + ".mrc", 1, 1);
-
             counter++;
         }
+
+        // d_seq_rotation_cache[counter].QuickAndDirtyWriteSlices("/tmp/d_seq_rotation_cache_" + std::to_string(counter) + ".mrc", 1, 1);
     }
 
+#ifndef DO_EXPLICIT_BROADCAST
     d_reference_img.CopyFrom(&d_ref_img);
+#endif
 
     // Second loop is to actually do the correlations
     bool repeat = true;
     for ( int iBatch = 0; iBatch < batch.n_batches( ); iBatch++ ) {
-
-        int intra_loop_batch_size = batch.loop_batch_size(iBatch);
 
         d_correlation_img.is_in_real_space = false;
 
@@ -167,7 +174,7 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
         d_correlation_img.object_is_centred_in_box = false;
         // TODO overload to take just the batch object directly
         Peak found_peak = d_correlation_img.FindPeakAtOriginFast2D(batch.max_pixel_radius_x( ), batch.max_pixel_radius_y( ),
-                                                                   batch._peak_buffer, batch._d_peak_buffer, intra_loop_batch_size);
+                                                                   batch._peak_buffer, batch._d_peak_buffer, batch.loop_batch_size(iBatch));
         results[iBatch] = found_peak.value;
     }
     delete[] rotation_cache;

@@ -93,7 +93,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     // Make sure we have enough batches to cover all search positions.
     const int n_search_images = psi_i;
     const int n_batches       = (n_search_images + batch_size - 1) / batch_size;
-    int       n_in_last_batch = 0;
+    const int n_in_last_batch = n_search_images - ((n_batches - 1) * batch_size);
+
     timer.start("Allocate rotation cache");
     rotation_cache = new GpuImage[n_batches];
     for ( int i = 0; i < n_batches - 1; i++ ) {
@@ -103,7 +104,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     // Even though gpu_projection_image and correlation_image have >= z slices as rotation cache, the dims.z will limit the algos and ignore the "extra" slices.
     // This is a bit of a waste in allocations, and should be addressed when the thread/gpu arch based adjustment to the number of batches (vs wanted) is implemented.
     // FIXME
-    n_in_last_batch = n_search_images - (n_batches - 1) * batch_size;
+
     // std::cerr << "n_in_last_batch: " << n_in_last_batch << std::endl;
     // std::cerr << "n_search_images: " << n_search_images << std::endl;
     // std::cerr << "batch_size : " << batch_size << std::endl;
@@ -153,11 +154,11 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     psi_m = 0;
     psi_i = 0;
 
+    int intra_loop_inc = (test_mirror) ? 2 : 1;
+    int intra_loop_batch_size;
     for ( int iBatch = 0; iBatch < n_batches; iBatch++ ) {
-        for ( int intra_batch_idx = 0; intra_batch_idx < batch_size; intra_batch_idx++ ) {
-            // This condition only wworks if batch_size is even
-            if ( psi_m >= n_search_images )
-                break;
+        intra_loop_batch_size = (iBatch < n_batches - 1) ? batch_size : n_in_last_batch;
+        for ( int intra_batch_idx = 0; intra_batch_idx < intra_loop_batch_size; intra_batch_idx += intra_loop_inc ) {
             // Reset these flags since we are re-using the same buffer
             tmp_rot.is_in_real_space         = true;
             tmp_rot.object_is_centred_in_box = true;
@@ -177,18 +178,16 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             tmp_rot.SwapRealSpaceQuadrants( );
             tmp_rot.complex_values[0] = 0.0f + I * 0.0f;
             // std::cerr << "iBatch and intra_batch_idx and calc: " << iBatch << " " << intra_batch_idx << " " << (psi_m % batch_size) << std::endl;
-            cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[stride * (psi_m % batch_size)], tmp_rot.real_values, sizeof(float) * stride, cudaMemcpyHostToDevice));
+            cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[stride * intra_batch_idx], tmp_rot.real_values, sizeof(float) * stride, cudaMemcpyHostToDevice));
 
-            psi_m++;
             if ( test_mirror ) {
                 mirrored.MirrorYFourier2D(tmp_rot);
-                cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[stride * (psi_m % batch_size)], mirrored.real_values, sizeof(float) * stride, cudaMemcpyHostToDevice));
-                in_plane_angles.push_back(in_plane_angles[psi_m - 1]);
+                cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[stride * (intra_batch_idx + 1)], mirrored.real_values, sizeof(float) * stride, cudaMemcpyHostToDevice));
+                in_plane_angles.push_back(in_plane_angles.back( ));
                 is_a_mirror.push_back(true);
-                psi_m++;
             }
-            psi_i++;
         }
+        psi_i++;
     }
     timer.lap("Make rotation cache");
 
@@ -257,7 +256,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     timer.lap("Setting up the TensorManager");
 #endif
 
-    for ( i = 0; i < number_of_search_positions; i++ ) {
+    for ( int iSearchPosition = 0; iSearchPosition < number_of_search_positions; iSearchPosition++ ) {
         if ( projections == NULL ) {
             MyAssertTrue(false, "No projections provided, the gpu codepath is not setup for this scenario");
             // timer.start("Make Projection");
@@ -273,16 +272,13 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         else {
             timer.start("Copy back projection");
 
-            gpu_projection_image.CopyFrom(&projections[i]);
+            gpu_projection_image.CopyFrom(&projections[iSearchPosition]);
             timer.lap("Copy back projection");
         }
 
         best_inplane_score = -std::numeric_limits<float>::max( );
-        psi_m              = 0;
         for ( int iBatch = 0; iBatch < n_batches; iBatch++ ) {
-            // This condition only wworks if batch_size is even
-            if ( psi_m >= n_search_images )
-                break;
+            intra_loop_batch_size = (iBatch < n_batches - 1) ? batch_size : n_in_last_batch;
 
             timer.start("Cross Correlate");
 
@@ -297,9 +293,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 #endif
 
             timer.start("FFT Correlation Map");
-            int i_batch_size = (iBatch < n_batches - 1) ? batch_size : n_in_last_batch;
             // std::cerr << "wanted_batch_size: " << wanted_batch_size << std::endl;
-            gpu_correlation_map.BackwardFFTBatched(i_batch_size);
+            gpu_correlation_map.BackwardFFTBatched(intra_loop_batch_size);
 #ifdef SYNC_TIMER
             timer.lap_sync("FFT Correlation Map");
 #else
@@ -329,7 +324,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             timer.lap("Finding peak with cuTensor");
 #endif
             timer.start("Fine Peak Search");
-            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y, peak_buffer, d_peak_buffer, i_batch_size);
+            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y, peak_buffer, d_peak_buffer, intra_loop_batch_size);
 #ifdef SYNC_TIMER
             timer.lap_sync("Fine Peak Search");
 #else
@@ -345,7 +340,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
                 best_inplane_values[2] = found_peak.y;
                 mirrored_match         = is_a_mirror[offset];
             }
-            psi_m += i_batch_size;
         }
 
         if ( best_inplane_score > list_of_best_parameters[best_parameters_to_keep][5] ) {
@@ -390,16 +384,16 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     }
     /*******************************/
 
-    // float best_score = 0.0f;
-    // float best_x, best_y;
-    // for ( int i = 0; i < best_parameters_to_keep; i++ ) {
-    //     if ( list_of_best_parameters[i][5] > best_score ) {
-    //         best_score = list_of_best_parameters[i][5];
-    //         best_x     = list_of_best_parameters[i][3];
-    //         best_y     = list_of_best_parameters[i][4];
-    //     }
-    // }
-    // wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
+    float best_score = 0.0f;
+    float best_x, best_y;
+    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+        if ( list_of_best_parameters[i][5] > best_score ) {
+            best_score = list_of_best_parameters[i][5];
+            best_x     = list_of_best_parameters[i][3];
+            best_y     = list_of_best_parameters[i][4];
+        }
+    }
+    wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
 
     timer.start("Clean up");
     delete flipped_image;

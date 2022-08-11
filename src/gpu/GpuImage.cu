@@ -194,9 +194,9 @@ __device__ __forceinline__ float warpReduceMax(float val) {
 
 __inline__ __device__ float blockReduceMax(float val) {
 
-    static __shared__ float shared[32]; // Shared mem for 32 partial sums
-    int                     lane = threadIdx.x % warpSize;
-    int                     wid  = threadIdx.x / warpSize;
+    __shared__ float shared[32]; // Shared mem for 32 partial sums
+    int              lane = threadIdx.x % cistem::gpu::warp_size;
+    int              wid  = threadIdx.x / cistem::gpu::warp_size;
 
     val = warpReduceMax(val); // Each warp performs partial reduction
 
@@ -206,7 +206,7 @@ __inline__ __device__ float blockReduceMax(float val) {
     __syncthreads( ); // Wait for all partial reductions
 
     //read from shared memory only if that warp existed
-    val = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
+    val = (threadIdx.x < blockDim.x / cistem::gpu::warp_size) ? shared[lane] : 0;
 
     if ( wid == 0 )
         val = warpReduceMax(val); //Final reduce within first warp
@@ -218,7 +218,7 @@ __device__ __forceinline__ void warpReduceMax(float& val, int& index) {
 
     float tmp_val   = val;
     int   tmp_index = index;
-#pragma unroll 5
+    // #pragma unroll 5
     for ( int offset = cistem::gpu::warp_size / 2; offset > 0; offset /= 2 ) {
         tmp_val   = __shfl_xor_sync(0xffffffff, val, offset);
         tmp_index = __shfl_xor_sync(0xffffffff, index, offset);
@@ -229,11 +229,11 @@ __device__ __forceinline__ void warpReduceMax(float& val, int& index) {
     }
 }
 
-__inline__ __device__ void blockReduceMax(float& val, int& index) {
+__device__ __forceinline__ void blockReduceMax(float& val, int& index) {
 
-    static __shared__ float shared[64]; // Shared mem for 32 partial sums
-    int                     lane = threadIdx.x % cistem::gpu::warp_size;
-    int                     wid  = threadIdx.x / cistem::gpu::warp_size;
+    __shared__ float shared[64]; // Shared mem for 32 partial sums
+    int              lane = threadIdx.x % cistem::gpu::warp_size;
+    int              wid  = threadIdx.x / cistem::gpu::warp_size;
 
     warpReduceMax(val, index); // Each warp performs partial reduction
 
@@ -1108,7 +1108,7 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_comple
     if ( z > dims.z )
         return;
 
-    // The result z dimension will always match this, optionally broadcast the img if it is NZ == 1 (img_z == 0)
+    // The result z dimension will always be >=  this.z , optionally broadcast the img if it is NZ == 1 (img_z == 0)
     int address = x + (dims.w / 2) * (y + z * dims.y);
 
     result_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[x + (dims.w / 2) * (y + (z * img_z) * dims.y)], (Complex)ref_complex_values[address]);
@@ -1784,15 +1784,17 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     int   my_max_idx  = 0;
 
     for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * NY; logical_linear_idx += blockDim.x ) {
-        x                   = logical_linear_idx % NX;
-        y                   = logical_linear_idx / NX;
+        x = logical_linear_idx % NX;
+        y = logical_linear_idx / NX;
+        // physical_linear_idx = x + (NY + 2) * y + (pixel_pitch * NY * blockIdx.z);
+
         physical_linear_idx = x + pixel_pitch * (y + NY * blockIdx.z);
         if ( x >= NX / 2 )
             x -= NX;
         if ( y >= NY / 2 )
             y -= NY;
 
-        if ( x < wanted_max_pix_x && x > -wanted_max_pix_x && y < wanted_max_pix_y && y > -wanted_max_pix_y ) {
+        if ( x <= wanted_max_pix_x && x > -wanted_max_pix_x && y <= wanted_max_pix_y && y > -wanted_max_pix_y ) {
 
             if constexpr ( std::is_same<T, __half>::value ) {
                 tmp_max_val = gMax(__half2float(real_values[physical_linear_idx]), max_val);
@@ -1806,14 +1808,15 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
             }
         }
     }
-
+    __syncthreads( );
     blockReduceMax(max_val, my_max_idx);
-
+    __syncthreads( );
     if ( threadIdx.x == 0 ) {
         device_peak[blockIdx.z].value                         = max_val;
         device_peak[blockIdx.z].physical_address_within_image = my_max_idx;
-        device_peak[blockIdx.z].z                             = blockIdx.z;
+        device_peak[blockIdx.z].z                             = float(blockIdx.z);
     }
+    __syncthreads( );
     return;
 
     // Okay, we are in bounds so lets find the max value
@@ -1828,10 +1831,10 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
 
     Peak my_peak;
 
-    if ( wanted_max_pix_x > dims.x / 2 )
-        wanted_max_pix_x = dims.x / 2;
-    if ( wanted_max_pix_y > dims.y / 2 )
-        wanted_max_pix_y = dims.y / 2;
+    if ( wanted_max_pix_x >= dims.x / 2 )
+        wanted_max_pix_x = dims.x / 2 - 1;
+    if ( wanted_max_pix_y >= dims.y / 2 )
+        wanted_max_pix_y = dims.y / 2 - 1;
 
     // we only want one block to keep the reduction simple and to a single kernel
     dim3 gd;
@@ -1856,8 +1859,10 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     float max_val = std::numeric_limits<float>::min( );
     for ( int iPeak = 0; iPeak < wanted_batch_size; iPeak++ ) {
         if ( pinned_host_buffer[iPeak].value > max_val ) {
-            max_val = pinned_host_buffer[iPeak].value;
-            my_peak = pinned_host_buffer[iPeak];
+            max_val                               = pinned_host_buffer[iPeak].value;
+            my_peak.value                         = pinned_host_buffer[iPeak].value;
+            my_peak.physical_address_within_image = pinned_host_buffer[iPeak].physical_address_within_image;
+            my_peak.z                             = pinned_host_buffer[iPeak].z;
         }
     }
 
@@ -3189,13 +3194,15 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
         // We need to re-plan.
         switch ( plan_type ) {
             case ft::inplace_32f_32f_32f: {
-                position_space_ptr = reinterpret_cast<cufftReal*>(input_buffer);
-                momentum_space_ptr = reinterpret_cast<cufftComplex*>(output_buffer);
+                is_batched_transform = false;
+                position_space_ptr   = reinterpret_cast<cufftReal*>(input_buffer);
+                momentum_space_ptr   = reinterpret_cast<cufftComplex*>(output_buffer);
                 break;
             }
             case ft::inplace_32f_32f_32f_batched: {
-                position_space_ptr = reinterpret_cast<cufftReal*>(input_buffer);
-                momentum_space_ptr = reinterpret_cast<cufftComplex*>(output_buffer);
+                is_batched_transform = true;
+                position_space_ptr   = reinterpret_cast<cufftReal*>(input_buffer);
+                momentum_space_ptr   = reinterpret_cast<cufftComplex*>(output_buffer);
                 break;
             }
             default: {
@@ -3223,7 +3230,7 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     cufftErr(cufftSetStream(cuda_plan_forward, cudaStreamPerThread));
     cufftErr(cufftSetStream(cuda_plan_inverse, cudaStreamPerThread));
 
-    if ( dims.z > 1 && cufft_batch_size == 1 ) {
+    if ( dims.z > 1 && ! is_batched_transform ) {
         rank     = 3;
         ifftDims = new long long int[rank];
         offtDims = new long long int[rank];

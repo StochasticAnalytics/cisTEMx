@@ -271,11 +271,12 @@ class GpuImage {
 
     void CalculateCrossCorrelationImageWith(GpuImage* other_image);
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
-    Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size = 1, bool load_half_precision = false);
+    Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size, bool load_half_precision = false);
 
     bool                   Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void                   SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer, void* output_buffer);
     cistem::fft_type::Enum set_plan_type;
+    bool                   is_batched_transform;
     void                   SetupInitialValues( );
     void                   UpdateBoolsToDefault( );
 

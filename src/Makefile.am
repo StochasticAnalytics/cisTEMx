@@ -269,7 +269,8 @@ libgpucore_a_SOURCES  =      gpu/core_extensions/stop_watch_gpu.cu \
                              gpu/DeviceManager.cu \
                              gpu/TensorManager.cu \
                              gpu/GpuImage.cu \
-                             gpu/core_extensions/euler_search_gpu.cu 
+                             gpu/core_extensions/euler_search_gpu.cu \
+                             programs/refine3d/batched_search.cu 
 if ENABLE_FASTFFT_AM
     libgpucore_a_SOURCES += ext/FastFFT/src/FastFFT.cu
 endif
@@ -746,6 +747,7 @@ if WANT_CISTEM_GPU_AM
         samples_functional_testing_SOURCES += programs/samples/1_cpu_gpu_comparison/resize_comparison.cpp programs/samples/1_cpu_gpu_comparison/projection_comparison.cpp programs/samples/1_cpu_gpu_comparison/masking.cpp programs/samples/1_cpu_gpu_comparison/statistical_ops.cpp 
         samples_functional_testing_SOURCES += programs/samples/3_tensor_ops/gpu_image_tensor_ops.cpp
         samples_functional_testing_SOURCES += programs/samples/4_ffts/simple_cufft.cpp
+        samples_functional_testing_SOURCES += programs/samples/5_batched_ops/batched_correlation.cpp
 endif
 
 if WANT_CISTEM_GPU_AM 

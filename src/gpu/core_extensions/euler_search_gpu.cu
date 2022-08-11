@@ -66,7 +66,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
     // Setup and allocate our gpu image, but do not pin the ost memory since we'll copy from many different images in the intial implementation.
     GpuImage gpu_projection_image, gpu_correlation_map;
-    gpu_projection_image.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, 1, false);
+    // For some reason the implicit broadcasting is not working?? Just do it explicitly for the projection_image
+    gpu_projection_image.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch_size, false);
     gpu_correlation_map.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch_size, false);
     const int stride = gpu_projection_image.dims.w * gpu_projection_image.dims.y;
     timer.lap("Initial Allocations");
@@ -271,8 +272,11 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         }
         else {
             timer.start("Copy back projection");
-
-            gpu_projection_image.CopyFrom(&projections[iSearchPosition]);
+            // Explicitly broadcast for now until I can figure out what is broken.
+            for ( int iTest = 0; iTest < batch_size; iTest++ ) {
+                cudaErr(cudaMemcpy(&gpu_projection_image.real_values_gpu[stride * iTest], projections[iSearchPosition].real_values, sizeof(float) * stride, cudaMemcpyDeviceToDevice));
+            }
+            // gpu_projection_image.CopyFrom(&projections[iSearchPosition]);
             timer.lap("Copy back projection");
         }
 

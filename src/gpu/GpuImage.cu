@@ -19,7 +19,7 @@
 __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, int img_z, cufftComplex* result_values, int4 dims);
+__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values, const cufftComplex* __restrict__ img_complex_values, int img_z, cufftComplex* result_values, int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_output, const int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufftReal* phi, cufftReal* theta,
                                    int4 dims, float c_psi, float c_phi, float c_theta);
@@ -478,6 +478,7 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
     //  npp_stat = nppiMul_32sc_C1IRSfs((const Npp32sc *)complex_values_gpu, 1, (Npp32sc*)other_image.complex_values_gpu, 1, npp_ROI_complex, 0);
 
     // Multiplier to avoid conditionals in the kernel, if size z == 1 image z is zero resulting in a broadcast of the 2d through the batch.
+    // FIXME: somehow this doesn't work.
     int img_z = (other_image.dims.z == 1) ? 0 : 1;
 
     precheck;
@@ -1094,8 +1095,9 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
     //	return (float)(returnValue * 2.0f);
 }
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values,
-                                                        cufftComplex* img_complex_values, int img_z,
+__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
+                                                        const cufftComplex* __restrict__ img_complex_values,
+                                                        int           img_z,
                                                         cufftComplex* result_values, int4 dims) {
 
     int x = physical_X( );
@@ -1109,9 +1111,10 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_comple
         return;
 
     // The result z dimension will always be >=  this.z , optionally broadcast the img if it is NZ == 1 (img_z == 0)
-    int address = x + (dims.w / 2) * (y + z * dims.y);
+    int     address = x + (dims.w / 2) * (y + z * dims.y);
+    Complex tmp_val = (Complex)img_complex_values[x + (dims.w / 2) * (y + (z * img_z) * dims.y)];
 
-    result_values[address] = (cufftComplex)ComplexConjMul((Complex)img_complex_values[x + (dims.w / 2) * (y + (z * img_z) * dims.y)], (Complex)ref_complex_values[address]);
+    result_values[address] = (cufftComplex)ComplexConjMul(tmp_val, (Complex)ref_complex_values[address]);
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {
@@ -2007,12 +2010,11 @@ void GpuImage::MeanStdDev( ) {
 void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     NppInit( );
-    NppStatus ret_val;
     if ( is_in_real_space ) {
-        ret_val = nppiMul_32f_C1IR_Ctx((Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream);
+        nppErr(nppiMul_32f_C1IR_Ctx((Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
     }
     else {
-        ret_val = nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream);
+        nppErr(nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
     }
     // wxPrintf("Ret val %d\n", ret_val);
     // wxPrintf("ROI %d %d\n", npp_ROI.width, npp_ROI.height);

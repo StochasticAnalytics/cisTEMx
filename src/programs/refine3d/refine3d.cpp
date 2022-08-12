@@ -471,7 +471,7 @@ bool Refine3DApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
     // TODO: take a wanted_batch size and balance n_threads vs GPU memory availablity in refine3d and pass in to this method.
-    const int wanted_batch_size = 1;
+    const int wanted_batch_size = 40;
     GpuImage* gpu_projection_cache;
 #else
     // Dummy for the OMP shared cla

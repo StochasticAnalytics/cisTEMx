@@ -21,6 +21,7 @@ class BatchedSearch {
 
     void Deallocate( );
 
+    int  index;
     void Init(GpuImage& reference_image, int wanted_number_search_images, int wanted_batch_size, bool test_mirror, int max_pix_x = 0, int max_pix_y = 0);
 
     void SetMaxSearchExtension(int max_pixel_radius_x, int max_pixel_radius_y) {
@@ -28,9 +29,15 @@ class BatchedSearch {
         _max_pixel_radius_y = max_pixel_radius_y;
     }
 
+    inline int is_initialized( ) const {
+        return _is_initialized;
+    }
+
+    inline int n_search_images( ) const { return _n_search_images; }
+
     inline int n_batches( ) const { return _n_batches; };
 
-    inline int loop_batch_size(int iBatch) { return (iBatch < _n_batches - 1) ? _batch_size : _n_in_last_batch; };
+    inline int n_images_in_this_batch( ) { return (index < _n_batches - 1) ? _batch_size : _n_in_last_batch; };
 
     inline int stride( ) const { return _stride; };
 
@@ -41,6 +48,12 @@ class BatchedSearch {
     inline int intra_loop_inc( ) { return _intra_loop_inc; };
 
     inline int batch_size( ) { return _batch_size; };
+
+    inline int n_in_last_batch( ) { return _n_in_last_batch; };
+
+    inline float GetInPlaneAngle(int z_index_in_batch) { return _in_plane_angle[index * _batch_size + z_index_in_batch]; };
+
+    inline float GetMirroredOrNot(int z_index_in_batch) { return _is_search_result_mirrored[index * _batch_size + z_index_in_batch]; };
 
     Peak* _peak_buffer;
     Peak* _d_peak_buffer;
@@ -59,6 +72,22 @@ class BatchedSearch {
     // IntegerPeak* _peak_buffer;
     // IntegerPeak* _device_peak_buffer;
 
+    void print_angle_and_mirror( ) {
+        for ( int i = 0; i < _in_plane_angle.size( ); i++ ) {
+            std::cerr << i << "  angle: " << _in_plane_angle[i] << " mirrored: " << _is_search_result_mirrored[i] << std::endl;
+        }
+    }
+
+    inline void add_angle_and_mirror(float angle, bool mirror) {
+        _in_plane_angle.push_back(angle);
+        _is_search_result_mirrored.push_back(mirror);
+    }
+
+    inline void add_angle_and_mirror(bool mirror) {
+        _in_plane_angle.push_back(_in_plane_angle.back( ));
+        _is_search_result_mirrored.push_back(mirror);
+    }
+
   private:
     int _n_search_images;
     int _batch_size;
@@ -74,5 +103,8 @@ class BatchedSearch {
     bool _test_mirror;
 
     bool _is_initialized;
+
+    std::vector<bool>  _is_search_result_mirrored;
+    std::vector<float> _in_plane_angle;
 };
 #endif

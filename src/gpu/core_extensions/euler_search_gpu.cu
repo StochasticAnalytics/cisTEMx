@@ -4,6 +4,8 @@
 #include "../../gpu/gpu_core_headers.h"
 #include "../../gpu/GpuImage.h"
 
+#include "../../programs/refine3d/batched_search.h"
+
 // #define USE_CUTENSOR_FOR_REDUCTION
 // #define SYNC_TIMER
 
@@ -35,7 +37,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     //	int sample_rate = 0;
     int pixel_counter;
     int psi_i;
-    int psi_m;
     int number_of_psi_positions;
     int max_pix_x         = max_search_x / particle.pixel_size;
     int max_pix_y         = max_search_y / particle.pixel_size;
@@ -54,9 +55,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     Image*          rotated_image    = new Image;
     GpuImage*       rotation_cache   = NULL;
 
-    // TODO: replace this with the newere stream ordered memory pool in cuda
-    Peak* peak_buffer;
-    Peak* d_peak_buffer;
+    BatchedSearch batch;
 
     timer.start("Initial Allocations");
     flipped_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
@@ -67,9 +66,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     // Setup and allocate our gpu image, but do not pin the ost memory since we'll copy from many different images in the intial implementation.
     GpuImage gpu_projection_image, gpu_correlation_map;
     // For some reason the implicit broadcasting is not working?? Just do it explicitly for the projection_image
-    gpu_projection_image.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch_size, false);
+    gpu_projection_image.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, 1, false);
     gpu_correlation_map.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch_size, false);
-    const int stride = gpu_projection_image.dims.w * gpu_projection_image.dims.y;
     timer.lap("Initial Allocations");
 
     for ( i = 0; i < best_parameters_to_keep + 1; ++i ) {
@@ -89,33 +87,13 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     if ( test_mirror )
         psi_i *= 2;
 
-    std::vector<bool>  is_a_mirror;
-    std::vector<float> in_plane_angles;
-    // Make sure we have enough batches to cover all search positions.
-    const int n_search_images = psi_i;
-    const int n_batches       = (n_search_images + batch_size - 1) / batch_size;
-    const int n_in_last_batch = n_search_images - ((n_batches - 1) * batch_size);
+    batch.Init(gpu_projection_image, psi_i, batch_size, test_mirror, max_pix_x, max_pix_y);
 
     timer.start("Allocate rotation cache");
-    rotation_cache = new GpuImage[n_batches];
-    for ( int i = 0; i < n_batches - 1; i++ ) {
-        rotation_cache[i].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch_size, false);
+    rotation_cache = new GpuImage[batch.n_batches( )];
+    for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
+        rotation_cache[batch.index].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch.n_images_in_this_batch( ), false);
     }
-
-    // Even though gpu_projection_image and correlation_image have >= z slices as rotation cache, the dims.z will limit the algos and ignore the "extra" slices.
-    // This is a bit of a waste in allocations, and should be addressed when the thread/gpu arch based adjustment to the number of batches (vs wanted) is implemented.
-    // FIXME
-
-    // std::cerr << "n_in_last_batch: " << n_in_last_batch << std::endl;
-    // std::cerr << "n_search_images: " << n_search_images << std::endl;
-    // std::cerr << "batch_size : " << batch_size << std::endl;
-    // std::cerr << "n_batches : " << n_batches << std::endl;
-    MyDebugAssertTrue(n_in_last_batch >= 0, "Error: psi_i is too large for the number of batches");
-    rotation_cache[n_batches - 1].Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, n_in_last_batch, false);
-
-    // Allocate device buffer and pinned buffer for the peak search results
-    cudaErr(cudaMallocHost(&peak_buffer, batch_size * sizeof(Peak)));
-    cudaErr(cudaMalloc(&d_peak_buffer, batch_size * sizeof(Peak)));
 
     Image tmp_rot;
     Image mirrored;
@@ -132,10 +110,10 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     float* pinned_mirrored_ptr;
     // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
 
-    cudaErr(cudaHostRegister(tmp_rot.real_values, sizeof(float) * stride, cudaHostRegisterDefault));
+    cudaErr(cudaHostRegister(tmp_rot.real_values, sizeof(float) * batch.stride( ), cudaHostRegisterDefault));
     cudaErr(cudaHostGetDevicePointer(&pinned_rot_ptr, tmp_rot.real_values, 0));
     if ( test_mirror ) {
-        cudaErr(cudaHostRegister(mirrored.real_values, sizeof(float) * stride, cudaHostRegisterDefault));
+        cudaErr(cudaHostRegister(mirrored.real_values, sizeof(float) * batch.stride( ), cudaHostRegisterDefault));
         cudaErr(cudaHostGetDevicePointer(&pinned_mirrored_ptr, mirrored.real_values, 0));
     }
     timer.lap("Pin host pointers");
@@ -152,43 +130,37 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     timer.lap("Copy CTF Pad iFFT");
 
     timer.start("Make rotation cache");
-    psi_m = 0;
     psi_i = 0;
 
-    int intra_loop_inc = (test_mirror) ? 2 : 1;
-    int intra_loop_batch_size;
-    for ( int iBatch = 0; iBatch < n_batches; iBatch++ ) {
-        intra_loop_batch_size = (iBatch < n_batches - 1) ? batch_size : n_in_last_batch;
-        for ( int intra_batch_idx = 0; intra_batch_idx < intra_loop_batch_size; intra_batch_idx += intra_loop_inc ) {
+    for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
+        for ( int intra_batch_idx = 0; intra_batch_idx < batch.n_images_in_this_batch( ); intra_batch_idx += batch.intra_loop_inc( ) ) {
             // Reset these flags since we are re-using the same buffer
             tmp_rot.is_in_real_space         = true;
             tmp_rot.object_is_centred_in_box = true;
 
             if ( parameter_map.psi ) {
                 angles.GenerateRotationMatrix2D(psi_i * psi_step + psi_start);
-                in_plane_angles.push_back(psi_i * psi_step + psi_start);
+                batch.add_angle_and_mirror(psi_i * psi_step + psi_start, false);
             }
             else {
                 angles.GenerateRotationMatrix2D(psi_start);
-                in_plane_angles.push_back(psi_start);
+                batch.add_angle_and_mirror(psi_start, false);
             }
-            is_a_mirror.push_back(false);
 
             padded_image->Rotate2DSample(tmp_rot, angles);
             tmp_rot.ForwardFFT( );
             tmp_rot.SwapRealSpaceQuadrants( );
             tmp_rot.complex_values[0] = 0.0f + I * 0.0f;
-            // std::cerr << "iBatch and intra_batch_idx and calc: " << iBatch << " " << intra_batch_idx << " " << (psi_m % batch_size) << std::endl;
-            cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[stride * intra_batch_idx], tmp_rot.real_values, sizeof(float) * stride, cudaMemcpyHostToDevice));
+            // std::cerr << "batch.index and intra_batch_idx and calc: " << batch.index << " " << intra_batch_idx << " " << batch.stride( ) << std::endl;
+            cudaErr(cudaMemcpy(&rotation_cache[batch.index].real_values_gpu[batch.stride( ) * intra_batch_idx], tmp_rot.real_values, sizeof(float) * batch.stride( ), cudaMemcpyHostToDevice));
 
             if ( test_mirror ) {
                 mirrored.MirrorYFourier2D(tmp_rot);
-                cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[stride * (intra_batch_idx + 1)], mirrored.real_values, sizeof(float) * stride, cudaMemcpyHostToDevice));
-                in_plane_angles.push_back(in_plane_angles.back( ));
-                is_a_mirror.push_back(true);
+                cudaErr(cudaMemcpy(&rotation_cache[batch.index].real_values_gpu[batch.stride( ) * (intra_batch_idx + 1)], mirrored.real_values, sizeof(float) * batch.stride( ), cudaMemcpyHostToDevice));
+                batch.add_angle_and_mirror(true);
             }
+            psi_i++;
         }
-        psi_i++;
     }
     timer.lap("Make rotation cache");
 
@@ -273,23 +245,22 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         else {
             timer.start("Copy back projection");
             // Explicitly broadcast for now until I can figure out what is broken.
-            for ( int iTest = 0; iTest < batch_size; iTest++ ) {
-                cudaErr(cudaMemcpy(&gpu_projection_image.real_values_gpu[stride * iTest], projections[iSearchPosition].real_values, sizeof(float) * stride, cudaMemcpyDeviceToDevice));
-            }
-            // gpu_projection_image.CopyFrom(&projections[iSearchPosition]);
+            // for ( int iTest = 0; iTest < batch_size; iTest++ ) {
+            //     cudaErr(cudaMemcpy(&gpu_projection_image.real_values_gpu[batch.stride() * iTest], projections[iSearchPosition].real_values, sizeof(float) * batch.stride(), cudaMemcpyDeviceToDevice));
+            // }
+            gpu_projection_image.CopyFrom(&projections[iSearchPosition]);
             timer.lap("Copy back projection");
         }
 
         best_inplane_score = -std::numeric_limits<float>::max( );
-        for ( int iBatch = 0; iBatch < n_batches; iBatch++ ) {
-            intra_loop_batch_size = (iBatch < n_batches - 1) ? batch_size : n_in_last_batch;
+        for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
 
             timer.start("Cross Correlate");
 
             gpu_correlation_map.is_in_real_space = false;
 
             // dims.z of calling image (roation cache) determines what extent of the correlation map to use
-            rotation_cache[iBatch].MultiplyPixelWiseComplexConjugate(gpu_projection_image, gpu_correlation_map);
+            rotation_cache[batch.index].MultiplyPixelWiseComplexConjugate(gpu_projection_image, gpu_correlation_map);
 #ifdef SYNC_TIMER
             timer.lap_sync("Cross Correlate");
 #else
@@ -298,7 +269,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
             timer.start("FFT Correlation Map");
             // std::cerr << "wanted_batch_size: " << wanted_batch_size << std::endl;
-            gpu_correlation_map.BackwardFFTBatched(intra_loop_batch_size);
+            gpu_correlation_map.BackwardFFTBatched(batch.n_images_in_this_batch( ));
 #ifdef SYNC_TIMER
             timer.lap_sync("FFT Correlation Map");
 #else
@@ -328,7 +299,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             timer.lap("Finding peak with cuTensor");
 #endif
             timer.start("Fine Peak Search");
-            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(max_pix_x, max_pix_y, peak_buffer, d_peak_buffer, intra_loop_batch_size);
+            found_peak = gpu_correlation_map.FindPeakAtOriginFast2D(&batch);
 #ifdef SYNC_TIMER
             timer.lap_sync("Fine Peak Search");
 #else
@@ -337,12 +308,11 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
             // Note that found_peak.physical_address_within_image is not set in this method
             if ( found_peak.value > best_inplane_score ) {
-                int offset             = iBatch * batch_size + myroundint(found_peak.z);
                 best_inplane_score     = found_peak.value;
-                best_inplane_values[0] = 360.0 - in_plane_angles[offset];
+                best_inplane_values[0] = 360.0 - batch.GetInPlaneAngle(myroundint(found_peak.z));
                 best_inplane_values[1] = found_peak.x;
                 best_inplane_values[2] = found_peak.y;
-                mirrored_match         = is_a_mirror[offset];
+                mirrored_match         = batch.GetMirroredOrNot(myroundint(found_peak.z));
             }
         }
 
@@ -405,13 +375,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     delete rotated_image;
     delete projection_image;
 
-    // for ( int iBatch = 0; iBatch < n_batches; iBatch++ ) {
-    //     rotation_cache[iBatch].Deallocate( );
-    // }
     delete[] rotation_cache;
-
-    cudaErr(cudaFreeHost(peak_buffer));
-    cudaErr(cudaFree(d_peak_buffer));
 
     cudaErr(cudaHostUnregister(pinned_rot_ptr));
     if ( test_mirror ) {

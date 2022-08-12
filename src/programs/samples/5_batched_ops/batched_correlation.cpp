@@ -139,10 +139,13 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
     // This is so each batch is contiguous in the memory.
     GpuImage* rotation_cache = new GpuImage[batch.n_batches( )];
     int       counter        = 0;
-    for ( int iBatch = 0; iBatch < batch.n_batches( ); iBatch++ ) {
-        rotation_cache[iBatch].Allocate(d_seq_rotation_cache[0].dims.x, d_seq_rotation_cache[0].dims.y, batch.loop_batch_size(iBatch), false);
-        for ( int intra_batch_idx = 0; intra_batch_idx < batch.loop_batch_size(iBatch); intra_batch_idx++ ) {
-            cudaErr(cudaMemcpy(&rotation_cache[iBatch].real_values_gpu[batch.stride( ) * intra_batch_idx], d_seq_rotation_cache[counter].real_values, sizeof(float) * batch.stride( ), cudaMemcpyDeviceToDevice));
+    for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
+        // std::cerr << "Batch " << batch.index << std::endl;
+        // std::cerr << "size n last " << batch.batch_size( ) << " : " << batch.n_in_last_batch( ) << std::endl;
+        // std::cerr << "n_images " << batch.n_images_in_this_batch( ) << std::endl;
+        rotation_cache[batch.index].Allocate(d_seq_rotation_cache[0].dims.x, d_seq_rotation_cache[0].dims.y, batch.n_images_in_this_batch( ), false);
+        for ( int intra_batch_idx = 0; intra_batch_idx < batch.n_images_in_this_batch( ); intra_batch_idx++ ) {
+            cudaErr(cudaMemcpy(&rotation_cache[batch.index].real_values_gpu[batch.stride( ) * intra_batch_idx], d_seq_rotation_cache[counter].real_values, sizeof(float) * batch.stride( ), cudaMemcpyDeviceToDevice));
             counter++;
         }
 
@@ -155,13 +158,13 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
 
     // Second loop is to actually do the correlations
     bool repeat = true;
-    for ( int iBatch = 0; iBatch < batch.n_batches( ); iBatch++ ) {
+    for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
         d_correlation_img.is_in_real_space = false;
 
         // dims.z of calling image (roation cache) determines what extent of the correlation map to use
-        rotation_cache[iBatch].MultiplyPixelWiseComplexConjugate(d_reference_img, d_correlation_img);
+        rotation_cache[batch.index].MultiplyPixelWiseComplexConjugate(d_reference_img, d_correlation_img);
 
-        // d_correlation_img.QuickAndDirtyWriteSlices("/tmp/d_correlation_img_" + std::to_string(iBatch) + ".mrc", 1, 1);
+        // d_correlation_img.QuickAndDirtyWriteSlices("/tmp/d_correlation_img_" + std::to_string(batch.index) + ".mrc", 1, 1);
         // exit(1);
         if ( is_ground_truth ) {
             d_correlation_img.BackwardFFT( );
@@ -173,9 +176,8 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
         d_correlation_img.is_in_real_space         = true;
         d_correlation_img.object_is_centred_in_box = false;
         // TODO overload to take just the batch object directly
-        Peak found_peak = d_correlation_img.FindPeakAtOriginFast2D(batch.max_pixel_radius_x( ), batch.max_pixel_radius_y( ),
-                                                                   batch._peak_buffer, batch._d_peak_buffer, batch.loop_batch_size(iBatch));
-        results[iBatch] = found_peak.value;
+        Peak found_peak      = d_correlation_img.FindPeakAtOriginFast2D(&batch);
+        results[batch.index] = found_peak.value;
     }
     delete[] rotation_cache;
 

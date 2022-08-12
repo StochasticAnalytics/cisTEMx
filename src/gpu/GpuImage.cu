@@ -11,6 +11,7 @@
 #include "GpuImage.h"
 #include "gpu_indexing_functions.h"
 #include "gpu_image_cuFFT_callbacks.h"
+#include "../programs/refine3d/batched_search.h"
 
 // #define USE_ASYNC_MALLOC_FREE
 // #define USE_BLOCK_REDUCE
@@ -1832,6 +1833,16 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     // Okay, we are in bounds so lets find the max value
 }
 
+Peak GpuImage::FindPeakAtOriginFast2D(BatchedSearch* batch, bool load_half_precision) {
+    MyDebugAssertTrue(batch->is_initialized(), "BatchedSearch object is not setup!");
+
+    return FindPeakAtOriginFast2D(batch->max_pixel_radius_x(),
+                                batch->max_pixel_radius_y(),
+                                batch->_peak_buffer,
+                                batch->_d_peak_buffer,
+                                batch->n_images_in_this_batch(),
+                                load_half_precision);
+}
 Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size, bool load_half_precision) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");

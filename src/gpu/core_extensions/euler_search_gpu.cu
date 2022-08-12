@@ -358,16 +358,16 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     }
     /*******************************/
 
-    float best_score = 0.0f;
-    float best_x, best_y;
-    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
-        if ( list_of_best_parameters[i][5] > best_score ) {
-            best_score = list_of_best_parameters[i][5];
-            best_x     = list_of_best_parameters[i][3];
-            best_y     = list_of_best_parameters[i][4];
-        }
-    }
-    wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
+    // float best_score = 0.0f;
+    // float best_x, best_y;
+    // for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+    //     if ( list_of_best_parameters[i][5] > best_score ) {
+    //         best_score = list_of_best_parameters[i][5];
+    //         best_x     = list_of_best_parameters[i][3];
+    //         best_y     = list_of_best_parameters[i][4];
+    //     }
+    // }
+    // wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
 
     timer.start("Clean up");
     delete flipped_image;

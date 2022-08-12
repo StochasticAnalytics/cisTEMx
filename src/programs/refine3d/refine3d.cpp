@@ -25,9 +25,11 @@ class
   public:
     bool DoCalculation( );
     void DoInteractiveUserInput( );
+    void AddCommandLineOptions( );
 
     // Depends on compilation mode --enable-profiling
     StopWatch timer;
+    int       wanted_batch_size = 1;
 
   private:
 };
@@ -218,8 +220,21 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 IMPLEMENT_APP(Refine3DApp)
 
 // override the DoInteractiveUserInput
+void Refine3DApp::AddCommandLineOptions( ) {
+
+    // TODO consider short vs long switches.
+
+    // Options for saving diagnostic images
+    command_line_parser.AddOption("", "batch-size", "Requested batch size for in-plane search in global refinement. Default is 1", wxCMD_LINE_VAL_NUMBER);
+}
 
 void Refine3DApp::DoInteractiveUserInput( ) {
+
+    long temp_long;
+    if ( command_line_parser.Found("batch-size", &temp_long) ) {
+        wanted_batch_size = int(temp_long);
+    }
+
     wxString input_particle_images;
     wxString input_star_filename;
     wxString input_reconstruction;
@@ -470,13 +485,10 @@ bool Refine3DApp::DoCalculation( ) {
     ProgressBar*          my_progress;
 
 #ifdef ENABLEGPU
-    // TODO: take a wanted_batch size and balance n_threads vs GPU memory availablity in refine3d and pass in to this method.
-    const int wanted_batch_size = 40;
     GpuImage* gpu_projection_cache;
 #else
     // Dummy for the OMP shared cla
-    const int wanted_batch_size    = 1;
-    int       gpu_projection_cache = 0;
+    int gpu_projection_cache = 0;
 #endif
 
     JobResult* intermediate_result;

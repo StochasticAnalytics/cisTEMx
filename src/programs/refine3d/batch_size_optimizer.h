@@ -6,6 +6,7 @@
 #include <omp.h> // FIXME: this should of course depend on weither we are using OpenMP or not
 
 // #define PRINT_OPT_DEBUG
+
 class BatchSizeOptimizer {
 
   public:
@@ -53,7 +54,7 @@ class BatchSizeOptimizer {
             calc_gradient( );
             if ( calculate_alpha ) {
                 // Because we don't know how large the steps will be, choose alpha to be ~half the intial step size
-                alpha           = fabsf(ceilf(10.f * float(initial_step)) / gradient);
+                alpha           = float(initial_step) / 2.f; // fabsf(ceilf(10.f * float(initial_step)) / (gradient + epsilon));
                 calculate_alpha = false;
             }
 

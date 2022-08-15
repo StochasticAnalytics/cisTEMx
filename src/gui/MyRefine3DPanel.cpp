@@ -31,6 +31,9 @@ MyRefine3DPanel::MyRefine3DPanel(wxWindow* parent)
     ExpertPanel->SetMinSize(input_size);
     ExpertPanel->SetSize(input_size);
 
+#ifndef SHOW_CISTEM_GPU_OPTIONS
+    use_gpu_checkboxR3D->Show(false);
+#endif
     // set values //
 
     /*
@@ -551,6 +554,12 @@ void MyRefine3DPanel::SetDefaults( ) {
         LowPassMaskNoRadio->SetValue(true);
         MaskFilterResolutionText->ChangeValueFloat(20.00);
 
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+        use_gpu_checkboxR3D->SetValue(true);
+#else
+        use_gpu_checkboxR3D->SetValue(false); // Already disabled, but also set to un-ticked for visual consistency.
+#endif
+
         ExpertPanel->Thaw( );
     }
 }
@@ -623,6 +632,9 @@ void MyRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
             UseMaskCheckBox->Enable(true);
             ExpertToggleButton->Enable(true);
 
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+            use_gpu_checkboxR3D->Enable(true);
+#endif
             if ( RefinementPackageComboBox->GetCount( ) > 0 ) {
 
                 RefinementPackageComboBox->Enable(true);
@@ -652,6 +664,7 @@ void MyRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
                 RefinementPackageComboBox->Enable(false);
                 InputParametersComboBox->ChangeValue("");
                 InputParametersComboBox->Enable(false);
+                use_gpu_checkboxR3D->Enable(false); // Doesn't matter if SHOW_CISTEM_GPU_OPTIONS
 
                 if ( PleaseCreateRefinementPackageText->IsShown( ) == false ) {
                     PleaseCreateRefinementPackageText->Show(true);
@@ -1526,6 +1539,19 @@ void RefinementManager::SetupRefinementJob( ) {
     long first_particle;
     long last_particle;
 
+    bool use_gpu;
+
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+    if ( my_parent->use_gpu_checkboxR3D->GetValue( ) == true ) {
+        use_gpu = true;
+    }
+    else {
+        use_gpu = false;
+    }
+#else
+    use_gpu = false;
+#endif
+
     // get the last refinement for the currently selected refinement package..
 
     input_refinement->WritecisTEMStarFiles(main_frame->current_project.parameter_file_directory.GetFullPath( ) + "/input_par", 1.0f, 0.0f, true);
@@ -1540,7 +1566,12 @@ void RefinementManager::SetupRefinementJob( ) {
     number_of_refinement_processes = std::min(number_of_particles, active_refinement_run_profile.ReturnTotalJobs( ));
     number_of_refinement_jobs      = number_of_refinement_processes;
 
-    my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d", number_of_refinement_jobs * active_refinement_package->number_of_classes);
+    if ( use_gpu ) {
+        my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d_gpu", number_of_refinement_jobs * active_refinement_package->number_of_classes);
+    }
+    else {
+        my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d", number_of_refinement_jobs * active_refinement_package->number_of_classes);
+    }
 
     for ( class_counter = 0; class_counter < active_refinement_package->number_of_classes; class_counter++ ) {
         current_particle_counter = 1;

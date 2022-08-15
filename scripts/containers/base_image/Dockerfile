@@ -24,7 +24,7 @@ RUN useradd -ms /bin/bash cisTEMx
 RUN echo "cisTEMx:cisTEMx" | chpasswd && adduser cisTEMx sudo
 
 # Install useful ubuntu packages libgtk2.0-dev
-RUN apt-get --allow-releaseinfo-change update && apt-get install -y 
+RUN apt-get --allow-releaseinfo-change update && apt-get install -y \
     libgtk-3-dev libwxgtk3.0-gtk3-dev libwxbase3.0-dev \
     libtool autoconf autotools-dev nano gedit meld cmake \
     libfftw3-dev libtiff-dev software-properties-common libffi-dev \

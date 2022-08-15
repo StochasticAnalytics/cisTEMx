@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version 3.10.1-0-g8feb16b)
+// C++ code generated with wxFormBuilder (version 3.10.0-4761b0c)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO *NOT* EDIT THIS FILE!
@@ -1981,6 +1981,7 @@ class Refine3DPanel : public JobPanel
 		MemoryComboBox* RefinementRunProfileComboBox;
 		wxStaticText* RunProfileText1;
 		MemoryComboBox* ReconstructionRunProfileComboBox;
+		wxCheckBox* use_gpu_checkboxR3D;
 		wxButton* StartRefinementButton;
 
 		// Virtual event handlers, override them in your derived class
@@ -2373,6 +2374,7 @@ class AutoRefine3DPanelParent : public JobPanel
 		MemoryComboBox* RefinementRunProfileComboBox;
 		wxStaticText* RunProfileText1;
 		MemoryComboBox* ReconstructionRunProfileComboBox;
+		wxCheckBox* use_gpu_checkboxAR3D;
 		wxButton* StartRefinementButton;
 
 		// Virtual event handlers, override them in your derived class

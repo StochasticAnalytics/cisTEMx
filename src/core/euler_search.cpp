@@ -424,7 +424,7 @@ void EulerSearch::SetSymmetryLimits( ) {
  */
 
 template <>
-void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* projections) {
+void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* projections, int batch_size) {
     MyDebugAssertTrue(number_of_search_positions > 0, "EulerSearch not initialized");
     MyDebugAssertTrue(particle.particle_image->is_in_memory, "Particle image not allocated");
     MyDebugAssertTrue(input_3d.is_in_memory, "3D reference map not allocated");

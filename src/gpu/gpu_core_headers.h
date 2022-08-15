@@ -104,6 +104,14 @@ static __device__ __host__ inline Complex ComplexConjMul(Complex a, Complex b) {
 }
 
 // Complex a * conj b multiplication
+static __device__ __host__ inline Complex ComplexConjMul(const Complex& a, Complex& b) {
+    Complex c;
+    c.x = a.x * b.x + a.y * b.y;
+    c.y = a.y * b.x - a.x * b.y;
+    return c;
+}
+
+// Complex a * conj b multiplication
 static __device__ __host__ inline float RealPartOfComplexConjMul(Complex a, Complex b) {
     return a.x * b.x + a.y * b.y;
 }

@@ -17,6 +17,7 @@ using namespace cistem_timer_noop;
 #endif
 
 #include "ProjectionComparisonObjects.h"
+#include "batch_size_optimizer.h"
 
 StopWatch global_timer;
 
@@ -25,9 +26,11 @@ class
   public:
     bool DoCalculation( );
     void DoInteractiveUserInput( );
+    void AddCommandLineOptions( );
 
     // Depends on compilation mode --enable-profiling
     StopWatch timer;
+    int       wanted_batch_size = 1;
 
   private:
 };
@@ -218,8 +221,21 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 IMPLEMENT_APP(Refine3DApp)
 
 // override the DoInteractiveUserInput
+void Refine3DApp::AddCommandLineOptions( ) {
+
+    // TODO consider short vs long switches.
+
+    // Options for saving diagnostic images
+    command_line_parser.AddOption("", "batch-size", "Requested batch size for in-plane search in global refinement. Default is 1", wxCMD_LINE_VAL_NUMBER);
+}
 
 void Refine3DApp::DoInteractiveUserInput( ) {
+
+    long temp_long;
+    if ( command_line_parser.Found("batch-size", &temp_long) ) {
+        wanted_batch_size = int(temp_long);
+    }
+
     wxString input_particle_images;
     wxString input_star_filename;
     wxString input_reconstruction;
@@ -472,7 +488,7 @@ bool Refine3DApp::DoCalculation( ) {
 #ifdef ENABLEGPU
     GpuImage* gpu_projection_cache;
 #else
-    // Dummy for the OMP shared clause
+    // Dummy for the OMP shared cla
     int gpu_projection_cache = 0;
 #endif
 
@@ -1040,6 +1056,7 @@ bool Refine3DApp::DoCalculation( ) {
         timer.start("omp copy to local variables");
 
         ProjectionComparisonObjects comparison_object;
+        BatchSizeOptimizer          batch_size_optimizer;
 #ifdef ENABLEGPU
         GpuImage* use_this_cache = gpu_projection_cache;
 #else
@@ -1090,6 +1107,7 @@ bool Refine3DApp::DoCalculation( ) {
         timer.lap("omp copy to local variables");
 #pragma omp for schedule(dynamic, 1)
         for ( current_line_local = 0; current_line_local < input_star_file.ReturnNumberofLines( ); current_line_local++ ) {
+
             input_parameters = input_star_file.ReturnLine(current_line_local);
             if ( input_parameters.position_in_stack < first_particle || input_parameters.position_in_stack > last_particle )
                 continue;
@@ -1420,7 +1438,9 @@ bool Refine3DApp::DoCalculation( ) {
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
                         if ( ! search_particle_local.parameter_map.phi )
                             euler_search_local.psi_start = 360.0 - input_parameters.phi;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        wanted_batch_size = batch_size_optimizer.start( );
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
+                        batch_size_optimizer.update_batch_size( );
                     }
                     else if ( ! search_particle_local.parameter_map.phi && search_particle_local.parameter_map.theta ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, input_parameters.psi, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
@@ -1428,7 +1448,9 @@ bool Refine3DApp::DoCalculation( ) {
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
                         if ( ! search_particle_local.parameter_map.psi )
                             euler_search_local.psi_start = 360.0 - input_parameters.phi;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        wanted_batch_size = batch_size_optimizer.start( );
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
+                        batch_size_optimizer.update_batch_size( );
                     }
                     else if ( search_particle_local.parameter_map.phi && search_particle_local.parameter_map.theta ) {
                         if ( ! search_particle_local.parameter_map.psi )
@@ -1438,13 +1460,17 @@ bool Refine3DApp::DoCalculation( ) {
                         //					for (i = 0; i < euler_search_local.number_of_search_positions; i++) {projection_cache[i].SwapRealSpaceQuadrants(); projection_cache[i].QuickAndDirtyWriteSlice("projection.mrc", i + 1);}
                         //					search_particle_local.particle_image->QuickAndDirtyWriteSlice("particle_image.mrc", 1);
                         //					exit(0);
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        wanted_batch_size = batch_size_optimizer.start( );
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
+                        batch_size_optimizer.update_batch_size( );
                     }
                     else if ( search_particle_local.parameter_map.psi ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         if ( euler_search_local.best_parameters_to_keep != best_parameters_to_keep )
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
-                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache);
+                        wanted_batch_size = batch_size_optimizer.start( );
+                        euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, use_this_cache, wanted_batch_size);
+                        batch_size_optimizer.update_batch_size( );
                     }
                     else {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);

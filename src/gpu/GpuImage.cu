@@ -490,8 +490,6 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
     postcheck;
 }
 
-
-
 __global__ void ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values_gpu, int4 dims, int padding_jump_value, float* returnValue);
 
 float GpuImage::ReturnAverageOfRealValuesOnEdges( ) {
@@ -618,6 +616,12 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
 #endif
                 complex_values_16f      = (void*)real_values_16f;
                 is_allocated_16f_buffer = true;
+
+                real_values_fp16    = reinterpret_cast<__half*>(real_values_16f);
+                complex_values_fp16 = reinterpret_cast<__half2*>(complex_values_16f);
+
+                real_values_bf16    = reinterpret_cast<nv_bfloat16*>(real_values_16f);
+                complex_values_bf16 = reinterpret_cast<nv_bfloat162*>(complex_values_16f);
             }
             break;
 
@@ -649,6 +653,12 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
 #endif
                 ctf_complex_buffer_16f      = (void*)ctf_buffer_16f;
                 is_allocated_ctf_16f_buffer = true;
+
+                ctf_buffer_fp16         = reinterpret_cast<__half*>(ctf_buffer_16f);
+                ctf_complex_buffer_fp16 = reinterpret_cast<__half2*>(ctf_complex_buffer_16f);
+
+                ctf_buffer_bf16         = reinterpret_cast<nv_bfloat16*>(ctf_buffer_16f);
+                ctf_complex_buffer_bf16 = reinterpret_cast<nv_bfloat162*>(ctf_complex_buffer_16f);
             }
             break;
 
@@ -1102,8 +1112,8 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
 __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
                                                         const cufftComplex* __restrict__ img_complex_values,
-                                                        cufftComplex* result_values, 
-                                                        int4 dims) {
+                                                        cufftComplex* result_values,
+                                                        int4          dims) {
 
     int x = physical_X( );
     if ( x > dims.w / 2 )
@@ -1112,17 +1122,15 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __re
     if ( y > dims.y )
         return;
 
-
     int address = x + (dims.w / 2) * y;
-    int stride = (dims.w/2) * dims.y;
+    int stride  = (dims.w / 2) * dims.y;
 
     const Complex img_val = (Complex)img_complex_values[address];
 
-    for (int k = 0; k < dims.z ; k++) {
+    for ( int k = 0; k < dims.z; k++ ) {
         result_values[address] = (cufftComplex)ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
         address += stride;
     }
-
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {
@@ -1834,15 +1842,16 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
 }
 
 Peak GpuImage::FindPeakAtOriginFast2D(BatchedSearch* batch, bool load_half_precision) {
-    MyDebugAssertTrue(batch->is_initialized(), "BatchedSearch object is not setup!");
+    MyDebugAssertTrue(batch->is_initialized( ), "BatchedSearch object is not setup!");
 
-    return FindPeakAtOriginFast2D(batch->max_pixel_radius_x(),
-                                batch->max_pixel_radius_y(),
-                                batch->_peak_buffer,
-                                batch->_d_peak_buffer,
-                                batch->n_images_in_this_batch(),
-                                load_half_precision);
+    return FindPeakAtOriginFast2D(batch->max_pixel_radius_x( ),
+                                  batch->max_pixel_radius_y( ),
+                                  batch->_peak_buffer,
+                                  batch->_d_peak_buffer,
+                                  batch->n_images_in_this_batch( ),
+                                  load_half_precision);
 }
+
 Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size, bool load_half_precision) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");

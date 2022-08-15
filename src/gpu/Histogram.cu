@@ -137,8 +137,7 @@ void Histogram::BufferInit(NppiSize npp_ROI) {
 }
 
 void Histogram::AddToHistogram(GpuImage& input_image) {
-
-    MyAssertTrue(input_image.is_in_memory_gpu, "The image to add to the histogram is not in gpu memory.");
+    MyDebugAssertTrue(input_image.is_in_memory_gpu, "The image to add to the histogram is not in gpu memory.");
 
     precheck;
     histogram_smem_atomics<<<gridDims_img, threadsPerBlock_img, (histogram_n_bins) * sizeof(int), input_image.nppStream.hStream>>>((const __half*)input_image.real_values_16f, input_image.dims, histogram, histogram_n_bins, histogram_min, histogram_step, max_padding);

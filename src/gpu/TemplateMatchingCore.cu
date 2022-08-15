@@ -207,10 +207,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             //			d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_gpu, false);
             //			d_padded_reference.ConvertToHalfPrecision(false);
-
             if ( DO_HISTOGRAM ) {
                 if ( ! histogram.is_allocated_histogram ) {
+
                     d_padded_reference.NppInit( );
+
                     histogram.BufferInit(d_padded_reference.npp_ROI);
                 }
                 histogram.AddToHistogram(d_padded_reference);

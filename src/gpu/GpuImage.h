@@ -84,15 +84,15 @@ class GpuImage {
     void* ctf_buffer_16f;
     void* ctf_complex_buffer_16f;
 
-    __half*  real_values_fp16        = reinterpret_cast<__half*>(real_values_16f);
-    __half2* complex_values_fp16     = reinterpret_cast<__half2*>(complex_values_16f);
-    __half*  ctf_buffer_fp16         = reinterpret_cast<__half*>(ctf_buffer_16f);
-    __half2* ctf_complex_buffer_fp16 = reinterpret_cast<__half2*>(ctf_complex_buffer_16f);
+    __half*  real_values_fp16;
+    __half2* complex_values_fp16;
+    __half*  ctf_buffer_fp16;
+    __half2* ctf_complex_buffer_fp16;
 
-    nv_bfloat16*  real_values_bf16        = reinterpret_cast<nv_bfloat16*>(real_values_16f);
-    nv_bfloat162* complex_values_bf16     = reinterpret_cast<nv_bfloat162*>(complex_values_16f);
-    nv_bfloat16*  ctf_buffer_bf16         = reinterpret_cast<nv_bfloat16*>(ctf_buffer_16f);
-    nv_bfloat162* ctf_complex_buffer_bf16 = reinterpret_cast<nv_bfloat162*>(ctf_complex_buffer_16f);
+    nv_bfloat16*  real_values_bf16;
+    nv_bfloat162* complex_values_bf16;
+    nv_bfloat16*  ctf_buffer_bf16;
+    nv_bfloat162* ctf_complex_buffer_bf16;
 
     // We want to be able to re-use the texture object, so only set it up once.
     cudaTextureObject_t tex_real;

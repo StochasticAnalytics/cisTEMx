@@ -23,8 +23,9 @@ RUN apt-get update && apt-get install -y sudo
 RUN useradd -ms /bin/bash cisTEMx
 RUN echo "cisTEMx:cisTEMx" | chpasswd && adduser cisTEMx sudo
 
-# Install useful ubuntu packages
-RUN apt-get --allow-releaseinfo-change update && apt-get install -y libgtk2.0-dev \
+# Install useful ubuntu packages libgtk2.0-dev
+RUN apt-get --allow-releaseinfo-change update && apt-get install -y 
+    libgtk-3-dev libwxgtk3.0-gtk3-dev libwxbase3.0-dev \
     libtool autoconf autotools-dev nano gedit meld cmake \
     libfftw3-dev libtiff-dev software-properties-common libffi-dev \
     libbz2-dev libsqlite3-dev zlib1g-dev libjpeg-dev libtiff-dev \
@@ -36,6 +37,7 @@ RUN mkdir /opt/intel && echo 'int mkl_serv_intel_cpu_true() {return 1;}' > /opt/
     gcc -shared -fPIC -o /opt/intel/libfakeIntel.so /opt/intel/fakeIntel.c 
 
 ENV LD_PRELOAD=/opt/intel/libfakeIntel.so    
+
 
 # Get the MKL and intel compiler: note, this is 19G by default, will try to determine minimal set needed huge waste but works well enough for now, final size is ~5gb
 RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
@@ -54,7 +56,7 @@ RUN wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWi
 # Now build with out static intel
 RUN . /opt/intel/oneapi/setvars.sh  && cd /tmp/wxWidgets-3.0.5 && CXX=icpc CC=icc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/intel-dynamic --with-libnotify=no \
     --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
-    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
+    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=3 --disable-sys-libs  && \
     make -j$n_threads && \
     make install 
 

@@ -998,6 +998,8 @@ float Particle::ReturnLogLikelihood(Image& input_image, CTF& input_ctf, Reconstr
     sigma               = sqrtf(variance_difference / projection_image->ReturnVarianceOfRealValues( ));
     //	sigma = sqrtf(variance_difference / powf(alpha, 2));
     //	wxPrintf("variance_difference, alpha for sigma, sigma = %g %g %g\n", variance_difference, alpha, sigma);
+
+    //FIXME this should be informative.
     // Prevent rare occurrences of unrealistically high sigmas
     if ( sigma > 100.0 )
         sigma = 100.0;

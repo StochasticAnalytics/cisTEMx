@@ -57,7 +57,7 @@ class EulerSearch {
     void Run(Particle& particle, Image& input_3d, ImageType* projections, int batch_size = 1);
 
     // FIXME, set default fals to get lk;s djlkklh;jgsdasdghjksagdlh;
-    void CalculateGridSearchPositions(bool random_start_angle = false);
+    void CalculateGridSearchPositions(bool random_start_angle = true);
     void CalculateRandomSearchPositions( );
     void SetSymmetryLimits( );
     //	void RotateFourier2DFromIndex(Image &image_to_rotate, Image &rotated_image, Kernel2D &kernel_index);

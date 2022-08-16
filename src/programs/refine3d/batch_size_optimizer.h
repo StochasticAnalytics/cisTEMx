@@ -15,20 +15,30 @@ class BatchSizeOptimizer {
 
     int start( ) {
         start_time = std::chrono::high_resolution_clock::now( );
-        if ( t == -2 ) {
-            t++;
-            current_batch[0] = initial_start - initial_step;
-            return current_batch[0];
+        int returned_batch_size;
+        switch ( t ) {
+            case -2: {
+                current_batch[0]    = initial_start - initial_step;
+                returned_batch_size = current_batch[0];
+                break;
+            }
+            case -1: {
+                current_batch[1]    = initial_start + initial_step;
+                returned_batch_size = current_batch[1];
+                break;
+            }
+            default: {
+                returned_batch_size = current_batch[1];
+                break;
+            }
         }
-        if ( t == -1 ) {
-            t++;
-            current_batch[1] = initial_start + initial_step;
-            return current_batch[1];
-        }
-        if ( omp_get_thread_num( ) == 0 ) {
-            // std::cerr << "Current batch " << current_batch[1] << std::endl;
-            return current_batch[1];
-        }
+
+        // if ( omp_get_thread_num( ) == 0 ) {
+        //     std::cerr << "Current batch " << current_batch[1] << std::endl;
+        // }
+
+        t++;
+        return returned_batch_size;
     };
 
     void lap( ) {
@@ -68,8 +78,9 @@ class BatchSizeOptimizer {
             v_hat            = v[1] / (1 - beta2_of_t);
             current_step     = int(std::round(alpha * m_hat / (sqrtf(v_hat) + epsilon)));
             current_batch[0] = current_batch[1];
-            current_batch[1] -= current_step;
-            current_time[0] = current_time[1];
+            // FIXME:: limits
+            current_batch[1] = std::min(100, std::max(1, current_batch[1] - current_step));
+            current_time[0]  = current_time[1];
 
             m[0] = m[1];
             v[0] = v[1];
@@ -97,6 +108,28 @@ class BatchSizeOptimizer {
         }
 #endif
     };
+
+    void ResetSearchParameters( ) {
+        alpha = 0.0;
+        beta1_of_t;
+        beta2_of_t;
+        t        = -2;
+        m[0]     = 0.0;
+        m[1]     = 0.0;
+        v[0]     = 0.0;
+        v[1]     = 0.0;
+        m_hat    = 0.0;
+        v_hat    = 0.0;
+        gradient = 0.0;
+
+        start_time = std::chrono::high_resolution_clock::now( );
+
+        current_step    = initial_step;
+        best_batch_size = initial_start;
+
+        // We set the initial learning rate to produce a step size that is 1/2 the initial step assuming we have a decent idea where the optimum is
+        calculate_alpha = true;
+    }
 
   private:
     float       alpha   = 0.0;

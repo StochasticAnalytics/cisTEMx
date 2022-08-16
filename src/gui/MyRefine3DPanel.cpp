@@ -1625,18 +1625,12 @@ void RefinementManager::SetupRefinementJob( ) {
             float defocus_step         = active_defocus_search_step;
             float padding              = 1.0;
 
-            bool global_search;
-            bool local_refinement;
+            bool do_global_search;
+            bool do_local_refinement;
             bool global_local_refinemnent = false;
 
-            if ( active_do_global_refinement == true ) {
-                global_search    = true;
-                local_refinement = false;
-            }
-            else {
-                global_search    = false;
-                local_refinement = true;
-            }
+            do_global_search    = (active_do_global_refinement) ? true : false;
+            do_local_refinement = (active_do_global_refinement) ? false : true;
 
             bool ignore_input_parameters = active_also_refine_input;
 
@@ -1698,8 +1692,8 @@ void RefinementManager::SetupRefinementJob( ) {
                                                   defocus_search_range,
                                                   defocus_step,
                                                   padding,
-                                                  global_search,
-                                                  local_refinement,
+                                                  do_global_search,
+                                                  do_local_refinement,
                                                   refine_psi,
                                                   refine_theta,
                                                   refine_phi,
@@ -1808,18 +1802,18 @@ void RefinementManager::SetupRefinementJob( ) {
 				float	 defocus_step							= my_parent->DefocusSearchStepTextCtrl->ReturnValue();
 				float	 padding								= 1.0;
 
-				bool global_search;
-				bool local_refinement;
+				bool do_global_search;
+				bool do_local_refinement;
 
 				if (my_parent->GlobalRefinementRadio->GetValue() == true)
 				{
-					global_search = true;
-					local_refinement = false;
+					do_global_search = true;
+					do_local_refinement = false;
 				}
 				else
 				{
-					global_search = false;
-					local_refinement = true;
+					do_global_search = false;
+					do_local_refinement = true;
 				}
 
 
@@ -1876,8 +1870,8 @@ void RefinementManager::SetupRefinementJob( ) {
 																	defocus_search_range,								// 32
 																	defocus_step,										// 33
 																	padding,											// 34
-																	global_search,										// 35
-																	local_refinement,									// 36
+																	do_global_search,										// 35
+																	do_local_refinement,									// 36
 																	refine_psi,											// 37
 																	refine_theta,										// 38
 																	refine_phi, 										// 39

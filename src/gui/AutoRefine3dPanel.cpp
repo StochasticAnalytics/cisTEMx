@@ -1500,32 +1500,32 @@ void AutoRefinementManager::SetupRefinementJob( ) {
             float defocus_step         = 0; //my_parent->DefocusSearchStepTextCtrl->ReturnValue();
             float padding              = 1.0;
 
-            bool global_search           = false;
-            bool local_refinement        = false;
-            bool global_local_refinement = true;
+            bool do_global_search                      = false;
+            bool do_local_refinement                   = false;
+            bool do_global_search_and_local_refinement = true;
 
             /*
 			if (number_of_rounds_run == 0)
 			{
-				global_search = true;
-				local_refinement = false;
+				do_global_search = true;
+				do_local_refinement = false;
 			}
 			else
 			{
-				global_search = false;
-				local_refinement = true;
+				do_global_search = false;
+				do_local_refinement = true;
 
 			}*/
             /*
 			if (my_parent->GlobalRefinementRadio->GetValue() == true)
 			{
-				global_search = true;
-				local_refinement = false;
+				do_global_search = true;
+				do_local_refinement = false;
 			}
 			else
 			{
-				global_search = false;
-				local_refinement = true;
+				do_global_search = false;
+				do_local_refinement = true;
 			}*/
 
             bool refine_psi                     = true; //my_parent->RefinePsiCheckBox->GetValue();
@@ -1587,8 +1587,8 @@ void AutoRefinementManager::SetupRefinementJob( ) {
                                                   defocus_search_range,
                                                   defocus_step,
                                                   padding,
-                                                  global_search,
-                                                  local_refinement,
+                                                  do_global_search,
+                                                  do_local_refinement,
                                                   refine_psi,
                                                   refine_theta,
                                                   refine_phi,
@@ -1603,7 +1603,7 @@ void AutoRefinementManager::SetupRefinementJob( ) {
                                                   normalize_input_3d,
                                                   threshold_input_3d,
                                                   max_threads,
-                                                  global_local_refinement,
+                                                  do_global_search_and_local_refinement,
                                                   class_counter,
                                                   ignore_input_parameters,
                                                   defocus_bias);

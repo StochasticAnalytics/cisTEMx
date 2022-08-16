@@ -592,7 +592,10 @@ int ReturnClosestFactorizedLower(int wanted_int, int largest_factor, bool enforc
 }
 
 float CalculateAngularStep(float required_resolution, float radius_in_angstroms) {
-    return 360.0 * required_resolution / PI / radius_in_angstroms;
+    // I think the factor of 2 comes from assuming that the wanted resolution is
+    // at nyquist in most searches, so 2 * wanted resoution = pixel size.
+    // It is not clear to me that this is optimal in any sense though. FIXME
+    return rad_2_deg(2.f * required_resolution / radius_in_angstroms);
 }
 
 void Allocate2DFloatArray(float**& array, int dim1, int dim2) {

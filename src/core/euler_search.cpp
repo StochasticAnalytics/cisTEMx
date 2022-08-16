@@ -2,6 +2,8 @@
 #include <cistem_config.h>
 #include "core_headers.h"
 
+#define PRINT_EXTRA_SEARCH_INFO
+
 EulerSearch::EulerSearch( ) {
     // Nothing to do until Init is called
     refine_top_N                = 0;
@@ -438,8 +440,9 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
     int psi_i;
     int psi_m;
     int number_of_psi_positions;
-    int max_pix_x         = max_search_x / particle.pixel_size;
-    int max_pix_y         = max_search_y / particle.pixel_size;
+    int max_pix_x = max_search_x / particle.pixel_size;
+    int max_pix_y = max_search_y / particle.pixel_size;
+
     int padding_factor_2d = 4;
     //	float psi;
     float           best_inplane_score;
@@ -731,16 +734,19 @@ void EulerSearch::Run<Image>(Particle& particle, Image& input_3d, Image* project
 	projection_image->SwapRealSpaceQuadrants();
 	projection_image->QuickAndDirtyWriteSlice("proj.mrc", particle.origin_micrograph); */
 
-    // float best_score = 0.0f;
-    // float best_x, best_y;
-    // for ( int i = 0; i < best_parameters_to_keep; i++ ) {
-    //     if ( list_of_best_parameters[i][5] > best_score ) {
-    //         best_score = list_of_best_parameters[i][5];
-    //         best_x     = list_of_best_parameters[i][3];
-    //         best_y     = list_of_best_parameters[i][4];
-    //     }
-    // }
-    // wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
+#ifdef PRINT_EXTRA_SEARCH_INFO
+    float best_score = 0.0f;
+    float best_x, best_y;
+    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+        if ( list_of_best_parameters[i][5] > best_score ) {
+            best_score = list_of_best_parameters[i][5];
+            best_x     = list_of_best_parameters[i][3];
+            best_y     = list_of_best_parameters[i][4];
+        }
+    }
+#pragma omp critical
+    std::cerr << "Best Score is " << best_score << " at ( " << best_x << " " << best_y << " )\n";
+#endif
 
     timer.start("Clean up");
     delete flipped_image;

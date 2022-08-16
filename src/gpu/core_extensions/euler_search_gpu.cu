@@ -8,6 +8,7 @@
 
 // #define USE_CUTENSOR_FOR_REDUCTION
 // #define SYNC_TIMER
+#define PRINT_EXTRA_SEARCH_INFO
 
 /**
  * @brief Runs a brute force search over a pre-specified range of Euler angles.
@@ -31,9 +32,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     MyDebugAssertTrue(input_3d.is_in_memory, "3D reference map not allocated");
     //	MyDebugAssertTrue(particle.particle_image->logical_x_dimension == input_3d.logical_x_dimension && particle.particle_image->logical_y_dimension == input_3d.logical_y_dimension, "Error: Image and 3D reference incompatible");
 
-    int i;
-    int j;
-    int k;
     //	int sample_rate = 0;
     int pixel_counter;
     int psi_i;
@@ -70,9 +68,9 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     gpu_correlation_map.Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, batch_size, false);
     timer.lap("Initial Allocations");
 
-    for ( i = 0; i < best_parameters_to_keep + 1; ++i ) {
-        ZeroFloatArray(list_of_best_parameters[i], 5);
-        list_of_best_parameters[i][5] = -std::numeric_limits<float>::max( );
+    for ( int iParam = 0; iParam < best_parameters_to_keep + 1; ++iParam ) {
+        ZeroFloatArray(list_of_best_parameters[iParam], 5);
+        list_of_best_parameters[iParam][5] = -std::numeric_limits<float>::max( );
     }
 
     if ( parameter_map.psi ) {
@@ -225,7 +223,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
      **********************/
     std::cerr << "Querying workspace" << std::endl;
     my_tm.GetWorkSpaceSize( );
-    test_mirror = false; // FIXME: just for profiling
+    // test_mirror = false; // FIXME: just for profiling
     timer.lap("Setting up the TensorManager");
 #endif
 
@@ -319,8 +317,8 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
         if ( best_inplane_score > list_of_best_parameters[best_parameters_to_keep][5] ) {
             list_of_best_parameters[best_parameters_to_keep][5] = best_inplane_score;
             if ( mirrored_match ) {
-                list_of_best_parameters[best_parameters_to_keep][0] = list_of_search_parameters[i][0];
-                list_of_best_parameters[best_parameters_to_keep][1] = list_of_search_parameters[i][1] + 180.0;
+                list_of_best_parameters[best_parameters_to_keep][0] = list_of_search_parameters[iSearchPosition][0];
+                list_of_best_parameters[best_parameters_to_keep][1] = list_of_search_parameters[iSearchPosition][1] + 180.0;
                 list_of_best_parameters[best_parameters_to_keep][2] = best_inplane_values[0];
                 list_of_best_parameters[best_parameters_to_keep][3] = (best_inplane_values[1] * cosf(deg_2_rad(best_inplane_values[0])) - best_inplane_values[2] * sinf(deg_2_rad(best_inplane_values[0]))) * particle.pixel_size;
                 list_of_best_parameters[best_parameters_to_keep][4] = (-best_inplane_values[1] * sinf(deg_2_rad(best_inplane_values[0])) - best_inplane_values[2] * cosf(deg_2_rad(best_inplane_values[0]))) * particle.pixel_size;
@@ -331,22 +329,22 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
                               * 
                 -sin + cos ]
                 */
-                list_of_best_parameters[best_parameters_to_keep][0] = list_of_search_parameters[i][0];
-                list_of_best_parameters[best_parameters_to_keep][1] = list_of_search_parameters[i][1];
+                list_of_best_parameters[best_parameters_to_keep][0] = list_of_search_parameters[iSearchPosition][0];
+                list_of_best_parameters[best_parameters_to_keep][1] = list_of_search_parameters[iSearchPosition][1];
                 list_of_best_parameters[best_parameters_to_keep][2] = best_inplane_values[0];
                 list_of_best_parameters[best_parameters_to_keep][3] = (-best_inplane_values[1] * cosf(deg_2_rad(best_inplane_values[0])) - best_inplane_values[2] * sinf(deg_2_rad(best_inplane_values[0]))) * particle.pixel_size;
                 list_of_best_parameters[best_parameters_to_keep][4] = (best_inplane_values[1] * sinf(deg_2_rad(best_inplane_values[0])) - best_inplane_values[2] * cosf(deg_2_rad(best_inplane_values[0]))) * particle.pixel_size;
             }
         }
-        for ( j = best_parameters_to_keep; j > 1; j-- ) {
+        for ( int j = best_parameters_to_keep; j > 1; j-- ) {
             if ( list_of_best_parameters[j][5] > list_of_best_parameters[j - 1][5] ) {
-                for ( k = 0; k < 6; k++ ) {
+                for ( int k = 0; k < 6; k++ ) {
                     temp_float[k] = list_of_best_parameters[j - 1][k];
                 }
-                for ( k = 0; k < 6; k++ ) {
+                for ( int k = 0; k < 6; k++ ) {
                     list_of_best_parameters[j - 1][k] = list_of_best_parameters[j][k];
                 }
-                for ( k = 0; k < 6; k++ ) {
+                for ( int k = 0; k < 6; k++ ) {
                     list_of_best_parameters[j][k] = temp_float[k];
                 }
                 //				wxPrintf("best_inplane_score = %i %g\n", j - 1, list_of_best_parameters[j - 1][5]);
@@ -356,18 +354,20 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             }
         }
     }
-    /*******************************/
 
-    // float best_score = 0.0f;
-    // float best_x, best_y;
-    // for ( int i = 0; i < best_parameters_to_keep; i++ ) {
-    //     if ( list_of_best_parameters[i][5] > best_score ) {
-    //         best_score = list_of_best_parameters[i][5];
-    //         best_x     = list_of_best_parameters[i][3];
-    //         best_y     = list_of_best_parameters[i][4];
-    //     }
-    // }
-    // wxPrintf("Best Score is %f, at (%f %f)\n", best_score, best_x, best_y);
+#ifdef PRINT_EXTRA_SEARCH_INFO
+    float best_score = 0.0f;
+    float best_x, best_y;
+    for ( int i = 0; i < best_parameters_to_keep; i++ ) {
+        if ( list_of_best_parameters[i][5] > best_score ) {
+            best_score = list_of_best_parameters[i][5];
+            best_x     = list_of_best_parameters[i][3];
+            best_y     = list_of_best_parameters[i][4];
+        }
+    }
+#pragma omp critical
+    std::cerr << "Best Score is " << best_score << " at ( " << best_x << " " << best_y << " )\n";
+#endif
 
     timer.start("Clean up");
     delete flipped_image;

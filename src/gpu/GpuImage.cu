@@ -1798,22 +1798,20 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     int y;
     int physical_linear_idx;
 
-    float max_val     = std::numeric_limits<float>::min( );
-    float tmp_max_val = std::numeric_limits<float>::min( );
+    float max_val     = -std::numeric_limits<float>::max( );
+    float tmp_max_val = -std::numeric_limits<float>::max( );
     int   my_max_idx  = 0;
 
-    for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * NY; logical_linear_idx += blockDim.x ) {
+    for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * pixel_pitch; logical_linear_idx += blockDim.x ) {
         x = logical_linear_idx % NX;
         y = logical_linear_idx / NX;
-        // physical_linear_idx = x + (NY + 2) * y + (pixel_pitch * NY * blockIdx.z);
 
-        physical_linear_idx = x + pixel_pitch * (y + NY * blockIdx.z);
-        if ( x >= NX / 2 )
-            x -= NX;
-        if ( y >= NY / 2 )
-            y -= NY;
+        physical_linear_idx = x + (NY + 2) * y + (pixel_pitch * NY * blockIdx.z);
 
-        if ( x <= wanted_max_pix_x && x > -wanted_max_pix_x && y <= wanted_max_pix_y && y > -wanted_max_pix_y ) {
+        // physical_linear_idx = x + pixel_pitch * (y + NY * blockIdx.z);
+
+        if ( (x <= wanted_max_pix_x || (x >= NX - wanted_max_pix_x - 1 && x < NX)) &&
+             (y <= wanted_max_pix_y || (y >= NY - wanted_max_pix_y - 1 && y < NY)) ) {
 
             if constexpr ( std::is_same<T, __half>::value ) {
                 tmp_max_val = gMax(__half2float(real_values[physical_linear_idx]), max_val);
@@ -1828,14 +1826,14 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
         }
     }
     __syncthreads( );
+
     blockReduceMax(max_val, my_max_idx);
-    __syncthreads( );
+
     if ( threadIdx.x == 0 ) {
         device_peak[blockIdx.z].value                         = max_val;
         device_peak[blockIdx.z].physical_address_within_image = my_max_idx;
         device_peak[blockIdx.z].z                             = float(blockIdx.z);
     }
-    __syncthreads( );
     return;
 
     // Okay, we are in bounds so lets find the max value
@@ -1861,10 +1859,10 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
 
     Peak my_peak;
 
-    if ( wanted_max_pix_x >= dims.x / 2 )
-        wanted_max_pix_x = dims.x / 2 - 1;
-    if ( wanted_max_pix_y >= dims.y / 2 )
-        wanted_max_pix_y = dims.y / 2 - 1;
+    if ( wanted_max_pix_x > dims.x / 2 )
+        wanted_max_pix_x = dims.x / 2;
+    if ( wanted_max_pix_y > dims.y / 2 )
+        wanted_max_pix_y = dims.y / 2;
 
     // we only want one block to keep the reduction simple and to a single kernel
     dim3 gd;
@@ -1886,7 +1884,7 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     cudaErr(cudaMemcpyAsync(pinned_host_buffer, device_buffer, wanted_batch_size * sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-    float max_val = std::numeric_limits<float>::min( );
+    float max_val = -std::numeric_limits<float>::max( );
     for ( int iPeak = 0; iPeak < wanted_batch_size; iPeak++ ) {
         if ( pinned_host_buffer[iPeak].value > max_val ) {
             max_val                               = pinned_host_buffer[iPeak].value;
@@ -1901,9 +1899,9 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
     my_peak.x = my_peak.physical_address_within_image % (dims.w);
     my_peak.y = my_peak.physical_address_within_image / (dims.w);
 
-    if ( my_peak.x >= dims.x / 2 )
+    if ( my_peak.x > dims.x / 2 )
         my_peak.x -= dims.x;
-    if ( my_peak.y >= dims.y / 2 )
+    if ( my_peak.y > dims.y / 2 )
         my_peak.y -= dims.y;
     return my_peak;
 }

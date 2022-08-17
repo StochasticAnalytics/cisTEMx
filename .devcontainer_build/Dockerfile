@@ -1,4 +1,4 @@
-FROM bhimesbhimes/cistem_build_env:base_image_v1.3
+FROM bhimesbhimes/cistem_build_env:base_image_v1.4
 
 
 # Get reference images for testing and debugging

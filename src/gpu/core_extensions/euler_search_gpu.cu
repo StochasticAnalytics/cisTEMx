@@ -87,6 +87,14 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
     batch.Init(gpu_projection_image, psi_i, batch_size, test_mirror, max_pix_x, max_pix_y);
 
+    // int tmp_n = 0;
+    // for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
+    //     for ( int intra_batch_idx = 0; intra_batch_idx < batch.n_images_in_this_batch( ); intra_batch_idx += batch.intra_loop_inc( ) ) {
+    //         tmp_n++;
+    //     }
+    // }
+    // wxPrintf("N is %d product is %d\n", psi_i, tmp_n);
+
     timer.start("Allocate rotation cache");
     rotation_cache = new GpuImage[batch.n_batches( )];
     for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
@@ -130,7 +138,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     timer.start("Make rotation cache");
     psi_i = 0;
 
-    for ( batch.index = 0; batch.index < batch.n_batches( ); batch.index++ ) {
+    for ( batch.index = 0; batch.index < batch.n_batches( ); ++batch.index ) {
         for ( int intra_batch_idx = 0; intra_batch_idx < batch.n_images_in_this_batch( ); intra_batch_idx += batch.intra_loop_inc( ) ) {
             // Reset these flags since we are re-using the same buffer
             tmp_rot.is_in_real_space         = true;
@@ -256,7 +264,6 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             timer.start("Cross Correlate");
 
             gpu_correlation_map.is_in_real_space = false;
-
             // dims.z of calling image (roation cache) determines what extent of the correlation map to use
             rotation_cache[batch.index].MultiplyPixelWiseComplexConjugate(gpu_projection_image, gpu_correlation_map);
 #ifdef SYNC_TIMER
@@ -306,6 +313,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
             // Note that found_peak.physical_address_within_image is not set in this method
             if ( found_peak.value > best_inplane_score ) {
+
                 best_inplane_score     = found_peak.value;
                 best_inplane_values[0] = 360.0 - batch.GetInPlaneAngle(myroundint(found_peak.z));
                 best_inplane_values[1] = found_peak.x;

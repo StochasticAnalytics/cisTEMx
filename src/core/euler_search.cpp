@@ -184,6 +184,10 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
     float theta_start_local;
     float phi_start_local;
 
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
+    random_start_angle = false;
+#endif
+
     //	phi_max = 360.0;
     theta_max_local = theta_max;
 

@@ -55,7 +55,7 @@ class BatchSizeOptimizer {
         // if ( omp_get_thread_num( ) == 0 ) {
         //     std::cerr << "Current batch " << returned_batch_size << std::endl;
         // }
-        return 20; //returned_batch_size;
+        return 1; //returned_batch_size;
     };
 
     void lap( ) {

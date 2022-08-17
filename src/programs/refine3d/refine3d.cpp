@@ -610,8 +610,12 @@ bool Refine3DApp::DoCalculation( ) {
             images_to_process++;
     }
 
-    //input_par_file.ReadFile(false, input_stack.ReturnZSize());
+    //input_par_file.ReadFile(false, input_stack.ReturnZSize());'
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
+    random_particle.SetSeed(0);
+#else
     random_particle.SetSeed(int(10000.0 * fabsf(input_star_file.ReturnAverageSigma(true))) % 10000);
+#endif
     if ( defocus_bias ) {
         float* buffer_array = new float[input_star_file.ReturnNumberofLines( )];
         for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
@@ -840,10 +844,13 @@ bool Refine3DApp::DoCalculation( ) {
         // FIXME: This is in-principle doing the exact same thing as CalculateAngularStep, at least if we've binned to a pixel size = 2 * high_resolution_limit_search
         psi_step = rad_2_deg(search_reference_3d.pixel_size / outer_mask_radius);
         psi_step = 360.0 / int(360.0 / psi_step + 0.5);
-        // FIXME: Override this for now to get a deterministic output for comparing cpu and gpu immplementationsin devs
-        psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
         psi_start = 0.0;
-        psi_max   = 0.0;
+#else
+        psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
+#endif
+
+        psi_max = 0.0;
         if ( refine_particle.parameter_map.psi )
             psi_max = 360.0;
         wxPrintf("\nBox size for search = %i, binning factor = %f, new pixel size = %f, resolution limit = %f\nAngular step size = %f, in-plane = %f\n", search_reference_3d.density_map->logical_x_dimension, binning_factor_search, search_reference_3d.pixel_size, search_reference_3d.pixel_size * 2.0, angular_step, psi_step);
@@ -923,7 +930,11 @@ bool Refine3DApp::DoCalculation( ) {
                     if ( input_parameters.position_in_stack >= first_particle && input_parameters.position_in_stack <= last_particle ) {
                         file_read = false;
                         if ( random_reset_counter == 0 )
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
+                            temp_float = 0.0f;
+#else
                             temp_float = global_random_number_generator.GetUniformRandom( );
+#endif
                         if ( (temp_float >= 1.0 - 2.0f * percentage) || (random_reset_counter != 0) ) {
                             random_reset_counter++;
                             if ( random_reset_counter == random_reset_count )
@@ -1135,8 +1146,11 @@ bool Refine3DApp::DoCalculation( ) {
             image_counter++;
 
             output_parameters = input_parameters;
-
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
+            temp_float = 0.0f;
+#else
             temp_float = random_particle.GetUniformRandom( );
+#endif
             if ( defocus_bias ) {
                 defocus_score = expf(-powf(0.25 * (fabsf(input_parameters.defocus_1) + fabsf(input_parameters.defocus_2) - defocus_range_mean2) / defocus_range_std, 2.0));
                 temp_float *= defocus_score / defocus_mean_score;
@@ -1509,10 +1523,10 @@ bool Refine3DApp::DoCalculation( ) {
                     euler_search_.list_of_best_parameters[0][3] = input_parameters.x_shift;
                     euler_search_.list_of_best_parameters[0][4] = input_parameters.y_shift;
 
-                    // for ( int i = 0; i < euler_search_.best_parameters_to_keep; i++ ) {
-                    //     wxPrintf("Phi,Theta,Psi x,y score %f,%f,%f  %f,%f  %g\n", euler_search_.list_of_best_parameters[i][0], euler_search_.list_of_best_parameters[i][1], euler_search_.list_of_best_parameters[i][2], euler_search_.list_of_best_parameters[i][3], euler_search_.list_of_best_parameters[i][4], euler_search_.list_of_best_parameters[i][5]);
-                    // }
-                    // exit(1);
+                    for ( int i = 0; i < euler_search_.best_parameters_to_keep; i++ ) {
+                        wxPrintf("Phi,Theta,Psi x,y score %f,%f,%f  %f,%f  %g\n", euler_search_.list_of_best_parameters[i][0], euler_search_.list_of_best_parameters[i][1], euler_search_.list_of_best_parameters[i][2], euler_search_.list_of_best_parameters[i][3], euler_search_.list_of_best_parameters[i][4], euler_search_.list_of_best_parameters[i][5]);
+                    }
+                    exit(1);
                     //for (i = 0; i < search_particle_.number_of_parameters; i++) {search_parameters[i] = input_parameters[i];}
                     //for (j = 1; j < 6; j++) {euler_search_.list_of_best_parameters[0][j - 1] = input_parameters[j];}
 
@@ -1552,7 +1566,12 @@ bool Refine3DApp::DoCalculation( ) {
                             }
                         }
 
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
+                        parameter_to_keep = myroundint(((0.0f + 1.0) / 2.0) * float(number_to_keep - 1)) + 1;
+
+#else
                         parameter_to_keep = myroundint(((global_random_number_generator.GetUniformRandom( ) + 1.0) / 2.0) * float(number_to_keep - 1)) + 1;
+#endif
                         //wxPrintf("best_value = %f, worst_value = %f, top 10%% = %f, number_above = %i, number to take = %i\n", best_value, worst_value, top_percent, number_to_keep, parameter_to_keep);
 
                         /*for (j = 1; j < 6; j++)

@@ -5,12 +5,10 @@ class GpuImage;
 
 // class Peak;
 
-typedef struct _IntegerPeak {
+typedef __align__(16) struct _IntegerPeak {
     float value;
-    int   x;
-    int   y;
     int   z;
-    int   address_in_image;
+    int   physical_address_within_image;
 } IntegerPeak;
 
 class BatchedSearch {
@@ -32,6 +30,8 @@ class BatchedSearch {
     inline int is_initialized( ) const {
         return _is_initialized;
     }
+
+    void SetDeviceBuffer( );
 
     inline int n_search_images( ) const { return _n_search_images; }
 
@@ -55,8 +55,8 @@ class BatchedSearch {
 
     inline float GetMirroredOrNot(int z_index_in_batch) { return _is_search_result_mirrored[index * _batch_size + z_index_in_batch]; };
 
-    Peak* _peak_buffer;
-    Peak* _d_peak_buffer;
+    IntegerPeak* _peak_buffer;
+    IntegerPeak* _d_peak_buffer;
 
     inline void print_member_variables( ) {
         std::cerr << "BatchedSearch::_n_batches: " << _n_batches << std::endl;

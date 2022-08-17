@@ -2,7 +2,7 @@
 #include <cistem_config.h>
 #include "core_headers.h"
 
-#define PRINT_EXTRA_SEARCH_INFO
+// #define PRINT_EXTRA_SEARCH_INFO
 
 EulerSearch::EulerSearch( ) {
     // Nothing to do until Init is called

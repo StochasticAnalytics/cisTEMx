@@ -11,7 +11,6 @@
 #include "GpuImage.h"
 #include "gpu_indexing_functions.h"
 #include "gpu_image_cuFFT_callbacks.h"
-#include "../programs/refine3d/batched_search.h"
 
 // #define USE_ASYNC_MALLOC_FREE
 // #define USE_BLOCK_REDUCE
@@ -371,6 +370,7 @@ void GpuImage::SetupInitialValues( ) {
     cudaErr(cudaDeviceGetAttribute(&number_of_streaming_multiprocessors, cudaDevAttrMultiProcessorCount, device_idx));
     limit_SMs_by_threads = 1;
 
+    set_batch_size = 1;
     AllocateTmpVarsAndEvents( );
     UpdateBoolsToDefault( );
 }
@@ -1785,12 +1785,12 @@ Peak GpuImage::FindPeakWithParabolaFit(float inner_radius_for_peak_search, float
 
 template <typename T>
 __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
-                                             Peak*     device_peak,
-                                             const int wanted_max_pix_x,
-                                             const int wanted_max_pix_y,
-                                             const int NX,
-                                             const int NY,
-                                             const int pixel_pitch) {
+                                             IntegerPeak* device_peak,
+                                             const int    wanted_max_pix_x,
+                                             const int    wanted_max_pix_y,
+                                             const int    NX,
+                                             const int    NY,
+                                             const int    pixel_pitch) {
 
     // To avoid divergence, rather than returning, just let all threads participate, assigning lowlow to those that would
     // otherwise return.
@@ -1802,7 +1802,7 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     float tmp_max_val = -std::numeric_limits<float>::max( );
     int   my_max_idx  = 0;
 
-    for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * pixel_pitch; logical_linear_idx += blockDim.x ) {
+    for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * NY; logical_linear_idx += blockDim.x ) {
         x = logical_linear_idx % NX;
         y = logical_linear_idx / NX;
 
@@ -1832,7 +1832,7 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     if ( threadIdx.x == 0 ) {
         device_peak[blockIdx.z].value                         = max_val;
         device_peak[blockIdx.z].physical_address_within_image = my_max_idx;
-        device_peak[blockIdx.z].z                             = float(blockIdx.z);
+        device_peak[blockIdx.z].z                             = int(blockIdx.z);
     }
     return;
 
@@ -1842,6 +1842,7 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
 Peak GpuImage::FindPeakAtOriginFast2D(BatchedSearch* batch, bool load_half_precision) {
     MyDebugAssertTrue(batch->is_initialized( ), "BatchedSearch object is not setup!");
 
+    // batch->SetDeviceBuffer( );
     return FindPeakAtOriginFast2D(batch->max_pixel_radius_x( ),
                                   batch->max_pixel_radius_y( ),
                                   batch->_peak_buffer,
@@ -1850,19 +1851,21 @@ Peak GpuImage::FindPeakAtOriginFast2D(BatchedSearch* batch, bool load_half_preci
                                   load_half_precision);
 }
 
-Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size, bool load_half_precision) {
+Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, IntegerPeak* pinned_host_buffer, IntegerPeak* device_buffer, int wanted_batch_size, bool load_half_precision) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
+    MyDebugAssertTrue(IsEven(dims.y) && IsEven(dims.x), "Image dimensions must be even");
 
     MyAssertTrue(long(dims.y) * long(dims.w) * long(wanted_batch_size) < std::numeric_limits<int>::max( ), "int counters will overflow for this call");
 
     Peak my_peak;
 
-    if ( wanted_max_pix_x > dims.x / 2 )
-        wanted_max_pix_x = dims.x / 2;
-    if ( wanted_max_pix_y > dims.y / 2 )
-        wanted_max_pix_y = dims.y / 2;
+    const int shrink_max_area = 1;
+    if ( wanted_max_pix_x > dims.x / 2 - shrink_max_area )
+        wanted_max_pix_x = dims.x / 2 - shrink_max_area;
+    if ( wanted_max_pix_y > dims.y / 2 - shrink_max_area )
+        wanted_max_pix_y = dims.y / 2 - shrink_max_area;
 
     // we only want one block to keep the reduction simple and to a single kernel
     dim3 gd;
@@ -1881,28 +1884,33 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
         postcheck;
     }
 
-    cudaErr(cudaMemcpyAsync(pinned_host_buffer, device_buffer, wanted_batch_size * sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync(pinned_host_buffer, device_buffer, wanted_batch_size * sizeof(IntegerPeak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-    float max_val = -std::numeric_limits<float>::max( );
+    float       max_val = -std::numeric_limits<float>::max( );
+    IntegerPeak tmp_peak;
     for ( int iPeak = 0; iPeak < wanted_batch_size; iPeak++ ) {
         if ( pinned_host_buffer[iPeak].value > max_val ) {
-            max_val                               = pinned_host_buffer[iPeak].value;
-            my_peak.value                         = pinned_host_buffer[iPeak].value;
-            my_peak.physical_address_within_image = pinned_host_buffer[iPeak].physical_address_within_image;
-            my_peak.z                             = pinned_host_buffer[iPeak].z;
+            max_val                                = pinned_host_buffer[iPeak].value;
+            tmp_peak.value                         = pinned_host_buffer[iPeak].value;
+            tmp_peak.physical_address_within_image = pinned_host_buffer[iPeak].physical_address_within_image;
+            tmp_peak.z                             = pinned_host_buffer[iPeak].z;
         }
     }
 
-    int offset_for_batch_address_in_2d = (dims.y) * (dims.w) * myroundint(my_peak.z);
-    my_peak.physical_address_within_image -= offset_for_batch_address_in_2d;
-    my_peak.x = my_peak.physical_address_within_image % (dims.w);
-    my_peak.y = my_peak.physical_address_within_image / (dims.w);
+    int offset_for_batch_address_in_2d    = (dims.y) * (dims.w) * (tmp_peak.z);
+    my_peak.physical_address_within_image = tmp_peak.physical_address_within_image - offset_for_batch_address_in_2d;
+    my_peak.value                         = tmp_peak.value;
+
+    my_peak.x = my_peak.physical_address_within_image % (dims.y + 2);
+    my_peak.y = my_peak.physical_address_within_image / (dims.y + 2);
+    my_peak.z = tmp_peak.z;
 
     if ( my_peak.x > dims.x / 2 )
         my_peak.x -= dims.x;
     if ( my_peak.y > dims.y / 2 )
         my_peak.y -= dims.y;
+
     return my_peak;
 }
 
@@ -3213,11 +3221,19 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     // We also want to record the type of plan requested to see if re-planning is necessary.
     using ft = cistem::fft_type::Enum;
 
-    if ( plan_type == set_plan_type ) {
+    if ( plan_type == set_plan_type && cufft_batch_size == set_batch_size ) {
         // We are good to go.
         return;
     }
     else {
+        if ( set_plan_type != cistem::fft_type::Enum::unset ) {
+            // TODO allow for more than one plan, up to some limit, to avoid teh destroy op.
+            // Have a simple sort to track most recenetly used plans and evict the oldest if needed.
+            cufftErr(cufftDestroy(cuda_plan_inverse));
+            cufftErr(cufftDestroy(cuda_plan_forward));
+            set_plan_type  = cistem::fft_type::Enum::unset;
+            set_batch_size = cufft_batch_size;
+        }
         // We need to re-plan.
         switch ( plan_type ) {
             case ft::inplace_32f_32f_32f: {

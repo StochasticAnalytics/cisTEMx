@@ -670,7 +670,8 @@ bool Refine3DApp::DoCalculation( ) {
     if ( last_particle < first_particle && last_particle != 0 ) {
         SendErrorAndCrash("Error: Number of last particle to refine smaller than number of first particle to refine\n");
     }
-
+    // TEMPFIXME mask radius = 0 is supposed to give max, but that is not set. Furthermore, the search obnx size in real sapace should not be determined by this radius
+    mask_radius_search = 320.f; //
     if ( max_search_x == 0.0 )
         max_search_x = mask_radius_search;
     if ( max_search_y == 0.0 )
@@ -1523,10 +1524,10 @@ bool Refine3DApp::DoCalculation( ) {
                     euler_search_.list_of_best_parameters[0][3] = input_parameters.x_shift;
                     euler_search_.list_of_best_parameters[0][4] = input_parameters.y_shift;
 
-                    for ( int i = 0; i < euler_search_.best_parameters_to_keep; i++ ) {
-                        wxPrintf("Phi,Theta,Psi x,y score %f,%f,%f  %f,%f  %g\n", euler_search_.list_of_best_parameters[i][0], euler_search_.list_of_best_parameters[i][1], euler_search_.list_of_best_parameters[i][2], euler_search_.list_of_best_parameters[i][3], euler_search_.list_of_best_parameters[i][4], euler_search_.list_of_best_parameters[i][5]);
-                    }
-                    exit(1);
+                    // for ( int i = 0; i < euler_search_.best_parameters_to_keep; i++ ) {
+                    //     wxPrintf("Phi,Theta,Psi x,y score %f,%f,%f  %f,%f  %g\n", euler_search_.list_of_best_parameters[i][0], euler_search_.list_of_best_parameters[i][1], euler_search_.list_of_best_parameters[i][2], euler_search_.list_of_best_parameters[i][3], euler_search_.list_of_best_parameters[i][4], euler_search_.list_of_best_parameters[i][5]);
+                    // }
+                    // exit(1);
                     //for (i = 0; i < search_particle_.number_of_parameters; i++) {search_parameters[i] = input_parameters[i];}
                     //for (j = 1; j < 6; j++) {euler_search_.list_of_best_parameters[0][j - 1] = input_parameters[j];}
 

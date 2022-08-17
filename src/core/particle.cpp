@@ -1,6 +1,6 @@
 #include "core_headers.h"
 
-#define TROUBLE_SHOOT_LOGP_CALC
+// #define TROUBLE_SHOOT_LOGP_CALC
 
 ParameterMap::ParameterMap( ) {
     phi     = false;

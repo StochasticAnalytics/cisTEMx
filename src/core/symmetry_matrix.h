@@ -18,5 +18,8 @@ class SymmetryMatrix {
 
     void Init(wxString wanted_symmetry_symbol);
 
+    float GetMinimumAngularDistance(RotationMatrix& first_rot_mat, RotationMatrix& second_rot_mat);
+    // This prints the transpose of the definition in rotation_matrix.h
+
     void PrintMatrices( );
 };

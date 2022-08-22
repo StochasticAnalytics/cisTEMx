@@ -11,7 +11,6 @@
 #include "GpuImage.h"
 #include "gpu_indexing_functions.h"
 #include "gpu_image_cuFFT_callbacks.h"
-#include "../programs/refine3d/batched_search.h"
 
 // #define USE_ASYNC_MALLOC_FREE
 // #define USE_BLOCK_REDUCE
@@ -371,6 +370,7 @@ void GpuImage::SetupInitialValues( ) {
     cudaErr(cudaDeviceGetAttribute(&number_of_streaming_multiprocessors, cudaDevAttrMultiProcessorCount, device_idx));
     limit_SMs_by_threads = 1;
 
+    set_batch_size = 1;
     AllocateTmpVarsAndEvents( );
     UpdateBoolsToDefault( );
 }
@@ -489,8 +489,6 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
     MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
     postcheck;
 }
-
-
 
 __global__ void ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values_gpu, int4 dims, int padding_jump_value, float* returnValue);
 
@@ -618,6 +616,12 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
 #endif
                 complex_values_16f      = (void*)real_values_16f;
                 is_allocated_16f_buffer = true;
+
+                real_values_fp16    = reinterpret_cast<__half*>(real_values_16f);
+                complex_values_fp16 = reinterpret_cast<__half2*>(complex_values_16f);
+
+                real_values_bf16    = reinterpret_cast<nv_bfloat16*>(real_values_16f);
+                complex_values_bf16 = reinterpret_cast<nv_bfloat162*>(complex_values_16f);
             }
             break;
 
@@ -649,6 +653,12 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
 #endif
                 ctf_complex_buffer_16f      = (void*)ctf_buffer_16f;
                 is_allocated_ctf_16f_buffer = true;
+
+                ctf_buffer_fp16         = reinterpret_cast<__half*>(ctf_buffer_16f);
+                ctf_complex_buffer_fp16 = reinterpret_cast<__half2*>(ctf_complex_buffer_16f);
+
+                ctf_buffer_bf16         = reinterpret_cast<nv_bfloat16*>(ctf_buffer_16f);
+                ctf_complex_buffer_bf16 = reinterpret_cast<nv_bfloat162*>(ctf_complex_buffer_16f);
             }
             break;
 
@@ -1102,8 +1112,8 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
 __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
                                                         const cufftComplex* __restrict__ img_complex_values,
-                                                        cufftComplex* result_values, 
-                                                        int4 dims) {
+                                                        cufftComplex* result_values,
+                                                        int4          dims) {
 
     int x = physical_X( );
     if ( x > dims.w / 2 )
@@ -1112,17 +1122,15 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __re
     if ( y > dims.y )
         return;
 
-
     int address = x + (dims.w / 2) * y;
-    int stride = (dims.w/2) * dims.y;
+    int stride  = (dims.w / 2) * dims.y;
 
     const Complex img_val = (Complex)img_complex_values[address];
 
-    for (int k = 0; k < dims.z ; k++) {
+    for ( int k = 0; k < dims.z; k++ ) {
         result_values[address] = (cufftComplex)ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
         address += stride;
     }
-
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {
@@ -1777,12 +1785,12 @@ Peak GpuImage::FindPeakWithParabolaFit(float inner_radius_for_peak_search, float
 
 template <typename T>
 __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
-                                             Peak*     device_peak,
-                                             const int wanted_max_pix_x,
-                                             const int wanted_max_pix_y,
-                                             const int NX,
-                                             const int NY,
-                                             const int pixel_pitch) {
+                                             IntegerPeak* device_peak,
+                                             const int    max_pix_x,
+                                             const int    max_pix_y,
+                                             const int    NX,
+                                             const int    NY,
+                                             const int    pixel_pitch) {
 
     // To avoid divergence, rather than returning, just let all threads participate, assigning lowlow to those that would
     // otherwise return.
@@ -1790,22 +1798,20 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
     int y;
     int physical_linear_idx;
 
-    float max_val     = std::numeric_limits<float>::min( );
-    float tmp_max_val = std::numeric_limits<float>::min( );
+    float max_val     = -std::numeric_limits<float>::max( );
+    float tmp_max_val = -std::numeric_limits<float>::max( );
     int   my_max_idx  = 0;
 
     for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * NY; logical_linear_idx += blockDim.x ) {
         x = logical_linear_idx % NX;
         y = logical_linear_idx / NX;
-        // physical_linear_idx = x + (NY + 2) * y + (pixel_pitch * NY * blockIdx.z);
 
-        physical_linear_idx = x + pixel_pitch * (y + NY * blockIdx.z);
-        if ( x >= NX / 2 )
-            x -= NX;
-        if ( y >= NY / 2 )
-            y -= NY;
+        physical_linear_idx = x + (NY + 2) * y + (pixel_pitch * NY * blockIdx.z);
 
-        if ( x <= wanted_max_pix_x && x > -wanted_max_pix_x && y <= wanted_max_pix_y && y > -wanted_max_pix_y ) {
+        // physical_linear_idx = x + pixel_pitch * (y + NY * blockIdx.z);
+
+        if ( (x <= max_pix_x || (x >= NX - max_pix_x - 1 && x < NX)) &&
+             (y <= max_pix_y || (y >= NY - max_pix_y - 1 && y < NY)) ) {
 
             if constexpr ( std::is_same<T, __half>::value ) {
                 tmp_max_val = gMax(__half2float(real_values[physical_linear_idx]), max_val);
@@ -1820,42 +1826,164 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
         }
     }
     __syncthreads( );
+
     blockReduceMax(max_val, my_max_idx);
-    __syncthreads( );
+
     if ( threadIdx.x == 0 ) {
         device_peak[blockIdx.z].value                         = max_val;
         device_peak[blockIdx.z].physical_address_within_image = my_max_idx;
-        device_peak[blockIdx.z].z                             = float(blockIdx.z);
+        device_peak[blockIdx.z].z                             = int(blockIdx.z);
     }
-    __syncthreads( );
     return;
 
     // Okay, we are in bounds so lets find the max value
 }
 
-Peak GpuImage::FindPeakAtOriginFast2D(BatchedSearch* batch, bool load_half_precision) {
-    MyDebugAssertTrue(batch->is_initialized(), "BatchedSearch object is not setup!");
+template <typename T>
+__global__ void FindPeakAtCenterFast2DKernel(const T* __restrict__ real_values,
+                                             IntegerPeak* device_peak,
+                                             const int    max_pix_x,
+                                             const int    max_pix_y,
+                                             const int    NX,
+                                             const int    NY,
+                                             const int    pixel_pitch) {
 
-    return FindPeakAtOriginFast2D(batch->max_pixel_radius_x(),
-                                batch->max_pixel_radius_y(),
-                                batch->_peak_buffer,
-                                batch->_d_peak_buffer,
-                                batch->n_images_in_this_batch(),
-                                load_half_precision);
+    // To avoid divergence, rather than returning, just let all threads participate, assigning lowlow to those that would
+    // otherwise return.
+    int x;
+    int y;
+    int physical_linear_idx;
+
+    float max_val     = -std::numeric_limits<float>::max( );
+    float tmp_max_val = -std::numeric_limits<float>::max( );
+    int   my_max_idx  = 0;
+
+    for ( int logical_linear_idx = threadIdx.x; logical_linear_idx < NX * NY; logical_linear_idx += blockDim.x ) {
+        x = logical_linear_idx % NX;
+        y = logical_linear_idx / NX;
+
+        physical_linear_idx = x + pixel_pitch * (y + NY * blockIdx.z);
+
+        // convert to centered coordinates
+        x -= NX / 2;
+        y -= NY / 2;
+
+        if ( x < max_pix_x && x > -max_pix_x && y < max_pix_y && y > -max_pix_y ) {
+
+            if constexpr ( std::is_same<T, __half>::value ) {
+                tmp_max_val = gMax(__half2float(real_values[physical_linear_idx]), max_val);
+            }
+            else {
+                tmp_max_val = gMax(float(real_values[physical_linear_idx]), max_val);
+            }
+            if ( tmp_max_val > max_val ) {
+                max_val    = tmp_max_val;
+                my_max_idx = physical_linear_idx;
+            }
+        }
+    }
+    __syncthreads( );
+
+    blockReduceMax(max_val, my_max_idx);
+
+    if ( threadIdx.x == 0 ) {
+        device_peak[blockIdx.z].value                         = max_val;
+        device_peak[blockIdx.z].physical_address_within_image = my_max_idx;
+        device_peak[blockIdx.z].z                             = int(blockIdx.z);
+    }
+    return;
+
+    // Okay, we are in bounds so lets find the max value
 }
-Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size, bool load_half_precision) {
+
+Peak GpuImage::FindPeakAtCenterFast2d(const BatchedSearch& batch, bool load_half_precision) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
+    MyDebugAssertTrue(object_is_centred_in_box, "Peak is not centered in image");
+    MyDebugAssertTrue(IsEven(dims.y) && IsEven(dims.x), "Image dimensions must be even");
+
+    MyAssertTrue(long(dims.y) * long(dims.w) * long(batch.n_images_in_this_batch( )) < std::numeric_limits<int>::max( ), "int counters will overflow for this call");
+
+    Peak my_peak;
+
+    int max_pix_x = batch.max_pixel_radius_x( );
+    int max_pix_y = batch.max_pixel_radius_y( );
+
+    const int shrink_max_area = 4;
+    if ( max_pix_x > dims.x / 2 - shrink_max_area )
+        max_pix_x = dims.x / 2 - shrink_max_area;
+    if ( max_pix_y > dims.y / 2 - shrink_max_area )
+        max_pix_y = dims.y / 2 - shrink_max_area;
+
+    // we only want one block to keep the reduction simple and to a single kernel
+    dim3 gd;
+    gd = dim3(1, 1, batch.n_images_in_this_batch( ));
+    dim3 tpb;
+    tpb = dim3(1024, 1, 1);
+
+    if ( load_half_precision ) {
+        precheck;
+        FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, batch._d_peak_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
+        postcheck;
+    }
+    else {
+        precheck;
+        FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, batch._d_peak_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
+        postcheck;
+    }
+
+    cudaErr(cudaMemcpyAsync(batch._peak_buffer, batch._d_peak_buffer, batch.n_images_in_this_batch( ) * sizeof(IntegerPeak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+
+    float       max_val = -std::numeric_limits<float>::max( );
+    IntegerPeak tmp_peak;
+    for ( int iPeak = 0; iPeak < batch.n_images_in_this_batch( ); iPeak++ ) {
+        if ( batch._peak_buffer[iPeak].value > max_val ) {
+            max_val                                = batch._peak_buffer[iPeak].value;
+            tmp_peak.value                         = batch._peak_buffer[iPeak].value;
+            tmp_peak.physical_address_within_image = batch._peak_buffer[iPeak].physical_address_within_image;
+            tmp_peak.z                             = batch._peak_buffer[iPeak].z;
+        }
+    }
+
+    int offset_for_batch_address_in_2d    = (dims.y) * (dims.w) * (tmp_peak.z);
+    my_peak.physical_address_within_image = tmp_peak.physical_address_within_image - offset_for_batch_address_in_2d;
+    my_peak.value                         = tmp_peak.value;
+
+    my_peak.x = my_peak.physical_address_within_image % (dims.w) - dims.x / 2;
+    my_peak.y = my_peak.physical_address_within_image / (dims.w) - dims.y / 2;
+    my_peak.z = tmp_peak.z;
+
+    return my_peak;
+}
+
+Peak GpuImage::FindPeakAtOriginFast2D(BatchedSearch* batch, bool load_half_precision) {
+    MyDebugAssertTrue(batch->is_initialized( ), "BatchedSearch object is not setup!");
+
+    // batch->SetDeviceBuffer( );
+    return FindPeakAtOriginFast2D(batch->max_pixel_radius_x( ),
+                                  batch->max_pixel_radius_y( ),
+                                  batch->_peak_buffer,
+                                  batch->_d_peak_buffer,
+                                  batch->n_images_in_this_batch( ),
+                                  load_half_precision);
+}
+
+Peak GpuImage::FindPeakAtOriginFast2D(int max_pix_x, int max_pix_y, IntegerPeak* pinned_host_buffer, IntegerPeak* device_buffer, int wanted_batch_size, bool load_half_precision) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(! object_is_centred_in_box, "Peak centered in image");
+    MyDebugAssertTrue(IsEven(dims.y) && IsEven(dims.x), "Image dimensions must be even");
 
     MyAssertTrue(long(dims.y) * long(dims.w) * long(wanted_batch_size) < std::numeric_limits<int>::max( ), "int counters will overflow for this call");
 
     Peak my_peak;
 
-    if ( wanted_max_pix_x >= dims.x / 2 )
-        wanted_max_pix_x = dims.x / 2 - 1;
-    if ( wanted_max_pix_y >= dims.y / 2 )
-        wanted_max_pix_y = dims.y / 2 - 1;
+    const int shrink_max_area = 1;
+    if ( max_pix_x > dims.x / 2 - shrink_max_area )
+        max_pix_x = dims.x / 2 - shrink_max_area;
+    if ( max_pix_y > dims.y / 2 - shrink_max_area )
+        max_pix_y = dims.y / 2 - shrink_max_area;
 
     // we only want one block to keep the reduction simple and to a single kernel
     dim3 gd;
@@ -1865,37 +1993,42 @@ Peak GpuImage::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y
 
     if ( load_half_precision ) {
         precheck;
-        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, device_buffer, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, device_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
         postcheck;
     }
     else {
         precheck;
-        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_buffer, wanted_max_pix_x, wanted_max_pix_y, dims.x, dims.y, dims.w);
+        FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, device_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
         postcheck;
     }
 
-    cudaErr(cudaMemcpyAsync(pinned_host_buffer, device_buffer, wanted_batch_size * sizeof(Peak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync(pinned_host_buffer, device_buffer, wanted_batch_size * sizeof(IntegerPeak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-    float max_val = std::numeric_limits<float>::min( );
+    float       max_val = -std::numeric_limits<float>::max( );
+    IntegerPeak tmp_peak;
     for ( int iPeak = 0; iPeak < wanted_batch_size; iPeak++ ) {
         if ( pinned_host_buffer[iPeak].value > max_val ) {
-            max_val                               = pinned_host_buffer[iPeak].value;
-            my_peak.value                         = pinned_host_buffer[iPeak].value;
-            my_peak.physical_address_within_image = pinned_host_buffer[iPeak].physical_address_within_image;
-            my_peak.z                             = pinned_host_buffer[iPeak].z;
+            max_val                                = pinned_host_buffer[iPeak].value;
+            tmp_peak.value                         = pinned_host_buffer[iPeak].value;
+            tmp_peak.physical_address_within_image = pinned_host_buffer[iPeak].physical_address_within_image;
+            tmp_peak.z                             = pinned_host_buffer[iPeak].z;
         }
     }
 
-    int offset_for_batch_address_in_2d = (dims.y) * (dims.w) * myroundint(my_peak.z);
-    my_peak.physical_address_within_image -= offset_for_batch_address_in_2d;
-    my_peak.x = my_peak.physical_address_within_image % (dims.w);
-    my_peak.y = my_peak.physical_address_within_image / (dims.w);
+    int offset_for_batch_address_in_2d    = (dims.y) * (dims.w) * (tmp_peak.z);
+    my_peak.physical_address_within_image = tmp_peak.physical_address_within_image - offset_for_batch_address_in_2d;
+    my_peak.value                         = tmp_peak.value;
 
-    if ( my_peak.x >= dims.x / 2 )
+    my_peak.x = my_peak.physical_address_within_image % (dims.y + 2);
+    my_peak.y = my_peak.physical_address_within_image / (dims.y + 2);
+    my_peak.z = tmp_peak.z;
+
+    if ( my_peak.x > dims.x / 2 )
         my_peak.x -= dims.x;
-    if ( my_peak.y >= dims.y / 2 )
+    if ( my_peak.y > dims.y / 2 )
         my_peak.y -= dims.y;
+
     return my_peak;
 }
 
@@ -3206,11 +3339,19 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     // We also want to record the type of plan requested to see if re-planning is necessary.
     using ft = cistem::fft_type::Enum;
 
-    if ( plan_type == set_plan_type ) {
+    if ( plan_type == set_plan_type && cufft_batch_size == set_batch_size ) {
         // We are good to go.
         return;
     }
     else {
+        if ( set_plan_type != cistem::fft_type::Enum::unset ) {
+            // TODO allow for more than one plan, up to some limit, to avoid teh destroy op.
+            // Have a simple sort to track most recenetly used plans and evict the oldest if needed.
+            cufftErr(cufftDestroy(cuda_plan_inverse));
+            cufftErr(cufftDestroy(cuda_plan_forward));
+            set_plan_type  = cistem::fft_type::Enum::unset;
+            set_batch_size = cufft_batch_size;
+        }
         // We need to re-plan.
         switch ( plan_type ) {
             case ft::inplace_32f_32f_32f: {

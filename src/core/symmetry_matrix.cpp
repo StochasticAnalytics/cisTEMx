@@ -32,6 +32,8 @@ SymmetryMatrix& SymmetryMatrix::operator=(const SymmetryMatrix* other_matrix) {
 }
 
 SymmetryMatrix::SymmetryMatrix(wxString wanted_symmetry_symbol) {
+    rot_mat            = NULL;
+    number_of_matrices = 0;
     Init(wanted_symmetry_symbol);
 }
 
@@ -506,6 +508,48 @@ SymmetryMatrix::~SymmetryMatrix( ) {
         delete[] rot_mat;
         rot_mat = NULL;
     }
+}
+
+float SymmetryMatrix::GetMinimumAngularDistance(RotationMatrix& first_rot_mat, RotationMatrix& second_rot_mat) {
+    MyDebugAssertFalse(number_of_matrices == 0, "Error: Symmetry matrices not initialized\n");
+    RotationMatrix temp_matrix;
+
+    // We'll use these to represent the axis in an axis angle representation
+    float x1, y1, z1, x2, y2, z2;
+    float x_in, y_in, z_in;
+    x_in = 0.f;
+    y_in = 0.f;
+    z_in = 1.f;
+
+    float min_distance = std::numeric_limits<float>::max( );
+    float distance;
+    int   best_sym;
+    first_rot_mat.RotateCoords(x_in, y_in, z_in, x1, y1, z1);
+    for ( int i = 0; i < number_of_matrices; i++ ) {
+
+        temp_matrix = rot_mat[i] * second_rot_mat;
+        temp_matrix.RotateCoords(x_in, y_in, z_in, x2, y2, z2);
+        distance = x1 * x2 + y1 * y2 + z1 * z2;
+
+        if ( fabsf(distance) > 1.0 ) {
+            distance = (distance < 0.f) ? -1.f : 1.f;
+        }
+
+        distance = rad_2_deg(acosf(distance));
+        if ( distance < min_distance ) {
+            min_distance = distance;
+            best_sym     = i;
+        }
+    }
+
+    wxPrintf("\nFor score iSyym %i %f %i\n", best_sym, min_distance, number_of_matrices);
+    temp_matrix = rot_mat[best_sym] * second_rot_mat;
+    first_rot_mat.PrintMatrix( );
+    temp_matrix.PrintMatrix( );
+    rot_mat[best_sym].PrintMatrix( );
+    second_rot_mat.PrintMatrix( );
+
+    return min_distance;
 }
 
 void SymmetryMatrix::PrintMatrices( ) {

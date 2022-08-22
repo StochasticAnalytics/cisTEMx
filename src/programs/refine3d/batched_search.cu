@@ -21,6 +21,13 @@ void BatchedSearch::Deallocate( ) {
     }
 }
 
+void BatchedSearch::SetDeviceBuffer( ) {
+    for ( int iBatch = 0; iBatch < _batch_size; iBatch++ ) {
+        _peak_buffer[iBatch].value = float(iBatch);
+    }
+    cudaErr(cudaMemcpy(_d_peak_buffer, _peak_buffer, _batch_size * sizeof(IntegerPeak), cudaMemcpyHostToDevice));
+}
+
 void BatchedSearch::Init(GpuImage& reference_image, int wanted_number_search_images, int wanted_batch_size, bool test_mirror, int max_pix_x, int max_pix_y) {
     _n_search_images = wanted_number_search_images;
     _batch_size      = wanted_batch_size;
@@ -34,7 +41,7 @@ void BatchedSearch::Init(GpuImage& reference_image, int wanted_number_search_ima
 
     _stride = reference_image.dims.w * reference_image.dims.y;
 
-    cudaErr(cudaMallocHost(&_peak_buffer, _batch_size * sizeof(Peak)));
-    cudaErr(cudaMalloc(&_d_peak_buffer, _batch_size * sizeof(Peak)));
+    cudaErr(cudaMallocHost(&_peak_buffer, _batch_size * sizeof(IntegerPeak)));
+    cudaErr(cudaMalloc(&_d_peak_buffer, _batch_size * sizeof(IntegerPeak)));
     _is_initialized = true;
 }

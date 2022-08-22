@@ -59,7 +59,7 @@ class Image {
     long real_memory_allocated; // !<  Number of floats allocated in real space;
     int  real_memory_allocated_16f;
 
-    int padding_jump_value; // !<  The FFTW padding value, if odd this is 2, if even it is 1.  It is used in loops etc over real space.
+    int padding_jump_value; // !<  The FFTW padding value, if odd this is 1, if even it is 2.  It is used in loops etc over real space.
 
     int insert_into_which_reconstruction; // !<  Determines which reconstruction the image will be inserted into (for FSC calculation).
 

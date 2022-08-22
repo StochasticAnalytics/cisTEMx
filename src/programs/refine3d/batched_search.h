@@ -5,12 +5,10 @@ class GpuImage;
 
 // class Peak;
 
-typedef struct _IntegerPeak {
+typedef __align__(16) struct _IntegerPeak {
     float value;
-    int   x;
-    int   y;
     int   z;
-    int   address_in_image;
+    int   physical_address_within_image;
 } IntegerPeak;
 
 class BatchedSearch {
@@ -33,32 +31,34 @@ class BatchedSearch {
         return _is_initialized;
     }
 
+    void SetDeviceBuffer( );
+
     inline int n_search_images( ) const { return _n_search_images; }
 
     inline int n_batches( ) const { return _n_batches; };
 
-    inline int n_images_in_this_batch( ) { return (index < _n_batches - 1) ? _batch_size : _n_in_last_batch; };
+    inline int n_images_in_this_batch( ) const { return (index < _n_batches - 1) ? _batch_size : _n_in_last_batch; };
 
     inline int stride( ) const { return _stride; };
 
-    inline int max_pixel_radius_x( ) { return _max_pixel_radius_x; };
+    inline int max_pixel_radius_x( ) const { return _max_pixel_radius_x; };
 
-    inline int max_pixel_radius_y( ) { return _max_pixel_radius_y; };
+    inline int max_pixel_radius_y( ) const { return _max_pixel_radius_y; };
 
-    inline int intra_loop_inc( ) { return _intra_loop_inc; };
+    inline int intra_loop_inc( ) const { return _intra_loop_inc; };
 
-    inline int batch_size( ) { return _batch_size; };
+    inline int batch_size( ) const { return _batch_size; };
 
-    inline int n_in_last_batch( ) { return _n_in_last_batch; };
+    inline int n_in_last_batch( ) const { return _n_in_last_batch; };
 
-    inline float GetInPlaneAngle(int z_index_in_batch) { return _in_plane_angle[index * _batch_size + z_index_in_batch]; };
+    inline float GetInPlaneAngle(int z_index_in_batch) const { return _in_plane_angle[index * _batch_size + z_index_in_batch]; };
 
-    inline float GetMirroredOrNot(int z_index_in_batch) { return _is_search_result_mirrored[index * _batch_size + z_index_in_batch]; };
+    inline float GetMirroredOrNot(int z_index_in_batch) const { return _is_search_result_mirrored[index * _batch_size + z_index_in_batch]; };
 
-    Peak* _peak_buffer;
-    Peak* _d_peak_buffer;
+    IntegerPeak* _peak_buffer;
+    IntegerPeak* _d_peak_buffer;
 
-    inline void print_member_variables( ) {
+    inline void PrintMemberVariables( ) {
         std::cerr << "BatchedSearch::_n_batches: " << _n_batches << std::endl;
         std::cerr << "BatchedSearch::_batch_size: " << _batch_size << std::endl;
         std::cerr << "BatchedSearch::_n_in_last_batch: " << _n_in_last_batch << std::endl;

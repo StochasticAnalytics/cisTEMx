@@ -20,6 +20,7 @@ class RotationMatrix {
     RotationMatrix& operator*=(const RotationMatrix& other);
     RotationMatrix& operator*=(const RotationMatrix* other);
     RotationMatrix  ReturnTransposed( );
+    float           ReturnTrace( );
 
     void SetToIdentity( );
     void SetToConstant(float constant);
@@ -39,4 +40,7 @@ class RotationMatrix {
         output_x_coord = this->m[0][0] * input_x_coord + this->m[0][1] * input_y_coord;
         output_y_coord = this->m[1][0] * input_x_coord + this->m[1][1] * input_y_coord;
     };
+
+    float FrobeniusNorm( );
+    void  PrintMatrix( );
 };

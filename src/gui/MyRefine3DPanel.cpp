@@ -1,5 +1,7 @@
 #include "../core/gui_core_headers.h"
 
+#define REFERENCE_IS_FROM_ATOMIC_COORDINATES_OBJECT
+
 extern MyRefinementPackageAssetPanel* refinement_package_asset_panel;
 extern MyRunProfilesPanel*            run_profiles_panel;
 extern MyVolumeAssetPanel*            volume_asset_panel;
@@ -31,6 +33,9 @@ MyRefine3DPanel::MyRefine3DPanel(wxWindow* parent)
     ExpertPanel->SetMinSize(input_size);
     ExpertPanel->SetSize(input_size);
 
+#ifndef SHOW_CISTEM_GPU_OPTIONS
+    use_gpu_checkboxR3D->Show(false);
+#endif
     // set values //
 
     /*
@@ -551,6 +556,12 @@ void MyRefine3DPanel::SetDefaults( ) {
         LowPassMaskNoRadio->SetValue(true);
         MaskFilterResolutionText->ChangeValueFloat(20.00);
 
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+        use_gpu_checkboxR3D->SetValue(true);
+#else
+        use_gpu_checkboxR3D->SetValue(false); // Already disabled, but also set to un-ticked for visual consistency.
+#endif
+
         ExpertPanel->Thaw( );
     }
 }
@@ -623,6 +634,9 @@ void MyRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
             UseMaskCheckBox->Enable(true);
             ExpertToggleButton->Enable(true);
 
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+            use_gpu_checkboxR3D->Enable(true);
+#endif
             if ( RefinementPackageComboBox->GetCount( ) > 0 ) {
 
                 RefinementPackageComboBox->Enable(true);
@@ -652,6 +666,7 @@ void MyRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
                 RefinementPackageComboBox->Enable(false);
                 InputParametersComboBox->ChangeValue("");
                 InputParametersComboBox->Enable(false);
+                use_gpu_checkboxR3D->Enable(false); // Doesn't matter if SHOW_CISTEM_GPU_OPTIONS
 
                 if ( PleaseCreateRefinementPackageText->IsShown( ) == false ) {
                     PleaseCreateRefinementPackageText->Show(true);
@@ -1526,6 +1541,19 @@ void RefinementManager::SetupRefinementJob( ) {
     long first_particle;
     long last_particle;
 
+    bool use_gpu;
+
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+    if ( my_parent->use_gpu_checkboxR3D->GetValue( ) == true ) {
+        use_gpu = true;
+    }
+    else {
+        use_gpu = false;
+    }
+#else
+    use_gpu = false;
+#endif
+
     // get the last refinement for the currently selected refinement package..
 
     input_refinement->WritecisTEMStarFiles(main_frame->current_project.parameter_file_directory.GetFullPath( ) + "/input_par", 1.0f, 0.0f, true);
@@ -1540,7 +1568,12 @@ void RefinementManager::SetupRefinementJob( ) {
     number_of_refinement_processes = std::min(number_of_particles, active_refinement_run_profile.ReturnTotalJobs( ));
     number_of_refinement_jobs      = number_of_refinement_processes;
 
-    my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d", number_of_refinement_jobs * active_refinement_package->number_of_classes);
+    if ( use_gpu ) {
+        my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d_gpu", number_of_refinement_jobs * active_refinement_package->number_of_classes);
+    }
+    else {
+        my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d", number_of_refinement_jobs * active_refinement_package->number_of_classes);
+    }
 
     for ( class_counter = 0; class_counter < active_refinement_package->number_of_classes; class_counter++ ) {
         current_particle_counter = 1;
@@ -1551,7 +1584,12 @@ void RefinementManager::SetupRefinementJob( ) {
             wxString input_parameter_file            = main_frame->current_project.parameter_file_directory.GetFullPath( ) + wxString::Format("/input_par_%li_%i.cistem", current_input_refinement_id, class_counter + 1);
             wxString input_reconstruction            = current_reference_filenames.Item(class_counter);
             wxString input_reconstruction_statistics = main_frame->current_project.parameter_file_directory.GetFullPath( ) + wxString::Format("/input_stats_%li_%i.txt", current_input_refinement_id, class_counter + 1);
-            bool     use_statistics                  = true;
+#ifdef REFERENCE_IS_FROM_ATOMIC_COORDINATES_OBJECT
+            bool use_statistics = false;
+#else
+            bool use_statistics = true;
+            
+#endif
 
             wxString ouput_matching_projections = "";
             //					= "/tmp/output_par.par";
@@ -1594,18 +1632,12 @@ void RefinementManager::SetupRefinementJob( ) {
             float defocus_step         = active_defocus_search_step;
             float padding              = 1.0;
 
-            bool global_search;
-            bool local_refinement;
+            bool do_global_search;
+            bool do_local_refinement;
             bool global_local_refinemnent = false;
 
-            if ( active_do_global_refinement == true ) {
-                global_search    = true;
-                local_refinement = false;
-            }
-            else {
-                global_search    = false;
-                local_refinement = true;
-            }
+            do_global_search    = (active_do_global_refinement) ? true : false;
+            do_local_refinement = (active_do_global_refinement) ? false : true;
 
             bool ignore_input_parameters = active_also_refine_input;
 
@@ -1667,8 +1699,8 @@ void RefinementManager::SetupRefinementJob( ) {
                                                   defocus_search_range,
                                                   defocus_step,
                                                   padding,
-                                                  global_search,
-                                                  local_refinement,
+                                                  do_global_search,
+                                                  do_local_refinement,
                                                   refine_psi,
                                                   refine_theta,
                                                   refine_phi,
@@ -1777,18 +1809,18 @@ void RefinementManager::SetupRefinementJob( ) {
 				float	 defocus_step							= my_parent->DefocusSearchStepTextCtrl->ReturnValue();
 				float	 padding								= 1.0;
 
-				bool global_search;
-				bool local_refinement;
+				bool do_global_search;
+				bool do_local_refinement;
 
 				if (my_parent->GlobalRefinementRadio->GetValue() == true)
 				{
-					global_search = true;
-					local_refinement = false;
+					do_global_search = true;
+					do_local_refinement = false;
 				}
 				else
 				{
-					global_search = false;
-					local_refinement = true;
+					do_global_search = false;
+					do_local_refinement = true;
 				}
 
 
@@ -1845,8 +1877,8 @@ void RefinementManager::SetupRefinementJob( ) {
 																	defocus_search_range,								// 32
 																	defocus_step,										// 33
 																	padding,											// 34
-																	global_search,										// 35
-																	local_refinement,									// 36
+																	do_global_search,										// 35
+																	do_local_refinement,									// 36
 																	refine_psi,											// 37
 																	refine_theta,										// 38
 																	refine_phi, 										// 39

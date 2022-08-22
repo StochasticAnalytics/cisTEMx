@@ -41,6 +41,10 @@ AutoRefine3DPanel::AutoRefine3DPanel(wxWindow* parent)
     ExpertPanel->SetMinSize(input_size);
     ExpertPanel->SetSize(input_size);
 
+#ifndef SHOW_CISTEM_GPU_OPTIONS
+    use_gpu_checkboxAR3D->Show(false);
+#endif
+
     // set values //
 
     /*
@@ -380,6 +384,12 @@ void AutoRefine3DPanel::SetDefaults( ) {
         LowPassMaskNoRadio->SetValue(true);
         MaskFilterResolutionText->ChangeValueFloat(20.00);
 
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+        use_gpu_checkboxAR3D->SetValue(true);
+#else
+        use_gpu_checkboxAR3D->SetValue(false); // Already disabled, but also set to un-ticked for visual consistency.
+#endif
+
         ExpertPanel->Thaw( );
     }
 }
@@ -444,6 +454,9 @@ void AutoRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
             else
                 ReferenceSelectPanel->Enable(false);
 
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+            use_gpu_checkboxAR3D->Enable(true);
+#endif
             RefinementRunProfileComboBox->Enable(true);
             ReconstructionRunProfileComboBox->Enable(true);
             InitialResLimitStaticText->Enable(true);
@@ -474,6 +487,8 @@ void AutoRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
                 //MaskSelectPanel->AssetComboBox->ChangeValue("");
                 RefinementPackageSelectPanel->ChangeValue("");
                 RefinementPackageSelectPanel->Enable(false);
+                use_gpu_checkboxAR3D->Enable(false); // Doesn't matter if SHOW_CISTEM_GPU_OPTIONS
+
                 //				InputParametersComboBox->ChangeValue("");
                 //			InputParametersComboBox->Enable(false);
 
@@ -1307,6 +1322,19 @@ void AutoRefinementManager::SetupRefinementJob( ) {
     float likelihood_to_global;
     bool  do_global_for_this_particle;
 
+    bool use_gpu;
+
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+    if ( my_parent->use_gpu_checkboxAR3D->GetValue( ) == true ) {
+        use_gpu = true;
+    }
+    else {
+        use_gpu = false;
+    }
+#else
+    use_gpu = false;
+#endif
+
     // Just to make sure it is working
     if ( true_if_not_configured_as_disabled ) {
         wxPrintf("Allowing multiple global refinements\n");
@@ -1393,7 +1421,12 @@ void AutoRefinementManager::SetupRefinementJob( ) {
     number_of_refinement_processes = std::min(number_of_particles, active_refinement_run_profile.ReturnTotalJobs( ));
     number_of_refinement_jobs      = number_of_refinement_processes;
 
-    my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d", number_of_refinement_jobs * input_refinement->number_of_classes);
+    if ( use_gpu ) {
+        my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d_gpu", number_of_refinement_jobs * input_refinement->number_of_classes);
+    }
+    else {
+        my_parent->current_job_package.Reset(active_refinement_run_profile, "refine3d", number_of_refinement_jobs * input_refinement->number_of_classes);
+    }
 
     for ( class_counter = 0; class_counter < input_refinement->number_of_classes; class_counter++ ) {
 
@@ -1467,32 +1500,32 @@ void AutoRefinementManager::SetupRefinementJob( ) {
             float defocus_step         = 0; //my_parent->DefocusSearchStepTextCtrl->ReturnValue();
             float padding              = 1.0;
 
-            bool global_search           = false;
-            bool local_refinement        = false;
-            bool global_local_refinement = true;
+            bool do_global_search                      = false;
+            bool do_local_refinement                   = false;
+            bool do_global_search_and_local_refinement = true;
 
             /*
 			if (number_of_rounds_run == 0)
 			{
-				global_search = true;
-				local_refinement = false;
+				do_global_search = true;
+				do_local_refinement = false;
 			}
 			else
 			{
-				global_search = false;
-				local_refinement = true;
+				do_global_search = false;
+				do_local_refinement = true;
 
 			}*/
             /*
 			if (my_parent->GlobalRefinementRadio->GetValue() == true)
 			{
-				global_search = true;
-				local_refinement = false;
+				do_global_search = true;
+				do_local_refinement = false;
 			}
 			else
 			{
-				global_search = false;
-				local_refinement = true;
+				do_global_search = false;
+				do_local_refinement = true;
 			}*/
 
             bool refine_psi                     = true; //my_parent->RefinePsiCheckBox->GetValue();
@@ -1554,8 +1587,8 @@ void AutoRefinementManager::SetupRefinementJob( ) {
                                                   defocus_search_range,
                                                   defocus_step,
                                                   padding,
-                                                  global_search,
-                                                  local_refinement,
+                                                  do_global_search,
+                                                  do_local_refinement,
                                                   refine_psi,
                                                   refine_theta,
                                                   refine_phi,
@@ -1570,7 +1603,7 @@ void AutoRefinementManager::SetupRefinementJob( ) {
                                                   normalize_input_3d,
                                                   threshold_input_3d,
                                                   max_threads,
-                                                  global_local_refinement,
+                                                  do_global_search_and_local_refinement,
                                                   class_counter,
                                                   ignore_input_parameters,
                                                   defocus_bias);

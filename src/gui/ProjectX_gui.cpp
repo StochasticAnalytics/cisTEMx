@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version 3.10.1-0-g8feb16b)
+// C++ code generated with wxFormBuilder (version 3.10.0-4761b0c)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO *NOT* EDIT THIS FILE!
@@ -7403,8 +7403,9 @@ Refine3DPanel::Refine3DPanel( wxWindow* parent, wxWindowID id, const wxPoint& po
 	wxBoxSizer* bSizer60;
 	bSizer60 = new wxBoxSizer( wxVERTICAL );
 
-
-	bSizer60->Add( 0, 0, 1, wxEXPAND, 5 );
+	use_gpu_checkboxR3D = new wxCheckBox( StartPanel, wxID_ANY, wxT("Use GPU"), wxDefaultPosition, wxDefaultSize, 0 );
+	use_gpu_checkboxR3D->SetValue(true);
+	bSizer60->Add( use_gpu_checkboxR3D, 1, wxALL, 5 );
 
 	StartRefinementButton = new wxButton( StartPanel, wxID_ANY, wxT("Start Refinement"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer60->Add( StartRefinementButton, 0, wxALL, 5 );
@@ -9369,20 +9370,21 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 	wxBoxSizer* bSizer60;
 	bSizer60 = new wxBoxSizer( wxVERTICAL );
 
-
-	bSizer60->Add( 0, 0, 1, wxEXPAND, 5 );
+	use_gpu_checkboxAR3D = new wxCheckBox( StartPanel, wxID_ANY, wxT("Use GPU"), wxDefaultPosition, wxDefaultSize, 0 );
+	use_gpu_checkboxAR3D->SetValue(true);
+	bSizer60->Add( use_gpu_checkboxAR3D, 1, wxALL|wxEXPAND|wxALIGN_CENTER_HORIZONTAL, 5 );
 
 	StartRefinementButton = new wxButton( StartPanel, wxID_ANY, wxT("Start Refinement"), wxDefaultPosition, wxDefaultSize, 0 );
-	bSizer60->Add( StartRefinementButton, 0, wxALL, 5 );
+	bSizer60->Add( StartRefinementButton, 0, wxALL|wxEXPAND, 5 );
 
 
-	bSizer58->Add( bSizer60, 50, wxEXPAND, 5 );
+	bSizer58->Add( bSizer60, 0, wxEXPAND, 5 );
 
 
 	StartPanel->SetSizer( bSizer58 );
 	StartPanel->Layout();
 	bSizer58->Fit( StartPanel );
-	bSizer48->Add( StartPanel, 1, wxEXPAND | wxALL, 5 );
+	bSizer48->Add( StartPanel, 0, wxEXPAND | wxALL, 5 );
 
 
 	bSizer43->Add( bSizer48, 0, wxEXPAND, 5 );

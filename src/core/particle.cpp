@@ -1,5 +1,7 @@
 #include "core_headers.h"
 
+// #define TROUBLE_SHOOT_LOGP_CALC
+
 ParameterMap::ParameterMap( ) {
     phi     = false;
     theta   = false;
@@ -923,7 +925,10 @@ float Particle::ReturnLogLikelihood(Image& input_image, CTF& input_ctf, Reconstr
     // However, it seems to lead to some oscillatory behavior of the occupancies (from cycle to cycle)
     //	if (current_parameters[7] >= 0 && current_parameters[14] > 0.0) temp_projection->MultiplyByConstant(parameter_average[14] / current_parameters[14]);
     //	wxPrintf("alpha for logp, scaling factor = %g %g\n", alpha, parameter_average[14] / current_parameters[14]);
-
+#ifdef TROUBLE_SHOOT_LOGP_CALC
+    std::cerr << "Current  parameters phi, theta, psi " << current_parameters.phi << " , " << current_parameters.theta << " , " << current_parameters.psi << "\n";
+    std::cerr << "Current  parameters x, y " << current_parameters.x_shift << " , " << current_parameters.y_shift << "\n";
+#endif
     if ( apply_2D_masking ) {
         AnglesAndShifts reverse_alignment_parameters;
         reverse_alignment_parameters.Init(-current_parameters.psi, -current_parameters.theta, -current_parameters.phi, 0.0, 0.0);
@@ -982,14 +987,16 @@ float Particle::ReturnLogLikelihood(Image& input_image, CTF& input_ctf, Reconstr
     alpha = input_image.ReturnImageScale(*projection_image);
     projection_image->MultiplyByConstant(alpha);
 
-    //	if (origin_micrograph < 0) origin_micrograph = 0;
-    //	origin_micrograph++;
-    //	input_image.QuickAndDirtyWriteSlice("part.mrc", origin_micrograph);
-    //	projection_image->QuickAndDirtyWriteSlice("proj.mrc", origin_micrograph);
+//	if (origin_micrograph < 0) origin_micrograph = 0;
+//	origin_micrograph++;
+#ifdef TROUBLE_SHOOT_LOGP_CALC
+    input_image.QuickAndDirtyWriteSlice("part.mrc", 1);
+    projection_image->QuickAndDirtyWriteSlice("proj.mrc", 1);
 
     input_image.SubtractImage(projection_image);
-    //	input_image.QuickAndDirtyWriteSlice("diff.mrc", origin_micrograph);
-    //	exit(0);
+    input_image.QuickAndDirtyWriteSlice("diff.mrc", 1);
+    exit(0);
+#endif
     //	variance_difference = input_image.ReturnVarianceOfRealValues();
     //	sigma = sqrtf(variance_difference / projection_image->ReturnVarianceOfRealValues());
     //	variance_difference = input_image.ReturnVarianceOfRealValues(mask_radius / original_pixel_size);
@@ -998,6 +1005,8 @@ float Particle::ReturnLogLikelihood(Image& input_image, CTF& input_ctf, Reconstr
     sigma               = sqrtf(variance_difference / projection_image->ReturnVarianceOfRealValues( ));
     //	sigma = sqrtf(variance_difference / powf(alpha, 2));
     //	wxPrintf("variance_difference, alpha for sigma, sigma = %g %g %g\n", variance_difference, alpha, sigma);
+
+    //FIXME this should be informative.
     // Prevent rare occurrences of unrealistically high sigmas
     if ( sigma > 100.0 )
         sigma = 100.0;
@@ -1552,3 +1561,5 @@ void Particle::EstimateSigmaNoise( ) {
 
     sigma_noise = particle_image->ReturnSigmaNoise( );
 }
+
+#undef TROUBLE_SHOOT_LOGP_CALC

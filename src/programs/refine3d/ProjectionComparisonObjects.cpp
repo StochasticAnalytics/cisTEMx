@@ -66,14 +66,16 @@ ProjectionComparisonObjects::~ProjectionComparisonObjects( ) {
     Deallocate( );
 
 #ifdef CISTEM_DEBUG
-    wxPrintf("\n----------------------------------------------------\n");
-    wxPrintf("Image type : Calls : Allocs : HtoD copies\n");
-    wxPrintf("Particley image : %i : %i : %i\n", n_calls_to_prep_images, n_particle_image_allocations, n_particle_image_HtoD_copies);
-    wxPrintf("Projection image : %i : %i : %i\n", n_calls_to_prep_images, n_projection_image_allocations, n_projection_image_HtoD_copies);
-    wxPrintf("CTF image : %i : %i : %i\n", n_calls_to_prep_images, n_ctf_image_allocations, n_ctf_image_HtoD_copies);
-    wxPrintf("Particle search image : %i : %i : %i\n", n_calls_to_prep_search_images, n_search_particle_image_allocations, n_search_particle_image_HtoD_copies);
-    wxPrintf("Projection search image : %i : %i : %i\n", n_calls_to_prep_search_images, n_search_projection_image_allocations, n_search_projection_image_HtoD_copies);
-    wxPrintf("CTF search image : %i : %i : %i\n", n_calls_to_prep_search_images, n_search_ctf_image_allocations, n_search_ctf_image_HtoD_copies);
+    if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
+        wxPrintf("\n----------------------------------------------------\n");
+        wxPrintf("Image type : Calls : Allocs : HtoD copies\n");
+        wxPrintf("Particley image : %i : %i : %i\n", n_calls_to_prep_images, n_particle_image_allocations, n_particle_image_HtoD_copies);
+        wxPrintf("Projection image : %i : %i : %i\n", n_calls_to_prep_images, n_projection_image_allocations, n_projection_image_HtoD_copies);
+        wxPrintf("CTF image : %i : %i : %i\n", n_calls_to_prep_images, n_ctf_image_allocations, n_ctf_image_HtoD_copies);
+        wxPrintf("Particle search image : %i : %i : %i\n", n_calls_to_prep_search_images, n_search_particle_image_allocations, n_search_particle_image_HtoD_copies);
+        wxPrintf("Projection search image : %i : %i : %i\n", n_calls_to_prep_search_images, n_search_projection_image_allocations, n_search_projection_image_HtoD_copies);
+        wxPrintf("CTF search image : %i : %i : %i\n", n_calls_to_prep_search_images, n_search_ctf_image_allocations, n_search_ctf_image_HtoD_copies);
+    }
 #endif
 }
 

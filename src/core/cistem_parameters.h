@@ -179,75 +179,75 @@ class cisTEMParameters {
 
     void PreallocateMemoryAndBlank(int number_to_allocate);
 
-    inline long ReturnNumberofLines( ) { return all_parameters.GetCount( ); }
+    inline long ReturnNumberofLines( ) const { return all_parameters.GetCount( ); }
 
-    inline cisTEMParameterLine ReturnLine(int line_number) { return all_parameters.Item(line_number); }
+    inline cisTEMParameterLine ReturnLine(int line_number) const { return all_parameters.Item(line_number); }
 
-    inline int ReturnPositionInStack(int line_number) { return all_parameters.Item(line_number).position_in_stack; }
+    inline int ReturnPositionInStack(int line_number) const { return all_parameters.Item(line_number).position_in_stack; }
 
-    inline int ReturnImageIsActive(int line_number) { return all_parameters.Item(line_number).image_is_active; }
+    inline int ReturnImageIsActive(int line_number) const { return all_parameters.Item(line_number).image_is_active; }
 
-    inline float ReturnPhi(int line_number) { return all_parameters.Item(line_number).phi; }
+    inline float ReturnPhi(int line_number) const { return all_parameters.Item(line_number).phi; }
 
-    inline float ReturnTheta(int line_number) { return all_parameters.Item(line_number).theta; }
+    inline float ReturnTheta(int line_number) const { return all_parameters.Item(line_number).theta; }
 
-    inline float ReturnPsi(int line_number) { return all_parameters.Item(line_number).psi; }
+    inline float ReturnPsi(int line_number) const { return all_parameters.Item(line_number).psi; }
 
-    inline float ReturnXShift(int line_number) { return all_parameters.Item(line_number).x_shift; }
+    inline float ReturnXShift(int line_number) const { return all_parameters.Item(line_number).x_shift; }
 
-    inline float ReturnYShift(int line_number) { return all_parameters.Item(line_number).y_shift; }
+    inline float ReturnYShift(int line_number) const { return all_parameters.Item(line_number).y_shift; }
 
-    inline float ReturnDefocus1(int line_number) { return all_parameters.Item(line_number).defocus_1; }
+    inline float ReturnDefocus1(int line_number) const { return all_parameters.Item(line_number).defocus_1; }
 
-    inline float ReturnDefocus2(int line_number) { return all_parameters.Item(line_number).defocus_2; }
+    inline float ReturnDefocus2(int line_number) const { return all_parameters.Item(line_number).defocus_2; }
 
-    inline float ReturnDefocusAngle(int line_number) { return all_parameters.Item(line_number).defocus_angle; }
+    inline float ReturnDefocusAngle(int line_number) const { return all_parameters.Item(line_number).defocus_angle; }
 
-    inline float ReturnPhaseShift(int line_number) { return all_parameters.Item(line_number).phase_shift; }
+    inline float ReturnPhaseShift(int line_number) const { return all_parameters.Item(line_number).phase_shift; }
 
-    inline float ReturnOccupancy(int line_number) { return all_parameters.Item(line_number).occupancy; }
+    inline float ReturnOccupancy(int line_number) const { return all_parameters.Item(line_number).occupancy; }
 
-    inline float ReturnLogP(int line_number) { return all_parameters.Item(line_number).logp; }
+    inline float ReturnLogP(int line_number) const { return all_parameters.Item(line_number).logp; }
 
-    inline float ReturnSigma(int line_number) { return all_parameters.Item(line_number).sigma; }
+    inline float ReturnSigma(int line_number) const { return all_parameters.Item(line_number).sigma; }
 
-    inline float ReturnScore(int line_number) { return all_parameters.Item(line_number).score; }
+    inline float ReturnScore(int line_number) const { return all_parameters.Item(line_number).score; }
 
-    inline float ReturnScoreChange(int line_number) { return all_parameters.Item(line_number).score_change; }
+    inline float ReturnScoreChange(int line_number) const { return all_parameters.Item(line_number).score_change; }
 
-    inline float ReturnPixelSize(int line_number) { return all_parameters.Item(line_number).pixel_size; }
+    inline float ReturnPixelSize(int line_number) const { return all_parameters.Item(line_number).pixel_size; }
 
-    inline float ReturnMicroscopekV(int line_number) { return all_parameters.Item(line_number).microscope_voltage_kv; }
+    inline float ReturnMicroscopekV(int line_number) const { return all_parameters.Item(line_number).microscope_voltage_kv; }
 
-    inline float ReturnMicroscopeCs(int line_number) { return all_parameters.Item(line_number).microscope_spherical_aberration_mm; }
+    inline float ReturnMicroscopeCs(int line_number) const { return all_parameters.Item(line_number).microscope_spherical_aberration_mm; }
 
-    inline float ReturnAmplitudeContrast(int line_number) { return all_parameters.Item(line_number).amplitude_contrast; }
+    inline float ReturnAmplitudeContrast(int line_number) const { return all_parameters.Item(line_number).amplitude_contrast; }
 
-    inline float ReturnBeamTiltX(int line_number) { return all_parameters.Item(line_number).beam_tilt_x; }
+    inline float ReturnBeamTiltX(int line_number) const { return all_parameters.Item(line_number).beam_tilt_x; }
 
-    inline float ReturnBeamTiltY(int line_number) { return all_parameters.Item(line_number).beam_tilt_y; }
+    inline float ReturnBeamTiltY(int line_number) const { return all_parameters.Item(line_number).beam_tilt_y; }
 
-    inline float ReturnImageShiftX(int line_number) { return all_parameters.Item(line_number).image_shift_x; }
+    inline float ReturnImageShiftX(int line_number) const { return all_parameters.Item(line_number).image_shift_x; }
 
-    inline float ReturnImageShiftY(int line_number) { return all_parameters.Item(line_number).image_shift_y; }
+    inline float ReturnImageShiftY(int line_number) const { return all_parameters.Item(line_number).image_shift_y; }
 
-    inline wxString ReturnStackFilename(int line_number) { return all_parameters.Item(line_number).stack_filename; }
+    inline wxString ReturnStackFilename(int line_number) const { return all_parameters.Item(line_number).stack_filename; }
 
-    inline wxString ReturnOriginalImageFilename(int line_number) { return all_parameters.Item(line_number).original_image_filename; }
+    inline wxString ReturnOriginalImageFilename(int line_number) const { return all_parameters.Item(line_number).original_image_filename; }
 
-    inline wxString ReturnReference3DFilename(int line_number) { return all_parameters.Item(line_number).reference_3d_filename; }
+    inline wxString ReturnReference3DFilename(int line_number) const { return all_parameters.Item(line_number).reference_3d_filename; }
 
-    inline int ReturnBest2DClass(int line_number) { return all_parameters.Item(line_number).best_2d_class; }
+    inline int ReturnBest2DClass(int line_number) const { return all_parameters.Item(line_number).best_2d_class; }
 
-    inline int ReturnBeamTiltGroup(int line_number) { return all_parameters.Item(line_number).beam_tilt_group; }
+    inline int ReturnBeamTiltGroup(int line_number) const { return all_parameters.Item(line_number).beam_tilt_group; }
 
-    inline int ReturnParticleGroup(int line_number) { return all_parameters.Item(line_number).particle_group; }
+    inline int ReturnParticleGroup(int line_number) const { return all_parameters.Item(line_number).particle_group; }
 
-    inline int ReturnAssignedSubset(int line_number) { return all_parameters.Item(line_number).assigned_subset; }
+    inline int ReturnAssignedSubset(int line_number) const { return all_parameters.Item(line_number).assigned_subset; }
 
-    inline float ReturnPreExposure(int line_number) { return all_parameters.Item(line_number).pre_exposure; }
+    inline float ReturnPreExposure(int line_number) const { return all_parameters.Item(line_number).pre_exposure; }
 
-    inline float ReturnTotalExposure(int line_number) { return all_parameters.Item(line_number).total_exposure; }
+    inline float ReturnTotalExposure(int line_number) const { return all_parameters.Item(line_number).total_exposure; }
 
     float ReturnAverageSigma(bool exclude_negative_film_numbers = false);
     float ReturnAverageOccupancy(bool exclude_negative_film_numbers = false);
@@ -273,4 +273,8 @@ class cisTEMParameters {
 
     cisTEMParameterLine ReturnParameterAverages(bool only_average_active = true);
     cisTEMParameterLine ReturnParameterVariances(bool only_average_active = true);
+
+    // For comparing multiple starfiles
+    cisTEMParameterLine ReturnParameterAverages(const cisTEMParameters& other_parameters, const wxString& symmetry_symbol, bool only_average_active = true);
+    cisTEMParameterLine ReturnParameterVariances(const cisTEMParameters& other_parameters, const wxString& symmetry_symbol, bool only_average_active = true);
 };

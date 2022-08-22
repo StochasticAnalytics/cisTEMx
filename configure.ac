@@ -322,6 +322,12 @@ AC_ARG_ENABLE(profiling, AS_HELP_STRING([--enable-profiling],[Include fine-grain
 
 AM_CONDITIONAL([ENABLEPROFILING_AM], [test x$want_profiling = xtrue])
 
+AC_ARG_ENABLE(deterministic-outcome, AS_HELP_STRING([--enable-deterministic-outcome],[Removes random initializers or sets constant seed for debugging  [default=no]]),[
+  if test "$enableval" = yes; then
+    AC_DEFINE([CISTEM_DETERMINISTIC_OUTCOME], [], [Define the deterministic outcome flag])
+  	AC_MSG_NOTICE([Compiling with deterministic-outcome])	
+  fi
+  ]) 
 
 want_webview="no"
 AC_ARG_ENABLE(wx-webview, AS_HELP_STRING([--enable-wx-webview],[Compile with experimental webview panel]),[

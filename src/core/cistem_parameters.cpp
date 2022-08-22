@@ -1669,6 +1669,246 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterVariances(bool only_average
     return variance_values;
 }
 
+cisTEMParameterLine cisTEMParameters::ReturnParameterAverages(const cisTEMParameters& other_parameters, const wxString& symmetry_symbol, bool only_average_active) {
+
+    MyAssertTrue(all_parameters.GetCount( ) == other_parameters.all_parameters.GetCount( ), "cisTEMParameters::ReturnParameterAverages - parameter counts do not match");
+    cisTEMParameterLine average_values;
+
+    // The angular distance is calculated using these
+    RotationMatrix my_rotation_matrix;
+    RotationMatrix other_rotation_matrix;
+    SymmetryMatrix symmetry_matrix(symmetry_symbol);
+    float          angular_error;
+
+    long   average_position_in_stack                  = 0;
+    long   average_image_is_active                    = 0;
+    double average_psi                                = 0.0;
+    double average_theta                              = 0.0;
+    double average_phi                                = 0.0;
+    double average_x_shift                            = 0.0;
+    double average_y_shift                            = 0.0;
+    double average_defocus_1                          = 0.0;
+    double average_defocus_2                          = 0.0;
+    double average_defocus_angle                      = 0.0;
+    double average_phase_shift                        = 0.0;
+    double average_occupancy                          = 0.0;
+    double average_logp                               = 0;
+    double average_sigma                              = 0.0;
+    double average_score                              = 0.0;
+    double average_score_change                       = 0.0;
+    double average_pixel_size                         = 0.0;
+    double average_microscope_voltage_kv              = 0.0;
+    double average_microscope_spherical_aberration_mm = 0.0;
+    double average_amplitude_contrast                 = 0.0;
+    double average_beam_tilt_x                        = 0.0;
+    double average_beam_tilt_y                        = 0.0;
+    double average_image_shift_x                      = 0.0;
+    double average_image_shift_y                      = 0.0;
+
+    long number_summed = 0;
+
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        if ( ReturnImageIsActive(counter) >= 0 || only_average_active == false ) {
+            average_position_in_stack += ReturnPositionInStack(counter);
+            average_image_is_active += ReturnImageIsActive(counter);
+
+            // Right now for the error calculation, we are just worried about the axis (not the angle) as this determines whether we are "close enought"
+            // that further refinement may find the true angle.
+            my_rotation_matrix.SetToEulerRotation(ReturnPhi(counter), ReturnTheta(counter), 0.f);
+            other_rotation_matrix.SetToEulerRotation(-other_parameters.ReturnPhi(counter), -other_parameters.ReturnTheta(counter), 0.f);
+            angular_error = symmetry_matrix.GetMinimumAngularDistance(my_rotation_matrix, other_rotation_matrix);
+
+            average_psi += angular_error;
+            average_theta += 0.f;
+            average_phi += 0.f;
+            average_x_shift += ReturnXShift(counter) - other_parameters.ReturnXShift(counter);
+            average_y_shift += ReturnYShift(counter) - other_parameters.ReturnYShift(counter);
+            average_defocus_1 += ReturnDefocus1(counter) - other_parameters.ReturnDefocus1(counter);
+            average_defocus_2 += ReturnDefocus2(counter) - other_parameters.ReturnDefocus2(counter);
+            average_defocus_angle += ReturnDefocusAngle(counter) - other_parameters.ReturnDefocusAngle(counter);
+            average_phase_shift += ReturnPhaseShift(counter) - other_parameters.ReturnPhaseShift(counter);
+            average_occupancy += ReturnOccupancy(counter) - other_parameters.ReturnOccupancy(counter);
+            average_logp += ReturnLogP(counter) - other_parameters.ReturnLogP(counter);
+            average_sigma += ReturnSigma(counter) - other_parameters.ReturnSigma(counter);
+            average_score += ReturnScore(counter) - other_parameters.ReturnScore(counter);
+            average_score_change += ReturnScoreChange(counter) - other_parameters.ReturnScoreChange(counter);
+            average_pixel_size += ReturnPixelSize(counter) - other_parameters.ReturnPixelSize(counter);
+            average_microscope_voltage_kv += ReturnMicroscopekV(counter) - other_parameters.ReturnMicroscopekV(counter);
+            average_microscope_spherical_aberration_mm += ReturnMicroscopeCs(counter) - other_parameters.ReturnMicroscopeCs(counter);
+            average_amplitude_contrast += ReturnAmplitudeContrast(counter) - other_parameters.ReturnAmplitudeContrast(counter);
+            average_beam_tilt_x += ReturnBeamTiltX(counter) - other_parameters.ReturnBeamTiltX(counter);
+            average_beam_tilt_y += ReturnBeamTiltY(counter) - other_parameters.ReturnBeamTiltY(counter);
+            average_image_shift_x += ReturnImageShiftX(counter) - other_parameters.ReturnImageShiftX(counter);
+            average_image_shift_y += ReturnImageShiftY(counter) - other_parameters.ReturnImageShiftY(counter);
+
+            number_summed++;
+        }
+    }
+
+    if ( number_summed > 0 ) {
+        average_values.position_in_stack                  = average_position_in_stack / double(number_summed);
+        average_values.image_is_active                    = average_image_is_active / double(number_summed);
+        average_values.psi                                = average_psi / double(number_summed);
+        average_values.theta                              = average_theta / double(number_summed);
+        average_values.phi                                = average_phi / double(number_summed);
+        average_values.x_shift                            = average_x_shift / double(number_summed);
+        average_values.y_shift                            = average_y_shift / double(number_summed);
+        average_values.defocus_1                          = average_defocus_1 / double(number_summed);
+        average_values.defocus_2                          = average_defocus_2 / double(number_summed);
+        average_values.defocus_angle                      = average_defocus_angle / double(number_summed);
+        average_values.phase_shift                        = average_phase_shift / double(number_summed);
+        average_values.occupancy                          = average_occupancy / double(number_summed);
+        average_values.logp                               = average_logp / double(number_summed);
+        average_values.sigma                              = average_sigma / double(number_summed);
+        average_values.score                              = average_score / double(number_summed);
+        average_values.score_change                       = average_score_change / double(number_summed);
+        average_values.pixel_size                         = average_pixel_size / double(number_summed);
+        average_values.microscope_voltage_kv              = average_microscope_voltage_kv / double(number_summed);
+        average_values.microscope_spherical_aberration_mm = average_microscope_spherical_aberration_mm / double(number_summed);
+        average_values.amplitude_contrast                 = average_amplitude_contrast / double(number_summed);
+        average_values.beam_tilt_x                        = average_beam_tilt_x / double(number_summed);
+        average_values.beam_tilt_y                        = average_beam_tilt_y / double(number_summed);
+        average_values.image_shift_x                      = average_image_shift_x / double(number_summed);
+        average_values.image_shift_y                      = average_image_shift_y / double(number_summed);
+    }
+
+    return average_values;
+}
+
+cisTEMParameterLine cisTEMParameters::ReturnParameterVariances(const cisTEMParameters& other_parameters, const wxString& symmetry_symbol, bool only_average_active) {
+
+    MyAssertTrue(all_parameters.GetCount( ) == other_parameters.all_parameters.GetCount( ), "cisTEMParameters::ReturnParameterAverages - parameter counts do not match");
+
+    // The angular distance is calculated using these
+    RotationMatrix my_rotation_matrix;
+    RotationMatrix other_rotation_matrix;
+    SymmetryMatrix symmetry_matrix(symmetry_symbol);
+    float          angular_error;
+
+    cisTEMParameterLine average_values;
+    average_values = ReturnParameterAverages(other_parameters, symmetry_symbol, only_average_active);
+
+    cisTEMParameterLine variance_values;
+
+    long   variance_position_in_stack                  = 0;
+    long   variance_image_is_active                    = 0;
+    double variance_psi                                = 0.0;
+    double variance_theta                              = 0.0;
+    double variance_phi                                = 0.0;
+    double variance_x_shift                            = 0.0;
+    double variance_y_shift                            = 0.0;
+    double variance_defocus_1                          = 0.0;
+    double variance_defocus_2                          = 0.0;
+    double variance_defocus_angle                      = 0.0;
+    double variance_phase_shift                        = 0.0;
+    double variance_occupancy                          = 0.0;
+    double variance_logp                               = 0;
+    double variance_sigma                              = 0.0;
+    double variance_score                              = 0.0;
+    double variance_score_change                       = 0.0;
+    double variance_pixel_size                         = 0.0;
+    double variance_microscope_voltage_kv              = 0.0;
+    double variance_microscope_spherical_aberration_mm = 0.0;
+    double variance_amplitude_contrast                 = 0.0;
+    double variance_beam_tilt_x                        = 0.0;
+    double variance_beam_tilt_y                        = 0.0;
+    double variance_image_shift_x                      = 0.0;
+    double variance_image_shift_y                      = 0.0;
+
+    long number_summed = 0;
+
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        if ( ReturnImageIsActive(counter) >= 0 || only_average_active == false ) {
+            variance_position_in_stack += powf(ReturnPositionInStack(counter), 2);
+            variance_image_is_active += powf(ReturnImageIsActive(counter), 2);
+
+            // Right now for the error calculation, we are just worried about the axis (not the angle) as this determines whether we are "close enought"
+            // that further refinement may find the true angle.
+            my_rotation_matrix.SetToEulerRotation(ReturnPhi(counter), ReturnTheta(counter), 0.f);
+            other_rotation_matrix.SetToEulerRotation(0., 0., 0.f);
+            angular_error = symmetry_matrix.GetMinimumAngularDistance(my_rotation_matrix, other_rotation_matrix);
+
+            variance_psi += powf(angular_error, 2);
+            variance_theta += 0.f;
+            variance_phi += 0.f;
+            variance_x_shift += powf(ReturnXShift(counter) - other_parameters.ReturnXShift(counter), 2);
+            variance_y_shift += powf(ReturnYShift(counter) - other_parameters.ReturnYShift(counter), 2);
+            variance_defocus_1 += powf(ReturnDefocus1(counter) - other_parameters.ReturnDefocus1(counter), 2);
+            variance_defocus_2 += powf(ReturnDefocus2(counter) - other_parameters.ReturnDefocus2(counter), 2);
+            variance_defocus_angle += powf(ReturnDefocusAngle(counter) - other_parameters.ReturnDefocusAngle(counter), 2);
+            variance_phase_shift += powf(ReturnPhaseShift(counter) - other_parameters.ReturnPhaseShift(counter), 2);
+            variance_occupancy += powf(ReturnOccupancy(counter) - other_parameters.ReturnOccupancy(counter), 2);
+            variance_logp += powf(ReturnLogP(counter) - other_parameters.ReturnLogP(counter), 2);
+            variance_sigma += powf(ReturnSigma(counter) - other_parameters.ReturnSigma(counter), 2);
+            variance_score += powf(ReturnScore(counter) - other_parameters.ReturnScore(counter), 2);
+            variance_score_change += powf(ReturnScoreChange(counter) - other_parameters.ReturnScoreChange(counter), 2);
+            variance_pixel_size += powf(ReturnPixelSize(counter) - other_parameters.ReturnPixelSize(counter), 2);
+            variance_microscope_voltage_kv += powf(ReturnMicroscopekV(counter) - other_parameters.ReturnMicroscopekV(counter), 2);
+            variance_microscope_spherical_aberration_mm += powf(ReturnMicroscopeCs(counter) - other_parameters.ReturnMicroscopeCs(counter), 2);
+            variance_amplitude_contrast += powf(ReturnAmplitudeContrast(counter) - other_parameters.ReturnAmplitudeContrast(counter), 2);
+            variance_beam_tilt_x += powf(ReturnBeamTiltX(counter) - other_parameters.ReturnBeamTiltX(counter), 2);
+            variance_beam_tilt_y += powf(ReturnBeamTiltY(counter) - other_parameters.ReturnBeamTiltY(counter), 2);
+            variance_image_shift_x += powf(ReturnImageShiftX(counter) - other_parameters.ReturnImageShiftX(counter), 2);
+            variance_image_shift_y += powf(ReturnImageShiftY(counter) - other_parameters.ReturnImageShiftY(counter), 2);
+
+            number_summed++;
+        }
+    }
+    if ( number_summed > 0 ) {
+        variance_values.position_in_stack                  = variance_position_in_stack / double(number_summed);
+        variance_values.image_is_active                    = variance_image_is_active / double(number_summed);
+        variance_values.psi                                = variance_psi / double(number_summed);
+        variance_values.theta                              = variance_theta / double(number_summed);
+        variance_values.phi                                = variance_phi / double(number_summed);
+        variance_values.x_shift                            = variance_x_shift / double(number_summed);
+        variance_values.y_shift                            = variance_y_shift / double(number_summed);
+        variance_values.defocus_1                          = variance_defocus_1 / double(number_summed);
+        variance_values.defocus_2                          = variance_defocus_2 / double(number_summed);
+        variance_values.defocus_angle                      = variance_defocus_angle / double(number_summed);
+        variance_values.phase_shift                        = variance_phase_shift / double(number_summed);
+        variance_values.occupancy                          = variance_occupancy / double(number_summed);
+        variance_values.logp                               = variance_logp / double(number_summed);
+        variance_values.sigma                              = variance_sigma / double(number_summed);
+        variance_values.score                              = variance_score / double(number_summed);
+        variance_values.score_change                       = variance_score_change / double(number_summed);
+        variance_values.pixel_size                         = variance_pixel_size / double(number_summed);
+        variance_values.microscope_voltage_kv              = variance_microscope_voltage_kv / double(number_summed);
+        variance_values.microscope_spherical_aberration_mm = variance_microscope_spherical_aberration_mm / double(number_summed);
+        variance_values.amplitude_contrast                 = variance_amplitude_contrast / double(number_summed);
+        variance_values.beam_tilt_x                        = variance_beam_tilt_x / double(number_summed);
+        variance_values.beam_tilt_y                        = variance_beam_tilt_y / double(number_summed);
+        variance_values.image_shift_x                      = variance_image_shift_x / double(number_summed);
+        variance_values.image_shift_y                      = variance_image_shift_y / double(number_summed);
+    }
+
+    variance_values.position_in_stack -= powf(average_values.position_in_stack, 2);
+    variance_values.image_is_active -= powf(average_values.image_is_active, 2);
+    variance_values.psi -= powf(average_values.psi, 2);
+    variance_values.theta -= powf(average_values.theta, 2);
+    variance_values.phi -= powf(average_values.phi, 2);
+    variance_values.x_shift -= powf(average_values.x_shift, 2);
+    variance_values.y_shift -= powf(average_values.y_shift, 2);
+    variance_values.defocus_1 -= powf(average_values.defocus_1, 2);
+    variance_values.defocus_2 -= powf(average_values.defocus_2, 2);
+    variance_values.defocus_angle -= powf(average_values.defocus_angle, 2);
+    variance_values.phase_shift -= powf(average_values.phase_shift, 2);
+    variance_values.occupancy -= powf(average_values.occupancy, 2);
+    variance_values.logp -= powf(average_values.logp, 2);
+    variance_values.sigma -= powf(average_values.sigma, 2);
+    variance_values.score -= powf(average_values.score, 2);
+    variance_values.score_change -= powf(average_values.score_change, 2);
+    variance_values.pixel_size -= powf(average_values.pixel_size, 2);
+    variance_values.microscope_voltage_kv -= powf(average_values.microscope_voltage_kv, 2);
+    variance_values.microscope_spherical_aberration_mm -= powf(average_values.microscope_spherical_aberration_mm, 2);
+    variance_values.amplitude_contrast -= powf(average_values.amplitude_contrast, 2);
+    variance_values.beam_tilt_x -= powf(average_values.beam_tilt_x, 2);
+    variance_values.beam_tilt_y -= powf(average_values.beam_tilt_y, 2);
+    variance_values.image_shift_x -= powf(average_values.image_shift_x, 2);
+    variance_values.image_shift_y -= powf(average_values.image_shift_y, 2);
+
+    return variance_values;
+}
+
 float cisTEMParameters::ReturnAverageSigma(bool exclude_negative_film_numbers) {
     double sum           = 0;
     long   number_summed = 0;
@@ -2091,7 +2331,7 @@ int cisTEMParameters::ReturnMaxPositionInStack(bool exclude_negative_film_number
 static int wxCMPFUNC_CONV SortByReference3DFilenameCompareFunction(cisTEMParameterLine** a, cisTEMParameterLine** b) // function for sorting the classum selections by parent_image_id - this makes cutting them out more efficient
 {
     // In versions around wx 3.1.5 the args change form pointers to reference
-    return wxStringSortAscending(&(*a)->reference_3d_filename, &(*b)->reference_3d_filename);
+    return wxStringSortAscending((*a)->reference_3d_filename, (*b)->reference_3d_filename);
 };
 
 void cisTEMParameters::SortByReference3DFilename( ) {

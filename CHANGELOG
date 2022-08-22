@@ -1,0 +1,5 @@
+This file is to track algorithmic divergence between the CPU and GPU codepath, or more broadly the public and Gandeeva versions of the codepath.
+
+
+2022 Aug 22
+    - when a grid search is run on the GPU codepath, the resulting correlation maps are centered in the box

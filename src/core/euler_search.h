@@ -56,8 +56,13 @@ class EulerSearch {
     template <class ImageType>
     void Run(Particle& particle, Image& input_3d, ImageType* projections, int batch_size = 1);
 
-    // FIXME, set default fals to get lk;s djlkklh;jgsdasdghjksagdlh;
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
+    // WE also override in the function itself, but macro here for clarity on the default value.
     void CalculateGridSearchPositions(bool random_start_angle = false);
+#else
+    void                         CalculateGridSearchPositions(bool random_start_angle = true);
+#endif
+
     void CalculateRandomSearchPositions( );
     void SetSymmetryLimits( );
     //	void RotateFourier2DFromIndex(Image &image_to_rotate, Image &rotated_image, Kernel2D &kernel_index);

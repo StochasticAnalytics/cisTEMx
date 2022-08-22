@@ -75,6 +75,8 @@ class RefinementManager {
     long number_of_received_particle_results;
     long number_of_expected_results;
 
+    bool use_gpu;
+
     RefinementPackage* active_refinement_package;
     Refinement*        input_refinement;
     Refinement*        output_refinement;

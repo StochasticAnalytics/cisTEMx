@@ -401,7 +401,7 @@ class SimulateApp : public MyApp {
 
     ScatteringPotential sp;
 
-    Image* projected_water; // waters calculated over the specified subpixel shifts and projected.
+    Image* projected_water = nullptr; // waters calculated over the specified subpixel shifts and projected.
 
     bool        DoCalculation( );
     void        DoInteractiveUserInput( );
@@ -421,18 +421,18 @@ class SimulateApp : public MyApp {
     float lead_term             = 0.0f;
     float phase_plate_thickness = 276.0; //TODO CITE Angstrom, default for pi/2 phase shift, from 2.0 g/cm^3 amorphous carbon, 300 kV and 10.7V mean inner potential as determined by electron holography (carbon atoms are ~ 8)
 
-    float  astigmatism_scaling       = 0.0f;
-    long   number_of_non_water_atoms = 0; // a 32 bit int would be limited to ~ 400 nm^3
-    float* image_mean;
-    float* inelastic_mean;
-    float  current_total_exposure  = 0;
-    float  pre_exposure            = 0;
-    int    size_neighborhood       = 0;
-    int    size_neighborhood_water = 0;
-    long   make_particle_stack     = 0;
-    int    number_of_threads       = 1;
-    bool   do3d                    = true;
-    int    bin3d                   = 0; // in addition to binning for 3d (set on input) if wanted_output_size > 0, and it is 2d, this keeps the PDB constructor from thinking it is a 3d,
+    float              astigmatism_scaling       = 0.0f;
+    long               number_of_non_water_atoms = 0; // a 32 bit int would be limited to ~ 400 nm^3
+    std::vector<float> image_mean;
+    std::vector<float> inelastic_mean;
+    float              current_total_exposure  = 0;
+    float              pre_exposure            = 0;
+    int                size_neighborhood       = 0;
+    int                size_neighborhood_water = 0;
+    long               make_particle_stack     = 0;
+    int                number_of_threads       = 1;
+    bool               do3d                    = true;
+    int                bin3d                   = 0; // in addition to binning for 3d (set on input) if wanted_output_size > 0, and it is 2d, this keeps the PDB constructor from thinking it is a 3d,
 
     float  dose_per_frame            = 1;
     float  dose_rate                 = 3.0; // e/physical pixel/s this should be set by the user. Changes the illumination aperature and DQE curve
@@ -483,9 +483,9 @@ class SimulateApp : public MyApp {
     long                  number_preexisting_particles;
     wxString              preexisting_particle_file_name;
 
-    float parameter_vect[17]          = {0.0f};
-    float water_scaling               = 1.0f;
-    float non_water_inelastic_scaling = 1.0f;
+    std::array<float, 17> parameter_vect;
+    float                 water_scaling               = 1.0f;
+    float                 non_water_inelastic_scaling = 1.0f;
 
     Coords    coords;
     StopWatch timer;
@@ -591,8 +591,12 @@ class SimulateApp : public MyApp {
     // CONTROL FOR DEBUGGING AND VALIDATION
     bool add_mean_water_potential = false; // For comparing to published results - only applies to a 3d potential
 
-    bool DO_SINC_BLUR = false; // TODO add me back in. This is to blur the image due to intra-frame motion. Apply to projected specimen not waters
-    bool DO_PRINT     = false;
+    bool  DO_SINC_BLUR = false; // TODO add me back in. This is to blur the image due to intra-frame motion. Apply to projected specimen not waters
+    float last_shift_x = 0;
+    float last_shift_y = 0;
+    float this_shift_x = 0;
+    float this_shift_y = 0;
+    bool  DO_PRINT     = false;
     //
     bool DO_SOLVENT         = true; // False to skip adding any solvent
     bool CALC_WATER_NO_HOLE = false; // Makes the solvent cutoff so large that water is added on top of the protein. This is to mimick Rullgard/Vulovic
@@ -1139,26 +1143,28 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     //    img.QuickAndDirtyWriteSlice("/groups/grigorieff/home/himesb/tmp/withShift.mrc",1,1,false);
     //    exit(-1);
 
-    long   current_atom;
-    long   nOutOfBounds = 0;
-    long   iTilt_IDX;
-    int    iSlab                    = 0;
-    int    current_3D_slice_to_save = 0;
-    float *shift_x, *shift_y, *shift_z;
-    float* mag_diff;
-    float  euler1(0), euler2(0), euler3(0);
+    long               current_atom;
+    long               nOutOfBounds = 0;
+    long               iTilt_IDX;
+    int                iSlab                    = 0;
+    int                current_3D_slice_to_save = 0;
+    std::vector<float> shift_x;
+    std::vector<float> shift_y;
+    std::vector<float> shift_z;
+    std::vector<float> mag_diff;
+    float              euler1(0), euler2(0), euler3(0);
 
     // CTF parameters:  There should be an associated variablility with tilt angle TODO and get rid of extra parameters
-    float  wanted_acceleration_voltage              = this->kV; // keV
-    float  wanted_spherical_aberration              = this->spherical_aberration; // mm
-    float  wanted_defocus_1_in_angstroms            = this->mean_defocus; // A
-    float  wanted_defocus_2_in_angstroms            = this->mean_defocus; //A
-    float  wanted_astigmatism_azimuth               = 0.0; // degrees
-    float  astigmatism_angle_randomizer             = 0.0; //
-    float  defocus_randomizer                       = 0.0;
-    float  wanted_additional_phase_shift_in_radians = this->extra_phase_shift * PI;
-    float* propagator_distance; // in Angstom, <= mean_defocus tolerance.
-    float  defocus_offset = 0;
+    float              wanted_acceleration_voltage              = this->kV; // keV
+    float              wanted_spherical_aberration              = this->spherical_aberration; // mm
+    float              wanted_defocus_1_in_angstroms            = this->mean_defocus; // A
+    float              wanted_defocus_2_in_angstroms            = this->mean_defocus; //A
+    float              wanted_astigmatism_azimuth               = 0.0; // degrees
+    float              astigmatism_angle_randomizer             = 0.0; //
+    float              defocus_randomizer                       = 0.0;
+    float              wanted_additional_phase_shift_in_radians = this->extra_phase_shift * PI;
+    std::vector<float> propagator_distance; // in Angstom, <= mean_defocus tolerance.
+    float              defocus_offset = 0;
 
     if ( DO_PRINT ) {
         wxPrintf("Using extra phase shift of %f radians\n", wanted_additional_phase_shift_in_radians);
@@ -1265,12 +1271,12 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     }
 
     // TODO fix periodicity in Z on slab
-    int    iTilt;
-    int    number_of_images;
-    float  max_tilt = 0;
-    float* tilt_psi;
-    float* tilt_theta;
-    float* tilt_phi;
+    int                iTilt;
+    int                number_of_images;
+    float              max_tilt = 0;
+    std::vector<float> tilt_psi;
+    std::vector<float> tilt_theta;
+    std::vector<float> tilt_phi;
 
     if ( this->make_tilt_series ) {
 
@@ -1290,14 +1296,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         }
         //        float tilt_range = max_tilt;
         float tilt_inc = 1.4;
-        //        number_of_images = ceil(tilt_range/tilt_inc)*2 +1;
-        tilt_psi   = new float[number_of_images];
-        tilt_theta = new float[number_of_images];
-        tilt_phi   = new float[number_of_images];
-        shift_x    = new float[number_of_images];
-        shift_y    = new float[number_of_images];
-        shift_z    = new float[number_of_images];
-        mag_diff   = new float[number_of_images];
 
         for ( int iTilt = 0; iTilt < number_of_images; iTilt++ ) {
 
@@ -1320,15 +1318,16 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     else if ( this->make_particle_stack > 0 ) {
         max_tilt         = 0.0f;
         number_of_images = this->make_particle_stack;
-        tilt_psi         = new float[number_of_images];
-        tilt_theta       = new float[number_of_images];
-        tilt_phi         = new float[number_of_images];
-        shift_x          = new float[number_of_images];
-        shift_y          = new float[number_of_images];
-        shift_z          = new float[number_of_images];
-        mag_diff         = new float[number_of_images];
 
         std::normal_distribution<float> normal_dist(0.0f, 1.0f);
+
+        tilt_psi.reserve(number_of_images);
+        tilt_theta.reserve(number_of_images);
+        tilt_phi.reserve(number_of_images);
+        shift_x.reserve(number_of_images);
+        shift_y.reserve(number_of_images);
+        shift_z.reserve(number_of_images);
+        mag_diff.reserve(number_of_images);
 
         for ( int iTilt = 0; iTilt < number_of_images; iTilt++ ) {
             if ( this->use_existing_params ) {
@@ -1358,31 +1357,32 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     }
     else {
 
-        max_tilt         = 0.0;
-        tilt_theta       = new float[1];
-        tilt_theta[0]    = 0;
         number_of_images = 1;
-        tilt_psi         = new float[number_of_images];
-        tilt_theta       = new float[number_of_images];
-        tilt_phi         = new float[number_of_images];
-        shift_x          = new float[number_of_images];
-        shift_y          = new float[number_of_images];
-        shift_z          = new float[number_of_images];
-        mag_diff         = new float[number_of_images];
-        tilt_psi[0]      = 0;
-        tilt_theta[0]    = 0;
-        tilt_phi[0]      = 0;
-        shift_x[0]       = 0;
-        shift_y[0]       = 0;
-        shift_z[0]       = 0;
-        mag_diff[0]      = 1.0f;
+
+        tilt_psi.reserve(number_of_images);
+        tilt_theta.reserve(number_of_images);
+        tilt_phi.reserve(number_of_images);
+        shift_x.reserve(number_of_images);
+        shift_y.reserve(number_of_images);
+        shift_z.reserve(number_of_images);
+        mag_diff.reserve(number_of_images);
+        max_tilt      = 0.0;
+        tilt_theta[0] = 0;
+
+        tilt_psi[0]   = 0;
+        tilt_theta[0] = 0;
+        tilt_phi[0]   = 0;
+        shift_x[0]    = 0;
+        shift_y[0]    = 0;
+        shift_z[0]    = 0;
+        mag_diff[0]   = 1.0f;
     }
 
     // I don't think the frames need to be saved in these first two stacks. Rather they are accumulated
-    Image*         img_frame;
-    Image*         ref_frame;
-    Image*         output_image_stack;
-    Image*         output_reference_stack;
+    Image*         img_frame              = nullptr;
+    Image*         ref_frame              = nullptr;
+    Image*         output_image_stack     = nullptr;
+    Image*         output_reference_stack = nullptr;
     RotationMatrix particle_rot;
 
     // Whether we save frames or only sums, make the array of image pointers full (frames.)
@@ -1494,6 +1494,21 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         }
 
         for ( int iFrame = 0; iFrame < this->number_of_frames; iFrame++ ) {
+            if ( DO_SINC_BLUR ) {
+                // Initialzed to zero, in the first frame everything is determined by a random start
+                // In subsequent frames, the previous shift drives the new total shift with an exponential decay. Based on observation, by about the 10th frame the shifts should be pretty much random
+                // The total magnitude also decays exponentially by the 20th frame the shifts should be quite small.
+                float decay_weight = expf(-1.f * float(iFrame * iFrame) / 20.f);
+                float momentum_weight;
+                if ( iFrame == 0 )
+                    momentum_weight = 0.f;
+                else
+                    momentum_weight = expf(-1.f * float(iFrame * iFrame) / 100.f);
+                last_shift_x = this_shift_x;
+                last_shift_y = this_shift_y;
+                this_shift_x = decay_weight * (momentum_weight * last_shift_x + (1 - momentum_weight) * my_rand.GetNormalRandomSTD(-2.0f, 2.0f)) + my_rand.GetNormalRandomSTD(-0.1f, 0.1f);
+                this_shift_y = decay_weight * (momentum_weight * last_shift_y + (1 - momentum_weight) * my_rand.GetNormalRandomSTD(-2.0f, 2.0f)) + my_rand.GetNormalRandomSTD(-0.1f, 0.1f);
+            }
             int   slab_nZ;
             int   rotated_Z; // full range in Z to cover the rotated specimen
             float rotated_oZ;
@@ -1746,7 +1761,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             Image* inelastic_potential  = new Image[nSlabs];
             Image  sampled_potential;
 
-            Image* ref_potential;
+            Image* ref_potential = nullptr;
             if ( SAVE_REF ) {
                 ref_potential = new Image[nSlabs];
             }
@@ -1756,8 +1771,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
             int slabIDX_start[nSlabs];
             int slabIDX_end[nSlabs];
-            this->image_mean     = new float[nSlabs];
-            this->inelastic_mean = new float[nSlabs];
 
             // Set up slabs, padded by neighborhood for working
             for ( iSlab = 0; iSlab < nSlabs; iSlab++ ) {
@@ -1777,13 +1790,12 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 wxPrintf("\n\nnSlabs %d\niSlab %d\nlSlab %d\n", nSlabs, slabIDX_end[0] + 1, slabIDX_start[nSlabs - 1] + 1);
             }
 
-            propagator_distance          = new float[nSlabs];
             bool no_material_encountered = true;
 
-            Image  Potential_3d;
-            float* scattering_total_shift    = new float[nSlabs];
-            float* scattering_mass           = new float[nSlabs];
-            float  scattering_center_of_mass = 0.0f;
+            Image              Potential_3d;
+            std::vector<float> scattering_total_shift;
+            std::vector<float> scattering_mass;
+            float              scattering_center_of_mass = 0.0f;
             timer.lap("Allocate potentials");
 
             coords.Allocate(&sampled_potential, (PaddingStatus)solvent, true, true);
@@ -1796,9 +1808,16 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             Image inelastic_slab;
             Image water_mask_slab;
 
-            for ( iSlab = 0; iSlab < nSlabs; iSlab++ ) {
+            scattering_total_shift.reserve(nSlabs);
+            propagator_distance.reserve(nSlabs);
+            image_mean.reserve(nSlabs);
+            inelastic_mean.reserve(nSlabs);
+            scattering_mass.reserve(nSlabs);
 
-                wxPrintf("Working on slice %d/%d\n", iSlab, nSlabs);
+            for ( iSlab = 0; iSlab < nSlabs; iSlab++ ) {
+                if ( DO_PRINT )
+                    wxPrintf("Working on slice %d/%d\n", iSlab, nSlabs);
+
                 scattering_total_shift[iSlab] = 0.0f;
                 propagator_distance[iSlab]    = -1.0f * (this->wanted_pixel_size * (slabIDX_end[iSlab] - slabIDX_start[iSlab] + 1));
                 //            propagator_distance[iSlab] =  ( this->wanted_pixel_size * (slabIDX_end[iSlab] - slabIDX_start[iSlab] + 0) );
@@ -2078,9 +2097,29 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                     // Normally the pre-exposure is added to each frame. Here it is taken to be the total exposure.
                     my_electron_dose.CalculateDoseFilterAs1DArray(&scattering_potential[iSlab], dose_filter, current_total_exposure, current_total_exposure + dose_per_frame);
 
-                    for ( long pixel_counter = 0; pixel_counter < scattering_potential[iSlab].real_memory_allocated / 2; pixel_counter++ ) {
-                        scattering_potential[iSlab].complex_values[pixel_counter] *= dose_filter[pixel_counter];
+                    int   exposure_pixel_counter = 0;
+                    int   y_coordinate_2d;
+                    int   x_coordinate_2d;
+                    float sinc_weight;
+                    // wxPrintf("For frame %d blur is %f %f\n", iFrame, this_shift_x, this_shift_y);
+
+                    for ( int j = 0; j <= scattering_potential[iSlab].physical_upper_bound_complex_y; j++ ) {
+                        y_coordinate_2d = scattering_potential[iSlab].ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * scattering_potential[iSlab].fourier_voxel_size_y / wanted_pixel_size;
+                        y_coordinate_2d *= this_shift_y; // zero if not DO_SINC_BLUR
+                        for ( int i = 0; i <= scattering_potential[iSlab].physical_upper_bound_complex_x; i++ ) {
+                            x_coordinate_2d = i * scattering_potential[iSlab].fourier_voxel_size_x / wanted_pixel_size;
+                            x_coordinate_2d *= this_shift_x; // zero if not DO_SINC_BLUR
+
+                            sinc_weight = sinc(1.0f * pi_v<float> * (x_coordinate_2d + y_coordinate_2d)); // 1 if not DO_SINC_BLUR
+
+                            scattering_potential[iSlab].complex_values[exposure_pixel_counter] *= (sinc_weight * dose_filter[exposure_pixel_counter]);
+
+                            exposure_pixel_counter++;
+                        }
                     }
+                    // for ( long pixel_counter = 0; pixel_counter < scattering_potential[iSlab].real_memory_allocated / 2; pixel_counter++ ) {
+                    //     scattering_potential[iSlab].complex_values[pixel_counter] *= dose_filter[pixel_counter];
+                    // }
 
                     delete[] dose_filter;
 
@@ -2288,9 +2327,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 defocus_offset += propagator_distance[defOffset];
             }
 
-            delete[] scattering_mass;
-            delete[] scattering_total_shift;
-
             if ( DO_PRINT ) {
                 wxPrintf("%f %f %f\n", scattering_center_of_mass, propagator_distance[0], defocus_offset / (2.0f * (float)nSlabs));
             }
@@ -2315,7 +2351,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             if ( SAVE_REF ) {
                 nLoops = 2;
             }
-            WaveFunctionPropagator wave_function(this->set_real_part_wave_function_in, objective_aperture, wanted_pixel_size, number_of_threads, beam_tilt_x, beam_tilt_y, DO_BEAM_TILT_FULL, propagator_distance);
+            WaveFunctionPropagator wave_function(this->set_real_part_wave_function_in, objective_aperture, wanted_pixel_size, number_of_threads, beam_tilt_x, beam_tilt_y, DO_BEAM_TILT_FULL, propagator_distance.data( ));
 
             float avg_defocus = 0.5f * (wanted_defocus_1_in_angstroms + wanted_defocus_2_in_angstroms);
             // TODO redundancies with SetCTF and fit params, fit params etc.
@@ -2326,7 +2362,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             //        WaveFunctionPropagator wave_function(this->set_real_part_wave_function_in, wanted_amplitude_contrast, wanted_pixel_size, number_of_threads, beam_tilt_x, beam_tilt_y, DO_BEAM_TILT_FULL);
 
             if ( DO_PRINT ) {
-                wxPrintf("\n\n%5.5e %5.5e\n\n", wanted_defocus_1_in_angstroms, wanted_defocus_2_in_angstroms);
+                wxPrintf("\n\nWanted defocus 1 and 2  %5.5e %5.5e\n\n", wanted_defocus_1_in_angstroms, wanted_defocus_2_in_angstroms);
             }
             if ( DO_COHERENCE_ENVELOPE ) {
                 wave_function.SetCTF(wanted_acceleration_voltage,
@@ -2348,7 +2384,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                                      wanted_additional_phase_shift_in_radians,
                                      defocus_offset);
             }
-
             //        wave_function.do_beam_tilt_full = true;
 
             // Expand the range searched to correct any mean_defocus errors.
@@ -2366,13 +2401,13 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                 if ( iFrame == 0 && is_image_loop ) {
                     // Measuring the amplitude contrast is expensive as the wave propagation has to be done twice, along with  multiple CTF fits, which include disk writes. Only do on the first frame.
-                    amplitude_contrast = wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, true, tilt_to_scale_search_range);
+                    amplitude_contrast = wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean.data( ), inelastic_mean.data( ), propagator_distance.data( ), true, tilt_to_scale_search_range);
                     if ( DO_PRINT ) {
                         wxPrintf("\nFound an amplitude contrast of %3.6f\n\n", amplitude_contrast);
                     }
                 }
                 else {
-                    wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean, inelastic_mean, propagator_distance, false, tilt_to_scale_search_range);
+                    wave_function.DoPropagation(img_frame, scattering_potential, inelastic_potential, 0, nSlabs, image_mean.data( ), inelastic_mean.data( ), propagator_distance.data( ), false, tilt_to_scale_search_range);
                 }
 
                 timer.lap("Propagate WaveFunc");
@@ -2475,11 +2510,11 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
             timer.start("Delete potential");
             delete[] scattering_potential;
+            delete[] inelastic_potential;
             if ( SAVE_REF ) {
                 delete[] ref_potential;
             }
 
-            delete[] propagator_distance;
             timer.lap("Delete potential");
             defocus_offset = 0;
 
@@ -2777,14 +2812,16 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
     //    this->parameter_file.Close();
 
-    delete[] tilt_psi;
-    delete[] tilt_theta;
-    delete[] tilt_phi;
-    delete[] shift_x;
-    delete[] shift_y;
-    delete[] shift_z;
-
-    delete[] img_frame;
+    if ( img_frame )
+        delete[] img_frame;
+    if ( ref_frame )
+        delete[] ref_frame;
+    if ( output_image_stack )
+        delete[] output_image_stack;
+    if ( output_reference_stack )
+        delete[] output_reference_stack;
+    if ( projected_water )
+        delete[] projected_water;
 
     //   delete noise_dist;
     timer.lap("Final mods and save");

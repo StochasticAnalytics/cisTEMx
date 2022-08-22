@@ -426,11 +426,13 @@ inline bool is_power_of_two(int n) {
 }
 
 inline float rad_2_deg(float radians) {
-    return radians / (pi_v<float> / 180.);
+    constexpr float scale_factor = (180.f / pi_v<float>);
+    return radians * scale_factor;
 }
 
 inline float deg_2_rad(float degrees) {
-    return degrees * pi_v<float> / 180.;
+    constexpr float scale_factor = (pi_v<float> / 180.f);
+    return degrees * scale_factor;
 }
 
 inline float clamp_angular_range_0_to_2pi(float angle, bool units_are_degrees = false) {

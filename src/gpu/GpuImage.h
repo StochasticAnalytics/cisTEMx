@@ -10,6 +10,7 @@
 
 #include "../core/cistem_constants.h"
 #include "TensorManager.h"
+#include "../programs/refine3d/batched_search.h"
 
 class BatchedSearch;
 
@@ -84,15 +85,15 @@ class GpuImage {
     void* ctf_buffer_16f;
     void* ctf_complex_buffer_16f;
 
-    __half*  real_values_fp16        = reinterpret_cast<__half*>(real_values_16f);
-    __half2* complex_values_fp16     = reinterpret_cast<__half2*>(complex_values_16f);
-    __half*  ctf_buffer_fp16         = reinterpret_cast<__half*>(ctf_buffer_16f);
-    __half2* ctf_complex_buffer_fp16 = reinterpret_cast<__half2*>(ctf_complex_buffer_16f);
+    __half*  real_values_fp16;
+    __half2* complex_values_fp16;
+    __half*  ctf_buffer_fp16;
+    __half2* ctf_complex_buffer_fp16;
 
-    nv_bfloat16*  real_values_bf16        = reinterpret_cast<nv_bfloat16*>(real_values_16f);
-    nv_bfloat162* complex_values_bf16     = reinterpret_cast<nv_bfloat162*>(complex_values_16f);
-    nv_bfloat16*  ctf_buffer_bf16         = reinterpret_cast<nv_bfloat16*>(ctf_buffer_16f);
-    nv_bfloat162* ctf_complex_buffer_bf16 = reinterpret_cast<nv_bfloat162*>(ctf_complex_buffer_16f);
+    nv_bfloat16*  real_values_bf16;
+    nv_bfloat162* complex_values_bf16;
+    nv_bfloat16*  ctf_buffer_bf16;
+    nv_bfloat162* ctf_complex_buffer_bf16;
 
     // We want to be able to re-use the texture object, so only set it up once.
     cudaTextureObject_t tex_real;
@@ -148,7 +149,7 @@ class GpuImage {
     size_t      cuda_plan_worksize_forward;
     size_t      cuda_plan_worksize_inverse;
 
-    int cufft_batch_size;
+    long long cufft_batch_size;
 
     //Stream for asynchronous command execution
     cudaStream_t     calcStream;
@@ -273,14 +274,17 @@ class GpuImage {
 
     void CalculateCrossCorrelationImageWith(GpuImage* other_image);
     Peak FindPeakWithParabolaFit(float inner_radius_for_peak_search, float outer_radius_for_peak_search);
-    Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, Peak* pinned_host_buffer, Peak* device_buffer, int wanted_batch_size, bool load_half_precision = false);
+    Peak FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y, IntegerPeak* pinned_host_buffer, IntegerPeak* device_buffer, int wanted_batch_size, bool load_half_precision = false);
     Peak FindPeakAtOriginFast2D(BatchedSearch* batch, bool load_half_precision = false);
+    Peak FindPeakAtCenterFast2d(const BatchedSearch& batch, bool load_half_precision = false);
+
     bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void SetupInitialValues( );
     void UpdateBoolsToDefault( );
     void SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer, void* output_buffer);
 
     cistem::fft_type::Enum set_plan_type;
+    long long              set_batch_size;
     bool                   is_batched_transform;
 
     template <int ntds_x = 32, int ntds_y = 32>

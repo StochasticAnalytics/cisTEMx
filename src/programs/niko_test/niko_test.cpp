@@ -4,8 +4,11 @@ class
         NikoTestApp : public MyApp {
 
   public:
-    bool DoCalculation( );
-    void DoInteractiveUserInput( );
+    bool     DoCalculation( );
+    void     DoInteractiveUserInput( );
+    wxString symmetry_symbol;
+
+    std::array<wxString, 2> input_starfile_filename;
 
   private:
 };
@@ -15,46 +18,39 @@ IMPLEMENT_APP(NikoTestApp)
 // override the DoInteractiveUserInput
 
 void NikoTestApp::DoInteractiveUserInput( ) {
+
+    UserInput* my_input = new UserInput("Unblur", 2.0);
+
+    input_starfile_filename.at(0) = my_input->GetFilenameFromUser("Input starfile filename 1", "", "", true);
+    input_starfile_filename.at(1) = my_input->GetFilenameFromUser("Input starfile filename 2", "", "", true);
+    symmetry_symbol               = my_input->GetSymmetryFromUser("Particle symmetry", "The assumed symmetry of the particle to be reconstructed", "C1");
+
+    delete my_input;
 }
 
 // override the do calculation method which will be what is actually run..
 
 bool NikoTestApp::DoCalculation( ) {
 
-    std::string filename = "a06_00321_UnderDefocus1.4um_frameImage_frames.mrc";
+    std::array<cisTEMParameters, 2> star_file;
 
-    ImageFile input_file(filename);
-
-    Curve average;
-    Curve number_of_values;
-
-    float pixel_size = 0.822;
-    Image aligned_frames;
-    average.SetupXAxis(0.0, sqrt(2.0) * 0.5, input_file.ReturnXSize( ));
-
-    number_of_values = average;
-
-    // Read in the full movie stack for a 3d transofrm.
-    aligned_frames.ReadSlices(&input_file, 1, input_file.ReturnNumberOfSlices( ));
-    aligned_frames.ForwardFFT(false);
-    wxPrintf("Size of aligned frames is %i %i %i\n", aligned_frames.logical_x_dimension, aligned_frames.logical_y_dimension, aligned_frames.logical_z_dimension);
-    wxPrintf("Is in real space %i\n", aligned_frames.is_in_real_space);
-
-    Image slice_from_3d;
-    slice_from_3d.Allocate(aligned_frames.logical_x_dimension, aligned_frames.logical_y_dimension, 1, false);
-    int stride = slice_from_3d.real_memory_allocated / 2;
-    for ( int i = 0; i < input_file.ReturnNumberOfSlices( ); i++ ) {
-        slice_from_3d.real_values    = (float*)&aligned_frames.complex_values[i * stride];
-        slice_from_3d.complex_values = &aligned_frames.complex_values[i * stride];
-        slice_from_3d.Compute1DRotationalAverage(average, number_of_values);
-        average.SquareRoot( );
-        std::string output_name = "rot_ps_" + std::to_string(i) + ".txt";
-        average.WriteToFile(output_name);
+    for ( int i = 0; i < star_file.size( ); i++ ) {
+        // Check to see if we have a text or binary star file.
+        wxFileName star_filename(input_starfile_filename.at(i));
+        if ( star_filename.GetExt( ) == "cistem" )
+            star_file.at(i).ReadFromcisTEMBinaryFile(input_starfile_filename.at(i));
+        else
+            star_file.at(i).ReadFromcisTEMStarFile(input_starfile_filename.at(i));
     }
 
-    slice_from_3d.real_values = nullptr;
+    cisTEMParameterLine averages  = star_file.at(0).ReturnParameterAverages(star_file.at(1), symmetry_symbol);
+    cisTEMParameterLine variances = star_file.at(0).ReturnParameterVariances(star_file.at(1), symmetry_symbol);
 
-    slice_from_3d.complex_values = nullptr;
+    wxPrintf("\n\n");
+    wxPrintf("Angular distance axis: %f %f\n", averages.psi, sqrtf(variances.psi));
+    wxPrintf("Angular distance inplane: %f %f\n", averages.phi, sqrtf(variances.phi));
+    wxPrintf("X shift distance: %f %f\n", averages.x_shift, sqrtf(variances.x_shift));
+    wxPrintf("Y shift distance: %f %f\n", averages.y_shift, sqrtf(variances.y_shift));
 
     return true;
 }

@@ -1919,8 +1919,10 @@ void Image::RotateQuadrants(Image& rotated_image, int quad_i) {
 }
 
 void Image::GenerateReferenceProjections(Image* projections, EulerSearch& parameters, float resolution) {
-    int             i;
-    float           variance;
+    int   i;
+    float variance;
+    // FIXME: Applying a fixed bfactor does not make any real sense. I'm sure it was born out of some observations in image processing,
+    // but that is not tolerable for my case. It should at least be taken as an option.
     float           effective_bfactor = 100;
     AnglesAndShifts angles;
 

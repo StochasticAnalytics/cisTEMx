@@ -5,6 +5,7 @@
 #include "calc_hydration_radius.h"
 #include "../../core/scattering_potential.h"
 #include "wave_function_propagator.h"
+#include "../../core/padded_coordinates.h"
 
 const int MAX_3D_SIZE = 1536; // ~14.5 Gb in single precision
 
@@ -28,13 +29,10 @@ const float    water_oxygen_ratio = 1.0f; //0.8775;
 const int SUB_PIXEL_NEIGHBORHOOD = 2;
 const int SUB_PIXEL_NeL          = pow((SUB_PIXEL_NEIGHBORHOOD * 2 + 1), 3);
 
-// FIXME this should just be given to Cosine Rectangular method in the image class
-const int   TAPERWIDTH = 29; // TODO this should be set to 12 with zeros padded out by size neighborhood and calculated by taper = 0.5+0.5.*cos((((1:pixelFallOff)).*pi)./(length((1:pixelFallOff+1))));
-const int   N_TAPERS   = 3; // for trimming final image
-const float TAPER[29]  = {0, 0, 0, 0, 0,
-                          0.003943, 0.015708, 0.035112, 0.061847, 0.095492, 0.135516, 0.181288, 0.232087,
-                          0.287110, 0.345492, 0.406309, 0.468605, 0.531395, 0.593691, 0.654508, 0.712890,
-                          0.767913, 0.818712, 0.864484, 0.904508, 0.938153, 0.964888, 0.984292, 0.996057};
+const float TAPER[29] = {0, 0, 0, 0, 0,
+                         0.003943, 0.015708, 0.035112, 0.061847, 0.095492, 0.135516, 0.181288, 0.232087,
+                         0.287110, 0.345492, 0.406309, 0.468605, 0.531395, 0.593691, 0.654508, 0.712890,
+                         0.767913, 0.818712, 0.864484, 0.904508, 0.938153, 0.964888, 0.984292, 0.996057};
 
 const int IMAGEPADDING = 0; //512; // Padding applied for the Fourier operations in the propagation steps. Removed prior to writing out.
 const int IMAGETRIMVAL = 0; //IMAGEPADDING + 2*TAPERWIDTH;
@@ -101,277 +99,6 @@ const float DQE_PARAMETERS_C[1][5] = {
 //        {0.1207,1.457,0.264,0.006423,0.06323}
 //
 //};
-
-#ifndef ENABLEGPU
-
-typedef struct _int3 {
-    int x;
-    int y;
-    int z;
-} int3;
-
-typedef struct _float3 {
-    float x;
-    float y;
-    float z;
-} float3;
-
-#endif
-
-// Use to keep track of what the specimen looks like.
-enum PaddingStatus : int { none    = 0,
-                           fft     = 1,
-                           solvent = 2 };
-
-class Coords {
-
-  public:
-    Coords( ) {
-        is_set_specimen        = false;
-        is_set_fft_padding     = false;
-        is_set_solvent_padding = false;
-        largest_specimen       = make_int3(0, 0, 0);
-    }
-
-    ~Coords( ) {
-        // DO NOTHING
-    }
-
-    void CheckVectorIsSet(bool input) {
-        if ( ! input ) {
-            wxPrintf("Trying to use a coord vector that is not yet set\n");
-            exit(-1);
-        }
-    }
-
-    int3 make_int3(int x, int y, int z) {
-        int3 retVal;
-        retVal.x = x;
-        retVal.y = y;
-        retVal.z = z;
-        return retVal;
-    }
-
-    float3 make_float3(float x, float y, float z) {
-        float3 retVal;
-        retVal.x = x;
-        retVal.y = y;
-        retVal.z = z;
-        return retVal;
-    }
-
-    void SetSpecimenVolume(int nx, int ny, int nz) {
-        // Update with the current specimen dimensions
-        specimen = make_int3(nx, ny, nz);
-        if ( ! is_set_specimen ) {
-            is_set_specimen = true;
-        }
-        // Keep a running record of the largest specimen dimensions encountered yet
-        SetLargestSpecimenVolume(nx, ny, nz);
-    }
-
-    int3 GetSpecimenVolume( ) {
-        CheckVectorIsSet(is_set_specimen);
-        return specimen;
-    }
-
-    // The minimum specimen dimensions can vary depending on the current orientation. We need to track the largest dimension for output
-    void SetLargestSpecimenVolume(int nx, int ny, int nz) {
-        CheckVectorIsSet(is_set_specimen);
-        largest_specimen = make_int3(std::max(specimen.x, nx),
-                                     std::max(specimen.y, ny),
-                                     std::max(specimen.z, nz));
-    }
-
-    int3 GetLargestSpecimenVolume( ) {
-        CheckVectorIsSet(is_set_specimen);
-        return largest_specimen;
-    }
-
-    void SetSolventPadding(int nx, int ny, int nz) {
-        solvent_padding        = make_int3(nx, ny, nz);
-        is_set_solvent_padding = true;
-    }
-
-    void SetSolventPadding_Z(int wanted_nz) {
-        MyAssertTrue(is_set_solvent_padding, "Solvent padding must be set in all dimensions before updating the Z dimension");
-        solvent_padding.z = wanted_nz;
-    }
-
-    int3 GetSolventPadding( ) {
-        CheckVectorIsSet(is_set_solvent_padding);
-        return solvent_padding;
-    }
-
-    void SetFFTPadding(int max_factor, int pad_by) {
-
-        CheckVectorIsSet(is_set_solvent_padding);
-
-        fft_padding        = make_int3(ReturnClosestFactorizedUpper(solvent_padding.x * pad_by, max_factor, true),
-                                       ReturnClosestFactorizedUpper(solvent_padding.y * pad_by, max_factor, true),
-                                       (int)0);
-        is_set_fft_padding = true;
-    }
-
-    int3 GetFFTPadding( ) {
-        CheckVectorIsSet(is_set_fft_padding);
-        return fft_padding;
-    }
-
-    float3 ReturnOrigin(PaddingStatus status) {
-        float3 output;
-        switch ( status ) {
-                // TODO think about why the 0.5 is needed. It doesn't seem like it should be, but when checking the crosshair pdb it seems to be the best solution to keep everything centered.
-            case none:
-                output = make_float3(specimen.x / 2 + 0.5f, specimen.y / 2 + 0.5f, specimen.z / 2 + 0.5f);
-                break;
-
-            case fft:
-                output = make_float3(fft_padding.x / 2 + 0.5f, fft_padding.y / 2 + 0.5f, fft_padding.z / 2 + 0.5f);
-                break;
-
-            case solvent:
-                output = make_float3(solvent_padding.x / 2 + 0.5f, solvent_padding.y / 2 + 0.5f, solvent_padding.z / 2 + 0.5f);
-                break;
-        }
-        return output;
-    }
-
-    int ReturnLargestDimension(int dimension) {
-        int output;
-        switch ( dimension ) {
-            case 0:
-                output = largest_specimen.x - N_TAPERS * TAPERWIDTH;
-                break;
-
-            case 1:
-                output = largest_specimen.y - N_TAPERS * TAPERWIDTH;
-                break;
-
-            case 2:
-                output = largest_specimen.z;
-                break;
-        }
-        if ( IsOdd(output) )
-            output += 1;
-        return output;
-    }
-
-    void Allocate(Image* image_to_allocate, PaddingStatus status, bool should_be_in_real_space, bool only_2d) {
-        int3 size;
-        switch ( status ) {
-            case none:
-                size = GetSpecimenVolume( );
-                if ( only_2d ) {
-                    size.z = 1;
-                }
-                // Sets to zero and returns fals if no allocation needed.
-                if ( IsAllocationNecessary(image_to_allocate, size) ) {
-                    image_to_allocate->Allocate(size.x, size.y, size.z, should_be_in_real_space);
-                }
-                break;
-
-            case fft:
-                size = GetFFTPadding( );
-                if ( only_2d ) {
-                    size.z = 1;
-                }
-                // Sets to zero and returns fals if no allocation needed.
-                if ( IsAllocationNecessary(image_to_allocate, size) ) {
-                    image_to_allocate->Allocate(size.x, size.y, size.z, should_be_in_real_space);
-                }
-                break;
-
-            case solvent:
-                size = GetSolventPadding( );
-                if ( only_2d ) {
-                    size.z = 1;
-                }
-
-                // Sets to zero and returns fals if no allocation needed.
-                if ( IsAllocationNecessary(image_to_allocate, size) ) {
-                    image_to_allocate->Allocate(size.x, size.y, size.z, should_be_in_real_space);
-                }
-                break;
-        }
-    }
-
-    void PadSolventToFFT(Image* image_to_resize) {
-        // I expect the edges to already be tapered to 0;
-        // The assumption is that we are working in 2d at this point.
-
-        CheckVectorIsSet(is_set_fft_padding);
-        image_to_resize->Resize(fft_padding.x, fft_padding.y, 1, 0.0f);
-    }
-
-    void PadFFTToSolvent(Image* image_to_resize) {
-        // The assumption is that we are working in 2d at this point.
-        CheckVectorIsSet(is_set_solvent_padding);
-        image_to_resize->Resize(solvent_padding.x, solvent_padding.y, 1, 0.0f);
-    }
-
-    void PadFFTToSpecimen(Image* image_to_resize) {
-        CheckVectorIsSet(is_set_specimen);
-        image_to_resize->Resize(specimen.x, specimen.y, 1, 0.0f);
-    }
-
-    void PadToLargestSpecimen(Image* image_to_resize, bool should_be_square) {
-
-        CheckVectorIsSet(is_set_specimen);
-
-        if ( should_be_square ) {
-            int sq_dim = std::max(ReturnLargestDimension(0), ReturnLargestDimension(1));
-            image_to_resize->Resize(sq_dim, sq_dim, 1);
-        }
-
-        else {
-
-            image_to_resize->Resize(ReturnLargestDimension(0), ReturnLargestDimension(1), 1);
-        }
-    }
-
-    void PadToWantedSize(Image* image_to_resize, int wanted_size) {
-
-        if ( wanted_size < 0 ) {
-            PadToLargestSpecimen(image_to_resize, true);
-        }
-        else {
-            image_to_resize->Resize(wanted_size, wanted_size, 1);
-        }
-    }
-
-    bool IsAllocationNecessary(Image* image_to_allocate, int3 size) {
-
-        bool allocation_required = true;
-
-        if ( image_to_allocate->is_in_memory == true &&
-             size.x == image_to_allocate->logical_x_dimension &&
-             size.y == image_to_allocate->logical_y_dimension &&
-             size.z == image_to_allocate->logical_z_dimension ) {
-            allocation_required = false;
-        }
-
-        return allocation_required;
-    }
-
-  private:
-    bool is_set_specimen;
-    bool is_set_fft_padding;
-    bool is_set_solvent_padding;
-
-    int3   pixel;
-    float3 fractional;
-
-    // These are the dimensions of the final specimen.
-    int3 specimen;
-    int3 largest_specimen;
-
-    // This is the padding needed to take the specimen size to a good FFT size
-    int3 fft_padding;
-
-    // This is the padding for the water so that under rotation, the projected density remains constant.
-    int3 solvent_padding;
-};
 
 class SimulateApp : public MyApp {
 
@@ -495,9 +222,6 @@ class SimulateApp : public MyApp {
     float emulate_tilt_angle                                                          = 0.0f;
 
     void probability_density_2d(PDB* pdb_ensemble, int time_step);
-    // Note the water does not take the dose as an argument.
-    void calc_scattering_potential(const PDB* current_specimen, Image* scattering_slab, Image* inelastic_slab, Image* distance_slab, RotationMatrix rotate_waters,
-                                   float rotated_oZ, int* slabIDX_start, int* slabIDX_end, int iSlab);
 
     void calc_water_potential(Image* projected_water, AtomType atom_id);
     void fill_water_potential(const PDB* current_specimen, Image* scattering_slab, Image* scattering_potential,
@@ -507,10 +231,6 @@ class SimulateApp : public MyApp {
     void project(Image* image_to_project, Image* image_to_project_into, int iSlab);
     void taper_edges(Image* image_to_taper, int iSlab, bool inelastic_img);
     void apply_sqrt_DQE_or_NTF(Image* image_in, int iTilt_IDX, bool do_root_DQE);
-
-    inline float return_bfactor(float pdb_bfactor) {
-        return 0.25f * (this->min_bFactor + pdb_bfactor * this->bFactor_scaling);
-    }
 
     //////////////////////////////////////////
     ////////////
@@ -1493,10 +1213,11 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 BF = PHASE_PLATE_BFACTOR;
             }
             else {
-                BF = return_bfactor(current_specimen.average_bFactor + min_bFactor);
+                BF = sp.GetCompleteBfactor(current_specimen.average_bFactor);
             }
 
-            this->size_neighborhood = 1 + myroundint((0.4f * sqrtf(0.6f * BF) + 0.2f) / this->wanted_pixel_size);
+            size_neighborhood = sp.GetNeighborhoodSize(BF);
+
             if ( DO_PRINT ) {
                 wxPrintf("\n\n\tfor frame %d the size neigborhood is %d\n\n", iFrame, this->size_neighborhood);
             }
@@ -1598,6 +1319,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             // Previously I was padding the specimen by the padding needed for in plane rotation. With all rotations in the water padding, this shouldn't be needed.
 
             //        coords.SetSolventPadding(water_box.vol_nX, water_box.vol_nY, water_box.vol_nZ);
+
             coords.SetFFTPadding(fft_max_factor, fft_max_padding_factor);
 
             if ( DO_PHASE_PLATE ) {
@@ -1841,9 +1563,14 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                 timer.lap("Allocate 3d slabs");
 
+                sp.SetBfactorScaling(this->bFactor_scaling);
+                sp.SetMinimumBfactorAppliedToAllAtoms(this->min_bFactor);
+
                 timer.start("Calc Atoms");
                 if ( ! DO_PHASE_PLATE ) {
-                    this->calc_scattering_potential(&current_specimen, &scattering_slab, &inelastic_slab, &distance_slab, rotate_waters, rotated_oZ, slabIDX_start, slabIDX_end, iSlab);
+                    sp.calc_scattering_potential(&current_specimen, coords, &scattering_slab, &inelastic_slab, &distance_slab,
+                                                 rotate_waters, rotated_oZ, slabIDX_start, slabIDX_end, iSlab, size_neighborhood, number_of_threads,
+                                                 non_water_inelastic_scaling, DO_BEAM_TILT_FULL, beam_tilt_z_X_component, beam_tilt_z_Y_component);
                 }
                 timer.lap("Calc Atoms");
 
@@ -1856,6 +1583,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                     // Test to look at "holes"
                     Image buffer;
+
                     if ( testHoles ) {
                         buffer.CopyFrom(&scattering_slab);
                         buffer.SetToConstant(0.0);
@@ -2785,176 +2513,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     //   delete noise_dist;
     timer.lap("Final mods and save");
     timer.print_times( );
-}
-
-void SimulateApp::calc_scattering_potential(const PDB*     current_specimen,
-                                            Image*         scattering_slab,
-                                            Image*         inelastic_slab,
-                                            Image*         distance_slab,
-                                            RotationMatrix rotate_waters,
-                                            float          rotated_oZ,
-                                            int*           slabIDX_start,
-                                            int*           slabIDX_end,
-                                            int            iSlab)
-
-// The if conditions needed to have water and protein in the same function
-// make it too complicated and about 10x less parallel friendly.
-{
-
-    int z_low = slabIDX_start[iSlab] - size_neighborhood;
-    int z_top = slabIDX_end[iSlab] + size_neighborhood;
-
-    float slab_half_thickness_angstrom = (slabIDX_end[iSlab] - slabIDX_start[iSlab] + 1) * this->wanted_pixel_size / 2.0f;
-
-    // Private
-    AtomType atom_id;
-    float    element_inelastic_ratio;
-    float    bFactor;
-    float    radius;
-    float    ix(0), iy(0), iz(0);
-    float    dx(0), dy(0), dz(0);
-    float    x1(0.0f), y1(0.0f), z1(0.0f);
-    float    x2(0.0f), y2(0.0f), z2(0.0f);
-    int      indX(0), indY(0), indZ(0);
-    float    sx(0), sy(0), sz(0);
-    float    xDistSq(0), zDistSq(0), yDistSq(0);
-    int      iLim, jLim, kLim;
-    int      iGaussian;
-    float    water_offset;
-    int      cubic_vol = (int)powf(size_neighborhood * 2 + 1, 3);
-    long     atoms_added_idx[cubic_vol];
-    float    atoms_values_tmp[cubic_vol];
-    float    atoms_distances_tmp[cubic_vol];
-
-    int   n_atoms_added;
-    float pixel_offset = 0.5f;
-    float bfX(0), bfY(0), bfZ(0);
-
-    float bPlusB[5];
-// TODO experiment with the scheduling. Until the specimen is consistently full, many consecutive slabs may have very little work for the assigned threads to handle.
-#pragma omp parallel for num_threads(this->number_of_threads) private(                                                 \
-        atom_id, bFactor, bPlusB, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,                              \
-        indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
-        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, pixel_offset, bfX, bfY, bfZ)
-    for ( long current_atom = 0; current_atom < this->number_of_non_water_atoms; current_atom++ ) {
-
-        n_atoms_added = 0;
-
-        atom_id = current_specimen->my_atoms.Item(current_atom).atom_type;
-        if ( atom_id == hydrogen )
-            continue;
-
-        element_inelastic_ratio = sqrtf(non_water_inelastic_scaling / sp.ReturnAtomicNumber(atom_id)); // Reimer/Ross_Messemer 1989
-        bFactor                 = return_bfactor(current_specimen->my_atoms.Item(current_atom).bfactor);
-
-        corners R;
-        //        Coords coords;
-
-        float3 origin = coords.ReturnOrigin((PaddingStatus)solvent);
-        int3   size   = coords.GetSolventPadding( );
-
-        if ( DO_BEAM_TILT_FULL ) {
-            // Shift atoms positions in X/Y so that they end up being projected at the correct position at the BOTTOM of the slab
-            // TODO save some comp and pre calc the factors on the right
-
-            x1 = current_specimen->my_atoms.Item(current_atom).x_coordinate;
-            y1 = current_specimen->my_atoms.Item(current_atom).y_coordinate;
-            z1 = current_specimen->my_atoms.Item(current_atom).z_coordinate + (rotated_oZ - slabIDX_start[iSlab]) * wanted_pixel_size;
-
-            //            z1 = current_specimen->my_atoms.Item(current_atom).z_coordinate - slabIDX_start[iSlab]*wanted_pixel_size;
-
-            x1 += (z1)*beam_tilt_z_X_component;
-            y1 += (z1)*beam_tilt_z_Y_component;
-
-            // Convert atom origin to pixels and shift by volume origin to get pixel coordinates. Add 0.5 to place origin at "center" of voxel
-            dx = modff(origin.x + (x1 / wanted_pixel_size + pixel_offset), &ix);
-            dy = modff(origin.y + (y1 / wanted_pixel_size + pixel_offset), &iy);
-            // Notes this is the unmodified dz (not using z1)
-
-            dz = modff(rotated_oZ + ((float)current_specimen->my_atoms.Item(current_atom).z_coordinate / wanted_pixel_size + pixel_offset), &iz);
-        }
-        else {
-
-            // Convert atom origin to pixels and shift by volume origin to get pixel coordinates. Add 0.5 to place origin at "center" of voxel
-            dx = modff(origin.x + (current_specimen->my_atoms.Item(current_atom).x_coordinate / wanted_pixel_size + pixel_offset), &ix);
-            dy = modff(origin.y + (current_specimen->my_atoms.Item(current_atom).y_coordinate / wanted_pixel_size + pixel_offset), &iy);
-            dz = modff(rotated_oZ + (current_specimen->my_atoms.Item(current_atom).z_coordinate / wanted_pixel_size + pixel_offset), &iz);
-        }
-
-        // With the correct pixel indices in ix,iy,iz now subtract off the 0.5
-        dx -= pixel_offset;
-        dy -= pixel_offset;
-        dz -= pixel_offset;
-
-#pragma omp simd
-        for ( iGaussian = 0; iGaussian < 5; iGaussian++ ) {
-            bPlusB[iGaussian] = 2 * pi_v<float> / sqrt(bFactor + sp.ReturnScatteringParamtersB(atom_id, iGaussian));
-        }
-
-        // For accurate calculations, a thin slab is used, s.t. those atoms outside are the majority. Check this first, but account for the size of the atom, as it may reside in more than one slab.
-        //        if (iz <= slabIDX_end[iSlab]  && iz >= slabIDX_start[iSlab])
-        if ( iz <= z_top && iz >= z_low ) {
-
-            for ( sx = -size_neighborhood; sx <= size_neighborhood; sx++ ) {
-                indX    = ix + sx;
-                R.x1    = (sx - pixel_offset - dx) * this->wanted_pixel_size;
-                R.x2    = (R.x1 + this->wanted_pixel_size);
-                xDistSq = (sx - dx) * wanted_pixel_size;
-                xDistSq *= xDistSq;
-
-                for ( sy = -size_neighborhood; sy <= size_neighborhood; sy++ ) {
-                    indY    = iy + sy;
-                    R.y1    = (sy - pixel_offset - dy) * this->wanted_pixel_size;
-                    R.y2    = (R.y1 + this->wanted_pixel_size);
-                    yDistSq = (sy - dy) * wanted_pixel_size;
-                    yDistSq *= yDistSq;
-
-                    for ( sz = -size_neighborhood; sz <= size_neighborhood; sz++ ) {
-                        indZ    = iz + sz;
-                        R.z1    = (sz - pixel_offset - dz) * this->wanted_pixel_size;
-                        R.z2    = (R.z1 + this->wanted_pixel_size);
-                        zDistSq = (sz - dz) * wanted_pixel_size;
-                        zDistSq *= zDistSq;
-                        // Put Z condition first since it should fail most often (does c++ fall out?)
-
-                        if ( indZ <= slabIDX_end[iSlab] && indZ >= slabIDX_start[iSlab] && indX > 0 && indY > 0 && indX < size.x && indY < size.y ) {
-                            // Calculate the scattering potential
-
-                            atoms_added_idx[n_atoms_added]     = scattering_slab->ReturnReal1DAddressFromPhysicalCoord(indX, indY, indZ - slabIDX_start[iSlab]);
-                            atoms_values_tmp[n_atoms_added]    = sp.ReturnScatteringPotentialOfAVoxel(R, bPlusB, atom_id);
-                            atoms_distances_tmp[n_atoms_added] = xDistSq + yDistSq + zDistSq;
-
-                            //                            scattering_slab->real_values[atoms_added_idx[n_atoms_added]] += temp_potential;
-                            n_atoms_added++;
-                        }
-
-                    } // end of loop over the neighborhood Z
-                } // end of loop over the neighborhood Y
-            } // end of loop over the neighborhood X
-
-            //        wxPrintf("Possible positions added %3.3e %\n", 100.0f* (float)n_atoms_added/(float)cubic_vol);
-#pragma omp critical
-            for ( int iIDX = 0; iIDX < n_atoms_added - 1; iIDX++ ) {
-                //                #pragma omp atomic update
-                scattering_slab->real_values[atoms_added_idx[iIDX]] += (atoms_values_tmp[iIDX]);
-                // This is the value for 100 KeV --> scale (if needed) the final projected density
-                //                #pragma omp atomic update
-                inelastic_slab->real_values[atoms_added_idx[iIDX]] += element_inelastic_ratio * atoms_values_tmp[iIDX];
-                //                #pragma omp critical
-                //                {
-                distance_slab->real_values[atoms_added_idx[iIDX]] = std::min(distance_slab->real_values[atoms_added_idx[iIDX]], atoms_distances_tmp[iIDX]);
-                //                }
-                //                {
-                //                    tmp_distance = distance_slab->real_values[atoms_added_idx[iIDX]];
-                //                    tmp_distance = std::min(tmp_distance, atoms_distances_tmp[iIDX]);
-                //                    distance_slab->real_values[atoms_added_idx[iIDX]] = tmp_distance;
-                ////                    distance_slab->real_values[atoms_added_idx[iIDX]] = std::min(distance_slab->real_values[atoms_added_idx[iIDX]],atoms_distances_tmp[iIDX]);
-                //                }
-            }
-
-        } // if statment into neigh
-
-    } // end loop over atoms
 }
 
 void SimulateApp::calc_water_potential(Image* projected_water, AtomType wanted_atom_id)

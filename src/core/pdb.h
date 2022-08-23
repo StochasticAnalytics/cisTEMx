@@ -129,7 +129,8 @@ class PDB {
         bool              is_alpha_fold_prediction,
         cisTEMParameters& wanted_star_file, bool use_star_file);
 
-    PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, long wanted_records_per_line, int minimum_paddeding_x_and_y, double minimum_thickness_z, double* center_of_mass, bool is_alpha_fold_prediction);
+    PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, long wanted_records_per_line, int minimum_paddeding_x_and_y,
+        double minimum_thickness_z, bool is_alpha_fold_prediction, double* center_of_mass = nullptr);
 
     ~PDB( );
 

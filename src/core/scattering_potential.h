@@ -9,28 +9,35 @@
 #define _SRC_PROGRAMS_SIMULATE_SCATTERING_POTENTIAL_H_
 
 #include "constants/constants.h"
+#include "padded_coordinates.h"
 
 // TODO: x2 = x1 + pixel size, so it might make more sense to limit memory and just store x1,y1,z1 and pixel size.
-struct corners {
-
+typedef struct _corners {
     float x1;
     float x2;
     float y1;
     float y2;
     float z1;
     float z2;
-};
+} corners;
 
 class ScatteringPotential {
 
   public:
     ScatteringPotential( );
+    ScatteringPotential(const wxString& filename, int wanted_cubic_size);
     virtual ~ScatteringPotential( );
+
+    void SetDefaultValues( );
 
     std::vector<PDB>      pdb_ensemble;
     std::vector<wxString> pdb_file_names;
 
-    void InitPdbEnsemble(bool              shift_by_cetner_of_mass,
+    // When simulating a simple 3d density, we only need a single pdb object and not a full ensemble
+    void InitPdbObject(bool is_alpha_fold_prediction, double* center_of_mass = nullptr);
+    void InitPdbObject(wxString const& filename, int wanted_cubic_size, bool is_alpha_fold_prediction, double* center_of_mass = nullptr);
+
+    void InitPdbEnsemble(bool              shift_by_center_of_mass,
                          int               minimum_padding_x_and_y,
                          int               minimum_thickness_z,
                          int               max_number_of_noise_particles,
@@ -44,19 +51,30 @@ class ScatteringPotential {
 
     long ReturnTotalNumberOfNonWaterAtoms( );
 
-    static inline float ReturnScatteringParamtersA(AtomType id, int term_number) { return SCATTERING_PARAMETERS_A[id][term_number]; }
+    static inline float ReturnScatteringParamtersA(AtomType id, int term_number) { return SCATTERING_PARAMETERS_A[id][term_number]; };
 
-    static inline float ReturnScatteringParamtersB(AtomType id, int term_number) { return SCATTERING_PARAMETERS_B[id][term_number]; }
+    static inline float ReturnScatteringParamtersB(AtomType id, int term_number) { return SCATTERING_PARAMETERS_B[id][term_number]; };
 
-    static inline float ReturnAtomicNumber(AtomType id) { return ATOMIC_NUMBER[id]; }
+    static inline float ReturnAtomicNumber(AtomType id) { return ATOMIC_NUMBER[id]; };
 
     void SetImagingParameters(float wanted_pixel_size, float wanted_kV, float wanted_scaling = cistem::bond_scaling) {
         _pixel_size = wanted_pixel_size;
         _wavelength = ReturnWavelenthInAngstroms(wanted_kV);
         _lead_term  = wanted_scaling * _wavelength / 8.0f / _pixel_size / _pixel_size;
+    };
+
+    void SetMinimumBfactorAppliedToAllAtoms(float wanted_minimum_bfactor) { _minimum_bfactor_applied_to_all_atoms = wanted_minimum_bfactor; };
+
+    void SetBfactorScaling(float wanted_bfactor_scaling) { _bfactor_scaling = wanted_bfactor_scaling; };
+
+    inline float GetCompleteBfactor(float pdb_bfactor) {
+        return 0.25f * (_minimum_bfactor_applied_to_all_atoms + pdb_bfactor * _bfactor_scaling);
     }
 
-    inline float lead_term( ) const { return _lead_term; }
+    int GetNeighborhoodSize( );
+    int GetNeighborhoodSize(float wanted_bfactor);
+
+    inline float lead_term( ) const { return _lead_term; };
 
     inline float ReturnScatteringPotentialOfAVoxel(corners& R, float* bPlusB, AtomType& atom_id) {
 
@@ -84,10 +102,45 @@ class ScatteringPotential {
         return temp_potential *= _lead_term;
     };
 
+    void SetVolumeSize(int wanted_volume_dimension) {
+        _cubic_size = wanted_volume_dimension;
+    };
+
+    // Called for standalon 3d density simulations
+    void calc_scattering_potential(Image*         scattering_slab,
+                                   Image*         inelastic_slab,
+                                   Image*         distance_slab,
+                                   RotationMatrix rotate_waters,
+                                   float          rotated_oZ,
+                                   int            iSlab,
+                                   int            size_neighborhood,
+                                   int            number_of_threads);
+    // Called for more complicated full simulations
+    void calc_scattering_potential(const PDB*     current_specimen,
+                                   Coords&        coords,
+                                   Image*         scattering_slab,
+                                   Image*         inelastic_slab,
+                                   Image*         distance_slab,
+                                   RotationMatrix rotate_waters,
+                                   float          rotated_oZ,
+                                   int*           slabIDX_start,
+                                   int*           slabIDX_end,
+                                   int            iSlab,
+                                   int            size_neighborhood,
+                                   int            wanted_number_of_threads,
+                                   float          non_water_inelastic_scaling,
+                                   bool           tilted_scattering_potential_for_full_beam_tilt,
+                                   float          beam_tilt_z_X_component,
+                                   float          beam_tilt_z_Y_component);
+
   private:
     float _lead_term;
     float _wavelength;
     float _pixel_size;
+    float _minimum_bfactor_applied_to_all_atoms;
+    float _bfactor_scaling;
+    int   _cubic_size;
+    float _minimum_thickness_z;
 };
 
 #endif /* PROGRAMS_SIMULATE_SCATTERING_POTENTIAL_H_ */

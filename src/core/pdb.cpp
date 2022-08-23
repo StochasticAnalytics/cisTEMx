@@ -138,7 +138,8 @@ PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, lo
     Open(Filename, wanted_access_type, wanted_records_per_line);
 }
 
-PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, long wanted_records_per_line, int minimum_padding_x_and_y, double minimum_thickness_z, double* COM, bool is_alpha_fold_prediction) {
+PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, long wanted_records_per_line, int minimum_padding_x_and_y,
+         double minimum_thickness_z, bool is_alpha_fold_prediction, double* COM) {
     input_file_stream  = NULL;
     input_text_stream  = NULL;
     output_file_stream = NULL;
@@ -153,12 +154,21 @@ PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, lo
     this->use_provided_com         = true;
     this->is_alpha_fold_prediction = is_alpha_fold_prediction;
 
-    for ( int iCOM = 0; iCOM < 3; iCOM++ ) {
-        this->center_of_mass[iCOM] = COM[iCOM];
-        wxPrintf("Using provided center of mass %d %3.3f\n", iCOM, this->center_of_mass[iCOM]);
+    if ( COM ) {
+        for ( int iCOM = 0; iCOM < 3; iCOM++ ) {
+            this->center_of_mass[iCOM] = COM[iCOM];
+            wxPrintf("Using provided center of mass %d %3.3f\n", iCOM, this->center_of_mass[iCOM]);
+        }
+    }
+    else {
+        // Implicit shift_by_center_of_mass = false;
+        COM[0] = 0.0;
+        COM[1] = 0.0;
+        COM[2] = 0.0;
     }
 
-    shift_by_center_of_mass = false;
+    shift_by_center_of_mass = true;
+
     SetEmpty( );
     this->pixel_size = wanted_pixel_size;
     Open(Filename, wanted_access_type, wanted_records_per_line);

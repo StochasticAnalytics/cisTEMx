@@ -350,8 +350,9 @@ libcore_a_SOURCES  = core/stopwatch.cpp \
                        core/ccl3d.cpp \
                        core/template_matching.cpp \
                        core/eer_file.cpp \
-                       core/scattering_potential.cpp
-                       
+                       core/scattering_potential.cpp \
+                       core/padded_coordinates.cpp
+
 
 
 if EXPERIMENTAL_AM

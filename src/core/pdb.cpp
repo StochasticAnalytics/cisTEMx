@@ -148,23 +148,21 @@ PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, lo
     use_star_file = false;
     wxPrintf("IN constructor 2 and use_star_file = %d\n", use_star_file);
 
-    this->MIN_PADDING_XY = minimum_padding_x_and_y;
-    this->MIN_THICKNESS  = minimum_thickness_z;
+    MIN_PADDING_XY = minimum_padding_x_and_y;
+    MIN_THICKNESS  = minimum_thickness_z;
 
-    this->use_provided_com         = true;
-    this->is_alpha_fold_prediction = is_alpha_fold_prediction;
+    use_provided_com         = true;
+    is_alpha_fold_prediction = is_alpha_fold_prediction;
 
     if ( COM ) {
         for ( int iCOM = 0; iCOM < 3; iCOM++ ) {
-            this->center_of_mass[iCOM] = COM[iCOM];
+            center_of_mass[iCOM] = COM[iCOM];
             wxPrintf("Using provided center of mass %d %3.3f\n", iCOM, this->center_of_mass[iCOM]);
         }
     }
     else {
-        // Implicit shift_by_center_of_mass = false;
-        COM[0] = 0.0;
-        COM[1] = 0.0;
-        COM[2] = 0.0;
+
+        use_provided_com = false;
     }
 
     shift_by_center_of_mass = true;

@@ -1,4 +1,5 @@
 #include "../../core/core_headers.h"
+#include "../../core/scattering_potential.h"
 
 class
         NikoTestApp : public MyApp {
@@ -32,7 +33,17 @@ void NikoTestApp::DoInteractiveUserInput( ) {
 
 bool NikoTestApp::DoCalculation( ) {
 
-    std::array<cisTEMParameters, 2> star_file;
+    wxString            pdb_name = "6tte_full.pdb";
+    ScatteringPotential sp       = ScatteringPotential(pdb_name, 256);
+    sp.SetImagingParameters(1.0, 300.0);
+    sp.InitPdbObject(false);
+    RotationMatrix rotate_waters;
+    rotate_waters.SetToIdentity( );
+    sp.calc_scattering_potential(rotate_waters, 1);
+    exit(0);
+
+    std::array<cisTEMParameters, 2>
+            star_file;
 
     for ( int i = 0; i < star_file.size( ); i++ ) {
         // Check to see if we have a text or binary star file.

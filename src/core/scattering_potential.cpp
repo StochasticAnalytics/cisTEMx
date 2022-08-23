@@ -99,13 +99,7 @@ long ScatteringPotential::ReturnTotalNumberOfNonWaterAtoms( ) {
     return number_of_non_water_atoms;
 }
 
-void ScatteringPotential::calc_scattering_potential(Image*         scattering_slab,
-                                                    Image*         inelastic_slab,
-                                                    Image*         distance_slab,
-                                                    RotationMatrix rotate_waters,
-                                                    float          rotated_oZ,
-                                                    int            iSlab,
-                                                    int            size_neighborhood,
+void ScatteringPotential::calc_scattering_potential(RotationMatrix rotate_waters,
                                                     int            number_of_threads) {
 
     MyDebugAssertFalse(pdb_ensemble.size( ) == 0, "You must call InitPdbObject before calling this function");
@@ -116,27 +110,32 @@ void ScatteringPotential::calc_scattering_potential(Image*         scattering_sl
 
     // The book-keeping in the simulator is quite complicated, but we use the coords object here for parity.
     Coords coords;
-    coords.SetSpecimenVolume(pdb_ensemble[0].vol_nX, pdb_ensemble[0].vol_nY, pdb_ensemble[0].vol_nZ);
-    coords.SetSolventPadding(pdb_ensemble[0].vol_nX, pdb_ensemble[0].vol_nY, pdb_ensemble[0].vol_nZ);
+    coords.SetSpecimenVolume(_cubic_size, _cubic_size, _cubic_size);
+    coords.SetSolventPadding(_cubic_size, _cubic_size, _cubic_size);
     // FIXME: these (and equivalent in simulate should be set in constants.h)
     coords.SetFFTPadding(5, 1);
 
     // FIXME:
-    int  slab_nZ = _cubic_size;
-    int* slabIDX_start; //[slab_nZ];
-    int* slabIDX_end; //[slab_nZ];
+    int slab_nZ       = _cubic_size;
+    int slabIDX_start = 0; //[slab_nZ];
+    int slabIDX_end   = _cubic_size - 1; //[slab_nZ];
+    int rotated_oZ    = floorf(slab_nZ / 2);
 
     coords.SetSolventPadding_Z(slab_nZ);
+    int   iSlab = 0;
+    Image Potential_3d;
+    coords.Allocate(&Potential_3d, (PaddingStatus)solvent, true, false);
+    Potential_3d.SetToConstant(0.0f);
 
     calc_scattering_potential(pdb_ensemble.data( ),
                               coords,
-                              scattering_slab,
-                              inelastic_slab,
-                              distance_slab,
+                              &Potential_3d,
+                              nullptr,
+                              nullptr,
                               rotate_waters,
                               rotated_oZ,
-                              slabIDX_start,
-                              slabIDX_end,
+                              &slabIDX_start,
+                              &slabIDX_end,
                               iSlab,
                               GetNeighborhoodSize( ),
                               number_of_threads,
@@ -144,6 +143,8 @@ void ScatteringPotential::calc_scattering_potential(Image*         scattering_sl
                               tilted_scattering_potential_for_full_beam_tilt,
                               beam_tilt_z_X_component,
                               beam_tilt_z_X_component);
+
+    Potential_3d.QuickAndDirtyWriteSlices("Potential_3d.mrc", 1, Potential_3d.logical_z_dimension);
 }
 
 // Called from simulate.cpp
@@ -300,9 +301,11 @@ void ScatteringPotential::calc_scattering_potential(const PDB*     current_speci
                 //                #pragma omp atomic update
                 scattering_slab->real_values[atoms_added_idx[iIDX]] += (atoms_values_tmp[iIDX]);
 
-                inelastic_slab->real_values[atoms_added_idx[iIDX]] += element_inelastic_ratio * atoms_values_tmp[iIDX];
+                if ( inelastic_slab )
+                    inelastic_slab->real_values[atoms_added_idx[iIDX]] += element_inelastic_ratio * atoms_values_tmp[iIDX];
 
-                distance_slab->real_values[atoms_added_idx[iIDX]] = std::min(distance_slab->real_values[atoms_added_idx[iIDX]], atoms_distances_tmp[iIDX]);
+                if ( distance_slab )
+                    distance_slab->real_values[atoms_added_idx[iIDX]] = std::min(distance_slab->real_values[atoms_added_idx[iIDX]], atoms_distances_tmp[iIDX]);
             }
 
         } // if statment into neigh

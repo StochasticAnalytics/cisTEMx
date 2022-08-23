@@ -107,14 +107,8 @@ class ScatteringPotential {
     };
 
     // Called for standalon 3d density simulations
-    void calc_scattering_potential(Image*         scattering_slab,
-                                   Image*         inelastic_slab,
-                                   Image*         distance_slab,
-                                   RotationMatrix rotate_waters,
-                                   float          rotated_oZ,
-                                   int            iSlab,
-                                   int            size_neighborhood,
-                                   int            number_of_threads);
+    void calc_scattering_potential(RotationMatrix rotate_waters,
+                                   int            number_of_threads = 1);
     // Called for more complicated full simulations
     void calc_scattering_potential(const PDB*     current_specimen,
                                    Coords&        coords,

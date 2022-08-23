@@ -702,7 +702,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
     this->average_bFactor = 0;
     RotationMatrix rotmat;
 
-    for ( int iAtom = 0; iAtom < NUMBER_OF_ATOM_TYPES; iAtom++ ) {
+    for ( int iAtom = 0; iAtom < cistem::number_of_atom_types; iAtom++ ) {
         number_of_each_atom[iAtom] = 0;
     }
 

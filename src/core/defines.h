@@ -2,16 +2,7 @@
 #define _src_core_defines_h_
 // clang-format off
 
-#if __cplusplus > 201703L
-#include <numbers>
-using namespace std::numbers;
-#else
-// For now we do not have c++20 in compiling gpu code so we need to define this for constants. Modified from /usr/include/c++/11/numbers
-/// pi
-template <typename _Tp>
-// inline constexpr _Tp pi_v = _Enable_if_floating<_Tp>(3.141592653589793238462643383279502884L);
-inline constexpr _Tp pi_v = 3.141592653589793238462643383279502884L;
-#endif
+#include "../constants/constants.h"
 
 #define INTEGER_DATABASE_VERSION 2
 #define START_PORT 3000
@@ -53,8 +44,7 @@ namespace cistem {
 #define LORENTZ_FACTOR_300 1.587f
 #define ELECTRON_REST_MASS 510998.0f // eV
 
-// Used in pdb.h simulate.h
-#define NUMBER_OF_ATOM_TYPES 22
+
 
 #define MINIMUM_BEAM_TILT_SIGNIFICANCE_SCORE 10.0f
 

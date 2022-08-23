@@ -4,12 +4,27 @@
 #include <array>
 #include <string_view>
 
+// Numerical constants for frequently used values like pi, sqrt(2), etc.
+#include "cistem_numbers.h"
+
+// Constants for the electron scattering potential
+#include "electron_scattering.h"
+
 // Place system wide constants and enums here. Gradually, we would like to replace the many defines.
 namespace cistem {
 
 // The default border to exclude when choosing peaks, e.g. in match_template, refine_template, prepare_stack_matchtemplate, make_template_result.
 constexpr const int fraction_of_box_size_to_exclude_for_border = 4;
 constexpr const int maximum_number_of_detections               = 1000;
+
+namespace physical_constants {
+
+// From Shang and Sigworth, average of polar and non-polar from table 1 (with correction to polar radius 3, 1.7-->3.0);
+// terms 3-5 have the average atomic radius of C,N,O,H added to shift the curve to be relative to atomic center.
+constexpr float                hydration_radius_xtra_shift = -0.5f;
+constexpr std::array<float, 8> hydration_radius_vals       = {0.1750f, -0.1350f, 2.23f, 3.43f, 4.78f, 1.0000f, 1.7700f, 0.9550f};
+
+} // namespace physical_constants
 
 /*
     SCOPED ENUMS:

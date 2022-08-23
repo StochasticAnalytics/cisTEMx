@@ -5,6 +5,9 @@
 
 #define MAX_NUMBER_OF_NOISE_PARTICLES 6
 
+#include "constants/electron_scattering.h"
+
+// FIXME: move to constants/chemical_constants.h
 enum AtomType : int { hydrogen       = 0,
                       carbon         = 1,
                       nitrogen       = 2,
@@ -142,7 +145,7 @@ class PDB {
     bool   is_alpha_fold_prediction;
 
     int   number_of_particles_initialized;
-    long  number_of_each_atom[NUMBER_OF_ATOM_TYPES];
+    long  number_of_each_atom[cistem::number_of_atom_types];
     float atomic_volume;
     float average_bFactor;
     float pixel_size;

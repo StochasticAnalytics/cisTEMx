@@ -8,8 +8,7 @@
 #include "../../core/core_headers.h"
 #endif
 
-#include "../../core/cistem_constants.h"
-
+#include "../../constants/constants.h"
 
 #ifdef ENABLE_FastFFT
 #include <FastFFT.h>

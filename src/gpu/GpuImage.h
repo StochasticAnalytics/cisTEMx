@@ -8,7 +8,7 @@
 #ifndef GPUIMAGE_H_
 #define GPUIMAGE_H_
 
-#include "../core/cistem_constants.h"
+#include "../constants/constants.h"
 #include "TensorManager.h"
 #include "../programs/refine3d/batched_search.h"
 

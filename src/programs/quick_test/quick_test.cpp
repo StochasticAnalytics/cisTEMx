@@ -1,7 +1,8 @@
 #include "../../core/core_headers.h"
+#include "../../core/scattering_potential.h"
 
 class
-        NikoTestApp : public MyApp {
+        QuickTestApp : public MyApp {
 
   public:
     bool     DoCalculation( );
@@ -13,11 +14,11 @@ class
   private:
 };
 
-IMPLEMENT_APP(NikoTestApp)
+IMPLEMENT_APP(QuickTestApp)
 
 // override the DoInteractiveUserInput
 
-void NikoTestApp::DoInteractiveUserInput( ) {
+void QuickTestApp::DoInteractiveUserInput( ) {
 
     UserInput* my_input = new UserInput("Unblur", 2.0);
 
@@ -30,9 +31,27 @@ void NikoTestApp::DoInteractiveUserInput( ) {
 
 // override the do calculation method which will be what is actually run..
 
-bool NikoTestApp::DoCalculation( ) {
+bool QuickTestApp::DoCalculation( ) {
 
-    std::array<cisTEMParameters, 2> star_file;
+    wxString pdb_name = "6tte_full.pdb";
+    Image    test_sim;
+    test_sim.Allocate(256, 256, 256, true, true);
+
+    ScatteringPotential sp = ScatteringPotential(pdb_name, test_sim.logical_x_dimension);
+    sp.SetImagingParameters(1.0, 300.0);
+    sp.InitPdbObject(false);
+    RotationMatrix rotate_waters;
+    rotate_waters.SetToIdentity( );
+    sp.calc_scattering_potential(test_sim, rotate_waters, 1);
+    test_sim.QuickAndDirtyWriteSlices("test_sim.mrc", 1, 256);
+
+    rotate_waters.SetToEulerRotation(0.0, 0.0, 90.0);
+    sp.calc_scattering_potential(test_sim, rotate_waters, 1);
+    test_sim.QuickAndDirtyWriteSlices("test_sim90.mrc", 1, 256);
+    exit(0);
+
+    std::array<cisTEMParameters, 2>
+            star_file;
 
     for ( int i = 0; i < star_file.size( ); i++ ) {
         // Check to see if we have a text or binary star file.

@@ -27,7 +27,7 @@ the actual data itself may fall out of sync with an associated GpuImage object.
 class GpuImage;
 #endif
 
-#include "../../core/cistem_constants.h"
+#include "../../constants/constants.h"
 using c_img_t = cistem::PCOS_image_type::Enum;
 
 class ProjectionComparisonObjects {

@@ -1083,7 +1083,7 @@ void Database::AddNextMovieAssetMetadata(MovieMetadataAsset asset) {
                      asset.image_shift_x,
                      asset.image_shift_y,
                      asset.exposure_dose,
-                     (asset.acquisition_time.IsValid( )) ? asset.acquisition_time.GetAsDOS( ) : -1);
+                     (asset.acquisition_time.IsValid( )) ? long(asset.acquisition_time.GetAsDOS( )) : -1);
 }
 
 void Database::EndMovieAssetMetadataInsert( ) {

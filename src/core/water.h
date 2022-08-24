@@ -1,3 +1,8 @@
+#ifndef _SRC_CORE_WATER_H_
+#define _SRC_CORE_WATER_H_
+
+#include "constants/electron_scattering.h"
+
 typedef struct __attribute__((packed)) __attribute__((aligned(16))) _AtomPos {
     AtomType atom_id;
     float    x;
@@ -29,7 +34,7 @@ class Water {
     bool     simulate_phase_plate;
     bool     keep_time_steps;
     double   center_of_mass[3];
-    long     number_of_each_atom[NUMBER_OF_ATOM_TYPES];
+    long     number_of_each_atom[cistem::number_of_atom_types];
     float    atomic_volume;
     float    vol_angX, vol_angY, vol_angZ;
     int      vol_nX, vol_nY, vol_nZ;
@@ -61,3 +66,5 @@ class Water {
         dz = water_coords[current_atom].z - vol_oZ;
     }
 };
+
+#endif // _SRC_CORE_WATER_H_

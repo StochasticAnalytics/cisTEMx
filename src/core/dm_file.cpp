@@ -44,7 +44,7 @@ DMFile::~DMFile( ) {
 bool DMFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool only_check_the_first_image, int eer_super_res_factor, int eer_frames_per_image) {
     MyDebugAssertFalse(overwrite, "Overwriting is not supported for DM files");
     MyDebugAssertFalse(wait_for_file_to_exist, "Waiting for file to exist not supported for DM files");
-    unsigned char* fake_pointer;
+    unsigned char* fake_pointer = nullptr;
     readDM(wxString(wanted_filename), fake_pointer, false);
     filename   = wxString(wanted_filename);
     pixel_size = 1.0; //TODO: figure out where the pixel size is (if anywhere)

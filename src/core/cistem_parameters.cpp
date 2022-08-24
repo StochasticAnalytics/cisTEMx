@@ -1714,8 +1714,8 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterAverages(const cisTEMParame
 
             // Right now for the error calculation, we are just worried about the axis (not the angle) as this determines whether we are "close enought"
             // that further refinement may find the true angle.
-            my_rotation_matrix.SetToEulerRotation(ReturnPhi(counter), ReturnTheta(counter), 0.f);
-            other_rotation_matrix.SetToEulerRotation(-other_parameters.ReturnPhi(counter), -other_parameters.ReturnTheta(counter), 0.f);
+            my_rotation_matrix.SetToEulerRotation(-ReturnPsi(counter), -ReturnTheta(counter), 0.f);
+            other_rotation_matrix.SetToEulerRotation(-other_parameters.ReturnPsi(counter), -other_parameters.ReturnTheta(counter), 0.f);
             angular_error = symmetry_matrix.GetMinimumAngularDistance(my_rotation_matrix, other_rotation_matrix);
 
             average_psi += angular_error;
@@ -1824,8 +1824,8 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterVariances(const cisTEMParam
 
             // Right now for the error calculation, we are just worried about the axis (not the angle) as this determines whether we are "close enought"
             // that further refinement may find the true angle.
-            my_rotation_matrix.SetToEulerRotation(ReturnPhi(counter), ReturnTheta(counter), 0.f);
-            other_rotation_matrix.SetToEulerRotation(0., 0., 0.f);
+            my_rotation_matrix.SetToEulerRotation(-ReturnPsi(counter), -ReturnTheta(counter), 0.f);
+            other_rotation_matrix.SetToEulerRotation(-other_parameters.ReturnPsi(counter), -other_parameters.ReturnTheta(counter), 0.f);
             angular_error = symmetry_matrix.GetMinimumAngularDistance(my_rotation_matrix, other_rotation_matrix);
 
             variance_psi += powf(angular_error, 2);

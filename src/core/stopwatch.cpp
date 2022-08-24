@@ -119,7 +119,8 @@ void StopWatch::mark_entry_or_exit_point(bool threadsafe) {
 
 float StopWatch::get_ratio_of_times(std::string event_1, std::string event_2, bool threadsafe) {
     if ( threadsafe && ReturnThreadNumberOfCurrentThread( ) != 0 )
-        return;
+        return 0.0f;
+
     bool  found_event_1 = false;
     bool  found_event_2 = false;
     float time_1;

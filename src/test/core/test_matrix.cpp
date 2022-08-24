@@ -34,7 +34,7 @@ TEST_CASE("RotationMatrix class", "[RotationMatrix]") {
 
     // Positive rotations clockwise about the specified axis looking down the axis towards the origin
 
-    // Z Y Z (phi theta psi)
+    // Z(phi) Y(theta) Z(psi)
     rm.SetToEulerRotation(90.0f, 0.0f, 0.0f);
     float x_in = 0.0f;
     float y_in = 1.0f;
@@ -61,4 +61,26 @@ TEST_CASE("RotationMatrix class", "[RotationMatrix]") {
     REQUIRE(RelativeErrorIsLessThanEpsilon(x, 0.0f));
     REQUIRE(RelativeErrorIsLessThanEpsilon(y, 1.0f));
     REQUIRE(RelativeErrorIsLessThanEpsilon(z, 0.0f));
+
+    // combining rotations gets a little more complicated
+    // R( Z(phi) Y(theta) Z(psi) ) * vector can be interpreted as:
+    // extrinsic rotations, the rotation matrix would result in rotations about a fixed coordinate system about Z(psi) then Y(theta) then Z(phi)
+    // intrinsic rotations, the rotation matrix would result in rotations about the moving coordinate system // Z(phi) Y'(theta) Z''(psi)
+    rm.SetToEulerRotation(0, 90, 90);
+    rm.RotateCoords(x_in, y_in, z_in, x, y, z);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(x, 0.0f));
+    REQUIRE(RelativeErrorIsLessThanEpsilon(y, 0.0f));
+    REQUIRE(RelativeErrorIsLessThanEpsilon(z, 1.0f));
+
+    rm.SetToEulerRotation(90, 90, 0);
+    rm.RotateCoords(x_in, y_in, z_in, x, y, z);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(x, -1.0f));
+    REQUIRE(RelativeErrorIsLessThanEpsilon(y, 0.0f));
+    REQUIRE(RelativeErrorIsLessThanEpsilon(z, 0.0f));
+
+    rm.SetToEulerRotation(90, 90, -90);
+    rm.RotateCoords(x_in, y_in, z_in, x, y, z);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(x, 0.0f));
+    REQUIRE(RelativeErrorIsLessThanEpsilon(y, 0.0f));
+    REQUIRE(RelativeErrorIsLessThanEpsilon(z, -1.0f));
 }

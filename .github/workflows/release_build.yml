@@ -12,7 +12,7 @@ jobs:
     with:
       build_type: release
       configure_options: "--disable-staticmode --enable-openmp"
-      runs_on_os: "ubuntu-20.04"
+      runs_on_os: self-hosted
       CC: icc
       CXX: icpc
       cppstandard: 17

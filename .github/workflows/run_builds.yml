@@ -67,7 +67,9 @@ jobs:
     - name: make 
       run: |
         . /opt/intel/oneapi/setvars.sh
-        scripts/cistem_make.sh build/${{ inputs.build_type }} ${{ inputs.cppstandard }} 2
+        workdir=$(pwd)
+        cd build/${{ inputs.build_type }} && make -j 8
+        cd $workdir
         cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
     - name: clean up
       run: |
@@ -75,11 +77,11 @@ jobs:
         rm -r src/core
         rm -r src/gui
         rm -r src/programs
-    - name: Create binary artifact
-      uses: actions/upload-artifact@v2
-      with: 
-        name: cistem_binaries_${{ inputs.build_type }}
-        path: build/${{ inputs.build_type }}/src
+    # - name: Create binary artifact
+    #   uses: actions/upload-artifact@v2
+    #   with: 
+    #     name: cistem_binaries_${{ inputs.build_type }}
+    #     path: build/${{ inputs.build_type }}/src
 
     - name: Console test
       run: |

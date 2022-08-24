@@ -35,7 +35,7 @@ class EulerSearch {
 #ifdef CISTEM_PROFILING
     cistem_timer::StopWatch timer;
 #else
-    cistem_timer_noop::Stopwatch timer;
+    cistem_timer_noop::StopWatch timer;
 #endif
 
     // Constructors & destructors

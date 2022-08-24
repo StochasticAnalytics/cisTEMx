@@ -1,6 +1,10 @@
+[![cisTEMx cpu_debug](https://github.com/StochasticAnalytics/cisTEM/actions/workflows/cpu_only_debug_build.yml/badge.svg)](https://github.com/StochasticAnalytics/cisTEM/actions/workflows/cpu_only_debug_build.yml)
+
 [![cisTEMx release](https://github.com/StochasticAnalytics/cisTEM/actions/workflows/release_build.yml/badge.svg)](https://github.com/StochasticAnalytics/cisTEM/actions/workflows/release_build.yml)
 
 [![cisTEMx debug](https://github.com/StochasticAnalytics/cisTEM/actions/workflows/debug_build.yml/badge.svg)](https://github.com/StochasticAnalytics/cisTEM/actions/workflows/debug_build.yml)
+
+
 
 
 

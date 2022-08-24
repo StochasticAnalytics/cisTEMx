@@ -107,7 +107,7 @@ bool DoBatchedCorrelationTest(const wxString& hiv_images_80x80x10_filename, wxSt
         wxPrintf("\n");
         for ( int cc = wanted_batch_size - 1; cc < correlation_results.size( ); cc += wanted_batch_size ) {
             wxPrintf("%i %i %f\n", wanted_batch_size, cc, correlation_results_ground_truth[cc] - correlation_results[counter]);
-            passed = passed && (correlation_results_ground_truth[cc] == correlation_results[counter]);
+            passed = passed && (RelativeErrorIsLessThanEpsilon(correlation_results_ground_truth[cc] , correlation_results[counter]));
             counter++;
         }
 
@@ -181,5 +181,5 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
     }
     delete[] rotation_cache;
 
-    return true;
+    return ;
 }

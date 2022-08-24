@@ -69,7 +69,7 @@ jobs:
       run: |
         . /opt/intel/oneapi/setvars.sh
         workdir=$(pwd)
-        cd build/${{ inputs.build_type }} && make -j 8
+        cd build/${{ inputs.build_type }} && make -j 16
         cd $workdir
         cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
     - name: clean up

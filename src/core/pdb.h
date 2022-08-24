@@ -5,7 +5,7 @@
 
 #define MAX_NUMBER_OF_NOISE_PARTICLES 6
 
-#include "constants/electron_scattering.h"
+#include "../constants/constants.h"
 
 // FIXME: move to constants/chemical_constants.h
 enum AtomType : int { hydrogen       = 0,

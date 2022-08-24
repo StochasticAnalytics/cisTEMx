@@ -30,7 +30,7 @@ typedef struct CurvePoint {
 #define _FILE_OFFSET_BITS 64
 #endif
 
-#include "constants/constants.h"
+#include "../constants/constants.h"
 #include <string>
 #include <iostream>
 #include <fstream>

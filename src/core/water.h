@@ -1,7 +1,7 @@
 #ifndef _SRC_CORE_WATER_H_
 #define _SRC_CORE_WATER_H_
 
-#include "constants/electron_scattering.h"
+#include "../constants/electron_scattering.h"
 
 typedef struct __attribute__((packed)) __attribute__((aligned(16))) _AtomPos {
     AtomType atom_id;

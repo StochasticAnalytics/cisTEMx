@@ -181,5 +181,5 @@ void RunBatchedCorrelation(GpuImage& d_ref_img, GpuImage* d_seq_rotation_cache, 
     }
     delete[] rotation_cache;
 
-    return;
+    return true;
 }

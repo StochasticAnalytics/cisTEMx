@@ -1,4 +1,4 @@
-name: cisTEMx debug
+name: cisTEMx cpu_debug
 
 on:
   push:

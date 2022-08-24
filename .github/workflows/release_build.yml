@@ -11,7 +11,8 @@ jobs:
     uses: ./.github/workflows/run_builds.yml
     with:
       build_type: release
-      configure_options: "--disable-staticmode --enable-openmp"
+      configure_options: "--with-cuda "
+      global_configure_options: "--disable-staticmode --enable-openmp --enable-samples --enable-experimental --disable-multiple-global-refinements "
       runs_on_os: self-hosted
       CC: icc
       CXX: icpc

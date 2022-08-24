@@ -762,9 +762,9 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         test_image.AddNoiseFromNormalDistribution(test_normal_vals[i], test_normal_vals[i + 1]);
         test_image.UpdateDistributionOfRealValues(&my_dist);
         // Avoid zero division by adding 1
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, test_normal_vals[i] + 1.f, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, test_normal_vals[i] + 1.f, true, acceptable_error) )
             FailTest;
-        if ( ! RelativeErrorIsLessThanEpsilon(sqrtf(my_dist.GetSampleVariance( )), test_normal_vals[i + 1], acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(sqrtf(my_dist.GetSampleVariance( )), test_normal_vals[i + 1], true, acceptable_error) )
             FailTest;
     }
 
@@ -776,9 +776,9 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         my_dist.Reset( );
         test_image.AddNoiseFromPoissonDistribution(val);
         test_image.UpdateDistributionOfRealValues(&my_dist);
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), val, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), val, true, acceptable_error) )
             FailTest;
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), val, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), val, true, acceptable_error) )
             FailTest;
     }
 
@@ -790,7 +790,7 @@ void MyTestApp::TestRandomVariableFunctions( ) {
     test_image.AddNoiseFromUniformDistribution(uniform_min, uniform_max);
     test_image.UpdateDistributionOfRealValues(&my_dist);
     // Avoid zero division by adding 1
-    if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.f, acceptable_error) )
+    if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.f, true, acceptable_error) )
         FailTest;
     if ( my_dist.GetMinimum( ) < uniform_min )
         FailTest;
@@ -804,9 +804,9 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         my_dist.Reset( );
         test_image.AddNoiseFromExponentialDistribution(val);
         test_image.UpdateDistributionOfRealValues(&my_dist);
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), 1.f / val, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), 1.f / val, true, acceptable_error) )
             FailTest;
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), 1.f / (val * val), acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), 1.f / (val * val), true, acceptable_error) )
             FailTest;
     }
 
@@ -819,11 +819,11 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         my_dist.Reset( );
         test_image.AddNoiseFromGammaDistribution(alpha, beta);
         test_image.UpdateDistributionOfRealValues(&my_dist);
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), alpha * beta, 2.0f * acceptable_error) ) {
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), alpha * beta, true, 2.0f * acceptable_error) ) {
             wxPrintf("m,a/b %f %f\n", my_dist.GetSampleMean( ), alpha * beta);
             FailTest;
         }
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), alpha * beta * beta, 2.0f * acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), alpha * beta * beta, true, 2.0f * acceptable_error) )
             FailTest;
     }
 
@@ -1811,12 +1811,12 @@ void MyTestApp::TestFastFFT( ) {
         copy_of_input.SubtractImage(&cpu_result);
         EmpiricalDistribution my_dist = copy_of_input.ReturnDistributionOfRealValues( );
 
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.0f, float(1e-6)) ) {
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.0f, true, float(1e-6)) ) {
             FailTest;
         }
     }
     else {
-        wxPrintf("Not testing FastFFT for a %i x %i image\n", input_image.logical_x_dimension, input_image.logical_y_dimension);
+        wxPrintf("Not testing FastFFT for a %i x %i image\n", input_image.logical_x_dimension, true, input_image.logical_y_dimension);
     }
 
     EndTest( );

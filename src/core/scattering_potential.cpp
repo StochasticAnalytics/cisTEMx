@@ -17,8 +17,8 @@ ScatteringPotential::~ScatteringPotential( ) {
 
 ScatteringPotential::ScatteringPotential(const wxString& filename, int wanted_cubic_size) {
     SetDefaultValues( );
-    pdb_file_names.push_back(filename);
     _cubic_size = wanted_cubic_size;
+    pdb_file_names.push_back(filename);
 }
 
 void ScatteringPotential::SetDefaultValues( ) {
@@ -31,12 +31,14 @@ void ScatteringPotential::SetDefaultValues( ) {
     _cubic_size                           = 0;
     _minimum_thickness_z                  = 0;
     _bfactor_scaling                      = 1.f;
+    _number_of_non_water_atoms            = 0;
+    _padding                              = 1;
 }
 
 void ScatteringPotential::InitPdbObject(const wxString& filename, int wanted_cubic_size, bool is_alpha_fold_prediction, double* center_of_mass) {
     MyDebugAssertFalse(pdb_file_names.size( ) > 0, "You can only call this function once");
-    pdb_file_names.push_back(filename);
     _cubic_size = wanted_cubic_size;
+    pdb_file_names.push_back(filename);
     InitPdbObject(is_alpha_fold_prediction, center_of_mass);
 }
 
@@ -53,18 +55,25 @@ void ScatteringPotential::InitPdbObject(bool is_alpha_fold_prediction, double* c
 
     // Initialize each of the PDB objects, this reads in and centers each PDB, but does not make any copies (instances) of the trajectories.
     constexpr int minimum_padding_x_and_y = 0;
-    pdb_ensemble.push_back(PDB(pdb_file_names[0], access_type_read, _pixel_size, records_per_line, minimum_padding_x_and_y, minimum_thickness_z,
-                               is_alpha_fold_prediction, center_of_mass));
+
+    PDB tmp = PDB(pdb_file_names[0], access_type_read, _pixel_size, records_per_line, minimum_padding_x_and_y, minimum_thickness_z,
+                  is_alpha_fold_prediction, center_of_mass);
+
+    pdb_ensemble.emplace_back(pdb_file_names[0], access_type_read, _pixel_size, records_per_line, minimum_padding_x_and_y, minimum_thickness_z,
+                              is_alpha_fold_prediction, center_of_mass);
 }
 
-void ScatteringPotential::InitPdbEnsemble(bool shift_by_center_of_mass, int minimum_padding_x_and_y, int minimum_thickness_z,
+void ScatteringPotential::InitPdbEnsemble(bool              shift_by_center_of_mass,
+                                          int               minimum_padding_x_and_y,
+                                          int               minimum_thickness_z,
                                           int               max_number_of_noise_particles,
                                           float             wanted_noise_particle_radius_as_mutliple_of_particle_radius,
                                           float             wanted_noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
                                           float             wanted_noise_particle_radius_randomizer_upper_bound_as_praction_of_particle_radius,
                                           float             wanted_tilt_angle_to_emulate,
                                           bool              is_alpha_fold_prediction,
-                                          cisTEMParameters& wanted_star_file, bool use_star_file) {
+                                          cisTEMParameters& wanted_star_file,
+                                          bool              use_star_file) {
 
     // backwards compatible with tigress where everything is double (ints would make more sense here.)
     long access_type_read = 0;
@@ -90,19 +99,24 @@ void ScatteringPotential::InitPdbEnsemble(bool shift_by_center_of_mass, int mini
 
 long ScatteringPotential::ReturnTotalNumberOfNonWaterAtoms( ) {
 
-    long number_of_non_water_atoms = 0;
-    // Get a count of the total non water atoms
-    for ( int iPDB = 0; iPDB < pdb_ensemble.size( ); iPDB++ ) {
-        number_of_non_water_atoms += (pdb_ensemble[iPDB].number_of_real_and_noise_atoms * pdb_ensemble[iPDB].number_of_particles_initialized);
+    if ( _number_of_non_water_atoms == 0 ) {
+        // Get a count of the total non water atoms
+        for ( int iPDB = 0; iPDB < pdb_ensemble.size( ); iPDB++ ) {
+            _number_of_non_water_atoms += (pdb_ensemble[iPDB].number_of_real_and_noise_atoms * pdb_ensemble[iPDB].number_of_particles_initialized);
+        }
     }
 
-    return number_of_non_water_atoms;
+    return _number_of_non_water_atoms;
 }
 
-void ScatteringPotential::calc_scattering_potential(RotationMatrix rotate_waters,
+void ScatteringPotential::calc_scattering_potential(Image&         image_vol,
+                                                    RotationMatrix rotate_waters,
                                                     int            number_of_threads) {
 
     MyDebugAssertFalse(pdb_ensemble.size( ) == 0, "You must call InitPdbObject before calling this function");
+    MyDebugAssertTrue(image_vol.is_in_memory, "Image must be in memory");
+    MyDebugAssertTrue(image_vol.IsCubic( ), "Image must be cubic");
+    MyDebugAssertTrue(image_vol.logical_x_dimension == _cubic_size, "Image must be cubic and match the set dimension from the constructor");
 
     constexpr float non_water_inelastic_scaling                    = 1.0;
     constexpr bool  tilted_scattering_potential_for_full_beam_tilt = false;
@@ -115,55 +129,50 @@ void ScatteringPotential::calc_scattering_potential(RotationMatrix rotate_waters
     // FIXME: these (and equivalent in simulate should be set in constants.h)
     coords.SetFFTPadding(5, 1);
 
-    // FIXME:
-    int slab_nZ       = _cubic_size;
-    int slabIDX_start = 0; //[slab_nZ];
-    int slabIDX_end   = _cubic_size - 1; //[slab_nZ];
-    int rotated_oZ    = floorf(slab_nZ / 2);
+    coords.SetSolventPadding_Z(_cubic_size);
 
-    coords.SetSolventPadding_Z(slab_nZ);
-    int   iSlab = 0;
-    Image Potential_3d;
-    coords.Allocate(&Potential_3d, (PaddingStatus)solvent, true, false);
-    Potential_3d.SetToConstant(0.0f);
+    image_vol.SetToConstant(0.f);
 
-    calc_scattering_potential(pdb_ensemble.data( ),
+    int slabIDX_start = 0;
+    int slabIDX_end   = _cubic_size - 1;
+
+    PDB clean_copy = pdb_ensemble[0];
+
+    pdb_ensemble[0].TransformLocalAndCombine(clean_copy, 1, 0, rotate_waters, 0.f, true);
+
+    calc_scattering_potential(&clean_copy,
                               coords,
-                              &Potential_3d,
+                              &image_vol,
                               nullptr,
                               nullptr,
-                              rotate_waters,
-                              rotated_oZ,
+                              floorf(_cubic_size / 2),
                               &slabIDX_start,
                               &slabIDX_end,
-                              iSlab,
+                              0,
                               GetNeighborhoodSize( ),
                               number_of_threads,
                               non_water_inelastic_scaling,
                               tilted_scattering_potential_for_full_beam_tilt,
                               beam_tilt_z_X_component,
                               beam_tilt_z_X_component);
-
-    Potential_3d.QuickAndDirtyWriteSlices("Potential_3d.mrc", 1, Potential_3d.logical_z_dimension);
 }
 
 // Called from simulate.cpp
-void ScatteringPotential::calc_scattering_potential(const PDB*     current_specimen,
-                                                    Coords&        coords,
-                                                    Image*         scattering_slab,
-                                                    Image*         inelastic_slab,
-                                                    Image*         distance_slab,
-                                                    RotationMatrix rotate_waters,
-                                                    float          rotated_oZ,
-                                                    int*           slabIDX_start,
-                                                    int*           slabIDX_end,
-                                                    int            iSlab,
-                                                    int            size_neighborhood,
-                                                    int            number_of_threads,
-                                                    float          non_water_inelastic_scaling,
-                                                    bool           tilted_scattering_potential_for_full_beam_tilt,
-                                                    float          beam_tilt_z_X_component,
-                                                    float          beam_tilt_z_Y_component) {
+void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
+                                                    Coords&    coords,
+                                                    Image*     scattering_slab,
+                                                    Image*     inelastic_slab,
+                                                    Image*     distance_slab,
+                                                    float      rotated_oZ,
+                                                    int*       slabIDX_start,
+                                                    int*       slabIDX_end,
+                                                    int        iSlab,
+                                                    int        size_neighborhood,
+                                                    int        number_of_threads,
+                                                    float      non_water_inelastic_scaling,
+                                                    bool       tilted_scattering_potential_for_full_beam_tilt,
+                                                    float      beam_tilt_z_X_component,
+                                                    float      beam_tilt_z_Y_component) {
     MyDebugAssertTrue(_pixel_size > 0.0, "Pixel size not set");
 
     int z_low = slabIDX_start[iSlab] - size_neighborhood;
@@ -197,20 +206,20 @@ void ScatteringPotential::calc_scattering_potential(const PDB*     current_speci
 
     float bPlusB[5];
     // TODO experiment with the scheduling. Until the specimen is consistently full, many consecutive slabs may have very little work for the assigned threads to handle.
+
 #pragma omp parallel for num_threads(number_of_threads) private(                                                       \
         atom_id, bFactor, bPlusB, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,                              \
         indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
         water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, pixel_offset, bfX, bfY, bfZ)
     for ( long current_atom = 0; current_atom < ReturnTotalNumberOfNonWaterAtoms( ); current_atom++ ) {
-
         n_atoms_added = 0;
 
-        atom_id = current_specimen->my_atoms.Item(current_atom).atom_type;
+        atom_id = current_specimen->atoms.at(current_atom).atom_type;
         if ( atom_id == hydrogen )
             continue;
 
         element_inelastic_ratio = sqrtf(non_water_inelastic_scaling / ReturnAtomicNumber(atom_id)); // Reimer/Ross_Messemer 1989
-        bFactor                 = GetCompleteBfactor(current_specimen->my_atoms.Item(current_atom).bfactor);
+        bFactor                 = GetCompleteBfactor(current_specimen->atoms.at(current_atom).bfactor);
 
         corners R;
         //        Coords coords;
@@ -222,9 +231,9 @@ void ScatteringPotential::calc_scattering_potential(const PDB*     current_speci
             // Shift atoms positions in X/Y so that they end up being projected at the correct position at the BOTTOM of the slab
             // TODO save some comp and pre calc the factors on the right
 
-            x1 = current_specimen->my_atoms.Item(current_atom).x_coordinate;
-            y1 = current_specimen->my_atoms.Item(current_atom).y_coordinate;
-            z1 = current_specimen->my_atoms.Item(current_atom).z_coordinate + (rotated_oZ - slabIDX_start[iSlab]) * _pixel_size;
+            x1 = current_specimen->atoms.at(current_atom).x_coordinate;
+            y1 = current_specimen->atoms.at(current_atom).y_coordinate;
+            z1 = current_specimen->atoms.at(current_atom).z_coordinate + (rotated_oZ - slabIDX_start[iSlab]) * _pixel_size;
 
             x1 += (z1)*beam_tilt_z_X_component;
             y1 += (z1)*beam_tilt_z_Y_component;
@@ -234,14 +243,14 @@ void ScatteringPotential::calc_scattering_potential(const PDB*     current_speci
             dy = modff(origin.y + (y1 / _pixel_size + pixel_offset), &iy);
             // Notes this is the unmodified dz (not using z1)
 
-            dz = modff(rotated_oZ + ((float)current_specimen->my_atoms.Item(current_atom).z_coordinate / _pixel_size + pixel_offset), &iz);
+            dz = modff(rotated_oZ + ((float)current_specimen->atoms.at(current_atom).z_coordinate / _pixel_size + pixel_offset), &iz);
         }
         else {
 
             // Convert atom origin to pixels and shift by volume origin to get pixel coordinates. Add 0.5 to place origin at "center" of voxel
-            dx = modff(origin.x + (current_specimen->my_atoms.Item(current_atom).x_coordinate / _pixel_size + pixel_offset), &ix);
-            dy = modff(origin.y + (current_specimen->my_atoms.Item(current_atom).y_coordinate / _pixel_size + pixel_offset), &iy);
-            dz = modff(rotated_oZ + (current_specimen->my_atoms.Item(current_atom).z_coordinate / _pixel_size + pixel_offset), &iz);
+            dx = modff(origin.x + (current_specimen->atoms.at(current_atom).x_coordinate / _pixel_size + pixel_offset), &ix);
+            dy = modff(origin.y + (current_specimen->atoms.at(current_atom).y_coordinate / _pixel_size + pixel_offset), &iy);
+            dz = modff(rotated_oZ + (current_specimen->atoms.at(current_atom).z_coordinate / _pixel_size + pixel_offset), &iz);
         }
 
         // With the correct pixel indices in ix,iy,iz now subtract off the 0.5
@@ -311,6 +320,8 @@ void ScatteringPotential::calc_scattering_potential(const PDB*     current_speci
         } // if statment into neigh
 
     } // end loop over atoms
+
+    std::cerr << " n atoms added " << n_atoms_added << std::endl;
 }
 
 int ScatteringPotential::GetNeighborhoodSize( ) {

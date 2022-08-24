@@ -106,26 +106,30 @@ class ScatteringPotential {
         _cubic_size = wanted_volume_dimension;
     };
 
+    void SetVolumePadding(int wanted_padding) {
+        _padding = wanted_padding;
+    };
+
     // Called for standalon 3d density simulations
-    void calc_scattering_potential(RotationMatrix rotate_waters,
+    void calc_scattering_potential(Image&         image_vol,
+                                   RotationMatrix rotate_waters,
                                    int            number_of_threads = 1);
     // Called for more complicated full simulations
-    void calc_scattering_potential(const PDB*     current_specimen,
-                                   Coords&        coords,
-                                   Image*         scattering_slab,
-                                   Image*         inelastic_slab,
-                                   Image*         distance_slab,
-                                   RotationMatrix rotate_waters,
-                                   float          rotated_oZ,
-                                   int*           slabIDX_start,
-                                   int*           slabIDX_end,
-                                   int            iSlab,
-                                   int            size_neighborhood,
-                                   int            wanted_number_of_threads,
-                                   float          non_water_inelastic_scaling,
-                                   bool           tilted_scattering_potential_for_full_beam_tilt,
-                                   float          beam_tilt_z_X_component,
-                                   float          beam_tilt_z_Y_component);
+    void calc_scattering_potential(const PDB* current_specimen,
+                                   Coords&    coords,
+                                   Image*     scattering_slab,
+                                   Image*     inelastic_slab,
+                                   Image*     distance_slab,
+                                   float      rotated_oZ,
+                                   int*       slabIDX_start,
+                                   int*       slabIDX_end,
+                                   int        iSlab,
+                                   int        size_neighborhood,
+                                   int        wanted_number_of_threads,
+                                   float      non_water_inelastic_scaling,
+                                   bool       tilted_scattering_potential_for_full_beam_tilt,
+                                   float      beam_tilt_z_X_component,
+                                   float      beam_tilt_z_Y_component);
 
   private:
     float _lead_term;
@@ -135,6 +139,9 @@ class ScatteringPotential {
     float _bfactor_scaling;
     int   _cubic_size;
     float _minimum_thickness_z;
+    long  _number_of_non_water_atoms;
+    int   _padding;
+    PDB*  _current_specimen;
 };
 
 #endif /* PROGRAMS_SIMULATE_SCATTERING_POTENTIAL_H_ */

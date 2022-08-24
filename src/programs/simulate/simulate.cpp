@@ -130,8 +130,7 @@ class SimulateApp : public MyApp {
     float unscaled_pixel_size   = 0.0f; // When there is a mag change
     float phase_plate_thickness = 276.0; //TODO CITE Angstrom, default for pi/2 phase shift, from 2.0 g/cm^3 amorphous carbon, 300 kV and 10.7V mean inner potential as determined by electron holography (carbon atoms are ~ 8)
 
-    float              astigmatism_scaling       = 0.0f;
-    long               number_of_non_water_atoms = 0; // a 32 bit int would be limited to ~ 400 nm^3
+    float              astigmatism_scaling = 0.0f;
     std::vector<float> image_mean;
     std::vector<float> inelastic_mean;
     float              current_total_exposure  = 0;
@@ -765,10 +764,8 @@ bool SimulateApp::DoCalculation( ) {
                            emulate_tilt_angle, is_alpha_fold_prediction, input_star_file, use_existing_params);
     }
 
-    number_of_non_water_atoms = sp.ReturnTotalNumberOfNonWaterAtoms( );
-
     if ( DO_PRINT ) {
-        wxPrintf("\nThere are %ld non-water atoms in the specimen.\n", this->number_of_non_water_atoms);
+        wxPrintf("\nThere are %ld non-water atoms in the specimen.\n", sp.ReturnTotalNumberOfNonWaterAtoms( ));
     }
     if ( DO_PRINT ) {
         wxPrintf("\nCurrent number of PDBs %d\n", sp.pdb_file_names.size( ));
@@ -1085,7 +1082,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         wxPrintf("Got here emulate is %f\n", emulate_tilt_angle);
     }
     // FIXME I think this should somehow be derived from the information already stored in the scattering potential  object
-    PDB current_specimen(this->number_of_non_water_atoms, bin3d * (wanted_output_size - IsOdd(wanted_output_size)), wanted_pixel_size, minimum_padding_x_and_y, minimum_thickness_z,
+    PDB current_specimen(sp.ReturnTotalNumberOfNonWaterAtoms( ), bin3d * (wanted_output_size - IsOdd(wanted_output_size)), wanted_pixel_size, minimum_padding_x_and_y, minimum_thickness_z,
                          max_number_of_noise_particles,
                          noise_particle_radius_as_mutliple_of_particle_radius,
                          noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
@@ -1347,14 +1344,9 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             if ( DO_PRINT ) {
                 wxPrintf("\n\tDrift for iTilt %d, iFrame %d is %4.4f Ang\n", iTilt, iFrame, total_drift);
             }
-            //        current_specimen.TransformGlobalAndSortOnZ(number_of_non_water_atoms, total_drift, total_drift, 0.0f, rotate_waters);
-            // TODO incororate the drift;
-
-            // Apply acurrent_specimen.vol_nY global shifts and rotations
-            //        current_specimen.TransformGlobalAndSortOnZ(number_of_non_water_atoms, shift_x[iTilt], shift_y[iTilt], shift_z[iTilt], rotate_waters);
 
             timer.start("Xform Global");
-            current_specimen.TransformGlobalAndSortOnZ(number_of_non_water_atoms, shift_x[iTilt] + total_drift, shift_y[iTilt] + total_drift, 0.0f, rotate_waters);
+            current_specimen.TransformGlobalAndSortOnZ(sp.ReturnTotalNumberOfNonWaterAtoms( ), shift_x[iTilt] + total_drift, shift_y[iTilt] + total_drift, 0.0f, rotate_waters);
             timer.lap("Xform Global");
 
             // Compute the solvent fraction, with ratio of protein/ water density.
@@ -1569,7 +1561,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 timer.start("Calc Atoms");
                 if ( ! DO_PHASE_PLATE ) {
                     sp.calc_scattering_potential(&current_specimen, coords, &scattering_slab, &inelastic_slab, &distance_slab,
-                                                 rotate_waters, rotated_oZ, slabIDX_start, slabIDX_end, iSlab, size_neighborhood, number_of_threads,
+                                                 rotated_oZ, slabIDX_start, slabIDX_end, iSlab, size_neighborhood, number_of_threads,
                                                  non_water_inelastic_scaling, DO_BEAM_TILT_FULL, beam_tilt_z_X_component, beam_tilt_z_Y_component);
                 }
                 timer.lap("Calc Atoms");
@@ -1989,7 +1981,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             }
 
             if ( DO_PRINT ) {
-                wxPrintf("\n\t%ld out of bounds of %ld = percent\n\n", nOutOfBounds, number_of_non_water_atoms);
+                wxPrintf("\n\t%ld out of bounds of %ld = percent\n\n", nOutOfBounds, sp.ReturnTotalNumberOfNonWaterAtoms( ));
             }
 
             //        #pragma omp parallel num_threads(4)
@@ -2027,7 +2019,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             }
 
             if ( DO_PRINT ) {
-                wxPrintf("\n\t%ld out of bounds of %ld = percent\n\n", nOutOfBounds, number_of_non_water_atoms);
+                wxPrintf("\n\t%ld out of bounds of %ld = percent\n\n", nOutOfBounds, sp.ReturnTotalNumberOfNonWaterAtoms( ));
             }
 
             //        #pragma omp parallel num_threads(4)
@@ -2172,7 +2164,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             } // loop over image, then optionally perfect reference
 
             if ( DO_PRINT ) {
-                wxPrintf("before the destructor there are %ld non-water-atoms\n", this->number_of_non_water_atoms);
+                wxPrintf("before the destructor there are %ld non-water-atoms\n", sp.ReturnTotalNumberOfNonWaterAtoms( ));
             }
             if ( DO_PHASE_PLATE ) {
 

@@ -1852,29 +1852,34 @@ void MyTestApp::EndTest( ) {
 }
 
 bool MyTestApp::CheckDependencies(std::initializer_list<std::string> list) {
-    // Nothing has been added, so must be false.
+    // Nothing has been added, so must be false.'
+    bool ret_val;
     if ( test_results.empty( ) ) {
         wxPrintf("\nCheckDependencies: No tests have been run yet.\n");
-        return false;
+        ret_val = false;
     }
     else {
         for ( auto dep : list ) {
             auto search = test_results.find(dep);
             if ( search == test_results.end( ) ) {
                 wxPrintf("\nCheckDependencies: %s has not been run.\n", dep);
-                return false;
+                ret_val = false;
+                break;
             }
             else {
                 if ( search->second == false ) {
                     wxPrintf("\nCheckDependencies: %s has previously failed.\n", dep);
-                    return false;
+                    ret_val = false;
+                    break;
                 }
                 else {
-                    return true;
+                    ret_val = true;
+                    break;
                 }
             }
         }
     }
+    return ret_val;
 }
 
 void MyTestApp::PrintResultWorker(bool passed, int line) {

@@ -60,7 +60,7 @@ jobs:
         cd build/${{ inputs.build_type }} 
         echo $CC
         echo $CXX
-        ../../configure  --enable-experimental ${{ inputs.configure_options }} --with-wx-config=/opt/WX/intel-dynamic/bin/wx-config  --enable-samples
+        ../../configure   ${{ inputs.configure_options }}  --enable-samples --enable-experimental --disable-multiple-global-refinements
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "::set-output name=version::$VERSION" 
     - uses: ammaraskar/gcc-problem-matcher@master

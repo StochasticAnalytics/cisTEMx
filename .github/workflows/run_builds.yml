@@ -60,6 +60,7 @@ jobs:
         cd build/${{ inputs.build_type }} 
         echo $CC
         echo $CXX
+        git config --global --add safe.directory /__w/cisTEM/cisTEM
         ../../configure   ${{ inputs.configure_options }}  --enable-samples --enable-experimental --disable-multiple-global-refinements
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "::set-output name=version::$VERSION" 

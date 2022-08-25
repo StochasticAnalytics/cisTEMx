@@ -1893,10 +1893,12 @@ void MyTestApp::PrintResultWorker(bool passed, int line) {
     }
     else {
         if ( OutputIsAtTerminal( ) == true )
-            wxPrintf(ANSI_COLOR_RED "FAILED! (Line : %i)" ANSI_COLOR_RESET, line);
+            wxPrintf(ANSI_COLOR_RED "\n\t\tFAILED! (Line : %i)" ANSI_COLOR_RESET, line);
         else
-            wxPrintf("FAILED! (Line : %i)", line);
-        exit(1);
+            wxPrintf("\n\t\tFAILED\n! (Line : %i)", line);
+        // Removing the exit behavior because I want all tests to run as this is more informative for CI, i.e.
+        // multiple fixes can be made in a single go rather than a one at a time approach.
+        // exit(1);
     }
 
     wxPrintf("\n");

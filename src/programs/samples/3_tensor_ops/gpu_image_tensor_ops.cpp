@@ -12,20 +12,16 @@
 #include "../common/common.h"
 #include "gpu_image_tensor_ops.h"
 
-bool DoBasicTensorOpsTest(const wxString& hiv_images_80x80x10_filename, wxString& temp_directory) {
-
-    bool passed;
-    bool all_passed = true;
+void BasicTensorOpsRunner(const wxString& hiv_images_80x80x10_filename, wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting basic tensor ops tests:", false);
 
-    all_passed = all_passed && TestCudaSample(hiv_images_80x80x10_filename, temp_directory);
-    all_passed = all_passed && TestTensorManagerManual(hiv_images_80x80x10_filename, temp_directory);
+    TEST(TestCudaSample(hiv_images_80x80x10_filename, temp_directory));
+    TEST(TestTensorManagerManual(hiv_images_80x80x10_filename, temp_directory));
 
-    SamplesBeginTest("Tensor ops overall", passed);
-    SamplesPrintResult(all_passed, __LINE__);
+    SamplesPrintEndMessage( );
 
-    return all_passed;
+    return;
 }
 
 bool TestCudaSample(const wxString& hiv_images_80x80x10_filename, wxString& temp_directory) {
@@ -261,7 +257,7 @@ bool TestCudaSample(const wxString& hiv_images_80x80x10_filename, wxString& temp
     if ( work )
         cudaFree(work);
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     return all_passed;
@@ -457,7 +453,7 @@ bool TestTensorManagerManual(const wxString& hiv_images_80x80x10_filename, wxStr
     // if ( work )
     //     cudaFree(work);
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     return all_passed;

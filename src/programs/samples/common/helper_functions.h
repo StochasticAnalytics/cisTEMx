@@ -16,6 +16,11 @@ bool CompareComplexValues(Image& first_image, Image& second_image, float minimum
 Image GetAbsOfFourierTransformAsRealImage(Image& input_image);
 
 void SamplesPrintTestStartMessage(wxString message, bool bold = false);
+
+inline void SamplesPrintEndMessage( ) {
+    wxPrintf("\n");
+}
+
 void SamplesPrintUnderlined(wxString message);
 void SamplesPrintBold(wxString message);
 
@@ -38,7 +43,7 @@ class TestFile {
 
         if ( ! filePath.IsNull( ) && ! filePath.IsEmpty( ) ) {
 
-            tempString = "Deleting file " + filePath;
+            tempString = "\nDeleting file " + filePath;
             SamplesBeginPrint(tempString.ToUTF8( ));
             const int result = remove(filePath.mb_str( ));
 

@@ -12,33 +12,27 @@
 #include "../common/common.h"
 #include "projection_comparison.h"
 
-bool CPUvsGPUProjectionTest(const wxString& temp_directory) {
-
-    bool passed;
-    bool all_passed = true;
+void CPUvsGPUProjectionRunner(const wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting CPU vs GPU projection tests:", false);
 
     wxString cistem_ref_var = "CISTEM_REF_IMAGES";
     wxString cistem_ref_dir;
     // If we are in the dev container the CISTEM_REF_IMAGES variable should be defined, pointing to images we need.
-    passed = wxGetEnv(cistem_ref_var, &cistem_ref_dir);
 
-    if ( passed ) {
-
-        all_passed = all_passed && DoCPUvsGPUProjectionTest(cistem_ref_dir, temp_directory);
-
-        // SamplesPrintResult(all_passed, __LINE__);
-        wxPrintf("\n\n");
+    if ( wxGetEnv(cistem_ref_var, &cistem_ref_dir) ) {
+        TEST(DoCPUvsGPUProjectionTest(cistem_ref_dir, temp_directory));
     }
     else {
         // If we are not in the dev container, we can't do the tests.
-        all_passed = false;
+        TEST(false);
         wxPrintf("Failed to resolve the (%s) environment variable.\n", cistem_ref_var);
         wxPrintf("We can't run the test without images!\n\n");
     }
 
-    return all_passed;
+    SamplesPrintEndMessage( );
+
+    return;
 }
 
 bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& temp_directory) {
@@ -138,7 +132,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         passed = passed && (score < 0.9f);
     }
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("Extract slice GPU vs ground truth", passed);
@@ -194,7 +188,7 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         // cimg.QuickAndDirtyWriteSlice(prj_output_filename_base + std::to_string(iPrj) + ".mrc", 1, true);
     }
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     int         n_loops   = 100;
@@ -233,12 +227,12 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
         passed = passed && (score > 0.999f);
     }
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
-    std::vector<std::string> condition_name = {"Extract and whiten w/Fuzzing(" + std::to_string(n_loops) + ") loops",
-                                               "Extract and phase shift w/Fuzzing(" + std::to_string(n_loops) + ") loops",
-                                               "Extract and swap quadrants w/Fuzzing(" + std::to_string(n_loops) + ") loops"};
+    std::vector<std::string> condition_name = {"Extract and whiten w/Fuzz(" + std::to_string(n_loops) + ")",
+                                               "Extract and phase shift w/Fuzz(" + std::to_string(n_loops) + ")",
+                                               "Extract and swap quadrants w/Fuzz(" + std::to_string(n_loops) + ")"};
 
     // For particle alignment, the res-limit defaults to 0.5 (nyquist).
     // This means this testing is not strictly valid for the corners in Fourier space, which are used in TM i think.
@@ -284,12 +278,11 @@ bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& te
             passed = CompareRealValues(cpu_prj, cimg, 0.999f, mask_radius);
         }
 
-        all_passed = all_passed && passed;
+        all_passed = passed ? all_passed : false;
         SamplesTestResult(passed);
     }
 
-    all_passed = all_passed && passed;
-    SamplesTestResult(passed);
+    all_passed = passed ? all_passed : false;
 
     return all_passed;
 }

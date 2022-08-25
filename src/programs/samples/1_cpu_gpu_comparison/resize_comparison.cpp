@@ -21,17 +21,16 @@
 #include "../common/common.h"
 #include "resize_comparison.h"
 
-bool DoCPUvsGPUResize(wxString hiv_image_80x80x1_filename, wxString temp_directory) {
-    bool passed;
-    bool all_passed = true;
+void CPUvsGPUResizeRunner(wxString hiv_image_80x80x1_filename, wxString temp_directory) {
 
     SamplesPrintTestStartMessage("Starting CPU vs GPU resize tests:", false);
 
-    all_passed = all_passed && DoCPUvsGPURealSpaceResize(hiv_image_80x80x1_filename, temp_directory);
-    all_passed = all_passed && DoCPUvsGPUFourierResize(hiv_image_80x80x1_filename, temp_directory);
+    TEST(DoCPUvsGPURealSpaceResize(hiv_image_80x80x1_filename, temp_directory));
+    TEST(DoCPUvsGPUFourierResize(hiv_image_80x80x1_filename, temp_directory));
 
-    wxPrintf("\n\n");
-    return all_passed;
+    SamplesPrintEndMessage( );
+
+    return;
 }
 
 bool DoCPUvsGPURealSpaceResize(wxString hiv_image_80x80x1_filename, wxString temp_directory) {
@@ -46,7 +45,7 @@ bool DoCPUvsGPURealSpaceResize(wxString hiv_image_80x80x1_filename, wxString tem
     MRCFile input_file(hiv_image_80x80x1_filename.ToStdString( ), false);
     MRCFile output_file(tmp_img_filename.ToStdString( ), true);
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
 
     // This really is more like basic i/o, but since we compare to cpu values, i guess this is okay here.
     SamplesBeginTest("Read onto GPU and copy to new CPU image", passed);
@@ -70,7 +69,7 @@ bool DoCPUvsGPURealSpaceResize(wxString hiv_image_80x80x1_filename, wxString tem
 
     passed = CompareRealValues(cpu_image, new_cpu_image_from_gpu);
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     // Real space size reduction
@@ -91,7 +90,7 @@ bool DoCPUvsGPURealSpaceResize(wxString hiv_image_80x80x1_filename, wxString tem
     Image decreased_host_image = gpu_image.CopyDeviceToNewHost(true, true);
 
     passed     = CompareRealValues(cpu_image, decreased_host_image);
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     // Real space size reduction
@@ -112,7 +111,7 @@ bool DoCPUvsGPURealSpaceResize(wxString hiv_image_80x80x1_filename, wxString tem
     Image increased_host_image = gpu_image.CopyDeviceToNewHost(true, true);
 
     passed     = CompareRealValues(cpu_image, increased_host_image);
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     return all_passed;
@@ -152,7 +151,7 @@ bool DoCPUvsGPUFourierResize(wxString hiv_image_80x80x1_filename, wxString temp_
 
     passed = CompareRealValues(cpu_image, resized_host_image);
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     return all_passed;

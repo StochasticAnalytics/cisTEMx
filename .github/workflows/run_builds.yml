@@ -40,7 +40,7 @@ jobs:
     runs-on: ${{ inputs.runs_on_os }}
     container: 
       image: bhimesbhimes/cistem_build_env:v1.4.4
-      options: --user root
+      options: --user root --rm --gpus all
     outputs:
       version: ${{ steps.configure.outputs.version }}
     steps:

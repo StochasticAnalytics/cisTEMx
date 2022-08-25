@@ -14,21 +14,16 @@
 #include "../common/common.h"
 #include "statistical_ops.h"
 
-bool CPUvsGPUStatisticalOpsTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
-
-    bool passed;
-    bool all_passed = true;
+void CPUvsGPUStatisticalOpsRunner(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting CPU vs GPU masking tests:", false);
 
     // all_passed = all_passed && DoStatsticalMomentsTests(hiv_image_80x80x1_filename, temp_directory);
     // all_passed = all_passed && DoExtremumTests(hiv_image_80x80x1_filename, temp_directory);
+    TEST(true);
+    SamplesPrintEndMessage( );
 
-    SamplesBeginTest("CPU vs GPU overall", passed);
-    SamplesPrintResult(all_passed, __LINE__);
-    wxPrintf("\n\n");
-
-    return all_passed;
+    return;
 }
 
 bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
@@ -77,7 +72,7 @@ bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxStri
 
         n++;
     }
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("position-space std-dev", passed);
@@ -91,7 +86,7 @@ bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxStri
 
         n++;
     }
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("position-space minimum", passed);
@@ -105,7 +100,7 @@ bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxStri
 
         n++;
     }
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("position-space maximum", passed);
@@ -119,7 +114,7 @@ bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxStri
 
         n++;
     }
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("position-space min and index", passed);
@@ -141,7 +136,7 @@ bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxStri
 
         n++;
     }
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("position-space max and index", passed);
@@ -157,7 +152,7 @@ bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxStri
         test_image.Deallocate( );
         n++;
     }
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     delete[] noise_image;
@@ -172,7 +167,7 @@ bool DoExtremumTests( ) {
 
     SamplesBeginTest("Extract slice CPU vs ground truth", passed);
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     return all_passed;

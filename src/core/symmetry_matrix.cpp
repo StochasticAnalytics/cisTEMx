@@ -542,12 +542,12 @@ float SymmetryMatrix::GetMinimumAngularDistance(RotationMatrix& first_rot_mat, R
         }
     }
 
-    wxPrintf("\nFor score iSyym %i %f %i\n", best_sym, min_distance, number_of_matrices);
-    temp_matrix = rot_mat[best_sym] * second_rot_mat;
-    first_rot_mat.PrintMatrix( );
-    temp_matrix.PrintMatrix( );
-    rot_mat[best_sym].PrintMatrix( );
-    second_rot_mat.PrintMatrix( );
+    // wxPrintf("\nFor score iSyym %i %f %i\n", best_sym, min_distance, number_of_matrices);
+    // temp_matrix = rot_mat[best_sym] * second_rot_mat;
+    // first_rot_mat.PrintMatrix( );
+    // temp_matrix.PrintMatrix( );
+    // rot_mat[best_sym].PrintMatrix( );
+    // second_rot_mat.PrintMatrix( );
 
     return min_distance;
 }

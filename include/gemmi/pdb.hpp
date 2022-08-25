@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017 Global Phasing Ltd.
 //
 // Read PDB file format and store it in Structure.
@@ -165,6 +164,22 @@ inline std::string pdb_date_format_to_iso(const std::string& date) {
     std::memcpy(&iso[5], m + 3, 2);
   std::memcpy(&iso[8], &date[0], 2);
   return iso;
+}
+
+// move initials after comma, as in mmCIF (A.-B.DOE -> DOE, A.-B.), see
+// https://www.wwpdb.org/documentation/file-format-content/format33/sect2.html#AUTHOR
+inline void change_author_name_format_to_mmcif(std::string& name) {
+  // If the AUTHOR record has comma followed by space we get leading space here
+  while (name[0] == ' ')
+    name.erase(name.begin());
+  size_t pos = 0;
+  // Initials may have multiple letters (e.g. JU. or PON.)
+  // but should not have space after dot.
+  for (size_t i = 1; i < pos+4 && i+1 < name.size(); ++i)
+    if (name[i] == '.' && name[i+1] != ' ')
+      pos = i+1;
+  if (pos > 0)
+    name = name.substr(pos) + ", " + name.substr(0, pos);
 }
 
 inline Asu compare_link_symops(const std::string& record) {
@@ -506,6 +521,23 @@ Structure read_pdb_from_stream(Stream&& stream, const std::string& source,
       if (len > 10)
         st.info["_exptl.method"] += trim_str(std::string(line+10, len-10-1));
 
+    } else if (is_record_type(line, "AUTHOR") && len > 10) {
+      std::string last;
+      if (!st.meta.authors.empty()) {
+        last = st.meta.authors.back();
+        st.meta.authors.pop_back();
+      }
+      size_t prev_size = st.meta.authors.size();
+      const char* start = skip_blank(line+10);
+      const char* end = rtrim_cstr(start, line+len);
+      split_str_into(std::string(start, end), ',', st.meta.authors);
+      if (!last.empty() && st.meta.authors.size() > prev_size) {
+        // the spaces were trimmed, we may need a space between words
+        if (last.back() != '-' && last.back() != '.')
+          last += ' ';
+        st.meta.authors[prev_size].insert(0, last);
+      }
+
     } else if (is_record_type(line, "CRYST1")) {
       if (len > 54)
         st.cell.set(read_double(line+6, 9),
@@ -639,6 +671,9 @@ Structure read_pdb_from_stream(Stream&& stream, const std::string& source,
   st.setup_cell_images();
 
   process_conn(st, conn_records);
+
+  for (std::string& name : st.meta.authors)
+    change_author_name_format_to_mmcif(name);
 
   return st;
 }

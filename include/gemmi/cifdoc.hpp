@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017 Global Phasing Ltd.
 //
 // struct Document that represents the CIF file (but can be also
@@ -9,8 +8,7 @@
 #include "iterator.hpp"  // for StrideIter, IndirectIter
 #include "atox.hpp"  // for string_to_int
 #include "fail.hpp"  // for fail
-#include "util.hpp"  // for starts_with, to_lower
-#include "tostr.hpp"  // for tostr
+#include "util.hpp"  // for starts_with, to_lower, cat
 #include <cassert>
 #include <cstring>   // for memchr
 #include <algorithm> // for move, find_if, all_of, min, rotate
@@ -132,11 +130,13 @@ struct Loop {
   std::vector<std::string> values;
 
   // search and access
-  int find_tag(std::string tag) const {
-    tag = gemmi::to_lower(tag);
+  int find_tag_lc(const std::string& lctag) const {
     auto f = std::find_if(tags.begin(), tags.end(),
-               [&tag](const std::string& t) { return gemmi::iequal(t, tag); });
+        [&lctag](const std::string& t) { return gemmi::iequal(t, lctag); });
     return f == tags.end() ? -1 : f - tags.begin();
+  }
+  int find_tag(const std::string& tag) const {
+    return find_tag_lc(gemmi::to_lower(tag));
   }
   bool has_tag(const std::string& tag) const { return find_tag(tag) != -1; }
   size_t width() const { return tags.size(); }
@@ -163,13 +163,24 @@ struct Loop {
     if (ss.size() != tags.size() + 1)
       fail("add_comment_and_row(): wrong row length.");
     std::vector<std::string> vec(ss.begin() + 1, ss.end());
-    vec[0] = "#" + *ss.begin() + "\n" + vec[0];
+    vec[0] = cat('#', *ss.begin(), '\n', vec[0]);
     return add_row(vec);
   }
   void pop_row() {
     if (values.size() < tags.size())
       fail("pop_row() called on empty Loop");
     values.resize(values.size() - tags.size());
+  }
+
+  // the arguments must be valid row indices
+  void move_row(int old_pos, int new_pos) {
+    size_t w = width();
+    auto src = values.begin() + old_pos * w;
+    auto dst = values.begin() + new_pos * w;
+    if (src < dst)
+      std::rotate(src, src+w, dst+w);
+    else
+      std::rotate(dst, src, src+w);
   }
 
   void set_all_values(std::vector<std::vector<std::string>> columns);
@@ -305,11 +316,14 @@ struct Table {
   Row tags() { return Row{*this, -1}; }
   Row operator[](int n) { return Row{*this, n}; }
 
-  Row at(int n) {
+  void at_check(int& n) {
     if (n < 0)
       n += length();
     if (n < 0 || static_cast<size_t>(n) >= length())
       throw std::out_of_range("No row with index " + std::to_string(n));
+  }
+  Row at(int n) {
+    at_check(n);
     return (*this)[n];
   }
 
@@ -343,12 +357,21 @@ struct Table {
     return column_at_pos(pos);
   }
 
+  void move_row(int old_pos, int new_pos) {
+    at_check(old_pos);
+    at_check(new_pos);
+    if (Loop* loop = get_loop())
+      loop->move_row(old_pos, new_pos);
+  }
+
   // prefix is optional
   int find_column_position(const std::string& tag) const {
+    std::string lctag = gemmi::to_lower(tag);
     Row tag_row = const_cast<Table*>(this)->tags();
     for (int pos : positions) {
       const std::string& v = tag_row.value_at_unsafe(pos);
-      if (v == tag || v.compare(prefix_length, std::string::npos, tag) == 0)
+      if (v.length() == lctag.length() ? gemmi::iequal(v, lctag)
+                                       : gemmi::iequal_from(v, prefix_length, lctag))
         return pos;
     }
     fail("Column name not found: " + tag);
@@ -375,6 +398,7 @@ struct Table {
   iterator begin() { return iterator{*this, 0}; }
   iterator end() { return iterator{*this, (int)length()}; }
 };
+
 
 struct Block {
   std::string name;
@@ -436,7 +460,7 @@ struct Block {
   Table find_mmcif_category(std::string cat);
 
   Loop& init_mmcif_loop(std::string cat, std::vector<std::string> tags) {
-    ensure_mmcif_category(cat);
+    ensure_mmcif_category(cat);  // modifies cat
     return setup_loop(find_mmcif_category(cat), cat, std::move(tags));
   }
 
@@ -446,6 +470,7 @@ private:
   Loop& setup_loop(Table&& tab, const std::string& prefix,
                    std::vector<std::string>&& tags);
 };
+
 
 struct Item {
   ItemType type;
@@ -485,10 +510,11 @@ struct Item {
     type = ItemType::Erased;
   }
 
+  // case-insensitive, the prefix should be lower-case
   bool has_prefix(const std::string& prefix) const {
-    return (type == ItemType::Pair && gemmi::starts_with(pair[0], prefix)) ||
+    return (type == ItemType::Pair && gemmi::istarts_with(pair[0], prefix)) ||
            (type == ItemType::Loop && !loop.tags.empty() &&
-            gemmi::starts_with(loop.tags[0], prefix));
+            gemmi::istarts_with(loop.tags[0], prefix));
   }
 
   void set_value(Item&& o) {
@@ -537,10 +563,49 @@ private:
   }
 };
 
+
+// ItemSpan is used to add tag-value pairs next to the same category tags.
+struct ItemSpan {
+  ItemSpan(std::vector<Item>& items)
+      : items_(items), begin_(0), end_(items.size()) {}
+  ItemSpan(std::vector<Item>& items, std::string prefix)
+      : ItemSpan(items) {
+    assert_tag(prefix);
+    prefix = gemmi::to_lower(prefix);
+    while (begin_ != end_ && !items_[begin_].has_prefix(prefix))
+      ++begin_;
+    if (begin_ != end_)
+      while (end_-1 != begin_ && !items_[end_-1].has_prefix(prefix))
+        --end_;
+  }
+  void set_pair(const std::string& tag, const std::string& value) {
+    assert_tag(tag);
+    std::string lctag = gemmi::to_lower(tag);
+    auto end = items_.begin() + end_;
+    for (auto i = items_.begin() + begin_; i != end; ++i) {
+      if (i->type == ItemType::Pair && gemmi::iequal(i->pair[0], lctag)) {
+        i->pair[0] = tag;  // if letter case differs, the tag changes
+        i->pair[1] = value;
+        return;
+      }
+      if (i->type == ItemType::Loop && i->loop.find_tag_lc(lctag) != -1) {
+        i->set_value(Item(tag, value));
+        return;
+      }
+    }
+    items_.emplace(end, tag, value);
+    ++end_;
+  }
+private:
+  std::vector<Item>& items_;
+  size_t begin_, end_;  // iterators would be invalidated by emplace()
+};
+
+
 inline void Loop::set_all_values(std::vector<std::vector<std::string>> columns){
   size_t w = columns.size();
   if (w != width())
-    fail(tostr("set_all_values(): expected ", width(), " columns, got ", w));
+    fail(cat("set_all_values(): expected ", width(), " columns, got ", w));
   if (w == 0)
     return;
   size_t h = columns[0].size();
@@ -666,11 +731,15 @@ inline Column Table::column_at_pos(int pos) {
 }
 
 inline void Table::erase() {
-  if (loop_item)
+  if (loop_item) {
     loop_item->erase();
-  else
+    loop_item = nullptr;
+  } else {
     for (int pos : positions)
-      bloc.items[pos].erase();
+      if (pos >= 0)
+        bloc.items[pos].erase();
+  }
+  positions.clear();
 }
 
 inline void Table::convert_pair_to_loop() {
@@ -689,8 +758,9 @@ inline void Table::convert_pair_to_loop() {
 }
 
 inline const Item* Block::find_pair_item(const std::string& tag) const {
+  std::string lctag = gemmi::to_lower(tag);
   for (const Item& i : items)
-    if (i.type == ItemType::Pair && i.pair[0] == tag)
+    if (i.type == ItemType::Pair && gemmi::iequal(i.pair[0], lctag))
       return &i;
   return nullptr;
 }
@@ -700,41 +770,28 @@ inline const Pair* Block::find_pair(const std::string& tag) const {
   return item ? &item->pair : nullptr;
 }
 
-inline void Block::set_pair(const std::string& tag, const std::string& value) {
-  assert_tag(tag);
-  for (Item& i : items) {
-    if (i.type == ItemType::Pair && i.pair[0] == tag) {
-      i.pair[1] = value;
-      return;
-    }
-    if (i.type == ItemType::Loop && i.loop.find_tag(tag) != -1) {
-      i.set_value(Item(tag, value));
-      return;
-    }
-  }
-  items.emplace_back(tag, value);
-}
-
 inline Column Block::find_loop(const std::string& tag) {
   Column c = find_values(tag);
   return c.item() && c.item()->type == ItemType::Loop ? c : Column();
 }
 
 inline const Item* Block::find_loop_item(const std::string& tag) const {
+  std::string lctag = gemmi::to_lower(tag);
   for (const Item& i : items)
-    if (i.type == ItemType::Loop && i.loop.find_tag(tag) != -1)
+    if (i.type == ItemType::Loop && i.loop.find_tag_lc(tag) != -1)
       return &i;
   return nullptr;
 }
 
 inline Column Block::find_values(const std::string& tag) {
+  std::string lctag = gemmi::to_lower(tag);
   for (Item& i : items)
     if (i.type == ItemType::Loop) {
-      int pos = i.loop.find_tag(tag);
+      int pos = i.loop.find_tag_lc(lctag);
       if (pos != -1)
         return Column{&i, static_cast<size_t>(pos)};
     } else if (i.type == ItemType::Pair) {
-      if (i.pair[0] == tag)
+      if (gemmi::iequal(i.pair[0], lctag))
         return Column{&i, 0};
     }
   return Column{nullptr, 0};
@@ -758,13 +815,18 @@ inline Table Block::item_as_table(Item& item) {
 }
 
 inline size_t Block::get_index(const std::string& tag) const {
+  std::string lctag = gemmi::to_lower(tag);
   for (size_t i = 0; i != items.size(); ++i) {
     const Item& item = items[i];
-    if ((item.type == ItemType::Pair && item.pair[0] == tag) ||
-        (item.type == ItemType::Loop && item.loop.find_tag(tag) != -1))
+    if ((item.type == ItemType::Pair && gemmi::iequal(item.pair[0], lctag)) ||
+        (item.type == ItemType::Loop && item.loop.find_tag_lc(lctag) != -1))
       return i;
   }
   fail(tag + " not found in block");
+}
+
+inline void Block::set_pair(const std::string& tag, const std::string& value) {
+  ItemSpan(items).set_pair(tag, value);
 }
 
 inline void Block::move_item(int old_pos, int new_pos) {
@@ -900,6 +962,7 @@ inline Table Block::find_any(const std::string& prefix,
 
 inline Table Block::find_mmcif_category(std::string cat) {
   ensure_mmcif_category(cat);
+  cat = gemmi::to_lower(cat);
   std::vector<int> indices;
   for (Item& i : items)
     if (i.has_prefix(cat)) {
@@ -908,7 +971,7 @@ inline Table Block::find_mmcif_category(std::string cat) {
         for (size_t j = 0; j != indices.size(); ++j) {
           indices[j] = j;
           const std::string& tag = i.loop.tags[j];
-          if (!starts_with(tag, cat))
+          if (!istarts_with(tag, cat))
             fail("Tag ", tag, " in loop with ", cat);
         }
         return Table{&i, *this, indices, cat.length()};
@@ -966,7 +1029,7 @@ struct Document {
 [[noreturn]]
 inline void cif_fail(const std::string& source, const Block& b,
                      const Item& item, const std::string& s) {
-  fail(tostr(source, ':', item.line_number, " in data_", b.name, ": ", s));
+  fail(cat(source, ':', item.line_number, " in data_", b.name, ": ", s));
 }
 
 inline void check_for_missing_values_in_block(const Block& block,

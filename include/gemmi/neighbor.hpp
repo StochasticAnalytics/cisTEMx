@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2018 Global Phasing Ltd.
 //
 // Cell-linked lists method for atom searching (a.k.a. grid search, binning,
@@ -52,7 +51,9 @@ struct NeighborSearch {
     const SmallStructure::Site& to_site(const SmallStructure& small) const {
       return small.sites.at(atom_idx);
     }
-    float dist_sq(const Position& p) const {
+    // Here the point p must not be across PBC boundary,
+    // typically p is orthogonalized Fractional in for_each_cell.
+    float dist_sq_(const Position& p) const {
       return sq((float)p.x - x) + sq((float)p.y - y) + sq((float)p.z - z);
     }
   };
@@ -66,7 +67,10 @@ struct NeighborSearch {
   NeighborSearch() = default;
   // Model is not const so it can be modified in for_each_contact()
   NeighborSearch(Model& model_, const UnitCell& cell, double max_radius) {
-    initialize(model_, cell, max_radius);
+    model = &model_;
+    radius_specified = max_radius;
+    set_bounding_cell(cell);
+    set_grid_size();
   }
   NeighborSearch(SmallStructure& small, double max_radius) {
     small_structure = &small;
@@ -74,7 +78,7 @@ struct NeighborSearch {
     grid.unit_cell = small.cell;
     set_grid_size();
   }
-  void initialize(Model& model, const UnitCell& cell, double max_radius);
+
   NeighborSearch& populate(bool include_h_=true);
   void add_chain(const Chain& chain, bool include_h_=true);
   void add_chain_n(const Chain& chain, int n_ch);
@@ -130,7 +134,7 @@ struct NeighborSearch {
     for_each_cell(pos, [&](std::vector<Mark>& marks, const Fractional& fr) {
         Position p = grid.unit_cell.orthogonalize(fr);
         for (Mark& m : marks) {
-          float dist_sq = m.dist_sq(p);
+          float dist_sq = m.dist_sq_(p);
           if (dist_sq < nearest_dist_sq) {
             mark = &m;
             nearest_dist_sq = dist_sq;
@@ -164,46 +168,37 @@ private:
                                      std::max(grid.nv, 3),
                                      std::max(grid.nw, 3));
   }
-};
 
-
-inline void NeighborSearch::initialize(Model& model_, const UnitCell& cell,
-                                       double max_radius) {
-  model = &model_;
-  radius_specified = max_radius;
-  if (cell.is_crystal()) {
-    grid.unit_cell = cell;
-  } else {
-    Box<Position> box;
-    for (const Chain& chain : model->chains)
-      for (const Residue& res : chain.residues)
-        for (const Atom& atom : res.atoms)
-          box.extend(atom.pos);
-    // We need to take into account strict NCS from MTRIXn.
-    // To avoid additional function parameter that would pass Structure::ncs,
-    // here we reconstruct ncs transforms from cell.images.
-    // images store fractional ttransforms, but for non-crystal it should be
-    // the same as Cartesian transform.
-    std::vector<Transform> ncs;
-    for (size_t n = cell.cs_count; n < cell.images.size(); n += cell.cs_count + 1)
-      ncs.push_back(cell.images[n]);
-    // The box needs include all NCS images as well.
-    if (!ncs.empty()) {
+  void set_bounding_cell(const UnitCell& cell) {
+    if (cell.is_crystal()) {
+      grid.unit_cell = cell;
+    } else {
+      // cf. calculate_box()
+      Box<Position> box;
       for (CRA cra : model->all())
-        for (const Transform& tr : ncs)
-          box.extend(Position(tr.apply(cra.atom->pos)));
-    }
-    box.add_margin(1.5 * max_radius);  // much more than needed
-    Position size = box.get_size();
-    grid.unit_cell.set(size.x, size.y, size.z, 90, 90, 90);
-    for (const Transform& tr : ncs) {
-      UnitCell& c = grid.unit_cell;
-      // cf. add_ncs_images_to_cs_images()
-      c.images.push_back(c.frac.combine(tr.combine(c.orth)));
+        box.extend(cra.atom->pos);
+      // The box needs to include all NCS images (strict NCS from MTRIXn).
+      // To avoid additional function parameter that would pass Structure::ncs,
+      // here we obtain NCS transformations from UnitCell::images.
+      std::vector<FTransform> ncs = cell.get_ncs_transforms();
+      if (!ncs.empty()) {
+        for (CRA cra : model->all())
+          // images store fractional transforms, but for non-crystal
+          // it should be the same as Cartesian transform.
+          for (const Transform& tr : ncs)
+            box.extend(Position(tr.apply(cra.atom->pos)));
+      }
+      box.add_margin(1.5 * radius_specified);  // much more than needed
+      Position size = box.get_size();
+      grid.unit_cell.set(size.x, size.y, size.z, 90, 90, 90);
+      for (const Transform& tr : ncs) {
+        UnitCell& c = grid.unit_cell;
+        // cf. add_ncs_images_to_cs_images()
+        c.images.push_back(c.frac.combine(tr.combine(c.orth)));
+      }
     }
   }
-  set_grid_size();
-}
+};
 
 inline NeighborSearch& NeighborSearch::populate(bool include_h_) {
   include_h = include_h_;
@@ -324,8 +319,8 @@ void NeighborSearch::for_each(const Position& pos, char alt, float radius,
   for_each_cell(pos, [&](std::vector<Mark>& marks, const Fractional& fr) {
       Position p = grid.unit_cell.orthogonalize(fr);
       for (Mark& m : marks) {
-        float dist_sq = m.dist_sq(p);
-        if (m.dist_sq(p) < sq(radius) && is_same_conformer(alt, m.altloc))
+        float dist_sq = m.dist_sq_(p);
+        if (dist_sq < sq(radius) && is_same_conformer(alt, m.altloc))
           func(m, dist_sq);
       }
   });
@@ -369,7 +364,7 @@ inline void merge_atoms_in_expanded_model(Model& model, const UnitCell& cell,
       Residue& res = chain.residues[n_res];
       for (int n_atom = 0; n_atom != (int) res.atoms.size(); ++n_atom) {
         Atom& atom = res.atoms[n_atom];
-        std::vector<CRA> equiv;
+        std::vector<std::pair<CRA, int>> equiv;
         ns.for_each_cell(atom.pos, [&](std::vector<Mark>& marks, const Fractional& fr) {
             for (Mark& m : marks) {
               // We look for the same atoms, but copied to a different chain.
@@ -384,74 +379,31 @@ inline void merge_atoms_in_expanded_model(Model& model, const UnitCell& cell,
                   cra.atom->name == atom.name &&
                   cra.atom->b_iso == atom.b_iso &&
                   cra.residue->matches_noseg(res) &&
-                  m.dist_sq(ns.grid.unit_cell.orthogonalize(fr)) < sq(max_dist))
-              equiv.push_back(cra);
+                  m.dist_sq_(ns.grid.unit_cell.orthogonalize(fr)) < sq(max_dist))
+                equiv.emplace_back(cra, m.image_idx);
             }
         });
         if (!equiv.empty()) {
-          // calculate new occupancy and position for the first atom
-          int n = 1;
-          if (cell.is_crystal())
-            n += cell.is_special_position(atom.pos, max_dist);
-          double occ_sum = n * atom.occ;
-          if (occ_sum > 0) {
-            atom.pos *= occ_sum;
-            for (CRA& cra : equiv) {
-              atom.pos += cra.atom->occ * cra.atom->pos;
-              occ_sum += cra.atom->occ;
-            }
-            atom.pos /= occ_sum;
-            atom.occ = float(occ_sum / n);
-          }
-          // discard overlapping equivalent atoms
-          for (CRA& cra : equiv) {
-            // change atoms to avoid processing them again
-            cra.atom->serial = -1;
-            cra.atom->name.clear();
-            // deleting now would invalidate indices in NeighborSearch
+          Position pos_sum = atom.pos;
+          for (auto& t : equiv) {
+            CRA& cra = t.first;
+            pos_sum += ns.grid.unit_cell.find_nearest_pbc_position(
+                                          atom.pos, cra.atom->pos, t.second);
+            // The atoms in equiv are to be discarded later.
+            // Deleting now would invalidate indices in NeighborSearch.
             to_be_deleted.push_back(cra);
+            // Modify the atoms to avoid processing them again.
+            cra.atom->serial = -1;  // this should be enough
+            cra.atom->name.clear(); // this is just in case
           }
+          size_t n = 1 + equiv.size();
+          atom.pos = pos_sum / double(n);
+          atom.occ = std::min(1.f, n * atom.occ);
         }
       }
     }
   }
   remove_cras(model, to_be_deleted);
-}
-
-
-// simple map alignment - this function may change in the future
-template<typename T>
-void interpolate_grid_of_aligned_model(Grid<T>& dest, const Grid<T>& src,
-                                       const Transform& tr, NeighborSearch& ns,
-                                       double radius=0.) {
-  if (radius <= 0.)
-    radius = ns.radius_specified;
-  else if (radius > ns.radius_specified)
-    fail("set_grid_values_interpolated_from(): radius exceeds NeighborSearch radius");
-  // mask model or its part that was used for NeighborSearch
-  std::vector<bool> mask(dest.data.size(), false);
-  for (const std::vector<NeighborSearch::Mark>& marks : ns.grid.data)
-    for (const NeighborSearch::Mark& mark : marks)
-      if (mark.image_idx == 0)  // leave out symmetry mates
-        dest.template use_points_around<true>(
-            ns.grid.unit_cell.fractionalize(mark.pos()),
-            radius,
-            [&](T& point, double) { mask[&point - dest.data.data()] = true; });
-  size_t idx = 0;
-  for (int w = 0; w != dest.nw; ++w)
-    for (int v = 0; v != dest.nv; ++v)
-      for (int u = 0; u != dest.nu; ++u, ++idx) {
-        if (!mask[idx])
-          continue;
-        Position pos2 = dest.get_position(u, v, w);
-        // in contacts use only nodes that are nearer to the original molecule
-        NeighborSearch::Mark* mark = ns.find_nearest_atom(pos2);
-        if (mark && mark->image_idx == 0) {
-          Position delta = mark->to_cra(*ns.model).atom->pos - mark->pos();
-          Position pos1 = Position(tr.apply(pos2 + delta));
-          dest.data[idx] = src.interpolate_value(pos1);
-        }
-      }
 }
 
 } // namespace gemmi

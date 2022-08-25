@@ -1,13 +1,17 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2021 Global Phasing Ltd.
 //
 // Finding maxima or "blobs" in a Grid (map).
 // Similar to CCP4 PEAKMAX and COOT's "Unmodelled blobs".
+//
+// Implementation of the flood fill algorithm in find_blobs_by_flood_fill()
+// differs from from FloodFill in floodfill.hpp.
+// FloodFill uses more efficient scanline fill, but doesn't use symmetry.
 
 #ifndef GEMMI_BLOB_HPP_
 #define GEMMI_BLOB_HPP_
 
-#include "grid.hpp"   // for Grid
+#include "grid.hpp"     // for Grid
+#include "asumask.hpp"  // for get_asu_mask
 
 namespace gemmi {
 
@@ -21,10 +25,10 @@ struct Blob {
 };
 
 struct BlobCriteria {
+  double cutoff;
   double min_volume = 10.0;
   double min_score = 15.0;
   double min_peak = 0.0;
-  double cutoff;
 };
 
 namespace impl {
@@ -35,7 +39,7 @@ struct GridConstPoint {
 };
 
 inline Blob make_blob_of_points(const std::vector<GridConstPoint>& points,
-                                const gemmi::Grid<float>& grid,
+                                const GridMeta& grid,
                                 const BlobCriteria& criteria) {
   Blob blob;
   if (points.size() < 3)
@@ -74,15 +78,17 @@ inline Blob make_blob_of_points(const std::vector<GridConstPoint>& points,
 
 } // namespace impl
 
+// with negate=true grid negatives of grid values are used
 inline std::vector<Blob> find_blobs_by_flood_fill(const gemmi::Grid<float>& grid,
-                                                  const BlobCriteria& criteria) {
+                                                  const BlobCriteria& criteria,
+                                                  bool negate=false) {
   std::vector<Blob> blobs;
   std::array<std::array<int, 3>, 6> moves = {{{{-1, 0, 0}}, {{1, 0, 0}},
                                               {{0 ,-1, 0}}, {{0, 1, 0}},
                                               {{0, 0, -1}}, {{0, 0, 1}}}};
   // the mask will be used as follows:
   // -1=in blob,  0=in asu, not in blob (so far),  1=in neither
-  std::vector<std::int8_t> mask = grid.get_asu_mask<std::int8_t>();
+  std::vector<std::int8_t> mask = gemmi::get_asu_mask(grid);
   std::vector<gemmi::GridOp> ops = grid.get_scaled_ops_except_id();
   size_t idx = 0;
   for (int w = 0; w != grid.nw; ++w)
@@ -92,6 +98,8 @@ inline std::vector<Blob> find_blobs_by_flood_fill(const gemmi::Grid<float>& grid
         if (mask[idx] != 0)
           continue;
         float value = grid.data[idx];
+        if (negate)
+          value = -value;
         if (value < criteria.cutoff)
           continue;
         std::vector<impl::GridConstPoint> points;
@@ -106,6 +114,8 @@ inline std::vector<Blob> find_blobs_by_flood_fill(const gemmi::Grid<float>& grid
             if (mask[nabe_idx] == -1)
               continue;
             float nabe_value = grid.data[nabe_idx];
+            if (negate)
+              nabe_value = -nabe_value;
             if (nabe_value > criteria.cutoff) {
               if (mask[nabe_idx] != 0)
                 for (const gemmi::GridOp& op : ops) {
@@ -121,6 +131,8 @@ inline std::vector<Blob> find_blobs_by_flood_fill(const gemmi::Grid<float>& grid
         if (Blob blob = impl::make_blob_of_points(points, grid, criteria))
           blobs.push_back(blob);
       }
+  std::sort(blobs.begin(), blobs.end(),
+            [](const Blob& a, const Blob& b) { return a.score > b.score; });
   return blobs;
 }
 

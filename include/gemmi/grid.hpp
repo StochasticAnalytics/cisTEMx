@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017 Global Phasing Ltd.
 //
 // 3d grids used by CCP4 maps, cell-method search and hkl data.
@@ -108,26 +107,24 @@ std::complex<T> lerp_(std::complex<T> a, std::complex<T> b, double t) {
   return a + (b - a) * (T) t;
 }
 
-// Catmull–Rom spline interpolation CINT_u from:
-// https://en.wikipedia.org/wiki/Cubic_Hermite_spline
-// The same as (24) in https://journals.iucr.org/d/issues/2018/06/00/ic5103/
+/// Catmull–Rom spline interpolation. CINT_u from:
+/// https://en.wikipedia.org/wiki/Cubic_Hermite_spline
+/// The same as (24) in https://journals.iucr.org/d/issues/2018/06/00/ic5103/
 inline double cubic_interpolation(double u, double a, double b, double c, double d) {
   //return 0.5 * u * (u * (u * (3*b - 3*c + d - a) + (2*a - 5*b + 4*c - d)) + (c - a)) + b;
-  // equivalent form that is faster (on my computer with GCC):
+  // equivalent form that is faster on my computer:
   return -0.5 * (a * u * ((u-2)*u + 1) - b * ((3*u - 5) * u*u + 2) +
                  u * (c * ((3*u - 4) * u - 1) - d * (u-1) * u));
 }
 
-// df/du (from Wolfram Alpha)
+/// df/du (from Wolfram Alpha)
 inline double cubic_interpolation_der(double u, double a, double b, double c, double d) {
   return a * (-1.5*u*u + 2*u - 0.5) + c * (-4.5*u*u + 4*u + 0.5)
          + u * (4.5*b*u - 5*b + 1.5*d*u - d);
 }
 
-template<typename T, typename V=std::int8_t> struct MaskedGrid;
-
-// Order of grid axis. Some Grid functionality works only with the XYZ order.
-// The values XYZ and XYZ are used only when the grid covers whole unit cell.
+/// Order of grid axis. Some Grid functionality works only with the XYZ order.
+/// The values XYZ and ZYX are used only when the grid covers whole unit cell.
 enum class AxisOrder : unsigned char {
   Unknown,
   XYZ,  // default, corresponds to CCP4 map with axis order XYZ,
@@ -135,6 +132,7 @@ enum class AxisOrder : unsigned char {
   ZYX   // fast Z (or L), may not be fully supported everywhere
 };
 
+/// The base of Grid classes that does not depend on stored data type.
 struct GridMeta {
   UnitCell unit_cell;
   const SpaceGroup* spacegroup = nullptr;
@@ -142,8 +140,65 @@ struct GridMeta {
   AxisOrder axis_order = AxisOrder::Unknown;
 
   size_t point_count() const { return (size_t)nu * nv * nw; }
+  /// u,v,w are not normalized here
+  Fractional get_fractional(int u, int v, int w) const {
+    return {u * (1.0 / nu), v * (1.0 / nv), w * (1.0 / nw)};
+  }
+  Position get_position(int u, int v, int w) const {
+    return unit_cell.orthogonalize(get_fractional(u, v, w));
+  }
+
+  // operations re-scaled for faster later calculations; identity not included
+  std::vector<GridOp> get_scaled_ops_except_id() const {
+    std::vector<GridOp> grid_ops;
+    if (!spacegroup || spacegroup->number == 1)
+      return grid_ops;
+    if (axis_order != AxisOrder::XYZ)
+      fail("grid can use symmetries only if it is setup in the XYZ order");
+    GroupOps gops = spacegroup->operations();
+    grid_ops.reserve(gops.order());
+    for (const Op& so : gops.sym_ops)
+      for (const Op::Tran& co : gops.cen_ops) {
+        Op op = so.add_centering(co);
+        if (op != Op::identity()) {
+          // Rescale. Rotations are expected to be integral.
+          op.tran[0] = op.tran[0] * nu / Op::DEN;
+          op.tran[1] = op.tran[1] * nv / Op::DEN;
+          op.tran[2] = op.tran[2] * nw / Op::DEN;
+          for (int i = 0; i != 3; ++i)
+            for (int j = 0; j != 3; ++j)
+              op.rot[i][j] /= Op::DEN;
+          grid_ops.push_back({op});
+        }
+      }
+    return grid_ops;
+  }
+
+  /// Quick(est) index function, but works only if `0 <= u < nu`, etc.
+  size_t index_q(int u, int v, int w) const {
+    return size_t(w * nv + v) * nu + u;
+  }
+
+  /// Faster than index_s(), but works only if `-nu <= u < 2*nu`, etc.
+  size_t index_n(int u, int v, int w) const { return index_n_ref(u, v, w); }
+
+  /// The same as index_n(), but modifies arguments.
+  size_t index_n_ref(int& u, int& v, int& w) const {
+    if (u >= nu) u -= nu; else if (u < 0) u += nu;
+    if (v >= nv) v -= nv; else if (v < 0) v += nv;
+    if (w >= nw) w -= nw; else if (w < 0) w += nw;
+    return this->index_q(u, v, w);
+  }
+
+  /// Faster than index_n(), but works only if -nu <= u < nu, etc.
+  size_t index_near_zero(int u, int v, int w) const {
+    return this->index_q(u >= 0 ? u : u + nu,
+                         v >= 0 ? v : v + nv,
+                         w >= 0 ? w : w + nw);
+  }
 };
 
+/// A common subset of Grid and ReciprocalGrid.
 template<typename T>
 struct GridBase : GridMeta {
   struct Point {
@@ -153,15 +208,16 @@ struct GridBase : GridMeta {
 
   std::vector<T> data;
 
-  void set_size_without_checking(int u, int v, int w) {
-    nu = u, nv = v, nw = w;
-    data.resize((size_t)u * v * w);
+  void check_not_empty() const {
+    if (data.empty())
+      fail("grid is empty");
   }
 
-  // Quick but unsafe. assumes (for efficiency) that 0 <= u < nu, etc.
-  size_t index_q(int u, int v, int w) const {
-    return size_t(w * nv + v) * nu + u;
+  void set_size_without_checking(int nu_, int nv_, int nw_) {
+    nu = nu_, nv = nv_, nw = nw_;
+    data.resize((size_t)nu_ * nv_ * nw_);
   }
+
   T get_value_q(int u, int v, int w) const { return data[index_q(u, v, w)]; }
 
   size_t point_to_index(const Point& p) const { return p.value - data.data(); }
@@ -213,8 +269,9 @@ struct GridBase : GridMeta {
   iterator end() { return {*this, data.size()}; }
 };
 
-// For simplicity, some operations work only if the grid covers whole unit cell
-// and axes u,v,w correspond to a,b,c in the unit cell.
+/// Real-space grid.
+/// For simplicity, some operations work only if the grid covers whole unit cell
+/// and axes u,v,w correspond to a,b,c in the unit cell.
 template<typename T=float>
 struct Grid : GridBase<T> {
   using Point = typename GridBase<T>::Point;
@@ -225,8 +282,10 @@ struct Grid : GridBase<T> {
   using GridBase<T>::spacegroup;
   using GridBase<T>::data;
 
-  double spacing[3];  // spacing between virtual planes, not between points
+  /// spacing between virtual planes, not between points
+  double spacing[3] = {0., 0., 0.};
 
+  /// copy unit_cell, spacegroup, nu, nv, nw, axis_order and set spacing
   void copy_metadata_from(const GridMeta& g) {
     unit_cell = g.unit_cell;
     spacegroup = g.spacegroup;
@@ -237,21 +296,26 @@ struct Grid : GridBase<T> {
     calculate_spacing();
   }
 
+  /// set #spacing
   void calculate_spacing() {
     spacing[0] = 1.0 / (nu * unit_cell.ar);
     spacing[1] = 1.0 / (nv * unit_cell.br);
     spacing[2] = 1.0 / (nw * unit_cell.cr);
   }
 
-  void set_size_without_checking(int u, int v, int w) {
-    GridBase<T>::set_size_without_checking(u, v, w);
+  double min_spacing() const {
+    return std::min(std::min(spacing[0], spacing[1]), spacing[2]);
+  }
+
+  void set_size_without_checking(int nu_, int nv_, int nw_) {
+    GridBase<T>::set_size_without_checking(nu_, nv_, nw_);
     calculate_spacing();
     this->axis_order = AxisOrder::XYZ;
   }
 
-  void set_size(int u, int v, int w) {
-    check_grid_factors(spacegroup, {{u, v, w}});
-    set_size_without_checking(u, v, w);
+  void set_size(int nu_, int nv_, int nw_) {
+    check_grid_factors(spacegroup, {{nu_, nv_, nw_}});
+    set_size_without_checking(nu_, nv_, nw_);
   }
 
   // The resulting spacing can be smaller (if denser=true) or greater than arg.
@@ -262,7 +326,6 @@ struct Grid : GridBase<T> {
     auto m = good_grid_size(limit, denser, spacegroup);
     set_size_without_checking(m[0], m[1], m[2]);
   }
-
 
   void set_unit_cell(double a, double b, double c,
                      double alpha, double beta, double gamma) {
@@ -283,54 +346,48 @@ struct Grid : GridBase<T> {
     set_size_from_spacing(approx_spacing, denser);
   }
 
-  // Assumes (for efficiency) that -nu <= u < 2*nu, etc.
-  size_t index_n(int u, int v, int w) const {
-    if (u >= nu) u -= nu; else if (u < 0) u += nu;
-    if (v >= nv) v -= nv; else if (v < 0) v += nv;
-    if (w >= nw) w -= nw; else if (w < 0) w += nw;
-    return this->index_q(u, v, w);
-  }
-
-  // Assumes (for efficiency) that -nu <= u < nu, etc.
-  size_t index_near_zero(int u, int v, int w) const {
-    return this->index_q(u >= 0 ? u : u + nu,
-                         v >= 0 ? v : v + nv,
-                         w >= 0 ? w : w + nw);
-  }
-
-  // Safe but slower.
+  /// Returns index in data array for (u,v,w). Safe but slower than index_q().
   size_t index_s(int u, int v, int w) const {
+    this->check_not_empty();
     return this->index_q(modulo(u, nu), modulo(v, nv), modulo(w, nw));
   }
 
+  /// returns `data[index_s(u, v, w)]`
   T get_value(int u, int v, int w) const {
     return data[index_s(u, v, w)];
   }
 
-  Point get_point(int u, int v, int w) {
-    return {u, v, w, &data[index_s(u, v, w)]};
+  void set_value(int u, int v, int w, T x) {
+    data[index_s(u, v, w)] = x;
   }
 
-  Fractional get_fractional(int u, int v, int w) const {
-    return {u * (1.0 / nu), v * (1.0 / nv), w * (1.0 / nw)};
-  }
-  Position get_position(int u, int v, int w) const {
-    return unit_cell.orthogonalize(get_fractional(u, v, w));
+  /// Point stores normalizes indices (not the original u,v,w).
+  Point get_point(int u, int v, int w) {
+    u = modulo(u, nu);
+    v = modulo(v, nv);
+    w = modulo(w, nw);
+    return {u, v, w, &data[this->index_q(u, v, w)]};
   }
 
   Point get_nearest_point(const Fractional& f) {
+    if (this->axis_order != AxisOrder::XYZ)
+      fail("grid is not fully setup");
     return get_point(iround(f.x * nu), iround(f.y * nv), iround(f.z * nw));
   }
-
   Point get_nearest_point(const Position& pos) {
     return get_nearest_point(unit_cell.fractionalize(pos));
   }
 
+  size_t get_nearest_index(const Fractional& f) {
+    return index_s(iround(f.x * nu), iround(f.y * nv), iround(f.z * nw));
+  }
+
+  /// Point stores normalized indices, so fractional coordinates are in [0,1).
   Fractional point_to_fractional(const Point& p) const {
-    return get_fractional(p.u, p.v, p.w);
+    return this->get_fractional(p.u, p.v, p.w);
   }
   Position point_to_position(const Point& p) const {
-    return get_position(p.u, p.v, p.w);
+    return this->get_position(p.u, p.v, p.w);
   }
 
   static double grid_modulo(double x, int n, int* iptr) {
@@ -339,8 +396,10 @@ struct Grid : GridBase<T> {
     return x - f;
   }
 
-  // https://en.wikipedia.org/wiki/Trilinear_interpolation
+  /// https://en.wikipedia.org/wiki/Trilinear_interpolation
+  /// x,y,z are grid coordinates (x=1.5 is between 2nd and 3rd grid point).
   T interpolate_value(double x, double y, double z) const {
+    this->check_not_empty();
     int u, v, w;
     double xd = grid_modulo(x, nu, &u);
     double yd = grid_modulo(y, nv, &v);
@@ -367,7 +426,8 @@ struct Grid : GridBase<T> {
     return interpolate_value(unit_cell.fractionalize(ctr));
   }
 
-  // https://en.wikipedia.org/wiki/Tricubic_interpolation
+  /// https://en.wikipedia.org/wiki/Tricubic_interpolation
+  /// x,y,z are grid coordinates (x=1.5 is between 2nd and 3rd grid point).
   double tricubic_interpolation(double x, double y, double z) const {
     std::array<std::array<std::array<T,4>,4>,4> copy;
     copy_4x4x4(x, y, z, copy);
@@ -386,7 +446,7 @@ struct Grid : GridBase<T> {
   double tricubic_interpolation(const Position& ctr) const {
     return tricubic_interpolation(unit_cell.fractionalize(ctr));
   }
-  // the same + derivatives df/dx, df/dy, df/dz
+  /// returns the same as above + derivatives df/dx, df/dy, df/dz
   std::array<double,4> tricubic_interpolation_der(double x, double y, double z) const {
     std::array<std::array<std::array<T,4>,4>,4> copy;
     copy_4x4x4(x, y, z, copy);
@@ -416,8 +476,10 @@ struct Grid : GridBase<T> {
     auto r = tricubic_interpolation_der(fctr.x * nu, fctr.y * nv, fctr.z * nw);
     return {r[0], r[1] * nu, r[2] * nv, r[3] * nw};
   }
+  /// @private
   void copy_4x4x4(double& x, double& y, double& z,
                   std::array<std::array<std::array<T,4>,4>,4>& copy) const {
+    this->check_not_empty();
     auto prepare_indices = [this](double& r, int nt, int (&indices)[4]) {
       int t;
       r = this->grid_modulo(r, nt, &t);
@@ -441,20 +503,75 @@ struct Grid : GridBase<T> {
           copy[i][j][k] = this->get_value_q(u_indices[i], v_indices[j], w_indices[k]);
   }
 
-  void set_value(int u, int v, int w, T x) { data[index_s(u, v, w)] = x; }
+  /// @param order 1=nearest, 2=linear, 3=cubic interpolation
+  T interpolate(const Fractional& f, int order) const {
+    switch (order) {
+      case 1: return *const_cast<Grid<T>*>(this)->get_nearest_point(f).value;
+      case 2: return interpolate_value(f);
+      case 3: return (T) tricubic_interpolation(f);
+    }
+    throw std::invalid_argument("interpolation \"order\" must 1, 2 or 3");
+  }
 
-  template <bool UsePbc, typename Func>
-  void use_points_in_box(Fractional fctr, int du, int dv, int dw,
-                         Func&& func, bool fail_on_too_large_radius=true) {
+  void get_subarray(T* dest, std::array<int,3> start, std::array<int,3> shape) const {
+    this->check_not_empty();
+    if (this->axis_order != AxisOrder::XYZ)
+      fail("get_subarray() is for Grids in XYZ order");
+    const int u_start0 = modulo(start[0], nu);
+    for (int w = 0; w < shape[2]; w++) {
+      const int w0 = modulo(start[2] + w, nw);
+      for (int v = 0; v < shape[1]; v++) {
+        const int v0 = modulo(start[1] + v, nv);
+        int u_start = u_start0;
+        const T* src0 = &data[this->index_q(u_start, v0, w0)];
+        int len = shape[0];
+        while (len > nu - u_start) {
+          int elem = nu - u_start;
+          std::copy(src0, src0 + elem, dest);
+          src0 -= u_start;
+          dest += elem;
+          len -= elem;
+          u_start = 0;
+        }
+        std::copy(src0, src0 + len, dest);
+        dest += len;
+      }
+    }
+  }
+
+  void set_subarray(const T* src, std::array<int,3> start, std::array<int,3> shape) {
+    this->check_not_empty();
+    if (this->axis_order != AxisOrder::XYZ)
+      fail("set_subarray() is for Grids in XYZ order");
+    const int u_start0 = modulo(start[0], nu);
+    for (int w = 0; w < shape[2]; w++) {
+      const int w0 = modulo(start[2] + w, nw);
+      for (int v = 0; v < shape[1]; v++) {
+        const int v0 = modulo(start[1] + v, nv);
+        int u_start = u_start0;
+        T* dst0 = &data[this->index_q(u_start, v0, w0)];
+        int len = shape[0];
+        while (len > nu - u_start) {
+          int elem = nu - u_start;
+          std::copy(src, src + elem, dst0);
+          dst0 -= u_start;
+          src += elem;
+          len -= elem;
+          u_start = 0;
+        }
+        std::copy(src, src + len, dst0);
+        src += len;
+      }
+    }
+  }
+
+  template <bool UsePbc>
+  void check_size_for_points_in_box(int& du, int& dv, int& dw,
+                                    bool fail_on_too_large_radius) const {
     if (fail_on_too_large_radius) {
       if (2 * du >= nu || 2 * dv >= nv || 2 * dw >= nw)
         fail("grid operation failed: radius bigger than half the unit cell?");
     }
-    if (UsePbc)
-      fctr = fctr.wrap_to_unit();
-    int u0 = iround(fctr.x * nu);
-    int v0 = iround(fctr.y * nv);
-    int w0 = iround(fctr.z * nw);
     if (UsePbc && !fail_on_too_large_radius) {
       // If we'd use the minimum image convention the max would be (nu-1)/2.
       // The limits set here are necessary for index_n() that is used below.
@@ -462,6 +579,13 @@ struct Grid : GridBase<T> {
       dv = std::min(dv, nv - 1);
       dw = std::min(dw, nw - 1);
     }
+  }
+
+  template <bool UsePbc, typename Func>
+  void do_use_points_in_box(Fractional fctr, int du, int dv, int dw, Func&& func) {
+    int u0 = iround(fctr.x * nu);
+    int v0 = iround(fctr.y * nv);
+    int w0 = iround(fctr.z * nw);
     int u_lo = u0 - du;
     int u_hi = u0 + du;
     int v_lo = v0 - dv;
@@ -476,14 +600,30 @@ struct Grid : GridBase<T> {
       w_lo = std::max(w_lo, 0);
       w_hi = std::min(w_hi, nw - 1);
     }
-    for (int w = w_lo; w <= w_hi; ++w)
-      for (int v = v_lo; v <= v_hi; ++v)
+    const Position orth0(unit_cell.orth.mat.column_copy(0));
+    for (int w = w_lo; w <= w_hi; ++w) {
+      int w_ = UsePbc ? modulo(w, nw) : w;
+      double fw = w * (1.0 / nw);
+      for (int v = v_lo; v <= v_hi; ++v) {
+        int v_ = UsePbc ? modulo(v, nv) : v;
+        double fv = v * (1.0 / nv);
+        size_t idx0 = this->index_q(0, v_, w_);
+        Position delta0 = unit_cell.orthogonalize_difference(fctr - Fractional(0., fv, fw));
         for (int u = u_lo; u <= u_hi; ++u) {
-          Fractional fdelta = fctr - get_fractional(u, v, w);
-          Position delta = unit_cell.orthogonalize_difference(fdelta);
-          size_t idx = UsePbc ? index_n(u, v, w) : this->index_q(u, v, w);
-          func(data[idx], delta);
+          int u_ = UsePbc ? modulo(u, nu) : u;
+          double fu = u * (1.0 / nu);
+          Position delta = delta0 - orth0 * fu;
+          func(data[idx0 + u_], delta, u, v, w);
         }
+      }
+    }
+  }
+
+  template <bool UsePbc, typename Func>
+  void use_points_in_box(Fractional fctr, int du, int dv, int dw,
+                         Func&& func, bool fail_on_too_large_radius=true) {
+    check_size_for_points_in_box<UsePbc>(du, dv, dw, fail_on_too_large_radius);
+    do_use_points_in_box<UsePbc>(fctr, du, dv, dw, func);
   }
 
   template <bool UsePbc, typename Func>
@@ -493,10 +633,10 @@ struct Grid : GridBase<T> {
     int dv = (int) std::ceil(radius / spacing[1]);
     int dw = (int) std::ceil(radius / spacing[2]);
     use_points_in_box<UsePbc>(fctr_, du, dv, dw,
-                      [&](T& point, const Position& delta) {
+                      [&](T& ref, const Position& delta, int, int, int) {
                         double d2 = delta.length_sq();
                         if (d2 < radius * radius)
-                          func(point, d2);
+                          func(ref, d2);
                       },
                       fail_on_too_large_radius);
   }
@@ -504,9 +644,9 @@ struct Grid : GridBase<T> {
   void set_points_around(const Position& ctr, double radius, T value, bool use_pbc=true) {
     Fractional fctr = unit_cell.fractionalize(ctr);
     if (use_pbc)
-      use_points_around<true>(fctr, radius, [&](T& point, double) { point = value; });
+      use_points_around<true>(fctr, radius, [&](T& ref, double) { ref = value; });
     else
-      use_points_around<false>(fctr, radius, [&](T& point, double) { point = value; });
+      use_points_around<false>(fctr, radius, [&](T& ref, double) { ref = value; });
   }
 
   void change_values(T old_value, T new_value) {
@@ -515,30 +655,17 @@ struct Grid : GridBase<T> {
         d = new_value;
   }
 
-  // operations re-scaled for faster later calculations; identity not included
-  std::vector<GridOp> get_scaled_ops_except_id() const {
-    GroupOps gops = spacegroup->operations();
-    std::vector<GridOp> grid_ops;
-    grid_ops.reserve(gops.order());
-    for (const Op& so : gops.sym_ops)
-      for (const Op::Tran& co : gops.cen_ops) {
-        Op op = so.add_centering(co);
-        if (op != Op::identity()) {
-          // Rescale. Rotations are expected to be integral.
-          op.tran[0] = op.tran[0] * nu / Op::DEN;
-          op.tran[1] = op.tran[1] * nv / Op::DEN;
-          op.tran[2] = op.tran[2] * nw / Op::DEN;
-          for (int i = 0; i != 3; ++i)
-            for (int j = 0; j != 3; ++j)
-              op.rot[i][j] /= Op::DEN;
-          grid_ops.push_back({op});
-        }
-      }
-    return grid_ops;
+  /// Use provided function to reduce values of all symmetry mates of each
+  /// grid point, then assign the result to all the points.
+  template<typename Func>
+  void symmetrize(Func func) {
+    symmetrize_using_ops(this->get_scaled_ops_except_id(), func);
   }
 
   template<typename Func>
   void symmetrize_using_ops(const std::vector<GridOp>& ops, Func func) {
+    if (ops.empty())
+      return;
     std::vector<size_t> mates(ops.size(), 0);
     std::vector<bool> visited(data.size(), false);
     size_t idx = 0;
@@ -550,7 +677,7 @@ struct Grid : GridBase<T> {
             continue;
           for (size_t k = 0; k < ops.size(); ++k) {
             std::array<int,3> t = ops[k].apply(u, v, w);
-            mates[k] = index_n(t[0], t[1], t[2]);
+            mates[k] = this->index_n(t[0], t[1], t[2]);
           }
           T value = data[idx];
           for (size_t k : mates) {
@@ -568,19 +695,7 @@ struct Grid : GridBase<T> {
     assert(idx == data.size());
   }
 
-  // Use provided function to reduce values of all symmetry mates of each
-  // grid point, then assign the result to all the points.
-  template<typename Func>
-  void symmetrize(Func func) {
-    if (spacegroup && spacegroup->number != 1) {
-      if (this->axis_order == AxisOrder::XYZ)
-        symmetrize_using_ops(get_scaled_ops_except_id(), func);
-      else
-        fail("cannot 'symmetrize' grid in order other than XYZ");
-    }
-  }
-
-  // two most common symmetrize functions
+  // most common symmetrize functions
   void symmetrize_min() {
     symmetrize([](T a, T b) { return (a < b || !(b == b)) ? a : b; });
   }
@@ -595,72 +710,25 @@ struct Grid : GridBase<T> {
     symmetrize([](T a, T b) { return a + b; });
   }
 
-
-  template<typename V> std::vector<V> get_asu_mask() const {
-    std::vector<V> mask(data.size(), 0);
-    std::vector<GridOp> ops = get_scaled_ops_except_id();
-    size_t idx = 0;
-    for (int w = 0; w != nw; ++w)
-      for (int v = 0; v != nv; ++v)
-        for (int u = 0; u != nu; ++u, ++idx)
-          if (mask[idx] == 0)
-            for (const GridOp& op : ops) {
-              std::array<int, 3> t = op.apply(u, v, w);
-              size_t mate_idx = index_n(t[0], t[1], t[2]);
-              // grid point can be on special position
-              if (mate_idx != idx)
-                mask[mate_idx] = 1;
-            }
-    return mask;
+  /// scale the data to get mean == 0 and rmsd == 1 (doesn't work for T=complex)
+  void normalize() {
+    DataStats stats = calculate_data_statistics(data);
+    for (T& x : data)
+      x = static_cast<T>((x - stats.dmean) / stats.rms);
   }
 
-  MaskedGrid<T> asu();
-};
-
-
-template<typename T, typename V> struct MaskedGrid {
-  Grid<T>* grid;
-  Grid<V> mask; // should we simply store the mask as vector?
-
-  MaskedGrid(Grid<T>& grid_, std::vector<V>&& mask_data) : grid(&grid_) {
-    mask.copy_metadata_from(grid_);
-    mask.data = mask_data;
-  }
-
-  struct iterator {
-    MaskedGrid& parent;
-    size_t index;
-    int u = 0, v = 0, w = 0;
-    iterator(MaskedGrid& parent_, size_t index_)
-      : parent(parent_), index(index_) {}
-    iterator& operator++() {
-      do {
-        ++index;
-        if (++u == parent.grid->nu) {
-          u = 0;
-          if (++v == parent.grid->nv) {
-            v = 0;
-            ++w;
-          }
+  // TODO: can it be replaced with interpolate_grid(dest, src, Transform(), order)?
+  void resample_to(Grid<T>& dest, int order) const {
+    dest.check_not_empty();
+    int idx = 0;
+    for (int w = 0; w < dest.nw; ++w)
+      for (int v = 0; v < dest.nv; ++v)
+        for (int u = 0; u < dest.nu; ++u, ++idx) {
+          const Fractional f = dest.get_fractional(u, v, w);
+          dest.data[idx] = interpolate(f, order);
         }
-      } while (index != parent.mask.data.size() &&
-               parent.mask.data[index] != 0);
-      return *this;
-    }
-    typename GridBase<T>::Point operator*() {
-      return {u, v, w, &parent.grid->data[index]};
-    }
-    bool operator==(const iterator &o) const { return index == o.index; }
-    bool operator!=(const iterator &o) const { return index != o.index; }
-  };
-  iterator begin() { return {*this, 0}; }
-  iterator end() { return {*this, mask.data.size()}; }
+  }
 };
-
-template<typename T>
-MaskedGrid<T> Grid<T>::asu() {
-  return {*this, get_asu_mask<std::int8_t>()};
-}
 
 
 template<typename T>

@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017 Global Phasing Ltd.
 
 // Writing cif::Document or its parts to std::ostream.
@@ -18,6 +17,7 @@ enum class Style {
   PreferPairs,  // write single-row loops as pairs
   Pdbx,         // PreferPairs + put '#' (empty comments) between categories
   Indent35,     // start values in pairs from 35th column
+  Aligned,      // columns in tables are left-aligned
 };
 
 // CIF files are read in binary mode. It makes difference only for text fields.
@@ -41,7 +41,7 @@ inline void write_out_pair(std::ostream& os, const std::string& name,
   } else {
     if (name.size() + value.size() > 120)
       os.put('\n');
-    else if (style == Style::Indent35 && name.size() < 34)
+    else if ((style == Style::Indent35 || style == Style::Aligned) && name.size() < 34)
       os.write("                                  ", 34 - name.size());
     else
       os.put(' ');
@@ -50,22 +50,8 @@ inline void write_out_pair(std::ostream& os, const std::string& name,
   os.put('\n');
 }
 
-inline void write_out_loop_values(std::ostream& os, const Loop& loop) {
-  size_t ncol = loop.tags.size();
-  size_t col = 0;
-  for (const std::string& val : loop.values) {
-    bool text_field = is_text_field(val);
-    os.put(col++ == 0 || text_field ? '\n' : ' ');
-    if (text_field)
-      write_text_field(os, val);
-    else
-      os << val;
-    if (col == ncol)
-      col = 0;
-  }
-}
-
 inline void write_out_loop(std::ostream& os, const Loop& loop, Style style) {
+  constexpr size_t max_padding = 30;  // if increased, adjust os.write() below
   if (loop.values.empty())
     return;
   if ((style == Style::PreferPairs || style == Style::Pdbx) &&
@@ -74,10 +60,46 @@ inline void write_out_loop(std::ostream& os, const Loop& loop, Style style) {
       write_out_pair(os, loop.tags[i], loop.values[i], style);
     return;
   }
+  // tags
   os << "loop_";
   for (const std::string& tag : loop.tags)
     os << '\n' << tag;
-  write_out_loop_values(os, loop);
+  // values
+  size_t ncol = loop.tags.size();
+
+  std::vector<size_t> col_width;
+  if (style == Style::Aligned) {
+    col_width.resize(ncol, 1);
+    size_t col = 0;
+    for (const std::string& val : loop.values) {
+      if (!is_text_field(val))
+        col_width[col] = std::max(col_width[col], val.size());
+      if (++col == ncol)
+        col = 0;
+    }
+    for (size_t& w : col_width)
+      w = std::min(w, max_padding);
+  }
+
+  size_t col = 0;
+  bool need_new_line = true;
+  for (const std::string& val : loop.values) {
+    bool text_field = is_text_field(val);
+    os.put(need_new_line || text_field ? '\n' : ' ');
+    need_new_line = text_field;
+    if (text_field)
+      write_text_field(os, val);
+    else
+      os << val;
+    if (col != ncol - 1) {
+      if (!col_width.empty() && val.size() < col_width[col])
+        os.write("                                  ", col_width[col] - val.size());
+      ++col;
+    } else {
+      col = 0;
+      need_new_line = true;
+    }
+  }
   os.put('\n');
 }
 
@@ -118,20 +140,20 @@ inline bool should_be_separated_(const Item& a, const Item& b) {
 
 inline void write_cif_block_to_stream(std::ostream& os, const Block& block,
                                       Style style=Style::Simple) {
-    os << "data_" << block.name << '\n';
-    if (style == Style::Pdbx)
-      os << "#\n";
-    const Item* prev = nullptr;
-    for (const Item& item : block.items)
-      if (item.type != ItemType::Erased) {
-        if (prev && style != Style::NoBlankLines &&
-            should_be_separated_(*prev, item))
-          os << (style == Style::Pdbx ? "#\n" : "\n");
-        write_out_item(os, item, style);
-        prev = &item;
-      }
-    if (style == Style::Pdbx)
-      os << "#\n";
+  os << "data_" << block.name << '\n';
+  if (style == Style::Pdbx)
+    os << "#\n";
+  const Item* prev = nullptr;
+  for (const Item& item : block.items)
+    if (item.type != ItemType::Erased) {
+      if (prev && style != Style::NoBlankLines &&
+          should_be_separated_(*prev, item))
+        os << (style == Style::Pdbx ? "#\n" : "\n");
+      write_out_item(os, item, style);
+      prev = &item;
+    }
+  if (style == Style::Pdbx)
+    os << "#\n";
 }
 
 inline void write_cif_to_stream(std::ostream& os, const Document& doc,

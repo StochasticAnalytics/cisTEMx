@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2018 Global Phasing Ltd.
 //
 // Read small molecule CIF file into SmallStructure (from small.hpp).

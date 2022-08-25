@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2018 Global Phasing Ltd.
 //
 // Math utilities. 3D linear algebra.
@@ -81,9 +80,10 @@ struct Vec3 {
   Vec3 normalized() const { return changed_magnitude(1.0); }
   double dist_sq(const Vec3& o) const { return (*this - o).length_sq(); }
   double dist(const Vec3& o) const { return std::sqrt(dist_sq(o)); }
-  double angle(const Vec3& o) const {
-    return std::acos(dot(o) / std::sqrt(length_sq() * o.length_sq()));
+  double cos_angle(const Vec3& o) const {
+    return dot(o) / std::sqrt(length_sq() * o.length_sq());
   }
+  double angle(const Vec3& o) const { return std::acos(cos_angle(o)); }
   bool approx(const Vec3& o, double epsilon) const {
     return std::fabs(x - o.x) <= epsilon &&
            std::fabs(y - o.y) <= epsilon &&
@@ -123,6 +123,17 @@ struct Mat33 {
     if (i < 0 || i > 2)
       throw std::out_of_range("Mat33 column index must be 0, 1 or 2.");
     return Vec3(a[0][i], a[1][i], a[2][i]);
+  }
+
+  Mat33 operator+(const Mat33& b) const {
+    return Mat33(a[0][0] + b[0][0], a[0][1] + b[0][1], a[0][2] + b[0][2],
+                 a[1][0] + b[1][0], a[1][1] + b[1][1], a[1][2] + b[1][2],
+                 a[2][0] + b[2][0], a[2][1] + b[2][1], a[2][2] + b[2][2]);
+  }
+  Mat33 operator-(const Mat33& b) const {
+    return Mat33(a[0][0] - b[0][0], a[0][1] - b[0][1], a[0][2] - b[0][2],
+                 a[1][0] - b[1][0], a[1][1] - b[1][1], a[1][2] - b[1][2],
+                 a[2][0] - b[2][0], a[2][1] - b[2][1], a[2][2] - b[2][2]);
   }
 
   Vec3 multiply(const Vec3& p) const {
@@ -406,7 +417,7 @@ struct Correlation {
   double mean_y = 0.;
   void add_point(double x, double y) {
     ++n;
-    double weight = (n - 1.0) / n;
+    double weight = (double)(n - 1) / n;
     double dx = x - mean_x;
     double dy = y - mean_y;
     sum_xx += weight * dx * dx;
@@ -465,13 +476,20 @@ DataStats calculate_data_statistics(const std::vector<T>& data) {
 
 // internally used functions
 namespace impl {
-template<typename T> bool is_same(T a, T b) { return a == b; }
-template<> inline bool is_same(float a, float b) {
-  return std::isnan(b) ? std::isnan(a) : a == b;
-}
-template<> inline bool is_same(double a, double b) {
-  return std::isnan(b) ? std::isnan(a) : a == b;
-}
+// MSVC is missing isnan(IntegralType), so we define is_nan as a replacement
+template<typename T>
+typename std::enable_if<std::is_integral<T>::value, bool>::type
+is_nan(T) { return false; }
+template<typename T>
+typename std::enable_if<std::is_floating_point<T>::value, bool>::type
+is_nan(T a) { return std::isnan(a); }
+
+template<typename T>
+typename std::enable_if<std::is_integral<T>::value, bool>::type
+is_same(T a, T b) { return a == b; }
+template<typename T>
+typename std::enable_if<std::is_floating_point<T>::value, bool>::type
+is_same(T a, T b) { return std::isnan(b) ? std::isnan(a) : a == b; }
 } // namespace impl
 
 } // namespace gemmi

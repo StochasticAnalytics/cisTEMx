@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Simple pairwise sequence alignment.
 //
 // Code in this file is based on and derived from files ksw2_gg.c and ksw2.h

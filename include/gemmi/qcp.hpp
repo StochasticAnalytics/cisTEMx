@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Structural superposition, the QCP method.
 //
 // This is modified code from qcprot.c from https://theobald.brandeis.edu/qcp/

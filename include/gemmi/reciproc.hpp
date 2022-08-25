@@ -1,7 +1,6 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2020 Global Phasing Ltd.
 //
-// Reciprocal space utilities.
+// Reciprocal space helper functions.
 
 #ifndef GEMMI_RECIPROC_HPP_
 #define GEMMI_RECIPROC_HPP_

@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2018 Global Phasing Ltd.
 //
 // Place hydrogens according to bond lengths and angles from monomer library.
@@ -24,7 +23,8 @@ inline void add_hydrogens_without_positions(const ChemComp& cc, Residue& res) {
       continue;
     Atom atom = it->to_full_atom();
     if (const Restraints::AtomId* bonded = cc.rt.first_bonded_atom(atom.name))
-      // avoid range-based-for here because res.atoms may get re-allocated
+      // Add H atom for each conformation (altloc) of the parent atom.
+      // Avoid range-based-for here because res.atoms may get re-allocated.
       for (size_t i = 0, size = res.atoms.size(); i != size; ++i)
         if (res.atoms[i].name == bonded->atom) {
           const Atom& parent = res.atoms[i];
@@ -289,7 +289,7 @@ inline void place_hydrogens(const Topo& topo, const Atom& atom) {
     const Angle* ang3 = topo.take_angle(known[0].ptr, &atom, known[1].ptr);
 
     if (!ang1 || !ang2)
-      giveup(tostr("Missing angle restraint ", hs[0].ptr->name, '-', atom.name,
+      giveup(cat("Missing angle restraint ", hs[0].ptr->name, '-', atom.name,
                    '-', known[ang1 ? 1 : 0].ptr->name, ".\n"));
     double theta1 = ang1->radians();
     double theta2 = ang2->radians();
@@ -392,7 +392,7 @@ prepare_topology(Structure& st, MonLib& monlib, size_t model_index,
 
   bool keep = (h_change == HydrogenChange::NoChange || h_change == HydrogenChange::Shift);
   if (!keep || reorder) {
-    // remove/add hydrogens, sort atoms, set sequential serial numbers
+    // remove/add hydrogens, sort atoms in residues, assign serial numbers
     int serial = 0;
     for (Topo::ChainInfo& chain_info : topo->chain_infos)
       for (Topo::ResInfo& ri : chain_info.res_infos) {
@@ -401,14 +401,24 @@ prepare_topology(Structure& st, MonLib& monlib, size_t model_index,
         if (!keep) {
           remove_hydrogens(res);
           if (h_change == HydrogenChange::ReAdd ||
-              (h_change == HydrogenChange::ReAddButWater && !res.is_water()))
+              (h_change == HydrogenChange::ReAddButWater && !res.is_water())) {
             add_hydrogens_without_positions(cc, res);
+            if (h_change == HydrogenChange::ReAddButWater) {
+              // a special handling of HIS for compatibility with Refmac
+              if (cc.name == "HIS") {
+                for (gemmi::Atom& atom : ri.res->atoms)
+                  if (atom.name == "HD1" || atom.name == "HE2")
+                    atom.occ = 0;
+              }
+            }
+          }
         }
         if (reorder) {
           for (Atom& atom : res.atoms) {
             auto it = cc.find_atom(atom.name);
             if (it == cc.atoms.end())
-              topo->err("no atom " + atom.name + " expected in " + res.name);
+              topo->err("definition not found for " +
+                        atom_str(chain_info.chain_ref, *ri.res, atom));
             atom.serial = int(it - cc.atoms.begin()); // temporary, for sorting only
           }
           std::sort(res.atoms.begin(), res.atoms.end(), [](const Atom& a, const Atom& b) {

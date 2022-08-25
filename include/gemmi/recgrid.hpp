@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2020 Global Phasing Ltd.
 //
 // ReciprocalGrid -- grid for reciprocal space data.
@@ -10,6 +9,15 @@
 #include "grid.hpp"
 
 namespace gemmi {
+
+inline signed char friedel_mate_value(signed char v) { return v; }
+inline float friedel_mate_value(float v) { return v; }
+inline double friedel_mate_value(double v) { return v; }
+
+template<typename T>
+std::complex<T> friedel_mate_value(const std::complex<T>& v) {
+  return std::conj(v);
+}
 
 template<typename T>
 struct ReciprocalGrid : GridBase<T> {
@@ -64,6 +72,30 @@ struct ReciprocalGrid : GridBase<T> {
   }
   double calculate_d(const typename GridBase<T>::Point& point) const {
     return this->unit_cell.calculate_d(to_hkl(point));
+  }
+
+  T get_value_by_hkl(Miller hkl, double unblur=0,
+                     bool mott_bethe=false) const {
+    if (this->axis_order == AxisOrder::ZYX)
+      fail("get_value_by_hkl(): ZYX order is not supported yet");
+    T value;
+    if (half_l && hkl[2] < 0)
+      value = friedel_mate_value(this->get_value(-hkl[0], -hkl[1], -hkl[2]));
+    else
+      value = this->get_value(hkl[0], hkl[1], hkl[2]);
+
+    if (unblur != 0. || mott_bethe) {
+      double inv_d2 = this->unit_cell.calculate_1_d2(hkl);
+      double mult = 1;
+      if (unblur != 0)
+        // cf. reciprocal_space_multiplier()
+        mult = std::exp(unblur * 0.25 * inv_d2);
+      if (mott_bethe)
+        // cf. mott_bethe_factor
+        mult *= -1. / (2 * pi() * pi() * bohrradius()) / inv_d2;
+      value *= static_cast<decltype(std::abs(value))>(mult);
+    }
+    return value;
   }
 
   // the result is always sorted by h,k,l

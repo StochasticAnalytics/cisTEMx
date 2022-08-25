@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2019 Global Phasing Ltd.
 //
 // MTZ reflection file format.
@@ -93,10 +92,10 @@ struct Mtz {
     bool has_data() const { return parent->has_data(); }
     int size() const { return has_data() ? parent->nreflections : 0; }
     size_t stride() const { return parent->columns.size(); }
-    float& operator[](int n) { return parent->data[idx + n * stride()]; }
-    float operator[](int n) const { return parent->data[idx + n * stride()]; }
-    float& at(int n) { return parent->data.at(idx + n * stride()); }
-    float at(int n) const { return parent->data.at(idx + n * stride()); }
+    float& operator[](std::size_t n) { return parent->data[idx + n * stride()]; }
+    float operator[](std::size_t n) const { return parent->data[idx + n * stride()]; }
+    float& at(std::size_t n) { return parent->data.at(idx + n * stride()); }
+    float at(std::size_t n) const { return parent->data.at(idx + n * stride()); }
     bool is_integer() const {
       return type == 'H' || type == 'B' || type == 'Y' || type == 'I';
     }
@@ -184,11 +183,8 @@ struct Mtz {
   FILE* warnings = nullptr;
 
   explicit Mtz(bool with_base=false) {
-    if (with_base) {
-      datasets.push_back({0, "HKL_base", "HKL_base", "HKL_base", cell, 0.});
-      for (int i = 0; i != 3; ++i)
-        add_column(std::string(1, "HKL"[i]), 'H', 0, i);
-    }
+    if (with_base)
+      add_base();
   }
   Mtz(Mtz&& o) noexcept { *this = std::move(o); }
   Mtz& operator=(Mtz&& o) noexcept {
@@ -221,6 +217,12 @@ struct Mtz {
   Mtz(Mtz const&) = delete;
   Mtz& operator=(Mtz const&) = delete;
 
+  void add_base() {
+    datasets.push_back({0, "HKL_base", "HKL_base", "HKL_base", cell, 0.});
+    for (int i = 0; i != 3; ++i)
+      add_column(std::string(1, "HKL"[i]), 'H', 0, i, false);
+  }
+
   // Functions to use after MTZ headers (and data) is read.
 
   double resolution_high() const { return std::sqrt(1.0 / max_1_d2); }
@@ -245,16 +247,24 @@ struct Mtz {
   }
 
   UnitCell get_average_cell_from_batch_headers(double* rmsd) const {
+    if (rmsd)
+      for (int i = 0; i < 6; ++i)
+        rmsd[i] = 0.;
     double avg[6] = {0., 0., 0., 0., 0., 0.};
     for (const Batch& batch : batches)
-      for (int i = 0; i < 6; ++i)
+      for (int i = 0; i < 6; ++i) {
+        // if batch headers are not set correctly, return global cell
+        if (batch.floats[i] <= 0)
+          return cell;
         avg[i] += batch.floats[i];
+      }
+    if (avg[0] <= 0 || avg[1] <= 0 || avg[2] <= 0 ||
+        avg[3] <= 0 || avg[4] <= 0 || avg[5] <= 0)
+      return UnitCell();
     size_t n = batches.size();
     for (int i = 0; i < 6; ++i)
       avg[i] /= n;
     if (rmsd) {
-      for (int i = 0; i < 6; ++i)
-        rmsd[i] = 0.;
       for (const Batch& batch : batches)
         for (int i = 0; i < 6; ++i)
           rmsd[i] += sq(avg[i] - batch.floats[i]);
@@ -379,8 +389,9 @@ struct Mtz {
   }
 
   Column* rfree_column() {
+    // cf. MtzToCif::default_spec in mtz2cif.hpp
     return column_with_type_and_one_of_labels('I',
-        {"FREE", "RFREE", "FREER", "FreeR_flag", "R-free-flags"});
+        {"FREE", "RFREE", "FREER", "FreeR_flag", "R-free-flags", "FreeRflag"});
   }
   const Column* rfree_column() const {
     return const_cast<Mtz*>(this)->rfree_column();
@@ -804,20 +815,20 @@ struct Mtz {
   }
 
   // (for merged MTZ only) change HKL to ASU equivalent, adjust phases
-  void ensure_asu() {
+  void ensure_asu(bool tnt_asu=false) {
     if (!is_merged())
       fail("Mtz::ensure_asu() is for merged MTZ only");
     if (!spacegroup)
       return;
     GroupOps gops = spacegroup->operations();
-    ReciprocalAsu asu(spacegroup);
+    ReciprocalAsu asu(spacegroup, tnt_asu);
     std::vector<int> phase_columns = positions_of_columns_with_type('P');
     std::vector<int> abcd_columns = positions_of_columns_with_type('A');
     std::vector<int> dano_columns = positions_of_columns_with_type('D');
     std::vector<std::pair<int,int>> plus_minus_columns = positions_of_plus_minus_columns();
     bool no_special_columns = phase_columns.empty() && abcd_columns.empty() &&
                               plus_minus_columns.empty() && dano_columns.empty();
-    bool centric = no_special_columns || gops.is_centric();
+    bool centric = no_special_columns || gops.is_centrosymmetric();
     for (size_t n = 0; n < data.size(); n += columns.size()) {
       Miller hkl = get_hkl(n);
       if (asu.is_in(hkl))
@@ -828,7 +839,7 @@ struct Mtz {
       if (no_special_columns)
         continue;
       int isym = result.second;
-      if (!phase_columns.empty()) {
+      if (!phase_columns.empty() || !abcd_columns.empty()) {
         const Op& op = gops.sym_ops[(isym - 1) / 2];
         double shift = op.phase_shift(hkl);
         if (shift != 0) {
@@ -837,6 +848,22 @@ struct Mtz {
           double shift_deg = deg(shift);
           for (int col : phase_columns)
             data[n + col] = float(data[n + col] + shift_deg);
+          for (auto i = abcd_columns.begin(); i+3 < abcd_columns.end(); i += 4) {
+            double sinx = std::sin(shift);
+            double cosx = std::cos(shift);
+            double sin2x = 2 * sinx * cosx;
+            double cos2x = sq(cosx)- sq(sinx);
+            double a = data[n + *(i+0)];
+            double b = data[n + *(i+1)];
+            double c = data[n + *(i+2)];
+            double d = data[n + *(i+3)];
+            // a sin(x+y) + b cos(x+y) = a sin(x) cos(y) - b sin(x) sin(y)
+            //                         + a cos(x) sin(y) + b cos(x) cos(y)
+            data[n + *(i+0)] = float(a * cosx - b * sinx);
+            data[n + *(i+1)] = float(a * sinx + b * cosx);
+            data[n + *(i+2)] = float(c * cos2x - d * sin2x);
+            data[n + *(i+3)] = float(c * sin2x + d * cos2x);
+          }
         }
       }
       if (isym % 2 == 0 && !centric) {
@@ -845,7 +872,6 @@ struct Mtz {
         for (int col : dano_columns)
           data[n + col] = -data[n + col];
       }
-      // TODO handle abcd_columns
     }
   }
 
@@ -906,7 +932,7 @@ struct Mtz {
   }
 
   Column& add_column(const std::string& label, char type,
-                     int dataset_id=-1, int pos=-1, bool expand_data=false) {
+                     int dataset_id, int pos, bool expand_data) {
     if (datasets.empty())
       fail("No datasets.");
     if (dataset_id < 0)
@@ -987,8 +1013,7 @@ struct Mtz {
               src_mtz->data[*src * src_stride + src_col.idx + i];
           ++dst;
           ++src;
-        } else if (std::tie(dst_hkl[0], dst_hkl[1], dst_hkl[2]) <
-                   std::tie(src_hkl[0], src_hkl[1], src_hkl[2])) {
+        } else if (dst_hkl < src_hkl) {
           ++dst;
         } else {
           ++src;
@@ -1025,7 +1050,7 @@ struct Mtz {
         col_idx += 1 + (int)trailing_cols.size();
     }
     for (int i = 0; i <= (int) trailing_cols.size(); ++i)
-      add_column("", ' ', -1, dest_idx + i);
+      add_column("", ' ', -1, dest_idx + i, false);
     expand_data_rows(1 + trailing_cols.size(), dest_idx);
     // copy the data
     const Column& src_col_now = col_idx < 0 ? src_col : columns[col_idx];
@@ -1044,22 +1069,37 @@ struct Mtz {
     data.resize(columns.size() * nreflections);
   }
 
-  void expand_data_rows(int added, int pos=-1) {
-    int old_row_size = (int) columns.size() - added;
-    if (added < 0 || (int) data.size() != old_row_size * nreflections)
+  template <typename Func>
+  void remove_rows_if(Func condition) {
+    if (!has_data())
+      fail("No data.");
+    auto out = data.begin();
+    size_t width = columns.size();
+    for (auto r = data.begin(); r < data.end(); r += width)
+      if (!condition(&*r)) {
+        if (r != out)
+          std::copy(r, r + width, out);
+        out += width;
+      }
+    data.erase(out, data.end());
+    nreflections = int(data.size() / width);
+  }
+
+  void expand_data_rows(size_t added, int pos_=-1) {
+    size_t old_row_size = columns.size() - added;
+    if (data.size() != old_row_size * nreflections)
       fail("Internal error");
     data.resize(columns.size() * nreflections);
-    if (pos == -1)
-      pos = old_row_size;
-    else if (pos < 0 || pos > old_row_size)
+    size_t pos = pos_ == -1 ? old_row_size : (size_t) pos_;
+    if (pos > old_row_size)
       fail("expand_data_rows(): pos out of range");
     std::vector<float>::iterator dst = data.end();
     for (int i = nreflections; i-- != 0; ) {
-      for (int j = old_row_size; j-- != pos; )
+      for (size_t j = old_row_size; j-- != pos; )
         *--dst = data[i * old_row_size + j];
-      for (int j = added; j-- != 0; )
+      for (size_t j = added; j-- != 0; )
         *--dst = NAN;
-      for (int j = pos; j-- != 0; )
+      for (size_t j = pos; j-- != 0; )
         *--dst = data[i * old_row_size + j];
     }
     assert(dst == data.begin());
@@ -1206,13 +1246,13 @@ void Mtz::write_to_stream(Write write) const {
   };
   for (const Column& col : columns) {
     auto minmax = calculate_min_max_disregarding_nans(col.begin(), col.end());
+    const char* label = !col.label.empty() ? col.label.c_str() : "_";
     WRITE("COLUMN %-30s %c %17s %17s %4d",
-          col.label.c_str(), col.type,
+          label, col.type,
           format17(minmax[0]).c_str(), format17(minmax[1]).c_str(),
           col.dataset_id);
     if (!col.source.empty())
-      WRITE("COLSRC %-30s %-36s  %4d",
-            col.label.c_str(), col.source.c_str(), col.dataset_id);
+      WRITE("COLSRC %-30s %-36s  %4d", label, col.source.c_str(), col.dataset_id);
   }
   WRITE("NDIF %8zu", datasets.size());
   for (const Dataset& ds : datasets) {

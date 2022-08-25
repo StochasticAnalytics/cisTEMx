@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2019 Global Phasing Ltd.
 //
 // Metadata from coordinate files.
@@ -145,6 +144,7 @@ struct RefinementInfo : BasicRefinementInfo {
 
 
 struct Metadata {
+  std::vector<std::string> authors;  // _audit_author.name
   std::vector<ExperimentInfo> experiments;
   std::vector<CrystalInfo> crystals;
   std::vector<RefinementInfo> refinement;

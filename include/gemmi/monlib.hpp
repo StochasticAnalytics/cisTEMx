@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2018 Global Phasing Ltd.
 //
 // Monomer library - (Refmac) restraints dictionary,
@@ -22,6 +21,8 @@
 
 namespace gemmi {
 
+typedef cif::Document (*read_cif_func)(const std::string&);
+
 inline void add_distinct_altlocs(const Residue& res, std::string& altlocs) {
   for (const Atom& atom : res.atoms)
     if (atom.altloc && altlocs.find(atom.altloc) == std::string::npos)
@@ -40,8 +41,9 @@ struct ChemLink {
     std::string mod;
     Group group;
     bool matches_group(Group res) const {
-      return res == group ||
-             (group == Group::Peptide && (int) res <= (int) Group::MPeptide);
+      return group != Group::Null &&
+             (res == group ||
+              (group == Group::Peptide && (int) res <= (int) Group::MPeptide));
     }
     int specificity() const {
       if (!comp.empty())
@@ -62,6 +64,7 @@ struct ChemLink {
         ++cstr;
       switch (ialpha4_id(cstr)) {
         case ialpha4_id("pept"): return Group::Peptide;
+        case ialpha4_id("l-pe"): return Group::Peptide;
         case ialpha4_id("p-pe"): return Group::PPeptide;
         case ialpha4_id("m-pe"): return Group::MPeptide;
         case ialpha4_id("pyra"): return Group::Pyranose;
@@ -220,6 +223,7 @@ inline ResidueInfo::Kind chemcomp_group_to_kind(const std::string& group) {
     switch (ialpha4_id(str)) {
       case ialpha4_id("non-"): return ResidueInfo::ELS;
       case ialpha4_id("pept"): return ResidueInfo::AA;
+      case ialpha4_id("l-pe"): return ResidueInfo::AA;
       case ialpha4_id("p-pe"): return ResidueInfo::PAA;
       case ialpha4_id("m-pe"): return ResidueInfo::MAA;
       case ialpha4_id("dna"): return ResidueInfo::DNA;
@@ -262,7 +266,7 @@ inline void insert_chemlinks(const cif::Document& doc,
       link.side2.group = ChemLink::read_group(row[7]);
       const cif::Block* block = doc.find_block("link_" + link.id);
       if (!block)
-        fail("inconsisted data_link_list");
+        fail("inconsistent data_link_list");
       link.rt = read_link_restraints(*block);
       links.emplace(link.id, link);
     }
@@ -283,11 +287,13 @@ inline Restraints read_restraint_modifications(const cif::Block& block_) {
   for (auto row : block.find("_chem_mod_bond.",
                              {"function", "atom_id_1", "atom_id_2",
                               "new_type",
-                              "new_value_dist", "new_value_dist_esd"}))
+                              "new_value_dist", "new_value_dist_esd",
+                              "?new_value_dist_nucleus", "?new_value_dist_nucleus_esd"}))
     rt.bonds.push_back({{chem_mod_type(row[0]), row.str(1)}, {1, row.str(2)},
                         bond_type_from_string(row[3]), false,
                         cif::as_number(row[4]), cif::as_number(row[5]),
-                        NAN, NAN});
+                        row.has(6) ? cif::as_number(row[6]) : NAN,
+                        row.has(7) ? cif::as_number(row[7]) : NAN});
   for (auto row : block.find("_chem_mod_angle.",
                              {"function", "atom_id_1",
                               "atom_id_2", "atom_id_3",
@@ -334,7 +340,7 @@ inline void insert_chemmods(const cif::Document& doc,
       mod.group_id = row.str(3);
       const cif::Block* block = doc.find_block("mod_" + mod.id);
       if (!block)
-        fail("inconsisted data_mod_list");
+        fail("inconsistent data_mod_list");
       for (auto ra : const_cast<cif::Block*>(block)->find("_chem_mod_atom.",
                                   {"function", "atom_id", "new_atom_id",
                                    "new_type_symbol", "new_type_energy",
@@ -349,26 +355,13 @@ inline void insert_chemmods(const cif::Document& doc,
   }
 }
 
-namespace impl {
-template <typename T>
-T& add_or_set(std::vector<T>& items, typename std::vector<T>::iterator it,
-              const T& x) {
-  if (it == items.end()) {
-    items.push_back(x);
-    return items.back();
-  }
-  *it = x;
-  return *it;
-}
-} // namespace impl
-
 inline void ChemMod::apply_to(ChemComp& chemcomp) const {
   // _chem_mod_atom
   for (const AtomMod& mod : atom_mods) {
     auto it = chemcomp.find_atom(mod.old_id);
     switch (mod.func) {
       case 'a':
-        if (chemcomp.find_atom(mod.new_id) == chemcomp.atoms.end())
+        if (!chemcomp.has_atom(mod.new_id))
           chemcomp.atoms.push_back({mod.new_id, mod.el,
                                     std::isnan(mod.charge) ? mod.charge : 0,
                                     mod.chem_type});
@@ -420,7 +413,11 @@ inline void ChemMod::apply_to(ChemComp& chemcomp) const {
     auto it = chemcomp.rt.find_bond(mod.id1.atom, mod.id2.atom);
     switch (mod.id1.comp) {
       case 'a':
-        impl::add_or_set(chemcomp.rt.bonds, it, mod).id1.comp = 1;
+        if (it == chemcomp.rt.bonds.end()) {
+          chemcomp.rt.bonds.push_back(mod);
+          // id1.comp was temporarily set to 'a', set it back to 1
+          chemcomp.rt.bonds.back().id1.comp = 1;
+        }
         break;
       case 'd':
         if (it != chemcomp.rt.bonds.end())
@@ -434,6 +431,10 @@ inline void ChemMod::apply_to(ChemComp& chemcomp) const {
             it->value = mod.value;
           if (!std::isnan(mod.esd))
             it->esd = mod.esd;
+          if (!std::isnan(mod.value_nucleus))
+            it->value_nucleus = mod.value_nucleus;
+          if (!std::isnan(mod.esd_nucleus))
+            it->esd_nucleus = mod.esd_nucleus;
         }
         break;
     }
@@ -444,7 +445,10 @@ inline void ChemMod::apply_to(ChemComp& chemcomp) const {
     auto it = chemcomp.rt.find_angle(mod.id1.atom, mod.id2.atom, mod.id3.atom);
     switch (mod.id1.comp) {
       case 'a':
-        impl::add_or_set(chemcomp.rt.angles, it, mod).id1.comp = 1;
+        if (it == chemcomp.rt.angles.end()) {
+          chemcomp.rt.angles.push_back(mod);
+          chemcomp.rt.angles.back().id1.comp = 1;
+        }
         break;
       case 'd':
         if (it != chemcomp.rt.angles.end())
@@ -467,7 +471,10 @@ inline void ChemMod::apply_to(ChemComp& chemcomp) const {
                                        mod.id3.atom, mod.id4.atom);
     switch (mod.id1.comp) {
       case 'a':
-        impl::add_or_set(chemcomp.rt.torsions, it, mod).id1.comp = 1;
+        if (it == chemcomp.rt.torsions.end()) {
+          chemcomp.rt.torsions.push_back(mod);
+          chemcomp.rt.torsions.back().id1.comp = 1;
+        }
         break;
       case 'd':
         if (it != chemcomp.rt.torsions.end())
@@ -494,7 +501,10 @@ inline void ChemMod::apply_to(ChemComp& chemcomp) const {
                                     mod.id2.atom, mod.id3.atom);
     switch (mod.id1.comp) {
       case 'a':
-        impl::add_or_set(chemcomp.rt.chirs, it, mod).id1.comp = 1;
+        if (it == chemcomp.rt.chirs.end()) {
+          chemcomp.rt.chirs.push_back(mod);
+          chemcomp.rt.chirs.back().id1.comp = 1;
+        }
         break;
       case 'd':
         if (it != chemcomp.rt.chirs.end())
@@ -528,7 +538,6 @@ inline void ChemMod::apply_to(ChemComp& chemcomp) const {
     }
 }
 
-
 struct MonLib {
   cif::Document mon_lib_list;
   std::map<std::string, ChemComp> monomers;
@@ -536,7 +545,7 @@ struct MonLib {
   std::map<std::string, ChemMod> modifications;
   std::map<std::string, ResidueInfo> residue_infos;
 
-  const ChemLink* find_link(const std::string& link_id) const {
+  const ChemLink* get_link(const std::string& link_id) const {
     auto link = links.find(link_id);
     return link != links.end() ? &link->second : nullptr;
   }
@@ -548,26 +557,49 @@ struct MonLib {
     auto resinfo = residue_infos.find(name);
     return resinfo != residue_infos.end() ? &resinfo->second : nullptr;
   }
-  const ChemLink* match_link(
-      const std::string& comp1, const std::string& atom1,
-      const std::string& comp2, const std::string& atom2) const {
+
+  // Returns the most specific link and a flag that is true
+  // if the order is comp2-comp1 in the link definition.
+  // We don't check chirality here (cf. calculate_score).
+  std::pair<const ChemLink*, bool>
+  match_link(const std::string& comp1, const std::string& atom1,
+             const std::string& comp2, const std::string& atom2) const {
+    const ChemLink* best_link = nullptr;
+    int best_score = -1;
+    bool inverted = false;
     for (auto& ml : links) {
       const ChemLink& link = ml.second;
+      if (link.rt.bonds.empty())
+        continue;
       // for now we don't have link definitions with >1 bonds
-      if (link.rt.bonds.size() == 1) {
-        const Restraints::Bond& bond = link.rt.bonds[0];
-        if (bond.id1.atom == atom1 && bond.id2.atom == atom2 &&
-            link_side_matches_residue(link.side1, comp1) &&
-            link_side_matches_residue(link.side2, comp2))
-          return &link;
+      const Restraints::Bond& bond = link.rt.bonds[0];
+      if (bond.id1.atom == atom1 && bond.id2.atom == atom2 &&
+          link_side_matches_residue(link.side1, comp1) &&
+          link_side_matches_residue(link.side2, comp2)) {
+        int score = link.side1.specificity() + link.side2.specificity();
+        if (score > best_score) {
+          best_link = &link;
+          best_score = score;
+          inverted = false;
+        }
+      }
+      if (bond.id1.atom == atom2 && bond.id2.atom == atom1 &&
+          link_side_matches_residue(link.side1, comp2) &&
+          link_side_matches_residue(link.side2, comp1)) {
+        int score = link.side1.specificity() + link.side2.specificity();
+        if (score > best_score) {
+          best_link = &link;
+          best_score = score;
+          inverted = true;
+        }
       }
     }
-    return nullptr;
+    return {best_link, inverted};
   }
 
   void ensure_unique_link_name(std::string& name) const {
     size_t orig_len = name.size();
-    for (int n = 1; find_link(name) != nullptr; ++n)
+    for (int n = 0; get_link(name) != nullptr; ++n)
       name.replace(orig_len, name.size(), std::to_string(n));
   }
 
@@ -586,8 +618,8 @@ struct MonLib {
 
   bool link_side_matches_residue(const ChemLink::Side& side,
                                  const std::string& res_name) const {
-    if (side.comp == res_name)
-      return true;
+    if (side.comp != "")
+      return side.comp == res_name;
     const ResidueInfo* resinfo = find_residue_info(res_name);
     return resinfo && side.matches_group(ChemLink::group_from_residue_info(*resinfo));
   }
@@ -609,7 +641,7 @@ struct MonLib {
     path += code;
     // On Windows several names are reserved (CON, PRN, AUX, ...), see
     // https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file
-    // The workaround in CCP4 monomer libary is to use CON_CON.cif, etc.
+    // The workaround in CCP4 monomer library is to use CON_CON.cif, etc.
     if (code.size() == 3)
       switch (ialpha3_id(code.c_str())) {
         case ialpha3_id("AUX"):
@@ -623,38 +655,36 @@ struct MonLib {
     path += ".cif";
     return path;
   }
+
+  void read_monomer_cif(const std::string& path, read_cif_func read_cif) {
+    mon_lib_list = (*read_cif)(path);
+    for (const cif::Block& block : mon_lib_list.blocks)
+      add_monomer_if_present(block);
+    insert_chemlinks(mon_lib_list, links);
+    insert_chemmods(mon_lib_list, modifications);
+    insert_comp_list(mon_lib_list, residue_infos);
+  }
 };
-
-typedef cif::Document (*read_cif_func)(const std::string&);
-
-inline MonLib read_monomer_cif(const std::string& path,
-                               read_cif_func read_cif) {
-  MonLib monlib;
-  monlib.mon_lib_list = (*read_cif)(path);
-  for (const cif::Block& block : monlib.mon_lib_list.blocks)
-    monlib.add_monomer_if_present(block);
-  insert_chemlinks(monlib.mon_lib_list, monlib.links);
-  insert_chemmods(monlib.mon_lib_list, monlib.modifications);
-  insert_comp_list(monlib.mon_lib_list, monlib.residue_infos);
-  return monlib;
-}
 
 inline MonLib read_monomer_lib(std::string monomer_dir,
                                const std::vector<std::string>& resnames,
                                read_cif_func read_cif,
+                               const std::string& libin="",
                                bool ignore_missing=false) {
   if (monomer_dir.empty())
     fail("read_monomer_lib: monomer_dir not specified.");
   if (monomer_dir.back() != '/' && monomer_dir.back() != '\\')
     monomer_dir += '/';
-  MonLib monlib = read_monomer_cif(monomer_dir + "list/mon_lib_list.cif",
-                                   read_cif);
+  MonLib monlib;
+  if (!libin.empty())
+    monlib.read_monomer_cif(libin, read_cif);
+  monlib.read_monomer_cif(monomer_dir + "list/mon_lib_list.cif", read_cif);
   std::string error;
   for (const std::string& name : resnames) {
     try {
       cif::Document doc = (*read_cif)(monomer_dir + MonLib::relative_monomer_path(name));
       auto cc = make_chemcomp_from_cif(name, doc);
-      monlib.monomers.emplace(name, cc);
+      monlib.monomers.emplace(name, std::move(cc));
     } catch(std::runtime_error& err) {
       if (!ignore_missing)
         error += "The monomer " + name + " could not be read: " + err.what() + ".\n";

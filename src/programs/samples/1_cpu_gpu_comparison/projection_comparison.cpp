@@ -16,19 +16,9 @@ void CPUvsGPUProjectionRunner(const wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting CPU vs GPU projection tests:", false);
 
-    wxString cistem_ref_var = "CISTEM_REF_IMAGES";
-    wxString cistem_ref_dir;
+    wxString cistem_ref_dir = CheckForReferenceImages( );
     // If we are in the dev container the CISTEM_REF_IMAGES variable should be defined, pointing to images we need.
-
-    if ( wxGetEnv(cistem_ref_var, &cistem_ref_dir) ) {
-        TEST(DoCPUvsGPUProjectionTest(cistem_ref_dir, temp_directory));
-    }
-    else {
-        // If we are not in the dev container, we can't do the tests.
-        TEST(false);
-        wxPrintf("Failed to resolve the (%s) environment variable.\n", cistem_ref_var);
-        wxPrintf("We can't run the test without images!\n\n");
-    }
+    TEST(DoCPUvsGPUProjectionTest(cistem_ref_dir, temp_directory));
 
     SamplesPrintEndMessage( );
 

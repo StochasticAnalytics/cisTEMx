@@ -12,7 +12,7 @@
 #include "../common/common.h"
 #include "masking.h"
 
-bool TestRunner(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
+void TestRunner(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting a test to be a runner", false);
 
@@ -23,7 +23,7 @@ bool TestRunner(const wxString& hiv_image_80x80x1_filename, wxString& temp_direc
     return;
 }
 
-bool MyTest( ) {
+bool MyTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     bool passed     = true;
     bool all_passed = true;
@@ -36,5 +36,5 @@ bool MyTest( ) {
 
     SamplesTestResult(passed);
 
-    return all_passed
+    return all_passed;
 }

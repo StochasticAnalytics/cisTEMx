@@ -23,6 +23,7 @@ extern bool samples_tests_have_all_passed{true};
 #include "3_tensor_ops/gpu_image_tensor_ops.h"
 #include "4_ffts/simple_cufft.h"
 #include "5_batched_ops/batched_correlation.h"
+#include "6_simulation/simple_3d.h"
 
 // Test data
 #include "../console_test/hiv_image_80x80x1.cpp"
@@ -40,7 +41,8 @@ bool SamplesTestingApp::DoCalculation( ) {
 
     SamplesPrintTestStartMessage("Starting samples testing", true);
 
-    DiskIOImageRunner(hiv_images_80x80x10_filename, temp_directory);
+    // DiskIOImageRunner(hiv_images_80x80x10_filename, temp_directory);
+    Simple3dSimulationRunner(hiv_image_80x80x1_filename, temp_directory);
 
 #ifdef ENABLEGPU
     // These are broken, I'm not quite sure where, seems to be allocation issues related to consme that Shiran wrote. Revisit.

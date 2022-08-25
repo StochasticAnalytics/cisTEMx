@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017 Global Phasing Ltd.
 //
 // Utilities. Mostly for working with strings and vectors.
@@ -7,7 +6,7 @@
 #define GEMMI_UTIL_HPP_
 
 #include <algorithm>  // for equal, find, remove_if
-#include <cctype>     // for tolower
+#include <cctype>     // for isspace
 #include <cstring>    // for strncmp
 #include <iterator>   // for begin, end, make_move_iterator
 #include <string>
@@ -16,6 +15,24 @@
 namespace gemmi {
 
 //   #####   string helpers   #####
+
+inline void append_to_str(std::string& out, int v) { out += std::to_string(v); }
+inline void append_to_str(std::string& out, size_t v) { out += std::to_string(v); }
+template<typename T>
+void append_to_str(std::string& out, const T& v) { out += v; }
+
+inline void cat_to(std::string&) {}
+template <typename T, typename... Args>
+void cat_to(std::string& out, const T& value, Args const&... args) {
+  append_to_str(out, value);
+  cat_to(out, args...);
+}
+template <class... Args>
+std::string cat(Args const&... args) {
+  std::string out;
+  cat_to(out, args...);
+  return out;
+}
 
 inline bool starts_with(const std::string& str, const std::string& prefix) {
   size_t sl = prefix.length();
@@ -31,29 +48,15 @@ inline bool ends_with(const std::string& str, const std::string& suffix) {
   return str.length() >= sl && str.compare(str.length() - sl, sl, suffix) == 0;
 }
 
-// Case-insensitive comparisons. The second arg must be lowercase.
-
-inline bool iequal(const std::string& str, const std::string& low) {
-  return str.length() == low.length() &&
-         std::equal(std::begin(low), std::end(low), str.begin(),
-                    [](char c1, char c2) { return c1 == std::tolower(c2); });
+// can be faster than std::tolower() b/c it takes char not int
+inline char lower(char c) {
+  if (c >= 'A' && c <= 'Z')
+    return c | 0x20;
+  return c;
 }
 
-inline bool istarts_with(const std::string& str, const std::string& prefix) {
-  return str.length() >= prefix.length() &&
-         std::equal(std::begin(prefix), std::end(prefix), str.begin(),
-                    [](char c1, char c2) { return c1 == std::tolower(c2); });
-}
-inline bool iends_with(const std::string& str, const std::string& suffix) {
-  size_t sl = suffix.length();
-  return str.length() >= sl &&
-         std::equal(std::begin(suffix), std::end(suffix), str.end() - sl,
-                    [](char c1, char c2) { return c1 == std::tolower(c2); });
-}
-
-inline bool giends_with(const std::string& str, const std::string& suffix) {
-  return iends_with(str, suffix) || iends_with(str, suffix + ".gz");
-}
+// works as expected only for a-zA-Z
+inline char alpha_up(char c) { return c & ~0x20; }
 
 inline std::string to_lower(std::string str) {
   for (char& c : str)
@@ -69,8 +72,35 @@ inline std::string to_upper(std::string str) {
   return str;
 }
 
-// works as expected only for a-zA-Z
-inline char alpha_up(char c) { return c & ~0x20; }
+// Case-insensitive comparisons. The second arg must be lowercase.
+
+inline bool iequal(const std::string& str, const std::string& low) {
+  return str.length() == low.length() &&
+         std::equal(std::begin(low), std::end(low), str.begin(),
+                    [](char c1, char c2) { return c1 == lower(c2); });
+}
+
+inline bool iequal_from(const std::string& str, size_t offset, const std::string& low) {
+  return str.length() == low.length() + offset &&
+         std::equal(std::begin(low), std::end(low), str.begin() + offset,
+                    [](char c1, char c2) { return c1 == lower(c2); });
+}
+
+inline bool istarts_with(const std::string& str, const std::string& prefix) {
+  return str.length() >= prefix.length() &&
+         std::equal(std::begin(prefix), std::end(prefix), str.begin(),
+                    [](char c1, char c2) { return c1 == lower(c2); });
+}
+inline bool iends_with(const std::string& str, const std::string& suffix) {
+  size_t sl = suffix.length();
+  return str.length() >= sl &&
+         std::equal(std::begin(suffix), std::end(suffix), str.end() - sl,
+                    [](char c1, char c2) { return c1 == lower(c2); });
+}
+
+inline bool giends_with(const std::string& str, const std::string& suffix) {
+  return iends_with(str, suffix) || iends_with(str, suffix + ".gz");
+}
 
 inline std::string trim_str(const std::string& str) {
   const std::string ws = " \r\n\t";

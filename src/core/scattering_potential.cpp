@@ -56,11 +56,14 @@ void ScatteringPotential::InitPdbObject(bool is_alpha_fold_prediction, double* c
     // Initialize each of the PDB objects, this reads in and centers each PDB, but does not make any copies (instances) of the trajectories.
     constexpr int minimum_padding_x_and_y = 0;
 
-    PDB tmp = PDB(pdb_file_names[0], access_type_read, _pixel_size, records_per_line, minimum_padding_x_and_y, minimum_thickness_z,
-                  is_alpha_fold_prediction, center_of_mass);
-
-    pdb_ensemble.emplace_back(pdb_file_names[0], access_type_read, _pixel_size, records_per_line, minimum_padding_x_and_y, minimum_thickness_z,
-                              is_alpha_fold_prediction, center_of_mass);
+    pdb_ensemble.emplace_back(pdb_file_names[0],
+                              access_type_read,
+                              _pixel_size,
+                              records_per_line,
+                              minimum_padding_x_and_y,
+                              minimum_thickness_z,
+                              is_alpha_fold_prediction,
+                              center_of_mass);
 }
 
 void ScatteringPotential::InitPdbEnsemble(bool              shift_by_center_of_mass,
@@ -85,7 +88,12 @@ void ScatteringPotential::InitPdbEnsemble(bool              shift_by_center_of_m
 
     for ( int iPDB = 0; iPDB < pdb_file_names.size( ); iPDB++ ) {
 
-        pdb_ensemble[iPDB] = PDB(pdb_file_names[iPDB], access_type_read, _pixel_size, records_per_line, minimum_padding_x_and_y, minimum_thickness_z,
+        pdb_ensemble[iPDB] = PDB(pdb_file_names[iPDB],
+                                 access_type_read,
+                                 _pixel_size,
+                                 records_per_line,
+                                 minimum_padding_x_and_y,
+                                 minimum_thickness_z,
                                  max_number_of_noise_particles,
                                  wanted_noise_particle_radius_as_mutliple_of_particle_radius,
                                  wanted_noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
@@ -93,7 +101,8 @@ void ScatteringPotential::InitPdbEnsemble(bool              shift_by_center_of_m
                                  wanted_tilt_angle_to_emulate,
                                  shift_by_center_of_mass,
                                  is_alpha_fold_prediction,
-                                 wanted_star_file, use_star_file);
+                                 wanted_star_file,
+                                 use_star_file);
     }
 }
 
@@ -215,6 +224,7 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
         n_atoms_added = 0;
 
         atom_id = current_specimen->atoms.at(current_atom).atom_type;
+        // std::cerr << "atom_id = " << atom_id << std::endl;
         if ( atom_id == hydrogen )
             continue;
 
@@ -320,8 +330,6 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
         } // if statment into neigh
 
     } // end loop over atoms
-
-    std::cerr << " n atoms added " << n_atoms_added << std::endl;
 }
 
 int ScatteringPotential::GetNeighborhoodSize( ) {

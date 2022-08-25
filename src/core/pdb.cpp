@@ -2,7 +2,13 @@
 #include <wx/arrimpl.cpp> // this is a magic incantation which must be done!
 WX_DEFINE_OBJARRAY(ArrayOfParticleTrajectories);
 
-//WX_DEFINE_OBJARRAY(ArrayOfParticleInstances);
+// TODO: can these be more local to their usage?
+#include "../../include/gemmi/model.hpp"
+#include "../../include/gemmi/elem.hpp"
+#include "../../include/gemmi/mmread.hpp"
+#include "../../include/gemmi/gz.hpp"
+#include "../../include/gemmi/resinfo.hpp"
+#include "../../include/gemmi/calculate.hpp"
 
 Atom::Atom( ) {
     name             = "";
@@ -166,6 +172,9 @@ PDB& PDB::operator=(const PDB* other_pdb) {
         this->atoms.reserve(other_pdb->atoms.size( ));
         for ( long current_atom = 0; current_atom < other_pdb->atoms.size( ); current_atom++ ) {
             this->atoms.push_back(other_pdb->atoms[current_atom]);
+            // std::cerr << "Atom is " << atoms.back( ).name << " " << current_atom << " " << atoms.back( ).atom_type << " " << atoms.back( ).bfactor << '\n';
+            // if ( isnan(atoms.back( ).bfactor) )
+            //     std::cerr << "Atom is " << atoms.back( ).name << " " << current_atom << " " << atoms.back( ).atom_type << " " << atoms.back( ).bfactor << '\n';
         }
 
         for ( int i = 0; i < other_pdb->initial_values.size( ); i++ ) {
@@ -176,15 +185,19 @@ PDB& PDB::operator=(const PDB* other_pdb) {
     return *this;
 }
 
-PDB::PDB(long number_of_non_water_atoms, float cubic_size, float wanted_pixel_size, int minimum_padding_x_and_y, double minimum_thickness_z,
-         int   max_number_of_noise_particles,
-         float wanted_noise_particle_radius_as_mutliple_of_particle_radius,
-         float wanted_noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
-         float wanted_noise_particle_radius_randomizer_upper_bound_as_praction_of_particle_radius,
-         float wanted_tilt_angle_to_emulate,
-         bool  shift_by_center_of_mass,
-         bool  is_alpha_fold_prediction,
-         bool  use_star_file) {
+PDB::PDB(long   number_of_non_water_atoms,
+         float  cubic_size,
+         float  wanted_pixel_size,
+         int    minimum_padding_x_and_y,
+         double minimum_thickness_z,
+         int    max_number_of_noise_particles,
+         float  wanted_noise_particle_radius_as_mutliple_of_particle_radius,
+         float  wanted_noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
+         float  wanted_noise_particle_radius_randomizer_upper_bound_as_praction_of_particle_radius,
+         float  wanted_tilt_angle_to_emulate,
+         bool   shift_by_center_of_mass,
+         bool   is_alpha_fold_prediction,
+         bool   use_star_file) {
 
     this->use_star_file = use_star_file;
     wxPrintf("IN constructor 1 and use_star_file = %d\n", use_star_file);
@@ -220,7 +233,12 @@ PDB::PDB(long number_of_non_water_atoms, float cubic_size, float wanted_pixel_si
     this->shift_by_center_of_mass                                                     = shift_by_center_of_mass;
 }
 
-PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, long wanted_records_per_line, int minimum_padding_x_and_y, double minimum_thickness_z,
+PDB::PDB(wxString          Filename,
+         long              wanted_access_type,
+         float             wanted_pixel_size,
+         long              wanted_records_per_line,
+         int               minimum_padding_x_and_y,
+         double            minimum_thickness_z,
          int               max_number_of_noise_particles,
          float             wanted_noise_particle_radius_as_mutliple_of_particle_radius,
          float             wanted_noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
@@ -228,7 +246,8 @@ PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, lo
          float             wanted_tilt_angle_to_emulate,
          bool              shift_by_center_of_mass,
          bool              is_alpha_fold_prediction,
-         cisTEMParameters& wanted_star_file, bool use_star_file) {
+         cisTEMParameters& wanted_star_file,
+         bool              use_star_file) {
 
     star_file_parameters = wanted_star_file;
     this->use_star_file  = use_star_file;
@@ -263,21 +282,26 @@ PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, lo
     Open(Filename, wanted_access_type, wanted_records_per_line);
 }
 
-PDB::PDB(wxString Filename, long wanted_access_type, float wanted_pixel_size, long wanted_records_per_line, int minimum_padding_x_and_y,
-         double minimum_thickness_z, bool is_alpha_fold_prediction, double* COM) {
+PDB::PDB(wxString Filename,
+         long     wanted_access_type,
+         float    wanted_pixel_size,
+         long     wanted_records_per_line,
+         int      minimum_padding_x_and_y,
+         double   minimum_thickness_z,
+         bool     is_alpha_fold_prediction,
+         double*  COM) {
     input_file_stream  = NULL;
     input_text_stream  = NULL;
     output_file_stream = NULL;
     output_text_stream = NULL;
 
     use_star_file = false;
-    wxPrintf("IN constructor 2 and use_star_file = %d\n", use_star_file);
 
     MIN_PADDING_XY = minimum_padding_x_and_y;
     MIN_THICKNESS  = minimum_thickness_z;
 
-    use_provided_com         = true;
-    is_alpha_fold_prediction = is_alpha_fold_prediction;
+    use_provided_com               = true;
+    this->is_alpha_fold_prediction = is_alpha_fold_prediction;
 
     if ( COM ) {
         for ( int iCOM = 0; iCOM < 3; iCOM++ ) {
@@ -440,11 +464,11 @@ void PDB::Init( ) {
         number_of_atoms += (number_of_atoms * this->max_number_of_noise_particles);
     }
 
-    wxPrintf("Max particles is %d here\n", max_number_of_noise_particles);
+    // wxPrintf("Max particles is %d here\n", max_number_of_noise_particles);
     // If noie noise atoms, this will always equal number of atoms. Otherwise, number of atoms is at most this, and changes from particle to particle in the stack
     number_of_real_and_noise_atoms = number_of_atoms;
 
-    wxPrintf("\nIn constructor real total current %ld %ld %ld\n", number_of_real_atoms, number_of_real_and_noise_atoms, number_of_atoms);
+    // wxPrintf("\nIn constructor real total current %ld %ld %ld\n", number_of_real_atoms, number_of_real_and_noise_atoms, number_of_atoms);
     // Create the atom array, then loop back over the pdb to get the desired info.
     atoms.reserve(number_of_real_and_noise_atoms);
 
@@ -459,6 +483,7 @@ void PDB::Init( ) {
                     for ( gemmi::Atom& atom : res.atoms ) {
 
                         if ( is_alpha_fold_prediction ) {
+                            std::cerr << "Alpha fold prediction not implemented yet" << std::endl;
                             // Convert the confidence score to a bfactor. The formula is adhoc.
                             // Confidence score is 0->100 with higher being more confident.
                             i_bfactor = 4.f + powf(100.f - atom.b_iso, 1.314159f);
@@ -468,24 +493,10 @@ void PDB::Init( ) {
                         }
                         else {
                             i_bfactor = atom.b_iso;
+
                             // atoms[current_atom_number].bfactor = atom.b_iso;
                         }
-                        // // TODO: just construct in place
-                        // atoms.push_back(Atom( ));
 
-                        // atoms[current_atom_number].name = wxString(atom.name);
-
-                        // atoms[current_atom_number].is_real_particle = true;
-
-                        // // in gemmi this is a signed char, consider using this as it is smaller and presumably more efficient
-                        // atoms[current_atom_number].charge = float(atom.charge);
-
-                        // atoms[current_atom_number].x_coordinate = float(atom.pos.x);
-                        // atoms[current_atom_number].y_coordinate = float(atom.pos.y);
-                        // atoms[current_atom_number].z_coordinate = float(atom.pos.z);
-                        // atoms[current_atom_number].occupancy    = atom.occ;
-
-                        // Will replace this by actually using the element type
                         switch ( atom.element.ordinal( ) ) {
 
                             case 0:
@@ -557,14 +568,19 @@ void PDB::Init( ) {
                         }
 
                         atoms.emplace_back(wxString(atom.name), true, i_atom_type, float(atom.pos.x), float(atom.pos.y), float(atom.pos.z), atom.occ, i_bfactor, float(atom.charge));
-
                         current_atom_number++;
                         n_atoms_in_single_molecule_from_star_file++;
+
+                        if ( isnan(atoms.back( ).bfactor) ) {
+                            std::cerr << "Atom is " << atoms.back( ).name << " " << current_atom_number << " " << atoms.back( ).x_coordinate << atoms.back( ).atom_type << " " << atoms.back( ).bfactor << '\n';
+                            exit(1);
+                        }
                     }
                 }
             }
         }
     }
+
     if ( use_star_file && star_file_parameters.ReturnNumberofLines( ) > 1 ) {
 
         // First we need the average defocus to determine offsets in Z
@@ -624,12 +640,12 @@ void PDB::Init( ) {
     }
 
     if ( shift_by_center_of_mass ) {
-        if ( use_provided_com ) {
-            wxPrintf("\n\nSetting PDB center of mass to that provided %f %f %f (x,y,z Angstrom)\n\n", center_of_mass[0], center_of_mass[1], center_of_mass[2]);
-        }
-        else {
-            wxPrintf("\n\nPDB center of mass at %f %f %f (x,y,z Angstrom)\n\nSetting origin there.\n\n", center_of_mass[0], center_of_mass[1], center_of_mass[2]);
-        }
+        // if ( use_provided_com ) {
+        //     wxPrintf("\n\nSetting PDB center of mass to that provided %f %f %f (x,y,z Angstrom)\n\n", center_of_mass[0], center_of_mass[1], center_of_mass[2]);
+        // }
+        // else {
+        //     wxPrintf("\n\nPDB center of mass at %f %f %f (x,y,z Angstrom)\n\nSetting origin there.\n\n", center_of_mass[0], center_of_mass[1], center_of_mass[2]);
+        // }
 
         // Set the coordinate origin to the calculated or provided center of mass
         for ( current_atom_number = 0; current_atom_number < number_of_real_atoms; current_atom_number++ ) {
@@ -808,7 +824,7 @@ void PDB::TransformBaseCoordinates(float wanted_origin_x, float wanted_origin_y,
 
     // Now that a new member is added to the ensemble, increment the counter
     this->number_of_particles_initialized++;
-    wxPrintf("\n\nNumber of particles initialized %d\n", this->number_of_particles_initialized);
+    // wxPrintf("\n\nNumber of particles initialized %d\n", this->number_of_particles_initialized);
 }
 
 void PDB::TransformLocalAndCombine(PDB& clean_copy, int number_of_pdbs, int frame_number, RotationMatrix particle_rot, float shift_z, bool is_single_particle) {
@@ -820,7 +836,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
     /*
      * Take an array of PDB objects and create a single array of atoms transformed according to the timestep
     */
-    wxPrintf("\n\nTransforming local and combining\n");
+    // wxPrintf("\n\nTransforming local and combining\n");
 
     int   current_pdb        = 0;
     int   current_particle   = 0;
@@ -848,7 +864,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
         if ( this->atoms.capacity( ) < pdb_ensemble[current_pdb].number_of_atoms ) {
             this->atoms.reserve(pdb_ensemble[current_pdb].number_of_atoms);
         }
-        wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].atoms.size( ), atoms.size( ));
+        // wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].atoms.size( ), atoms.size( ));
         for ( current_particle = 0; current_particle < pdb_ensemble[current_pdb].number_of_particles_initialized; current_particle++ ) {
             ox = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][0];
             oy = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][1];
@@ -864,7 +880,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                                pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][11]);
 
             rotmat *= particle_rot;
-
+            particle_rot.PrintMatrix( );
             // Randomly set noise atoms before copying in. Initially, there is a copy of every real atom, at the same x,y,z coords. For frame zero we
             // want to randomly rotate each noise particle, and offset each particle by a random amount that ensures no overlap with the real particle.
             // The first two noise particles are set to not overlap. Additional particles are able to overlap, which I think is more likely with high crowding (multiple layers of particles.)
@@ -1097,8 +1113,11 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
     if ( current_total_atom > 0 ) {
         average_bFactor /= current_total_atom;
     }
-
-    wxPrintf("\t\t\n\nAVG BFACTOR FROM PDB IS %f, current_total_atom %ld\n\n", average_bFactor, current_total_atom);
+    if ( isnan(average_bFactor) ) {
+        wxPrintf("\n\n\t\tWARNING: average_bFactor is nan setting to zero, this should be fixed, not ignored!\n");
+        average_bFactor = 0;
+    }
+    // wxPrintf("\t\t\n\nAVG BFACTOR FROM PDB IS %f, current_total_atom %ld\n\n", average_bFactor, current_total_atom);
 
     if ( current_total_atom > 2 ) { // for single atom test
         // Again, need a check to make sure all sizes are consistent
@@ -1136,13 +1155,13 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
 
     if ( this->cubic_size > 1 ) {
         // Override the dimensions
-        wxPrintf("Cubic size is %d\n", this->cubic_size);
+        // wxPrintf("Cubic size is %d\n", this->cubic_size);
         this->vol_nX = cubic_size;
         this->vol_nY = cubic_size;
         this->vol_nZ = cubic_size;
     }
     else {
-        wxPrintf("Vol ang z is %f\n", this->vol_angZ);
+        // wxPrintf("Vol ang z is %f\n", this->vol_angZ);
         this->vol_nX = myroundint(this->vol_angX / pixel_size);
         this->vol_nY = myroundint(this->vol_angY / pixel_size);
         this->vol_nZ = myroundint(this->vol_angZ / pixel_size);

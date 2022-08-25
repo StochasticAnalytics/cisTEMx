@@ -820,6 +820,7 @@ if ENABLESAMPLES_AM
     samples_functional_testing_SOURCES  = programs/samples/samples_functional_testing.cpp 
     samples_functional_testing_SOURCES += programs/samples/common/helper_functions.cpp programs/samples/common/embedded_test_file.cpp programs/samples/common/numeric_test_file.cpp
     samples_functional_testing_SOURCES += programs/samples/0_simple/disk_io_image.cpp  
+    samples_functional_testing_SOURCES += programs/samples/6_simulation/simple_3d.cpp
 if WANT_CISTEM_GPU_AM
         samples_functional_testing_SOURCES += programs/samples/1_cpu_gpu_comparison/resize_comparison.cpp programs/samples/1_cpu_gpu_comparison/projection_comparison.cpp programs/samples/1_cpu_gpu_comparison/masking.cpp programs/samples/1_cpu_gpu_comparison/statistical_ops.cpp 
         samples_functional_testing_SOURCES += programs/samples/3_tensor_ops/gpu_image_tensor_ops.cpp

@@ -40,20 +40,15 @@ struct GPUTimer {
     cudaEvent_t start_, stop_;
 };
 
-bool CPUvsGPUMaskingTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
-
-    bool passed;
-    bool all_passed = true;
+void CPUvsGPUMaskingTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting CPU vs GPU masking tests:", false);
 
-    all_passed = all_passed && DoCosineMaskingTest(hiv_image_80x80x1_filename, temp_directory);
+    TEST(DoCosineMaskingTest(hiv_image_80x80x1_filename, temp_directory));
 
-    SamplesBeginTest("CPU vs GPU overall", passed);
-    SamplesPrintResult(all_passed, __LINE__);
-    wxPrintf("\n\n");
+    SamplesPrintEndMessage( );
 
-    return all_passed;
+    return;
 }
 
 bool DoCosineMaskingTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
@@ -114,7 +109,7 @@ bool DoCosineMaskingTest(const wxString& hiv_image_80x80x1_filename, wxString& t
         // gpu_image.CosineMask(wanted_mask_radius, wanted_mask_edge, invert, force_mask_value, wanted_mask_value);
     }
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     return all_passed;

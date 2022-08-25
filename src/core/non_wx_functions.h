@@ -166,7 +166,7 @@ bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_fai
         ret_val = (std::abs((reference - test_value) / reference) < epsilon);
 
     if ( print_if_failed && ! ret_val ) {
-        std::cout << "RelativeErrorIsLessThanEpsilon failed: " << reference << " " << test_value << " " << epsilon << " " << std::abs((reference - test_value) / reference) << std::endl;
+        std::cerr << "RelativeErrorIsLessThanEpsilon failed: " << reference << " " << test_value << " " << epsilon << " " << std::abs((reference - test_value) / reference) << std::endl;
     }
     return ret_val;
 };

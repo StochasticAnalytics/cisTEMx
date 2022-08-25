@@ -19,21 +19,17 @@ using namespace cistem_timer;
 using namespace cistem_timer_noop;
 #endif
 
-bool GpuFftOps(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
-
-    bool passed;
-    bool all_passed = true;
+void SimpleCuFFTRunner(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting GPU FFT tests:", false);
 
-    all_passed = all_passed && DoInPlaceR2CandC2R(hiv_image_80x80x1_filename, temp_directory);
-    all_passed = all_passed && DoInPlaceR2CandC2RBatched(hiv_image_80x80x1_filename, temp_directory);
+    TEST(DoInPlaceR2CandC2R(hiv_image_80x80x1_filename, temp_directory));
 
-    SamplesBeginTest("GPU FFT tests overall", passed);
-    SamplesPrintResult(all_passed, __LINE__);
-    wxPrintf("\n\n");
+    TEST(DoInPlaceR2CandC2RBatched(hiv_image_80x80x1_filename, temp_directory));
 
-    return all_passed;
+    SamplesPrintEndMessage( );
+
+    return;
 }
 
 bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
@@ -80,7 +76,7 @@ bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& te
         passed = passed && CompareRealValues(test_image, gpu_cpu_buffer);
     }
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("Cubic  3D R2C/C2R inplace ffts", passed);
@@ -110,7 +106,7 @@ bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& te
         passed = passed && CompareRealValues(test_image, gpu_cpu_buffer);
     }
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("Non-Sq 2D R2C/C2R inplace ffts", passed);
@@ -138,9 +134,8 @@ bool DoInPlaceR2CandC2R(const wxString& hiv_image_80x80x1_filename, wxString& te
         passed = passed && CompareRealValues(test_image, gpu_cpu_buffer);
     }
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
-
     return all_passed;
 }
 
@@ -228,17 +223,16 @@ bool DoInPlaceR2CandC2RBatched(const wxString& hiv_image_80x80x1_filename, wxStr
     // wxPrintf("Ratio of tims is %f\n", ratio_seq_to_batched);
     // timer.print_times( );
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
 
     SamplesBeginTest("Batched 2d ffts (performance)", passed);
 
-    // For size 256 on Salina (rtx 3080 ti and AMD 5950 this is usually 65-70 )
-    passed = passed && ratio_seq_to_batched > 40.f;
-    if (! passed)
-        wxPrintf("\n Ratio seq to batched %f\n",ratio_seq_to_batched );
+    passed = passed && ratio_seq_to_batched > 10.f;
+    if ( ! passed )
+        wxPrintf("\n Ratio seq to batched %f\n", ratio_seq_to_batched);
 
-    all_passed = all_passed && passed;
+    all_passed = passed ? all_passed : false;
     SamplesTestResult(passed);
     // for ( int i = 0; i < batch_size; i++ ) {
     //     gpu_individual[i].Deallocate( );

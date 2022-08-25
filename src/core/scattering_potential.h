@@ -8,7 +8,7 @@
 #ifndef _SRC_PROGRAMS_SIMULATE_SCATTERING_POTENTIAL_H_
 #define _SRC_PROGRAMS_SIMULATE_SCATTERING_POTENTIAL_H_
 
-#include "constants/constants.h"
+#include "../constants/constants.h"
 #include "padded_coordinates.h"
 
 // TODO: x2 = x1 + pixel size, so it might make more sense to limit memory and just store x1,y1,z1 and pixel size.

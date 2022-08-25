@@ -15,20 +15,15 @@
 
 // #define DO_EXPLICIT_BROADCAST
 
-bool BatchedCorrelationTests(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
-
-    bool passed;
-    bool all_passed = true;
+void BatchedCorrelationRunner(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory) {
 
     SamplesPrintTestStartMessage("Starting batched_ops tests:", false);
 
-    all_passed = all_passed && DoBatchedCorrelationTest(hiv_image_80x80x1_filename, temp_directory);
+    TEST(DoBatchedCorrelationTest(hiv_image_80x80x1_filename, temp_directory));
 
-    SamplesBeginTest("CPU vs GPU overall", passed);
-    SamplesPrintResult(all_passed, __LINE__);
-    wxPrintf("\n\n");
+    SamplesPrintEndMessage( );
 
-    return all_passed;
+    return;
 }
 
 bool DoBatchedCorrelationTest(const wxString& hiv_images_80x80x10_filename, wxString& temp_directory) {
@@ -107,11 +102,11 @@ bool DoBatchedCorrelationTest(const wxString& hiv_images_80x80x10_filename, wxSt
         wxPrintf("\n");
         for ( int cc = wanted_batch_size - 1; cc < correlation_results.size( ); cc += wanted_batch_size ) {
             wxPrintf("%i %i %f\n", wanted_batch_size, cc, correlation_results_ground_truth[cc] - correlation_results[counter]);
-            passed = passed && (correlation_results_ground_truth[cc] == correlation_results[counter]);
+            passed = passed && (RelativeErrorIsLessThanEpsilon(correlation_results_ground_truth[cc], correlation_results[counter]));
             counter++;
         }
 
-        all_passed = all_passed && passed;
+        all_passed = passed ? all_passed : false;
         SamplesTestResult(true);
     }
 

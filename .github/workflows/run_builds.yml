@@ -11,6 +11,10 @@ on:
         description: 'A set of configure options to set'
         required: true
         type: string
+      global_configure_options:
+        description: 'A set of global configure options to set'
+        required: true
+        type: string
       runs_on_os:
         description: 'The OS to run on'
         required: true 
@@ -36,7 +40,7 @@ jobs:
     runs-on: ${{ inputs.runs_on_os }}
     container: 
       image: bhimesbhimes/cistem_build_env:v1.4.4
-      options: --user root
+      options: --user root --rm --gpus all
     outputs:
       version: ${{ steps.configure.outputs.version }}
     steps:
@@ -60,14 +64,17 @@ jobs:
         cd build/${{ inputs.build_type }} 
         echo $CC
         echo $CXX
-        ../../configure  --enable-experimental ${{ inputs.configure_options }} --with-wx-config=/opt/WX/intel-dynamic/bin/wx-config  --enable-samples
+        git config --global --add safe.directory /__w/cisTEM/cisTEM
+        ../../configure   ${{ inputs.configure_options }}  ${{ inputs.global_configure_options }}
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "::set-output name=version::$VERSION" 
     - uses: ammaraskar/gcc-problem-matcher@master
     - name: make 
       run: |
         . /opt/intel/oneapi/setvars.sh
-        scripts/cistem_make.sh build/${{ inputs.build_type }} ${{ inputs.cppstandard }} 2
+        workdir=$(pwd)
+        cd build/${{ inputs.build_type }} && make -j 16
+        cd $workdir
         cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
     - name: clean up
       run: |
@@ -75,11 +82,11 @@ jobs:
         rm -r src/core
         rm -r src/gui
         rm -r src/programs
-    - name: Create binary artifact
-      uses: actions/upload-artifact@v2
-      with: 
-        name: cistem_binaries_${{ inputs.build_type }}
-        path: build/${{ inputs.build_type }}/src
+    # - name: Create binary artifact
+    #   uses: actions/upload-artifact@v2
+    #   with: 
+    #     name: cistem_binaries_${{ inputs.build_type }}
+    #     path: build/${{ inputs.build_type }}/src
 
     - name: Console test
       run: |
@@ -105,3 +112,4 @@ jobs:
         chmod +x unit_test_runner
         ./unit_test_runner
   
+

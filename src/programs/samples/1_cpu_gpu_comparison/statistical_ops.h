@@ -8,7 +8,7 @@ struct MeasuredValue {
 };
 
 // Test runner
-bool CPUvsGPUStatisticalOpsTest(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);
+void CPUvsGPUStatisticalOpsRunner(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);
 
 // Tests for mean, variance etc.
 bool DoStatsticalMomentsTests(const wxString& hiv_image_80x80x1_filename, wxString& temp_directory);

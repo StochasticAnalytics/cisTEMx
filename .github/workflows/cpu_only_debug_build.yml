@@ -1,0 +1,22 @@
+name: cisTEMx cpu debug
+
+on:
+  push:
+    branches: main
+  pull_request:
+    branches: main
+
+jobs:
+  run_build:  
+    uses: ./.github/workflows/run_builds.yml
+    with:
+      build_type: "cpu_debug"
+      configure_options: "--enable-debugmode "
+      global_configure_options: "--disable-staticmode --enable-openmp --enable-samples --enable-experimental --disable-multiple-global-refinements "
+      runs_on_os: self-hosted
+      CC: icc
+      CXX: icpc
+      cppstandard: 17
+
+
+

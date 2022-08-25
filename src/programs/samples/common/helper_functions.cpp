@@ -112,6 +112,7 @@ bool CompareComplexValues(Image& first_image, Image& second_image, float minimum
 
 void SamplesPrintTestStartMessage(wxString message, bool bold) {
     // If not bold we print underlined
+    wxPrintf("\n");
     if ( bold )
         SamplesPrintBold(message);
     else
@@ -143,19 +144,19 @@ void SamplesPrintResult(bool passed, int line) {
     }
     else {
         if ( OutputIsAtTerminal( ) == true )
-            wxPrintf(ANSI_COLOR_RED "FAILED! (Line : %i)\n" ANSI_COLOR_RESET, line);
+            wxPrintf(ANSI_COLOR_RED "FAILED! (Line : %i)" ANSI_COLOR_RESET, line);
         else
-            wxPrintf("FAILED! (Line : %i)\n", line);
-        exit(1);
+            wxPrintf("FAILED! (Line : %i)", line);
+        // Removing the exit behavior because I want all tests to run as this is more informative for CI, i.e.
+        // multiple fixes can be made in a single go rather than a one at a time approach.
+        // exit(1);
     }
-
-    wxPrintf("\n");
 }
 
 void SamplesBeginTest(const char* test_name, bool& test_has_passed) {
     int length      = strlen(test_name);
     int blank_space = 45 - length;
-    wxPrintf("  Testing %s ", test_name);
+    wxPrintf("\n  Testing %s ", test_name);
     test_has_passed = true;
 
     for ( int counter = 0; counter < blank_space; counter++ ) {
@@ -189,7 +190,7 @@ void FileTracker::Cleanup( ) {
         delete it;
     testFiles.clear( );
 
-    wxPrintf("done!\n");
+    wxPrintf("\ndone!\n");
 }
 
 Image GetAbsOfFourierTransformAsRealImage(Image& input_image) {

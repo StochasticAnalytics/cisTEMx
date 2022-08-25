@@ -5,4 +5,11 @@
 #include "embedded_test_file.h"
 #include "numeric_test_file.h"
 
+extern bool samples_tests_have_all_passed;
+
+inline void TEST(bool result) {
+    if ( ! result ) {
+        samples_tests_have_all_passed = false;
+    }
+}
 #endif

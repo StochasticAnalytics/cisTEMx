@@ -1,6 +1,6 @@
 #include "core_headers.h"
 
-#include "constants/constants.h"
+#include "../constants/constants.h"
 #include "padded_coordinates.h"
 
 Coords::Coords( ) {

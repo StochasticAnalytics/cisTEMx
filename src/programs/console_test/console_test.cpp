@@ -762,9 +762,9 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         test_image.AddNoiseFromNormalDistribution(test_normal_vals[i], test_normal_vals[i + 1]);
         test_image.UpdateDistributionOfRealValues(&my_dist);
         // Avoid zero division by adding 1
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, test_normal_vals[i] + 1.f, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, test_normal_vals[i] + 1.f, true, acceptable_error) )
             FailTest;
-        if ( ! RelativeErrorIsLessThanEpsilon(sqrtf(my_dist.GetSampleVariance( )), test_normal_vals[i + 1], acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(sqrtf(my_dist.GetSampleVariance( )), test_normal_vals[i + 1], true, acceptable_error) )
             FailTest;
     }
 
@@ -776,9 +776,9 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         my_dist.Reset( );
         test_image.AddNoiseFromPoissonDistribution(val);
         test_image.UpdateDistributionOfRealValues(&my_dist);
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), val, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), val, true, acceptable_error) )
             FailTest;
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), val, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), val, true, acceptable_error) )
             FailTest;
     }
 
@@ -790,7 +790,7 @@ void MyTestApp::TestRandomVariableFunctions( ) {
     test_image.AddNoiseFromUniformDistribution(uniform_min, uniform_max);
     test_image.UpdateDistributionOfRealValues(&my_dist);
     // Avoid zero division by adding 1
-    if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.f, acceptable_error) )
+    if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.f, true, acceptable_error) )
         FailTest;
     if ( my_dist.GetMinimum( ) < uniform_min )
         FailTest;
@@ -804,9 +804,9 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         my_dist.Reset( );
         test_image.AddNoiseFromExponentialDistribution(val);
         test_image.UpdateDistributionOfRealValues(&my_dist);
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), 1.f / val, acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), 1.f / val, true, acceptable_error) )
             FailTest;
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), 1.f / (val * val), acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), 1.f / (val * val), true, acceptable_error) )
             FailTest;
     }
 
@@ -819,11 +819,11 @@ void MyTestApp::TestRandomVariableFunctions( ) {
         my_dist.Reset( );
         test_image.AddNoiseFromGammaDistribution(alpha, beta);
         test_image.UpdateDistributionOfRealValues(&my_dist);
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), alpha * beta, 2.0f * acceptable_error) ) {
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ), alpha * beta, true, 2.0f * acceptable_error) ) {
             wxPrintf("m,a/b %f %f\n", my_dist.GetSampleMean( ), alpha * beta);
             FailTest;
         }
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), alpha * beta * beta, 2.0f * acceptable_error) )
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleVariance( ), alpha * beta * beta, true, 2.0f * acceptable_error) )
             FailTest;
     }
 
@@ -1126,11 +1126,11 @@ void MyTestApp::TestSpectrumBoxConvolution( ) {
     output_image.Allocate(test_image.logical_x_dimension, test_image.logical_y_dimension, test_image.logical_z_dimension);
     test_image.SpectrumBoxConvolution(&output_image, 7, 3);
 
-    if ( DoublesAreAlmostTheSame(output_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -0.049189) == false )
+    if ( FloatsAreAlmostTheSame(output_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -0.049189) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(output_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 1.634473) == false )
+    if ( FloatsAreAlmostTheSame(output_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 1.634473) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(output_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), -0.049189) == false )
+    if ( FloatsAreAlmostTheSame(output_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), -0.049189) == false )
         FailTest;
 
     EndTest( );
@@ -1149,11 +1149,11 @@ void MyTestApp::TestImageArithmeticFunctions( ) {
     ref_image.QuickAndDirtyReadSlice(hiv_images_80x80x10_filename.ToStdString( ), 2);
     test_image.AddImage(&ref_image);
 
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -1.313164) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -1.313164) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 3.457573) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 3.457573) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.318875) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.318875) == false )
         FailTest;
 
     EndTest( );
@@ -1199,41 +1199,41 @@ void MyTestApp::TestNumericTextFiles( ) {
 
     test_file.ReadLine(temp_float);
 
-    if ( DoublesAreAlmostTheSame(temp_float[0], 6.0) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[0], 6.0) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[1], 7.1) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[1], 7.1) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[2], 8.3) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[2], 8.3) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[3], 9.4) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[3], 9.4) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[4], 10.5) == false )
-        FailTest;
-
-    test_file.ReadLine(temp_float);
-
-    if ( DoublesAreAlmostTheSame(temp_float[0], 11.2) == false )
-        FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[1], 12.7) == false )
-        FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[2], 13.2) == false )
-        FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[3], 14.1) == false )
-        FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[4], 15.8) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[4], 10.5) == false )
         FailTest;
 
     test_file.ReadLine(temp_float);
 
-    if ( DoublesAreAlmostTheSame(temp_float[0], 16.1245) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[0], 11.2) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[1], 17.81003) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[1], 12.7) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[2], 18.5467) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[2], 13.2) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[3], 19.7621) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[3], 14.1) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[4], 20.11111) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[4], 15.8) == false )
+        FailTest;
+
+    test_file.ReadLine(temp_float);
+
+    if ( FloatsAreAlmostTheSame(temp_float[0], 16.1245) == false )
+        FailTest;
+    if ( FloatsAreAlmostTheSame(temp_float[1], 17.81003) == false )
+        FailTest;
+    if ( FloatsAreAlmostTheSame(temp_float[2], 18.5467) == false )
+        FailTest;
+    if ( FloatsAreAlmostTheSame(temp_float[3], 19.7621) == false )
+        FailTest;
+    if ( FloatsAreAlmostTheSame(temp_float[4], 20.11111) == false )
         FailTest;
 
     EndTest( );
@@ -1271,28 +1271,28 @@ void MyTestApp::TestNumericTextFiles( ) {
 
     test_file.ReadLine(temp_float);
 
-    if ( DoublesAreAlmostTheSame(temp_float[0], 0.1) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[0], 0.1) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[1], 0.2) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[1], 0.2) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[2], 0.3) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[2], 0.3) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[3], 0.4) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[3], 0.4) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[4], 0.5) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[4], 0.5) == false )
         FailTest;
 
     test_file.ReadLine(temp_float);
 
-    if ( DoublesAreAlmostTheSame(temp_float[0], 0.67) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[0], 0.67) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[1], 0.78) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[1], 0.78) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[2], 0.89) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[2], 0.89) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[3], 0.91) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[3], 0.91) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(temp_float[4], 1.02) == false )
+    if ( FloatsAreAlmostTheSame(temp_float[4], 1.02) == false )
         FailTest;
 
     EndTest( );
@@ -1313,11 +1313,12 @@ void MyTestApp::TestAlignmentFunctions( ) {
     test_image.QuickAndDirtyReadSlice(hiv_images_80x80x10_filename.ToStdString( ), 1);
     test_image.PhaseShift(20, 20, 0);
 
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -1.010296) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -1.010296) == false ) {
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), -2.280109) == false )
+    }
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), -2.280109) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.239702) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.239702) == false )
         FailTest;
 
     EndTest( );
@@ -1331,11 +1332,11 @@ void MyTestApp::TestAlignmentFunctions( ) {
     ref_image.QuickAndDirtyReadSlice(hiv_image_80x80x1_filename.ToStdString( ), 1);
     test_image.CalculateCrossCorrelationImageWith(&ref_image);
 
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.004323) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.004323) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 0.543692) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 0.543692) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.006927) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.006927) == false )
         FailTest;
 
     EndTest( );
@@ -1351,13 +1352,13 @@ void MyTestApp::TestAlignmentFunctions( ) {
     test_image.CalculateCrossCorrelationImageWith(&ref_image);
     my_peak = test_image.FindPeakWithIntegerCoordinates( );
 
-    if ( DoublesAreAlmostTheSame(my_peak.x, 7.0) == false )
+    if ( FloatsAreAlmostTheSame(my_peak.x, 7.0) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(my_peak.y, 10.0) == false )
+    if ( FloatsAreAlmostTheSame(my_peak.y, 10.0) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(my_peak.z, 0) == false )
+    if ( FloatsAreAlmostTheSame(my_peak.z, 0) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(my_peak.value, 1) == false )
+    if ( FloatsAreAlmostTheSame(my_peak.value, 1) == false )
         FailTest;
 
     EndTest( );
@@ -1377,7 +1378,7 @@ void MyTestApp::TestAlignmentFunctions( ) {
         FailTest;
     if ( my_peak.y > 10.70484 || my_peak.y < 10.70481 )
         FailTest;
-    if ( DoublesAreAlmostTheSame(my_peak.z, 0) == false )
+    if ( FloatsAreAlmostTheSame(my_peak.z, 0) == false )
         FailTest;
     if ( my_peak.value > 0.99343 || my_peak.value < 0.99342 )
         FailTest;
@@ -1399,11 +1400,11 @@ void MyTestApp::TestFilterFunctions( ) {
     test_image.ApplyBFactor(1500);
     test_image.BackwardFFT( );
 
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.027244) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.027244) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 1.320998) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 1.320998) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.012282) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.012282) == false )
         FailTest;
 
     EndTest( );
@@ -1420,49 +1421,49 @@ void MyTestApp::TestMaskCentralCross( ) {
     my_image.SetToConstant(1.0);
     my_image.MaskCentralCross(3, 3);
 
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 1.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(127, 127, 0), 1.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(127, 127, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 127, 0), 1.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 127, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(127, 0, 0), 1.0) )
-        FailTest;
-
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(67, 67, 0), 1.0) )
-        FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(67, 61, 0), 1.0) )
-        FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(61, 61, 0), 1.0) )
-        FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(61, 67, 0), 1.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(127, 0, 0), 1.0) )
         FailTest;
 
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 61, 0), 1.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(67, 67, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 67, 0), 1.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(67, 61, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(61, 0, 0), 1.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(61, 61, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(67, 0, 0), 1.0) )
-        FailTest;
-
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(66, 66, 0), 0.0) )
-        FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(66, 62, 0), 0.0) )
-        FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(62, 62, 0), 0.0) )
-        FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(62, 66, 0), 0.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(61, 67, 0), 1.0) )
         FailTest;
 
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 62, 0), 0.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 61, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 66, 0), 0.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 67, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(62, 0, 0), 0.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(61, 0, 0), 1.0) )
         FailTest;
-    if ( ! DoublesAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(66, 0, 0), 0.0) )
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(67, 0, 0), 1.0) )
+        FailTest;
+
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(66, 66, 0), 0.0) )
+        FailTest;
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(66, 62, 0), 0.0) )
+        FailTest;
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(62, 62, 0), 0.0) )
+        FailTest;
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(62, 66, 0), 0.0) )
+        FailTest;
+
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 62, 0), 0.0) )
+        FailTest;
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(0, 66, 0), 0.0) )
+        FailTest;
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(62, 0, 0), 0.0) )
+        FailTest;
+    if ( ! FloatsAreAlmostTheSame(my_image.ReturnRealPixelFromPhysicalCoord(66, 0, 0), 0.0) )
         FailTest;
 
     EndTest( );
@@ -1487,11 +1488,11 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     test_image.ClipInto(&clipped_image, 0);
 
     //wxPrintf("value = %f\n", clipped_image.ReturnRealPixelValue(119,119));
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), -0.340068) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), -0.340068) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(80, 80, 0), 1.819805) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(80, 80, 0), 1.819805) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(119, 119, 0), 0.637069) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(119, 119, 0), 0.637069) == false )
         FailTest;
 
     // test real space clipping smaller..
@@ -1499,11 +1500,11 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     clipped_image.Allocate(50, 50, 1);
     test_image.ClipInto(&clipped_image, 0);
 
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -2.287762) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -2.287762) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(25, 25, 0), 1.819805) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(25, 25, 0), 1.819805) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(49, 49, 0), -1.773780) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(49, 49, 0), -1.773780) == false )
         FailTest;
 
     // test Fourier space clipping bigger
@@ -1515,15 +1516,15 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     // check some values
 
     test_pixel = clipped_image.ReturnComplexPixelFromLogicalCoord(-90, -90, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), -100.0) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), -100.0) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.0) == false )
         FailTest;
 
     test_pixel = clipped_image.ReturnComplexPixelFromLogicalCoord(0, 0, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), -0.010919) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), -0.010919) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.0) == false )
         FailTest;
 
     test_pixel = clipped_image.ReturnComplexPixelFromLogicalCoord(5, 5, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), 0.075896) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), 0.075896) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
         FailTest;
 
     // test Fourier space clipping smaller
@@ -1532,12 +1533,12 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     test_image.ClipInto(&clipped_image, 0);
 
     test_pixel = clipped_image.ReturnComplexPixelFromLogicalCoord(0, 0, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), -0.010919) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), -0.010919) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.0) == false )
         FailTest;
 
     test_pixel = clipped_image.ReturnComplexPixelFromLogicalCoord(5, 5, 0, -100.0f + I * 0.0f);
     //wxPrintf("real = %f, image = %f\n", creal(test_pixel),cimag(test_pixel));
-    if ( DoublesAreAlmostTheSame(real(test_pixel), 0.075896) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), 0.075896) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
         FailTest;
 
     // test real space clipping smaller to odd..
@@ -1546,11 +1547,11 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     clipped_image.Allocate(49, 49, 1);
     test_image.ClipInto(&clipped_image, 0);
 
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -0.391899) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -0.391899) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(25, 25, 0), 1.689942) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(25, 25, 0), 1.689942) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(48, 48, 0), -1.773780) == false )
+    if ( FloatsAreAlmostTheSame(clipped_image.ReturnRealPixelFromPhysicalCoord(48, 48, 0), -1.773780) == false )
         FailTest;
 
     // test fourier space flipping smaller to odd..
@@ -1559,12 +1560,12 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     test_image.ClipInto(&clipped_image, 0);
 
     test_pixel = clipped_image.ReturnComplexPixelFromLogicalCoord(0, 0, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), -0.010919) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), -0.010919) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.0) == false )
         FailTest;
 
     test_pixel = clipped_image.ReturnComplexPixelFromLogicalCoord(5, 5, 0, -100.0f + I * 0.0f);
     //wxPrintf("real = %f, image = %f\n", creal(test_pixel),cimag(test_pixel));
-    if ( DoublesAreAlmostTheSame(real(test_pixel), 0.075896) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), 0.075896) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
         FailTest;
 
     EndTest( );
@@ -1578,11 +1579,11 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
 
     //Real space big
 
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), -0.340068) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), -0.340068) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(80, 80, 0), 1.819805) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(80, 80, 0), 1.819805) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(119, 119, 0), 0.637069) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(119, 119, 0), 0.637069) == false )
         FailTest;
 
     // Real space small
@@ -1590,11 +1591,11 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     test_image.ReadSlice(&input_file, 1);
     test_image.Resize(50, 50, 1);
 
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -2.287762) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), -2.287762) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(25, 25, 0), 1.819805) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(25, 25, 0), 1.819805) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(49, 49, 0), -1.773780) == false )
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(49, 49, 0), -1.773780) == false )
         FailTest;
 
     // Fourier space big
@@ -1604,15 +1605,15 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     test_image.Resize(160, 160, 1);
 
     test_pixel = test_image.ReturnComplexPixelFromLogicalCoord(-90, -90, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), -100.0) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), -100.0) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.0) == false )
         FailTest;
 
     test_pixel = test_image.ReturnComplexPixelFromLogicalCoord(0, 0, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), -0.010919) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), -0.010919) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.0) == false )
         FailTest;
 
     test_pixel = test_image.ReturnComplexPixelFromLogicalCoord(5, 5, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), 0.075896) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), 0.075896) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
         FailTest;
 
     // Fourier space small
@@ -1622,12 +1623,12 @@ void MyTestApp::TestScalingAndSizingFunctions( ) {
     test_image.Resize(50, 50, 1);
 
     test_pixel = test_image.ReturnComplexPixelFromLogicalCoord(0, 0, 0, -100.0f + I * 0.0f);
-    if ( DoublesAreAlmostTheSame(real(test_pixel), -0.010919) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), -0.010919) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.0) == false )
         FailTest;
 
     test_pixel = test_image.ReturnComplexPixelFromLogicalCoord(5, 5, 0, -100.0f + I * 0.0f);
     //wxPrintf("real = %f, image = %f\n", creal(test_pixel),cimag(test_pixel));
-    if ( DoublesAreAlmostTheSame(real(test_pixel), 0.075896) == false || DoublesAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
+    if ( FloatsAreAlmostTheSame(real(test_pixel), 0.075896) == false || FloatsAreAlmostTheSame(imag(test_pixel), 0.045677) == false )
         FailTest;
 
     EndTest( );
@@ -1671,9 +1672,9 @@ void MyTestApp::TestMRCFunctions( ) {
 
     // check first and last pixel...
 
-    if ( DoublesAreAlmostTheSame(test_image.real_values[0], -0.340068) == false )
+    if ( FloatsAreAlmostTheSame(test_image.real_values[0], -0.340068) == false )
         FailTest;
-    if ( DoublesAreAlmostTheSame(test_image.real_values[test_image.real_memory_allocated - 3], 0.637069) == false )
+    if ( FloatsAreAlmostTheSame(test_image.real_values[test_image.real_memory_allocated - 3], 0.637069) == false )
         FailTest;
 
     EndTest( );
@@ -1700,7 +1701,7 @@ void MyTestApp::TestFFTFunctions( ) {
 
     // first pixel should be 1,0
 
-    if ( DoublesAreAlmostTheSame(real(test_image.complex_values[0]), 1) == false || DoublesAreAlmostTheSame(imag(test_image.complex_values[0]), 0) == false )
+    if ( FloatsAreAlmostTheSame(real(test_image.complex_values[0]), 1) == false || FloatsAreAlmostTheSame(imag(test_image.complex_values[0]), 0) == false )
         FailTest;
 
     // if we set this to 0,0 - all remaining pixels should now be 0
@@ -1708,7 +1709,7 @@ void MyTestApp::TestFFTFunctions( ) {
     test_image.complex_values[0] = 0.0f + 0.0f * I;
 
     for ( counter = 0; counter < test_image.real_memory_allocated / 2; counter++ ) {
-        if ( DoublesAreAlmostTheSame(real(test_image.complex_values[counter]), 0) == false || DoublesAreAlmostTheSame(imag(test_image.complex_values[counter]), 0) == false )
+        if ( FloatsAreAlmostTheSame(real(test_image.complex_values[counter]), 0) == false || FloatsAreAlmostTheSame(imag(test_image.complex_values[counter]), 0) == false )
             FailTest;
     }
 
@@ -1719,7 +1720,7 @@ void MyTestApp::TestFFTFunctions( ) {
 
     // now one pixel should be set, and the rest should be 0..
 
-    if ( DoublesAreAlmostTheSame(real(test_image.complex_values[20]), 0) == false || DoublesAreAlmostTheSame(imag(test_image.complex_values[20]), -5) == false )
+    if ( FloatsAreAlmostTheSame(real(test_image.complex_values[20]), 0) == false || FloatsAreAlmostTheSame(imag(test_image.complex_values[20]), -5) == false )
         FailTest;
     // set it to 0, then everything should be zero..
 
@@ -1743,7 +1744,7 @@ void MyTestApp::TestFFTFunctions( ) {
     test_image.RemoveFFTWPadding( );
 
     for ( counter = 0; counter < test_image.logical_x_dimension * test_image.logical_y_dimension; counter++ ) {
-        if ( DoublesAreAlmostTheSame(test_image.real_values[counter], 1.0) == false )
+        if ( FloatsAreAlmostTheSame(test_image.real_values[counter], 1.0) == false )
             FailTest;
     }
 
@@ -1810,12 +1811,12 @@ void MyTestApp::TestFastFFT( ) {
         copy_of_input.SubtractImage(&cpu_result);
         EmpiricalDistribution my_dist = copy_of_input.ReturnDistributionOfRealValues( );
 
-        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.0f, float(1e-6)) ) {
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.0f, true, float(1e-6)) ) {
             FailTest;
         }
     }
     else {
-        wxPrintf("Not testing FastFFT for a %i x %i image\n", input_image.logical_x_dimension, input_image.logical_y_dimension);
+        wxPrintf("Not testing FastFFT for a %i x %i image\n", input_image.logical_x_dimension, true, input_image.logical_y_dimension);
     }
 
     EndTest( );
@@ -1892,10 +1893,12 @@ void MyTestApp::PrintResultWorker(bool passed, int line) {
     }
     else {
         if ( OutputIsAtTerminal( ) == true )
-            wxPrintf(ANSI_COLOR_RED "FAILED! (Line : %i)" ANSI_COLOR_RESET, line);
+            wxPrintf(ANSI_COLOR_RED "\n\t\tFAILED! (Line : %i)" ANSI_COLOR_RESET, line);
         else
-            wxPrintf("FAILED! (Line : %i)", line);
-        exit(1);
+            wxPrintf("\n\t\tFAILED\n! (Line : %i)", line);
+        // Removing the exit behavior because I want all tests to run as this is more informative for CI, i.e.
+        // multiple fixes can be made in a single go rather than a one at a time approach.
+        // exit(1);
     }
 
     wxPrintf("\n");

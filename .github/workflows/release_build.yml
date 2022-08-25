@@ -1,4 +1,4 @@
-name: cisTEMx release
+name: cisTEMx GPU release
 
 on:
   push:

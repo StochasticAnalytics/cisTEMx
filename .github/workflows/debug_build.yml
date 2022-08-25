@@ -1,4 +1,4 @@
-name: cisTEMx debug
+name: cisTEMx GPU debug
 
 on:
   push:

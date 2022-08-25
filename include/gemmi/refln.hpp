@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2019 Global Phasing Ltd.
 //
 // Reads reflection data from the mmCIF format.
@@ -15,6 +14,8 @@
 #include "unitcell.hpp"   // for UnitCell
 
 namespace gemmi {
+
+enum class DataType { Unknown, Unmerged, Mean, Anomalous };
 
 struct ReflnBlock {
   cif::Block block;
@@ -142,19 +143,27 @@ struct ReflnBlock {
 // moves blocks from the argument to the return value
 inline
 std::vector<ReflnBlock> as_refln_blocks(std::vector<cif::Block>&& blocks) {
-  std::vector<ReflnBlock> r;
-  r.reserve(blocks.size());
+  std::vector<ReflnBlock> rvec;
+  rvec.reserve(blocks.size());
   for (cif::Block& block : blocks)
-    r.emplace_back(std::move(block));
+    rvec.emplace_back(std::move(block));
   blocks.clear();
-  // Some blocks miss space group tag, try to fill it in.
+  // Some blocks miss space group or unit cell, try to fill it in.
   const SpaceGroup* first_sg = nullptr;
-  for (ReflnBlock& rblock : r)
+  const UnitCell* first_cell = nullptr;
+  for (ReflnBlock& rblock : rvec) {
     if (!first_sg)
       first_sg = rblock.spacegroup;
     else if (!rblock.spacegroup)
       rblock.spacegroup = first_sg;
-  return r;
+    if (rblock.cell.is_crystal()) {
+      if (!first_cell)
+        first_cell = &rblock.cell;
+    } else if (first_cell) {
+      rblock.cell = *first_cell;
+    }
+  }
+  return rvec;
 }
 
 // Get the first (merged) block with required labels.
@@ -194,7 +203,7 @@ inline ReflnBlock hkl_cif_as_refln_block(cif::Block& block) {
   rb.entry_id = rb.block.name;
   impl::set_cell_from_mmcif(rb.block, rb.cell, /*mmcif=*/false);
   const char* hm_tag = "_symmetry_space_group_name_H-M";
-  if (const std::string* hm = block.find_value(hm_tag))
+  if (const std::string* hm = rb.block.find_value(hm_tag))
     rb.spacegroup = find_spacegroup_by_name(cif::as_string(*hm),
                                             rb.cell.alpha, rb.cell.gamma);
   rb.cell.set_cell_images_from_spacegroup(rb.spacegroup);

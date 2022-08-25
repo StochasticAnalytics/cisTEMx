@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2020 Global Phasing Ltd.
 //
 // Generating biological assemblies by applying operations
@@ -8,9 +7,11 @@
 #ifndef GEMMI_ASSEMBLY_HPP_
 #define GEMMI_ASSEMBLY_HPP_
 
-#include <ostream>      // std::ostream
+#include <ostream>      // ostream
+#include <memory>       // unique_ptr
 #include "model.hpp"
 #include "modify.hpp"   // transform_pos_and_adp
+#include "neighbor.hpp" // merge_atoms_in_expanded_model
 #include "util.hpp"
 
 namespace gemmi {
@@ -92,8 +93,30 @@ inline void ensure_unique_chain_name(const Model& model, Chain& chain) {
   chain.name = namegen.make_short_name(chain.name);
 }
 
+namespace impl {
+
+inline bool any_subchain_matches(const Chain& chain, const Assembly::Gen& gen) {
+  const std::string* prev_subchain = nullptr;
+  for (const Residue& res : chain.residues)
+    if (prev_subchain == nullptr || res.subchain != *prev_subchain) {
+      if (in_vector(res.subchain, gen.subchains))
+        return true;
+      prev_subchain = &res.subchain;
+    }
+  return false;
+}
+
+struct AssemblyMapping {
+  std::vector<std::string> sub;  // records subchain name correspondence
+  std::vector<std::map<std::string, std::string>> chain_maps;
+};
+
+} // namespace impl
+
+/// @par mapping is for internal use
 inline Model make_assembly(const Assembly& assembly, const Model& model,
-                           HowToNameCopiedChain how, std::ostream* out) {
+                           HowToNameCopiedChain how, std::ostream* out,
+                           impl::AssemblyMapping* mapping=nullptr) {
   Model new_model(model.name);
   ChainNameGenerator namegen(how);
   std::map<std::string, std::string> subs = model.subchain_to_chain();
@@ -113,69 +136,126 @@ inline Model make_assembly(const Assembly& assembly, const Model& model,
           if (subs.find(subchain_name) == subs.end())
             *out << "Warning: no subchain " << subchain_name << std::endl;
       }
-      // PDB files specify bioassemblies in terms of chains,
-      // mmCIF files in terms of subchains. We handle the two cases separately.
-      if (!gen.chains.empty()) {
-        // chains are not merged here, multiple chains may have the same name
-        std::map<std::string, std::string> new_names;
-        for (size_t i = 0; i != model.chains.size(); ++i) {
-          if (in_vector(model.chains[i].name, gen.chains)) {
-            new_model.chains.push_back(model.chains[i]);
-            Chain& new_chain = new_model.chains.back();
-            auto name_iter = new_names.find(model.chains[i].name);
-            if (name_iter == new_names.end()) {
-              new_chain.name = namegen.make_new_name(new_chain.name, 1);
-              new_names.emplace(model.chains[i].name, new_chain.name);
-            } else {
-              new_chain.name = name_iter->second;
+      // chains are not merged here, multiple chains may have the same name
+      std::map<std::string, std::string> new_names;
+      bool all_chains = (!gen.chains.empty() && gen.chains[0] == "(all)");
+      for (const Chain& chain : model.chains) {
+        // PDB files specify bioassemblies in terms of chains,
+        // mmCIF files in terms of subchains.
+        bool whole_chain = (all_chains || in_vector(chain.name, gen.chains));
+        if (whole_chain ||
+            (!gen.subchains.empty() && impl::any_subchain_matches(chain, gen))) {
+          // add a new empty chain, but first figure out the name for it
+          auto result = new_names.emplace(chain.name, "");
+          if (result.second)  // insertion happened - generate a new chain name
+            result.first->second = namegen.make_new_name(chain.name, 1);
+          new_model.chains.emplace_back(result.first->second);
+          Chain& new_chain = new_model.chains.back();
+          // add residues to the chain
+          for (const Residue& res : chain.residues)
+            if (whole_chain || in_vector(res.subchain, gen.subchains)) {
+              new_chain.residues.push_back(res);
+              Residue& new_res = new_chain.residues.back();
+              transform_pos_and_adp(new_res, oper.transform);
+              if (!new_res.subchain.empty()) {
+                // change subchain name for the residue
+                if (mapping && !mapping->sub.empty() &&
+                    *(mapping->sub.end() - 2) == new_res.subchain) {
+                  new_res.subchain = mapping->sub.back();
+                  continue;
+                }
+                if (how == HowToNameCopiedChain::Short)
+                  new_res.subchain = new_chain.name + ":" + new_res.subchain;
+                else if (how == HowToNameCopiedChain::AddNumber)
+                  new_res.subchain += new_chain.name.substr(chain.name.size());
+                if (mapping) {
+                  mapping->sub.push_back(res.subchain);
+                  mapping->sub.push_back(new_res.subchain);
+                }
+              }
             }
-            for (Residue& res : new_chain.residues) {
-              transform_pos_and_adp(res, oper.transform);
-              if (!res.subchain.empty())
-                res.subchain = new_chain.name + ":" + res.subchain;
-            }
-          }
-        }
-      } else if (!gen.subchains.empty()) {
-        std::map<std::string, std::string> new_names;
-        for (const std::string& subchain_name : gen.subchains) {
-          auto sub_iter = subs.find(subchain_name);
-          if (sub_iter == subs.end())
-            continue;
-          auto name_iter = new_names.find(sub_iter->second);
-          Chain* new_chain;
-          if (name_iter == new_names.end()) {
-            std::string new_name = namegen.make_new_name(sub_iter->second, 1);
-            new_names.emplace(sub_iter->second, new_name);
-            new_model.chains.emplace_back(new_name);
-            new_chain = &new_model.chains.back();
-          } else {
-            new_chain = new_model.find_chain(name_iter->second);
-          }
-          for (const Residue& res : model.get_subchain(subchain_name)) {
-            new_chain->residues.push_back(res);
-            Residue& new_res = new_chain->residues.back();
-            new_res.subchain = new_chain->name + ":" + res.subchain;
-            transform_pos_and_adp(new_res, oper.transform);
-          }
         }
       }
+      if (mapping)
+        mapping->chain_maps.push_back(std::move(new_names));
     }
   return new_model;
 }
 
-inline void change_to_assembly(Structure& st, const std::string& assembly_name,
-                               HowToNameCopiedChain how, std::ostream* out) {
-  Assembly* assembly = st.find_assembly(assembly_name);
-  if (!assembly) {
-    if (st.assemblies.empty())
-      fail("no bioassemblies are listed for this structure");
-    fail("wrong assembly name, use one of: " +
-        join_str(st.assemblies, ' ', [](const Assembly& a) { return a.name; }));
+inline Assembly expand_to_p1(const UnitCell& cell) {
+  Assembly assembly("unit_cell");
+  std::vector<Assembly::Operator> operators(cell.images.size() + 1);
+  // operators[0] stays as identity
+  for (size_t i = 1; i != operators.size(); ++i) {
+    const FTransform& op = cell.images[i-1];
+    operators[i].transform = cell.orth.combine(op.combine(cell.frac));
   }
-  for (Model& model : st.models)
-    model = make_assembly(*assembly, model, how, out);
-  st.connections.clear();
+  assembly.generators.push_back({{"(all)"}, {}, operators});
+  return assembly;
+}
+
+inline void transform_to_assembly(Structure& st, const std::string& assembly_name,
+                                  HowToNameCopiedChain how, std::ostream* out) {
+  const Assembly* assembly = st.find_assembly(assembly_name);
+  std::unique_ptr<Assembly> p1_assembly;
+  if (!assembly) {
+    if (assembly_name == "unit_cell") {
+      p1_assembly.reset(new Assembly(expand_to_p1(st.cell)));
+      assembly = p1_assembly.get();
+    } else if (st.assemblies.empty()) {
+      fail("no bioassemblies are listed for this structure");
+    } else {
+      fail("wrong assembly name, use one of: " +
+           join_str(st.assemblies, ' ', [](const Assembly& a) { return a.name; }));
+    }
+  }
+  impl::AssemblyMapping mapping;
+  for (Model& model : st.models) {
+    bool set_mapping = (&model == &st.models[0] && how != HowToNameCopiedChain::Dup);
+    model = make_assembly(*assembly, model, how, out,
+                          set_mapping ? &mapping : nullptr);
+    merge_atoms_in_expanded_model(model, gemmi::UnitCell());
+    assign_serial_numbers(model);
+  }
+  // update Entity::subchains
+  if (!mapping.sub.empty())
+    for (Entity& ent : st.entities) {
+      std::vector<std::string> new_subchains;
+      for (const std::string& s : ent.subchains)
+        for (size_t i = 0; i < mapping.sub.size(); i += 2) {
+          if (mapping.sub[i] == s)
+            new_subchains.push_back(mapping.sub[i+1]);
+        }
+      ent.subchains = std::move(new_subchains);
+    }
+
+  // connections
+  std::vector<Connection> new_connections;
+  for (const Connection& conn : st.connections)
+    if (conn.asu == Asu::Same) {
+      for (const std::map<std::string, std::string>& ch_map : mapping.chain_maps) {
+        auto ch1 = ch_map.find(conn.partner1.chain_name);
+        auto ch2 = ch_map.find(conn.partner2.chain_name);
+        if (ch1 != ch_map.end() && ch2 != ch_map.end()) {
+          Connection new_conn = conn;
+          new_conn.partner1.chain_name = ch1->second;
+          new_conn.partner2.chain_name = ch2->second;
+          if (st.models[0].find_atom(new_conn.partner1) &&
+              st.models[0].find_atom(new_conn.partner2)) {
+            new_connections.push_back(new_conn);
+          }
+        }
+      }
+    } else {
+      // connections other than 1_555 are lost for now
+      // if it's needed - get in touch
+    }
+  st.connections = std::move(new_connections);
+
+  // Should Assembly instructions be kept or removed? Currently - removing.
+  st.assemblies.clear();
+  // Should st.spacegroup_hm and st.cell be kept? Here we remove only:
+  st.cell.images.clear();
 }
 
 // chain is assumed to be from st.models[0]

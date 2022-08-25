@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017 Global Phasing Ltd.
 //
 // Utilities for parsing CIF numbers (the CIF spec calls it 'numb').
@@ -12,7 +11,7 @@
 
 #include <cmath>   // for NAN
 #include <string>
-#include "third_party/fast_float/fast_float.h"
+#include "third_party/fast_float.h"
 
 namespace gemmi {
 namespace cif {

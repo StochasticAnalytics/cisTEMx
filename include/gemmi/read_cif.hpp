@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2021 Global Phasing Ltd.
 //
 // Functions for reading possibly gzipped CIF files.
@@ -21,6 +20,7 @@ cif::Document read_cif_gz(const std::string& path);
 cif::Document read_mmjson_gz(const std::string& path);
 CharArray read_into_buffer_gz(const std::string& path);
 cif::Document read_cif_from_buffer(const CharArray& buffer, const char* name);
+cif::Document read_first_block_gz(const std::string& path, size_t limit);
 
 inline cif::Document read_cif_or_mmjson_gz(const std::string& path) {
   if (giends_with(path, "json") || giends_with(path, "js"))
@@ -55,6 +55,13 @@ CharArray read_into_buffer_gz(const std::string& path) {
 
 cif::Document read_cif_from_buffer(const CharArray& buffer, const char* name) {
   return cif::read_memory(buffer.data(), buffer.size(), name);
+}
+
+cif::Document read_first_block_gz(const std::string& path, size_t limit) {
+  cif::Document doc;
+  doc.source = path;
+  cif::read_one_block(doc, MaybeGzipped(path), limit);
+  return doc;
 }
 
 } // namespace gemmi

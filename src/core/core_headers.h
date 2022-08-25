@@ -174,14 +174,6 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 #include "json/jsonval.h"
 #include "ccl3d.h"
 
-// TODO: can these be more local to their usage?
-#include "../../include/gemmi/model.hpp"
-#include "../../include/gemmi/elem.hpp"
-#include "../../include/gemmi/mmread.hpp"
-#include "../../include/gemmi/gz.hpp"
-#include "../../include/gemmi/resinfo.hpp"
-#include "../../include/gemmi/calculate.hpp"
-
 #ifdef EXPERIMENTAL
 #include "pdb.h"
 #include "water.h"

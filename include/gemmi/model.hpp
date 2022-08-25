@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017 Global Phasing Ltd.
 //
 // Data structures to keep macromolecular structure model.
@@ -860,7 +859,7 @@ inline const Entity* find_entity_of_subchain(const std::string& subchain_id,
 struct Structure {
   std::string name;
   UnitCell cell;
-  std::string spacegroup_hm;
+  std::string spacegroup_hm;  // usually pdb symbol, cf. SpaceGroup::pdb_name()
   std::vector<Model> models;
   std::vector<NcsOp> ncs;
   std::vector<Entity> entities;

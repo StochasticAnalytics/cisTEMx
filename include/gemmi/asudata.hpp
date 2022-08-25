@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2020 Global Phasing Ltd.
 //
 // AsuData for storing reflection data.
@@ -7,7 +6,6 @@
 #define GEMMI_ASUDATA_HPP_
 
 #include <complex>       // for arg, abs
-#include <tuple>         // for tie
 #include <algorithm>     // for sort, is_sorted
 #include "unitcell.hpp"
 #include "symmetry.hpp"
@@ -41,7 +39,7 @@ struct ComplexCorrelation {
 };
 
 
-// pre: both are sorted
+/// \pre a and b are sorted
 template<typename Func, typename T>
 void for_matching_reflections(const std::vector<T>& a,
                               const std::vector<T>& b,
@@ -53,8 +51,7 @@ void for_matching_reflections(const std::vector<T>& a,
       func(*r1, *r2);
       ++r1;
       ++r2;
-    } else if (std::tie(r1->hkl[0], r1->hkl[1], r1->hkl[2]) <
-               std::tie(r2->hkl[0], r2->hkl[1], r2->hkl[2])) {
+    } else if (r1->hkl < r2->hkl) {
       ++r1;
     } else {
       ++r2;
@@ -62,7 +59,7 @@ void for_matching_reflections(const std::vector<T>& a,
   }
 }
 
-// pre: both are sorted
+/// \pre a and b are sorted
 template<typename T>
 Correlation calculate_hkl_value_correlation(const std::vector<T>& a,
                                             const std::vector<T>& b) {
@@ -73,7 +70,7 @@ Correlation calculate_hkl_value_correlation(const std::vector<T>& a,
   return cor;
 }
 
-// pre: both are sorted
+/// \pre a and b are sorted
 template<typename T>
 ComplexCorrelation calculate_hkl_complex_correlation(const std::vector<T>& a,
                                                      const std::vector<T>& b) {
@@ -84,7 +81,7 @@ ComplexCorrelation calculate_hkl_complex_correlation(const std::vector<T>& a,
   return cor;
 }
 
-// pre: both are sorted
+/// \pre a and b are sorted
 template<typename T>
 int count_equal_values(const std::vector<T>& a, const std::vector<T>& b) {
   int count = 0;
@@ -100,9 +97,7 @@ struct HklValue {
   Miller hkl;
   T value;
 
-  bool operator<(const Miller& m) const {
-    return std::tie(hkl[0], hkl[1], hkl[2]) < std::tie(m[0], m[1], m[2]);
-  }
+  bool operator<(const Miller& m) const { return hkl < m; }
   bool operator<(const HklValue& o) const { return operator<(o.hkl); }
 };
 
@@ -156,11 +151,11 @@ struct AsuData {
       std::sort(v.begin(), v.end());
   }
 
-  void ensure_asu() {
+  void ensure_asu(bool tnt_asu=false) {
     if (!spacegroup_)
       fail("AsuData::ensure_asu(): space group not set");
     GroupOps gops = spacegroup_->operations();
-    ReciprocalAsu asu(spacegroup_);
+    ReciprocalAsu asu(spacegroup_, tnt_asu);
     for (HklValue<T>& hkl_value : v) {
       const Miller& hkl = hkl_value.hkl;
       if (asu.is_in(hkl))

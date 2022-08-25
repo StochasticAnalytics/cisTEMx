@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Conversion between UTF-8 and wchar. Used only for file names on Windows.
 
 #ifndef GEMMI_UTF_HPP_

@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Eigen decomposition code for symmetric 3x3 matrices.
 
 #ifndef GEMMI_EIG3_HPP_

@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2020 Global Phasing Ltd.
 //
 // Functions that convert string to floating-point number ignoring locale.
@@ -8,7 +7,7 @@
 #define GEMMI_ATOF_HPP_
 
 #include "atox.hpp"   // for is_space
-#include "third_party/fast_float/fast_float.h"
+#include "third_party/fast_float.h"
 
 namespace gemmi {
 

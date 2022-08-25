@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2018 Global Phasing Ltd.
 //
 // Topo(logy) - restraints (from a monomer library) applied to a model.
@@ -86,9 +85,10 @@ struct Topo {
     Residue* res1 = nullptr;
     Residue* res2 = nullptr;
     std::vector<Rule> link_rules;
-    // altloc is used only for ChainInfo::extras, not for ResInfo::prev
+    // altloc and asu are used only for ChainInfo::extras, not for ResInfo::prev
     char alt1 = '\0';
     char alt2 = '\0';
+    Asu asu = Asu::Any;
   };
 
   struct ResInfo {
@@ -117,7 +117,6 @@ struct Topo {
 
     ChainInfo(ResidueSpan& subchain, const Chain& chain, const Entity* ent);
     void setup_polymer_links();
-    void add_refmac_builtin_modifications();
     struct RGroup {
       std::vector<ResInfo>::iterator begin, end;
     };
@@ -287,7 +286,7 @@ struct Topo {
   void apply_restraints_to_residue(ResInfo& ri, const MonLib& monlib) {
     // link restraints
     for (Link& prev : ri.prev)
-      if (const ChemLink* link = monlib.find_link(prev.link_id)) {
+      if (const ChemLink* link = monlib.get_link(prev.link_id)) {
         auto rules = apply_restraints(link->rt, *prev.res1, ri.res);
         vector_move_extend(prev.link_rules, std::move(rules));
       }
@@ -297,13 +296,13 @@ struct Topo {
   }
 
   void apply_restraints_to_extra_link(Link& link, const MonLib& monlib) {
-    const ChemLink* cl = monlib.find_link(link.link_id);
+    const ChemLink* cl = monlib.get_link(link.link_id);
     if (!cl) {
       err("ignoring link '" + link.link_id + "' as it is not in the monomer library");
       return;
     }
     if (link.alt1 && link.alt2 && link.alt1 != link.alt2)
-      err(tostr("LINK between different conformers ", link.alt1, " and ", link.alt2, '.'));
+      err(cat("LINK between different conformers ", link.alt1, " and ", link.alt2, '.'));
     char alt = link.alt1 ? link.alt1 : link.alt2;
     auto rules = apply_restraints(cl->rt, *link.res1, link.res2, alt);
     vector_move_extend(link.link_rules, std::move(rules));
@@ -335,7 +334,23 @@ struct Topo {
       angle_index.emplace(ang.atoms[1], &ang);
   }
 
-  GEMMI_NOINLINE void err(const std::string& msg) const {
+  Link* find_polymer_link(const AtomAddress& a1, const AtomAddress& a2) {
+    for (ChainInfo& ci : chain_infos)
+      if (a1.chain_name == ci.chain_ref.name && a2.chain_name == ci.chain_ref.name) {
+        for (ResInfo& ri : ci.res_infos)
+          for (Link& link : ri.prev) {
+            assert(link.res1 && link.res2);
+            if ((a1.res_id.matches_noseg(*link.res1) &&
+                 a2.res_id.matches_noseg(*link.res2)) ||
+                (a2.res_id.matches_noseg(*link.res1) &&
+                 a1.res_id.matches_noseg(*link.res2)))
+              return &link;
+          }
+      }
+    return nullptr;
+  }
+
+  GEMMI_COLD void err(const std::string& msg) const {
     if (warnings == nullptr)
       fail(msg);
     *warnings << "Warning: " << msg << std::endl;
@@ -373,13 +388,16 @@ inline void Topo::ChainInfo::setup_polymer_links() {
         p.res2 = ri->res;
         assert(prev_ri - ri == p.res1 - p.res2);
         if (are_connected(*prev_ri->res, *ri->res, polymer_type)) {
-          if (is_polypeptide(polymer_type)) {
-            if (ri->chemcomp.group == "P-peptide")
+          if (is_polypeptide(polymer_type) && ri->chemcomp.is_peptide_group() &&
+                                         prev_ri->chemcomp.is_peptide_group()) {
+            int id = ialpha4_id(ri->chemcomp.group.c_str());
+            if (id == ialpha4_id("p-pe"))
               p.link_id = "P";  // PCIS, PTRANS
-            else if (ri->chemcomp.group == "M-peptide")
+            else if (id == ialpha4_id("m-pe"))
               p.link_id = "NM"; // NMCIS, NMTRANS
             p.link_id += prev_ri->res->is_cis ? "CIS" : "TRANS";
-          } else if (is_polynucleotide(polymer_type)) {
+          } else if (is_polynucleotide(polymer_type) && ri->chemcomp.is_nucleotide_group() &&
+                                                   prev_ri->chemcomp.is_nucleotide_group()) {
             p.link_id = "p";
           } else {
             p.link_id = "?";
@@ -393,27 +411,6 @@ inline void Topo::ChainInfo::setup_polymer_links() {
   }
 }
 
-inline void Topo::ChainInfo::add_refmac_builtin_modifications() {
-  if (polymer && !res_infos.empty()) {
-    // we try to get exactly the same numbers that makecif produces
-    for (Topo::ResInfo& ri : res_infos)
-      if (polymer_type == PolymerType::PeptideL)
-        ri.mods.emplace_back("AA-STAND");
-    Topo::ResInfo& front = res_infos.front();
-    Topo::ResInfo& back = res_infos.back();
-    if (is_polypeptide(polymer_type)) {
-      if (front.chemcomp.group == "P-peptide")
-        front.mods.emplace_back("NH2");
-      else
-        front.mods.emplace_back("NH3");
-      back.mods.emplace_back(back.res->find_atom("OXT", '*') ? "COO" : "TERMINUS");
-    } else if (is_polynucleotide(polymer_type)) {
-      front.mods.emplace_back(front.res->find_atom("P", '*') ? "p5*END" : "5*END");
-      back.mods.emplace_back("TERMINUS");
-    }
-  }
-}
-
 inline Restraints::Bond bond_restraint_from_connection(const Connection& conn) {
   Restraints::Bond bond;
   bond.id1 = Restraints::AtomId{1, conn.partner1.atom_name};
@@ -422,6 +419,8 @@ inline Restraints::Bond bond_restraint_from_connection(const Connection& conn) {
   bond.aromatic = false;
   bond.value = conn.reported_distance;
   bond.esd = 0.02;
+  bond.value_nucleus = conn.reported_distance;
+  bond.esd_nucleus = 0.02;
   return bond;
 }
 
@@ -446,22 +445,12 @@ inline void Topo::initialize_refmac_topology(const Structure& st, Model& model0,
     }
 
     ci.setup_polymer_links();
-
-    ci.add_refmac_builtin_modifications();
-
-    // add modifications from standard links
-    for (ResInfo& ri : ci.res_infos)
-      for (Link& prev : ri.prev)
-        if (const ChemLink* link = monlib.find_link(prev.link_id)) {
-          ResInfo* ri_prev = &ri + (prev.res1 - prev.res2);
-          ri_prev->add_mod(link->side1.mod);
-          ri.add_mod(link->side2.mod);
-        }
   }
+
   // add extra links
   for (const Connection& conn : st.connections) {
-    // ignoring hydrogen bonds and metal coordination
-    if (conn.type == Connection::Hydrog || conn.type == Connection::MetalC)
+    // ignoring hydrogen bonds
+    if (conn.type == Connection::Hydrog)
       continue;
     Link extra;
     extra.res1 = model0.find_cra(conn.partner1, true).residue;
@@ -470,9 +459,10 @@ inline void Topo::initialize_refmac_topology(const Structure& st, Model& model0,
       continue;
     extra.alt1 = conn.partner1.altloc;
     extra.alt2 = conn.partner2.altloc;
+    extra.asu = conn.asu;
 
     // first try to find ChemLink by name (and check if it matches)
-    const ChemLink* match = monlib.find_link(conn.link_id);
+    const ChemLink* match = monlib.get_link(conn.link_id);
     if (match && (
           match->rt.bonds.empty() ||
           match->rt.bonds[0].id1.atom != conn.partner1.atom_name ||
@@ -480,17 +470,27 @@ inline void Topo::initialize_refmac_topology(const Structure& st, Model& model0,
           !monlib.link_side_matches_residue(match->side1, extra.res1->name) ||
           !monlib.link_side_matches_residue(match->side2, extra.res2->name)))
       match = nullptr;
-    // if ChemLink was not found, use the first matching link (if any)
-    if (!match)
-      match = monlib.match_link(extra.res1->name, conn.partner1.atom_name,
-                                extra.res2->name, conn.partner2.atom_name);
+
+    // if ChemLink was not found, use the best matching link (if any)
     if (!match) {
-      match = monlib.match_link(extra.res2->name, conn.partner2.atom_name,
-                                extra.res1->name, conn.partner1.atom_name);
-      if (match) {
+      auto r = monlib.match_link(extra.res1->name, conn.partner1.atom_name,
+                                 extra.res2->name, conn.partner2.atom_name);
+      match = r.first;
+      if (match && r.second) {
         std::swap(extra.res1, extra.res2);
         std::swap(extra.alt1, extra.alt2);
       }
+    }
+
+    // If a polymer link is also given in LINK/struct_conn,
+    // use only one of them. If LINK has explicit name (ccp4_link_id),
+    // or if it matches residue-specific link from monomer library, use it;
+    // otherwise, LINK is repetition of TRANS/CIS, so ignore LINK.
+    if (Link* polymer_link = find_polymer_link(conn.partner1, conn.partner2)) {
+      if (conn.link_id.empty() && !cif::is_null(polymer_link->link_id) &&
+          (!match || (match->side1.comp.empty() && match->side2.comp.empty())))
+        continue;
+      polymer_link->link_id = "?";  // disable polymer link
     }
 
     if (!match && ignore_unknown_links)
@@ -506,7 +506,7 @@ inline void Topo::initialize_refmac_topology(const Structure& st, Model& model0,
       ChemLink cl;
       cl.side1.comp = extra.res1->name;
       cl.side2.comp = extra.res2->name;
-      cl.id = cl.side1.comp + "-" + cl.side2.comp;
+      cl.id = cl.side1.comp + cl.side2.comp;
       cl.rt.bonds.push_back(bond_restraint_from_connection(conn));
 
       monlib.ensure_unique_link_name(cl.id);
@@ -515,6 +515,17 @@ inline void Topo::initialize_refmac_topology(const Structure& st, Model& model0,
     }
     extras.push_back(extra);
   }
+
+  // Add modifications from standard links.
+  // We do it here b/c polymer links could be disabled (link_id = "?") above.
+  for (ChainInfo& ci : chain_infos)
+    for (ResInfo& ri : ci.res_infos)
+      for (Link& prev : ri.prev)
+        if (const ChemLink* link = monlib.get_link(prev.link_id)) {
+          ResInfo* ri_prev = &ri + (prev.res1 - prev.res2);
+          ri_prev->add_mod(link->side1.mod);
+          ri.add_mod(link->side2.mod);
+        }
 
   for (ChainInfo& chain_info : chain_infos)
     for (ResInfo& ri : chain_info.res_infos) {

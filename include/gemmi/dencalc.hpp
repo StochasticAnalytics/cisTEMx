@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2019 Global Phasing Ltd.
 //
 // Tools to prepare a grid with values of electron density of a model.
@@ -66,13 +65,19 @@ inline double it92_radius_approx(double b) {
   return (8.5 + 0.075 * b) / (2.4 + 0.0045 * b);
 }
 
-inline double get_minimum_b_iso(const Model& model) {
+inline double get_minimum_b(const Model& model) {
   double b_min = 1000.;
   for (const Chain& chain : model.chains)
     for (const Residue& residue : chain.residues)
-      for (const Atom& atom : residue.atoms)
-        if (atom.b_iso < b_min)
-          b_min = atom.b_iso;
+      for (const Atom& atom : residue.atoms) {
+        double b = atom.b_iso;
+        if (!atom.aniso.nonzero()) {
+          std::array<double,3> eig = atom.aniso.calculate_eigenvalues();
+          b = std::min(std::min(eig[0], eig[1]), eig[2]);
+        }
+        if (b < b_min)
+          b_min = b;
+      }
   return b_min;
 }
 
@@ -98,8 +103,11 @@ struct DensityCalculator {
   double requested_grid_spacing() const { return d_min / (2 * rate); }
 
   void set_refmac_compatible_blur(const Model& model) {
-    double b_min = get_minimum_b_iso(model);
-    blur = std::max(u_to_b() / 1.1 * sq(requested_grid_spacing()) - b_min, 0.);
+    double spacing = requested_grid_spacing();
+    if (spacing <= 0)
+      spacing = grid.min_spacing();
+    double b_min = get_minimum_b(model);
+    blur = std::max(u_to_b() / 1.1 * sq(spacing) - b_min, 0.);
   }
 
   // pre: check if Table::has(atom.element)
@@ -145,7 +153,7 @@ struct DensityCalculator {
       int dv = (int) std::ceil(radius / grid.spacing[1]);
       int dw = (int) std::ceil(radius / grid.spacing[2]);
       grid.template use_points_in_box<true>(fpos, du, dv, dw,
-                             [&](Real& point, const Position& delta) {
+                             [&](Real& point, const Position& delta, int, int, int) {
         if (delta.length_sq() < radius * radius)
           point += Real(atom.occ * precal.calculate(delta));
       }, false);
@@ -154,10 +162,17 @@ struct DensityCalculator {
 
   void initialize_grid() {
     grid.data.clear();
-    grid.set_size_from_spacing(requested_grid_spacing(), true);
+    double spacing = requested_grid_spacing();
+    if (spacing > 0)
+      grid.set_size_from_spacing(spacing, true);
+    else if (grid.point_count() > 0)
+      grid.fill(0.);
+    else
+      fail("initialize_grid(): d_min is not set");
   }
 
   void add_model_density_to_grid(const Model& model) {
+    grid.check_not_empty();
     for (const Chain& chain : model.chains)
       for (const Residue& res : chain.residues)
         for (const Atom& atom : res.atoms)

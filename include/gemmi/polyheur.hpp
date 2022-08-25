@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2017-2018 Global Phasing Ltd.
 //
 // Heuristic methods for working with chains and polymers.
@@ -93,6 +92,16 @@ inline bool is_polymer_residue(const Residue& res, PolymerType ptype) {
     default:
       return false;
   }
+}
+
+struct AtomNameElement { std::string atom_name; El el; };
+
+inline std::vector<AtomNameElement> get_mainchain_atoms(PolymerType ptype) {
+  if (is_polynucleotide(ptype))
+    return {{"P", El::P}, {"O5'", El::O}, {"C5'", El::C},
+            {"C4'", El::C}, {"O4'", El::O}, {"C3'", El::C}, {"O3'", El::O},
+            {"C2'", El::C}, {"O2'", El::O}, {"C1'", El::C}};
+  return {{"N", El::N}, {"CA", El::C}, {"C", El::C}, {"O", El::O}};
 }
 
 inline bool are_connected(const Residue& r1, const Residue& r2, PolymerType ptype) {

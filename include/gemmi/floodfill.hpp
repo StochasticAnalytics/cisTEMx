@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2020 Global Phasing Ltd.
 //
 // The flood fill (scanline fill) algorithm for Grid.
@@ -51,7 +50,7 @@ struct FloodFill {
   }
 
   // Find all connected points with value Land. Change them to this_island().
-  Result find_volume(int u, int v, int w) {
+  Result find_all_connected_points(int u, int v, int w) {
     Result r;
     T* ptr = &mask.data[mask.index_q(u, v, w)];
     r.lines.push_back(line_from_point(u, v, w, ptr));
@@ -60,12 +59,21 @@ struct FloodFill {
       int u_ = r.lines[i].u;
       int v_ = r.lines[i].v;
       int w_ = r.lines[i].w;
-      int ulen = r.lines[i].ulen;
+      int ustart = u_ != 0 ? u_ - 1 : mask.nu - 1;
+      int ulen = std::min(mask.nu, r.lines[i].ulen + 2);
       // add adjacent lines
-      add_lines(u_, v_ != 0 ? v_ - 1 : mask.nv - 1, w_, ulen, r);
-      add_lines(u_, v_ + 1 != mask.nv ? v_ + 1 : 0, w_, ulen, r);
-      add_lines(u_, v_, w_ != 0 ? w_ - 1 : mask.nw - 1, ulen, r);
-      add_lines(u_, v_, w_ + 1 != mask.nw ? w_ + 1 : 0, ulen, r);
+      int vl = v_ != 0 ? v_ - 1 : mask.nv - 1;
+      int vh = v_ + 1 != mask.nv ? v_ + 1 : 0;
+      int wl = w_ != 0 ? w_ - 1 : mask.nw - 1;
+      int wh = w_ + 1 != mask.nw ? w_ + 1 : 0;
+      add_lines(ustart, vl, wl, ulen, r);
+      add_lines(ustart, vl, w_, ulen, r);
+      add_lines(ustart, vl, wh, ulen, r);
+      add_lines(ustart, v_, wl, ulen, r);
+      add_lines(ustart, v_, wh, ulen, r);
+      add_lines(ustart, vh, wl, ulen, r);
+      add_lines(ustart, vh, w_, ulen, r);
+      add_lines(ustart, vh, wh, ulen, r);
     }
     return r;
   }
@@ -79,7 +87,7 @@ struct FloodFill {
           assert(idx == mask.index_q(u, v, w));
           if (mask.data[idx] == Land) {
             // it temporarily marks current island as this_island()
-            Result r = find_volume(u, v, w);
+            Result r = find_all_connected_points(u, v, w);
             func(r);
           }
         }
@@ -121,6 +129,33 @@ private:
     return {u, v, w, mask.nu, ptr};
   }
 };
+
+inline void mask_nodes_above_threshold(Grid<std::int8_t>& mask, const Grid<float>& grid,
+                                       double threshold, bool negate=false) {
+  mask.copy_metadata_from(grid);
+  mask.data.resize(grid.data.size());
+  size_t n = 0;
+  for (float d : grid.data)
+    mask.data[n++] = std::int8_t((negate ? -d : d) > threshold);
+}
+
+inline Grid<std::int8_t> flood_fill_above(const Grid<float>& grid,
+                                          const std::vector<Position>& seeds,
+                                          double threshold,
+                                          bool negate=false) {
+  grid.check_not_empty();
+  Grid<std::int8_t> mask;
+  mask_nodes_above_threshold(mask, grid, threshold, negate);
+  FloodFill<std::int8_t, 1> flood_fill{mask};
+  for (const Position& pos : seeds) {
+    auto point = mask.get_nearest_point(pos);
+    if (*point.value == 1)
+      flood_fill.find_all_connected_points(point.u, point.v, point.w);
+  }
+  for (std::int8_t& d : mask.data)
+    d = std::int8_t(d == flood_fill.this_island());
+  return mask;
+}
 
 } // namespace gemmi
 #endif

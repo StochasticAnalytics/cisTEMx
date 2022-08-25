@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2018 Global Phasing Ltd.
 //
 // CCP4 format for maps and masks.
@@ -13,7 +12,7 @@
 #include <cstring>   // for memcpy
 #include <array>
 #include <string>
-#include <typeinfo>  // for typeid
+#include <type_traits>  // for is_same
 #include <vector>
 #include "symmetry.hpp"
 #include "fail.hpp"      // for fail
@@ -26,11 +25,10 @@ namespace gemmi {
 using std::int32_t;
 
 // options for Ccp4<>::setup
-enum class GridSetup {
-  ReorderOnly,  // reorder axes to X, Y, Z
-  ResizeOnly,   // reorder and resize to the whole cell, but no symmetry ops
+enum class MapSetup {
   Full,         // reorder and expand to the whole unit cell
-  FullCheck     // additionally, check consistency of redundant data
+  NoSymmetry,   // reorder and resize to the whole cell, but no symmetry ops
+  ReorderOnly   // reorder axes to X, Y, Z
 };
 
 struct Ccp4Base {
@@ -179,11 +177,15 @@ struct Ccp4 : public Ccp4Base {
     }
   }
 
+  /// If the header is empty, prepare it; otherwise, update only MODE
+  /// and, if update_stats==true, also DMIN, DMAX, DMEAN and RMS.
   void update_ccp4_header(int mode=-1, bool update_stats=true) {
     if (mode > 2 && mode != 6)
       fail("Only modes 0, 1, 2 and 6 are supported.");
     if (grid.point_count() == 0)
       fail("update_ccp4_header(): set the grid first (it has size 0)");
+    if (grid.axis_order == AxisOrder::Unknown)
+      fail("update_ccp4_header(): run setup() first");
     if (update_stats)
       hstats = calculate_data_statistics(grid.data);
     if (ccp4_header.empty())
@@ -203,13 +205,13 @@ struct Ccp4 : public Ccp4Base {
   }
 
   static int mode_for_data() {
-    if (typeid(T) == typeid(std::int8_t))
+    if (std::is_same<T, std::int8_t>::value)
       return 0;
-    if (typeid(T) == typeid(std::int16_t))
+    if (std::is_same<T, std::int16_t>::value)
       return 1;
-    if (typeid(T) == typeid(float))
+    if (std::is_same<T, float>::value)
       return 2;
-    if (typeid(T) == typeid(std::uint16_t))
+    if (std::is_same<T, std::uint16_t>::value)
       return 6;
     return -1;
   }
@@ -270,7 +272,7 @@ struct Ccp4 : public Ccp4Base {
     }
   }
 
-  double setup(GridSetup mode, T default_value);
+  double setup(T default_value, MapSetup mode=MapSetup::Full);
   void set_extent(const Box<Fractional>& box);
 
   template<typename Stream>
@@ -302,9 +304,15 @@ struct Ccp4 : public Ccp4Base {
 
 namespace impl {
 
+template<typename From, typename To>
+To translate_map_point(From f) { return static_cast<To>(f); }
+// We convert map 2 to 0 by translating non-zero values to 1.
+template<> inline
+std::int8_t translate_map_point<float,std::int8_t>(float f) { return f != 0; }
+
 template<typename Stream, typename TFile, typename TMem>
 void read_data(Stream& f, std::vector<TMem>& content) {
-  if (typeid(TFile) == typeid(TMem)) {
+  if (std::is_same<TFile, TMem>::value) {
     size_t len = content.size();
     if (!f.read(content.data(), sizeof(TMem) * len))
       fail("Failed to read all the data from the map file.");
@@ -316,14 +324,14 @@ void read_data(Stream& f, std::vector<TMem>& content) {
       if (!f.read(work.data(), sizeof(TFile) * len))
         fail("Failed to read all the data from the map file.");
       for (size_t j = 0; j < len; ++j)
-        content[i+j] = static_cast<TMem>(work[j]);
+        content[i+j] = translate_map_point<TFile,TMem>(work[j]);
     }
   }
 }
 
 template<typename TFile, typename TMem>
 void write_data(const std::vector<TMem>& content, FILE* f) {
-  if (typeid(TMem) == typeid(TFile)) {
+  if (std::is_same<TMem, TFile>::value) {
     size_t len = content.size();
     if (std::fwrite(content.data(), sizeof(TFile), len, f) != len)
       sys_fail("Failed to write data to the map file");
@@ -374,7 +382,7 @@ void Ccp4<T>::read_ccp4_stream(Stream f, const std::string& path) {
 }
 
 template<typename T>
-double Ccp4<T>::setup(GridSetup mode, T default_value) {
+double Ccp4<T>::setup(T default_value, MapSetup mode) {
   double max_error = 0.0;
   if (grid.axis_order == AxisOrder::XYZ || ccp4_header.empty())
     return max_error;
@@ -384,8 +392,13 @@ double Ccp4<T>::setup(GridSetup mode, T default_value) {
   auto pos = axis_positions();
   std::array<int, 3> start = header_3i32(5);
   int end[3] = { start[0] + grid.nu, start[1] + grid.nv, start[2] + grid.nw };
+  // if it's sufficient to transpose the map, switch to ReorderOnly mode
+  if (mode != MapSetup::ReorderOnly &&
+      start[0] == 0 && start[1] == 0 && start[2] == 0 &&
+      end[pos[0]] == sampl[0] && end[pos[1]] == sampl[1] && end[pos[2]] == sampl[2])
+    mode = MapSetup::ReorderOnly;
   // set new metadata
-  if (mode == GridSetup::ReorderOnly) {
+  if (mode == MapSetup::ReorderOnly) {
     set_header_3i32(5, start[pos[0]], start[pos[1]], start[pos[2]]);
     for (int i = 0; i < 3; ++i) {
       end[i] -= start[i];
@@ -415,12 +428,7 @@ double Ccp4<T>::setup(GridSetup mode, T default_value) {
         full[new_index] = val;
       }
   grid.data = std::move(full);
-  if (mode == GridSetup::Full) {
-    grid.axis_order = AxisOrder::XYZ;
-    grid.symmetrize([&default_value](T a, T b) {
-        return impl::is_same(a, default_value) ? b : a;
-    });
-  } else if (mode == GridSetup::FullCheck) {
+  if (mode == MapSetup::Full) {
     grid.axis_order = AxisOrder::XYZ;
     grid.symmetrize([&max_error, &default_value](T a, T b) {
         if (impl::is_same(a, default_value))
@@ -441,6 +449,8 @@ double Ccp4<T>::setup(GridSetup mode, T default_value) {
 
 template<typename T>
 void Ccp4<T>::set_extent(const Box<Fractional>& box) {
+  if (ccp4_header.empty())
+    fail("set_extent(): no header in the map. Call update_ccp4_header() first");
   if (!full_cell())
     fail("Ccp4::set_extent() works only after setup()");
   if (grid.axis_order != AxisOrder::XYZ)
@@ -452,19 +462,17 @@ void Ccp4<T>::set_extent(const Box<Fractional>& box) {
   int nv = (int)std::floor(box.maximum.y * grid.nv) - v0 + 1;
   int nw = (int)std::floor(box.maximum.z * grid.nw) - w0 + 1;
   // set the data
-  std::vector<T> data((size_t)nu * nv * nw);
-  int idx = 0;
-  for (int w = 0; w < nw; w++) // sections
-    for (int v = 0; v < nv; v++) // rows
-      for (int u = 0; u < nu; u++) // cols
-        data[idx++] = grid.get_value(u0 + u, v0 + v, w0 + w);
-  grid.data = std::move(data);
+  std::vector<T> new_data((size_t)nu * nv * nw);
+  grid.get_subarray(new_data.data(), {u0, v0, w0}, {nu, nv, nw});
+  grid.data.swap(new_data);
   // and metadata
   grid.nu = nu;
   grid.nv = nv;
   grid.nw = nw;
   set_header_3i32(1, grid.nu, grid.nv, grid.nw); // NX, NY, NZ
   set_header_3i32(5, u0, v0, w0);
+  // AxisOrder::XYZ is used only for grid covering full cell
+  grid.axis_order = AxisOrder::Unknown;
 }
 
 template<typename T>

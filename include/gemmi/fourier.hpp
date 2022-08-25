@@ -1,4 +1,3 @@
-//The contents of this file are covered by the Mozilla Public License v2, a copy of which is included in include/LICENSE_MOZILLAv2.txt
 // Copyright 2019 Global Phasing Ltd.
 //
 // Fourier transform applied to map coefficients.
@@ -77,14 +76,6 @@ bool data_fits_into(const DataProxy& data, std::array<int, 3> size) {
         return false;
   }
   return true;
-}
-
-inline float friedel_mate_value(float v) { return v; }
-inline double friedel_mate_value(double v) { return v; }
-
-template<typename T>
-std::complex<T> friedel_mate_value(const std::complex<T>& v) {
-  return std::conj(v);
 }
 
 template<typename T>
@@ -196,7 +187,7 @@ FPhiGrid<T> get_f_phi_on_grid(const FPhi& fphi,
       }
     }
   }
-  if (!ops.is_centric())
+  if (!ops.is_centrosymmetric())
     add_friedel_mates(grid);
   return grid;
 }
@@ -229,7 +220,7 @@ ReciprocalGrid<T> get_value_on_grid(const DataProxy& data, size_t column,
       }
     }
   }
-  if (!ops.is_centric())
+  if (!ops.is_centrosymmetric())
     add_friedel_mates(grid);
   return grid;
 }

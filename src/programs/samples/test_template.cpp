@@ -3,7 +3,6 @@
 #ifdef ENABLEGPU
 #include "../../../gpu/gpu_core_headers.h"
 #else
-#error "GPU is not enabled"
 #include "../../../core/core_headers.h"
 #endif
 

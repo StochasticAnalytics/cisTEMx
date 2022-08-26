@@ -97,15 +97,15 @@ float3 Coords::ReturnOrigin(PaddingStatus status) {
     switch ( status ) {
             // TODO think about why the 0.5 is needed. It doesn't seem like it should be, but when checking the crosshair pdb it seems to be the best solution to keep everything centered.
         case none:
-            output = make_float3(specimen.x / 2 + 0.5f, specimen.y / 2 + 0.5f, specimen.z / 2 + 0.5f);
+            output = make_float3(specimen.x / 2 + 0.0f, specimen.y / 2 + 0.0f, specimen.z / 2 + 0.0f);
             break;
 
         case fft:
-            output = make_float3(fft_padding.x / 2 + 0.5f, fft_padding.y / 2 + 0.5f, fft_padding.z / 2 + 0.5f);
+            output = make_float3(fft_padding.x / 2 + 0.0f, fft_padding.y / 2 + 0.0f, fft_padding.z / 2 + 0.0f);
             break;
 
         case solvent:
-            output = make_float3(solvent_padding.x / 2 + 0.5f, solvent_padding.y / 2 + 0.5f, solvent_padding.z / 2 + 0.5f);
+            output = make_float3(solvent_padding.x / 2 + 0.0f, solvent_padding.y / 2 + 0.0f, solvent_padding.z / 2 + 0.0f);
             break;
     }
     return output;

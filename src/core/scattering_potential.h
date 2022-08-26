@@ -113,7 +113,8 @@ class ScatteringPotential {
     // Called for standalon 3d density simulations
     void calc_scattering_potential(Image&         image_vol,
                                    RotationMatrix rotate_waters,
-                                   int            number_of_threads = 1);
+                                   int            number_of_threads,
+                                   float dx = 0.f, float dy = 0.f, float dz = 0.f);
     // Called for more complicated full simulations
     void calc_scattering_potential(const PDB* current_specimen,
                                    Coords&    coords,
@@ -129,7 +130,8 @@ class ScatteringPotential {
                                    float      non_water_inelastic_scaling,
                                    bool       tilted_scattering_potential_for_full_beam_tilt,
                                    float      beam_tilt_z_X_component,
-                                   float      beam_tilt_z_Y_component);
+                                   float      beam_tilt_z_Y_component,
+                                   float dx = 0.f, float dy = 0.f, float dz = 0.f);
 
   private:
     float _lead_term;

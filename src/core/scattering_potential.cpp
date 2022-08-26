@@ -120,7 +120,8 @@ long ScatteringPotential::ReturnTotalNumberOfNonWaterAtoms( ) {
 
 void ScatteringPotential::calc_scattering_potential(Image&         image_vol,
                                                     RotationMatrix rotate_waters,
-                                                    int            number_of_threads) {
+                                                    int            number_of_threads,
+                                                    float dx, float dy, float dz) {
 
     MyDebugAssertFalse(pdb_ensemble.size( ) == 0, "You must call InitPdbObject before calling this function");
     MyDebugAssertTrue(image_vol.is_in_memory, "Image must be in memory");
@@ -163,7 +164,8 @@ void ScatteringPotential::calc_scattering_potential(Image&         image_vol,
                               non_water_inelastic_scaling,
                               tilted_scattering_potential_for_full_beam_tilt,
                               beam_tilt_z_X_component,
-                              beam_tilt_z_X_component);
+                              beam_tilt_z_X_component,
+                              dx, dy, dz);
 }
 
 // Called from simulate.cpp
@@ -181,7 +183,8 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
                                                     float      non_water_inelastic_scaling,
                                                     bool       tilted_scattering_potential_for_full_beam_tilt,
                                                     float      beam_tilt_z_X_component,
-                                                    float      beam_tilt_z_Y_component) {
+                                                    float      beam_tilt_z_Y_component,
+                                                    float ddx, float ddy, float ddz) {
     MyDebugAssertTrue(_pixel_size > 0.0, "Pixel size not set");
 
     int z_low = slabIDX_start[iSlab] - size_neighborhood;
@@ -210,7 +213,6 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
     float    atoms_distances_tmp[cubic_vol];
 
     int   n_atoms_added;
-    float pixel_offset = 0.5f;
     float bfX(0), bfY(0), bfZ(0);
 
     float bPlusB[5];
@@ -219,7 +221,7 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
 #pragma omp parallel for num_threads(number_of_threads) private(                                                       \
         atom_id, bFactor, bPlusB, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,                              \
         indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
-        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, pixel_offset, bfX, bfY, bfZ)
+        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, bfX, bfY, bfZ)
     for ( long current_atom = 0; current_atom < ReturnTotalNumberOfNonWaterAtoms( ); current_atom++ ) {
         n_atoms_added = 0;
 
@@ -243,30 +245,30 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
 
             x1 = current_specimen->atoms.at(current_atom).x_coordinate;
             y1 = current_specimen->atoms.at(current_atom).y_coordinate;
-            z1 = current_specimen->atoms.at(current_atom).z_coordinate + (rotated_oZ - slabIDX_start[iSlab]) * _pixel_size;
+            z1 = current_specimen->atoms.at(current_atom).z_coordinate + ((rotated_oZ)-slabIDX_start[iSlab]) * _pixel_size;
 
             x1 += (z1)*beam_tilt_z_X_component;
             y1 += (z1)*beam_tilt_z_Y_component;
 
             // Convert atom origin to pixels and shift by volume origin to get pixel coordinates. Add 0.5 to place origin at "center" of voxel
-            dx = modff(origin.x + (x1 / _pixel_size + pixel_offset), &ix);
-            dy = modff(origin.y + (y1 / _pixel_size + pixel_offset), &iy);
+            dx = modff(origin.x + ddx + (x1 / _pixel_size) + cistem::atomic_to_pixel_offset, &ix);
+            dy = modff(origin.y + ddy + (y1 / _pixel_size) + cistem::atomic_to_pixel_offset, &iy);
             // Notes this is the unmodified dz (not using z1)
 
-            dz = modff(rotated_oZ + ((float)current_specimen->atoms.at(current_atom).z_coordinate / _pixel_size + pixel_offset), &iz);
+            dz = modff((rotated_oZ) + ddz + ((float)current_specimen->atoms.at(current_atom).z_coordinate / _pixel_size) + cistem::atomic_to_pixel_offset, &iz);
         }
         else {
 
             // Convert atom origin to pixels and shift by volume origin to get pixel coordinates. Add 0.5 to place origin at "center" of voxel
-            dx = modff(origin.x + (current_specimen->atoms.at(current_atom).x_coordinate / _pixel_size + pixel_offset), &ix);
-            dy = modff(origin.y + (current_specimen->atoms.at(current_atom).y_coordinate / _pixel_size + pixel_offset), &iy);
-            dz = modff(rotated_oZ + (current_specimen->atoms.at(current_atom).z_coordinate / _pixel_size + pixel_offset), &iz);
+            dx = modff(origin.x + ddx + (current_specimen->atoms.at(current_atom).x_coordinate / _pixel_size) + cistem::atomic_to_pixel_offset, &ix);
+            dy = modff(origin.y + ddy + (current_specimen->atoms.at(current_atom).y_coordinate / _pixel_size) + cistem::atomic_to_pixel_offset, &iy);
+            dz = modff((rotated_oZ) + ddz + (current_specimen->atoms.at(current_atom).z_coordinate / _pixel_size) + cistem::atomic_to_pixel_offset, &iz);
         }
 
         // With the correct pixel indices in ix,iy,iz now subtract off the 0.5
-        dx -= pixel_offset;
-        dy -= pixel_offset;
-        dz -= pixel_offset;
+        dx -= cistem::atomic_to_pixel_offset;
+        dy -= cistem::atomic_to_pixel_offset;
+        dz -= cistem::atomic_to_pixel_offset;
 
 #pragma omp simd
         for ( iGaussian = 0; iGaussian < 5; iGaussian++ ) {
@@ -279,21 +281,21 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
 
             for ( sx = -size_neighborhood; sx <= size_neighborhood; sx++ ) {
                 indX    = ix + sx;
-                R.x1    = (sx - pixel_offset - dx) * this->_pixel_size;
+                R.x1    = (sx - cistem::atomic_to_pixel_offset - dx) * this->_pixel_size;
                 R.x2    = (R.x1 + this->_pixel_size);
                 xDistSq = (sx - dx) * _pixel_size;
                 xDistSq *= xDistSq;
 
                 for ( sy = -size_neighborhood; sy <= size_neighborhood; sy++ ) {
                     indY    = iy + sy;
-                    R.y1    = (sy - pixel_offset - dy) * this->_pixel_size;
+                    R.y1    = (sy - cistem::atomic_to_pixel_offset - dy) * this->_pixel_size;
                     R.y2    = (R.y1 + this->_pixel_size);
                     yDistSq = (sy - dy) * _pixel_size;
                     yDistSq *= yDistSq;
 
                     for ( sz = -size_neighborhood; sz <= size_neighborhood; sz++ ) {
                         indZ    = iz + sz;
-                        R.z1    = (sz - pixel_offset - dz) * this->_pixel_size;
+                        R.z1    = (sz - cistem::atomic_to_pixel_offset - dz) * this->_pixel_size;
                         R.z2    = (R.z1 + this->_pixel_size);
                         zDistSq = (sz - dz) * _pixel_size;
                         zDistSq *= zDistSq;

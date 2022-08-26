@@ -434,7 +434,10 @@ class Image {
 
     void PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift = 0.0);
 
+    // This has no check on real or complex status and I'm not going to take the time to see everywhere it is used
+    // as I'm sure it is likely intentional. Adding Abs() to actually return the absolute value of the underlying array.
     void MakeAbsolute( );
+    void Abs( );
 
     void  AddImage(Image* other_image);
     void  SubtractImage(Image* other_image);
@@ -451,6 +454,7 @@ class Image {
     void  MaskCentralCross(int vertical_half_width = 1, int horizontal_half_width = 1);
     void  ZeroCentralPixel( );
     void  CalculateCrossCorrelationImageWith(Image* other_image);
+    void  CalculatePhaseCrossCorrelationImageWith(Image& other_image, Peak& found_peak, float peak_shift_multiplier, bool normalize);
     void  SwapFourierSpaceQuadrants(bool also_swap_real_space_quadrants = true);
     void  SwapRealSpaceQuadrants( );
     void  ComputeAmplitudeSpectrumFull2D(Image* other_image, bool calculate_phases = false, float phase_multiplier = 1.0f);

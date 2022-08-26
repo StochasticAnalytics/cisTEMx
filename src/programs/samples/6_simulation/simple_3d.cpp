@@ -29,6 +29,8 @@ bool MyTest(const wxString& cistem_ref_dir, wxString& temp_directory) {
     bool passed     = true;
     bool all_passed = true;
 
+    float acceptable_ccc = 0.99;
+
     wxString atomic_coordinates = cistem_ref_dir + "/6pch_updated.cif";
 
     // For a simple 3d conversion from atomic coordinates, via pdb mmcif or similar, we make a cubic volume
@@ -106,10 +108,10 @@ bool MyTest(const wxString& cistem_ref_dir, wxString& temp_directory) {
     xformed_sim_projection.SwapRealSpaceQuadrants( );
     xformed_sim_projection.BackwardFFT( );
     // Now let's compare the resulting projections
-    xformed_projection.QuickAndDirtyWriteSlice(temp_directory.ToStdString( ) + "/xformed_projection1.mrc", 1, false, pixel_size);
-    xformed_sim_projection.QuickAndDirtyWriteSlice(temp_directory.ToStdString( ) + "/xformed_sim_projection1.mrc", 1, false, pixel_size);
+    // xformed_projection.QuickAndDirtyWriteSlice(temp_directory.ToStdString( ) + "/xformed_projection1.mrc", 1, false, pixel_size);
+    // xformed_sim_projection.QuickAndDirtyWriteSlice(temp_directory.ToStdString( ) + "/xformed_sim_projection1.mrc", 1, false, pixel_size);
 
-    passed = CompareRealValues(xformed_projection, xformed_sim_projection);
+    passed = CompareRealValues(xformed_projection, xformed_sim_projection, acceptable_ccc);
 
     all_passed = passed ? all_passed : false;
 
@@ -127,9 +129,7 @@ bool MyTest(const wxString& cistem_ref_dir, wxString& temp_directory) {
     // This means we have a "passive" transformation, where R(phi)*R(theata)*R(psi) rotates the volume by R(-psi)*R(-theta)*R(-phi)
     // In the case of the simulator, the atomic coordinates are themselves transformed (no interpolation).
     // This means we ahve an "active" transformation, so we use the transfomation that produces such
-    molecular_orientation.PrintMatrix( );
     molecular_orientation.SetToEulerRotation(-angles_and_shifts.ReturnPsiAngle( ), -angles_and_shifts.ReturnThetaAngle( ), -angles_and_shifts.ReturnPhiAngle( ));
-    molecular_orientation.PrintMatrix( );
     test_sim.is_in_real_space         = true;
     test_sim.object_is_centred_in_box = true;
     sp.calc_scattering_potential(test_sim, molecular_orientation, wanted_number_of_threads);
@@ -143,9 +143,63 @@ bool MyTest(const wxString& cistem_ref_dir, wxString& temp_directory) {
     xformed_projection.QuickAndDirtyWriteSlice(temp_directory.ToStdString( ) + "/xformed_projection2.mrc", 1, false, pixel_size);
     xformed_sim_projection.QuickAndDirtyWriteSlice(temp_directory.ToStdString( ) + "/xformed_sim_projection2.mrc", 1, false, pixel_size);
 
-    passed = CompareRealValues(xformed_projection, xformed_sim_projection);
+    passed = CompareRealValues(xformed_projection, xformed_sim_projection, acceptable_ccc);
 
     all_passed = passed ? all_passed : false;
+
+    SamplesTestResult(passed);
+
+    SamplesBeginTest("Rotate and check for shift FUZZ(10)", passed);
+    RandomNumberGenerator my_rand(pi_v<float>);
+    for ( int i = 0; i < 10; i++ ) {
+
+        // FIXME add a get random orientation with even sampling to functions and also use that elsewher
+        angles_and_shifts.GenerateEulerMatrices(my_rand.GetUniformRandomSTD(0, 360.f), my_rand.GetUniformRandomSTD(0, 180.f), my_rand.GetUniformRandomSTD(0, 360.f));
+
+        sp.calc_scattering_potential(test_sim, dummy_.euler_matrix, wanted_number_of_threads);
+        xformed_map.CopyFrom(&test_sim);
+        xformed_map.ForwardFFT( );
+
+        xformed_map.SwapRealSpaceQuadrants( );
+
+        xformed_map.ExtractSlice(xformed_projection, angles_and_shifts);
+        xformed_projection.BackwardFFT( );
+        xformed_projection.ZeroFloatAndNormalize( );
+
+        molecular_orientation.SetToEulerRotation(-angles_and_shifts.ReturnPsiAngle( ), -angles_and_shifts.ReturnThetaAngle( ), -angles_and_shifts.ReturnPhiAngle( ));
+        test_sim.is_in_real_space         = true;
+        test_sim.object_is_centred_in_box = true;
+        sp.calc_scattering_potential(test_sim, molecular_orientation, wanted_number_of_threads);
+
+        test_sim.ForwardFFT( );
+        test_sim.SwapRealSpaceQuadrants( );
+        test_sim.ExtractSlice(xformed_sim_projection, dummy_);
+
+        xformed_sim_projection.BackwardFFT( );
+        xformed_sim_projection.ZeroFloatAndNormalize( );
+
+        // float peak_scalar = 20.0f;
+        // xformed_sim_projection.CalculatePhaseCrossCorrelationImageWith(xformed_projection, found_peak, peak_scalar, false);
+        // // found_peak = xformed_sim_projection.FindPeakWithParabolaFit( );
+
+        // found_peak.x = found_peak.x / (1 + peak_scalar);
+        // found_peak.y = found_peak.y / (1 + peak_scalar);
+
+        // current_shift = sqrtf(found_peak.x * found_peak.x + found_peak.y * found_peak.y);
+        // avg_shift += current_shift;
+        // counter++;
+
+        // wxPrintf("\nFound peak %f at %f, %f for angle %i, %f", found_peak.value, found_peak.x, found_peak.y, rot_y, found_peak.x / sinf(deg_2_rad(rot_y)));
+
+        // The image methods blur around the edges so we drop the CCC requirment a bit
+        passed = CompareRealValues(xformed_projection, xformed_sim_projection, acceptable_ccc);
+
+        all_passed = passed ? all_passed : false;
+    }
+
+    // wxPrintf("Best shift is %f at %f, %f, %f", min_shifts, bestx, besty, bestz);
+    // wxPrintf("\n");
+    // exit(1);
 
     SamplesTestResult(passed);
 

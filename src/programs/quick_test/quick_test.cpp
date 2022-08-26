@@ -39,14 +39,14 @@ bool QuickTestApp::DoCalculation( ) {
     float          angular_error;
 
     float l_psi   = 100.f;
-    float l_phi   = 0.f;
+    float l_phi   = -500.f;
     float l_theta = 20.f;
-    my_rotation_matrix.SetToEulerRotation(l_phi, l_theta, l_psi);
+    my_rotation_matrix.SetToEulerRotation(-l_psi, -l_theta, -l_phi);
     my_symmetry_matrix.Init("C1");
 
     for ( int theta = -4; theta < 5; theta++ ) {
         float my_theta = float(theta * 5.f);
-        other_rotation_matrix.SetToEulerRotation(l_phi, l_theta + my_theta, l_psi);
+        other_rotation_matrix.SetToEulerRotation(-l_psi, -l_theta + my_theta, -l_phi);
         angular_error = my_symmetry_matrix.GetMinimumAngularDistance(my_rotation_matrix, other_rotation_matrix);
 
         std::cerr << "dTheta: " << my_theta << " Angular error: " << angular_error << std::endl;
@@ -56,7 +56,7 @@ bool QuickTestApp::DoCalculation( ) {
 
     for ( int theta = -4; theta < 5; theta++ ) {
         float my_theta = float(theta * 5.f);
-        other_rotation_matrix.SetToEulerRotation(l_phi + my_theta, l_theta, l_psi);
+        other_rotation_matrix.SetToEulerRotation(-l_psi + my_theta, -l_theta, -l_phi);
         angular_error = my_symmetry_matrix.GetMinimumAngularDistance(my_rotation_matrix, other_rotation_matrix);
 
         std::cerr << "dPhi: " << my_theta << " Angular error: " << angular_error << std::endl;
@@ -66,7 +66,7 @@ bool QuickTestApp::DoCalculation( ) {
 
     for ( int theta = -4; theta < 5; theta++ ) {
         float my_theta = float(theta * 5.f);
-        other_rotation_matrix.SetToEulerRotation(l_phi, l_theta, l_psi + my_theta);
+        other_rotation_matrix.SetToEulerRotation(-l_psi, -l_theta, -l_phi + my_theta);
         angular_error = my_symmetry_matrix.GetMinimumAngularDistance(my_rotation_matrix, other_rotation_matrix);
 
         std::cerr << "dPsi: " << my_theta << " Angular error: " << angular_error << std::endl;

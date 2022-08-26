@@ -527,9 +527,11 @@ float SymmetryMatrix::GetMinimumAngularDistance(RotationMatrix& first_rot_mat, R
     first_rot_mat.RotateCoords(x_in, y_in, z_in, x1, y1, z1);
     for ( int i = 0; i < number_of_matrices; i++ ) {
 
-        temp_matrix = rot_mat[i] * second_rot_mat;
-        temp_matrix.RotateCoords(x_in, y_in, z_in, x2, y2, z2);
-        distance = x1 * x2 + y1 * y2 + z1 * z2;
+        temp_matrix = second_rot_mat * rot_mat[i];
+        temp_matrix = first_rot_mat * temp_matrix.ReturnTransposed( );
+        distance    = (temp_matrix.ReturnTrace( ) - 1.f) / 2.f;
+        // temp_matrix.RotateCoords(x_in, y_in, z_in, x2, y2, z2);
+        // distance = x1 * x2 + y1 * y2 + z1 * z2;
 
         if ( fabsf(distance) > 1.0 ) {
             distance = (distance < 0.f) ? -1.f : 1.f;

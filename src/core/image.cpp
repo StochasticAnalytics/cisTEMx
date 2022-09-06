@@ -8368,6 +8368,20 @@ void Image::MakeAbsolute( ) {
     }
 }
 
+void Image::Abs( ) {
+
+    if ( is_in_real_space ) {
+        for ( int counter = 0; counter < real_memory_allocated; counter++ ) {
+            real_values[counter] = fabsf(real_values[counter]);
+        }
+    }
+    else {
+        for ( int counter = 0; counter < real_memory_allocated / 2; counter++ ) {
+            complex_values[counter] = abs(complex_values[counter]);
+        }
+    }
+}
+
 void Image::PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
 
@@ -9018,6 +9032,69 @@ void Image::CalculateCrossCorrelationImageWith(Image* other_image) {
 
     if ( must_fft == true )
         other_image->BackwardFFT( );
+}
+
+void Image::CalculatePhaseCrossCorrelationImageWith(Image& other_image, Peak& found_peak, float peak_shift_multiplier, bool normalize) {
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space == other_image.is_in_real_space, "Images are in different spaces");
+    MyDebugAssertTrue(HasSameDimensionsAs(&other_image) == true, "Images are different sizes");
+
+    long pixel_counter;
+    bool must_fft = false;
+
+    // do we have to fft..
+
+    if ( is_in_real_space == true ) {
+        must_fft = true;
+        ForwardFFT( );
+        other_image.ForwardFFT( );
+    }
+
+    // multiply by the complex conjugate
+
+#ifdef MKL
+    // Use the MKL
+    vmcMulByConj(real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(complex_values), reinterpret_cast<MKL_Complex8*>(other_image.complex_values), reinterpret_cast<MKL_Complex8*>(complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
+#else
+    for ( pixel_counter = 0; pixel_counter < real_memory_allocated / 2; pixel_counter++ ) {
+        complex_values[pixel_counter] *= conj(other_image->complex_values[pixel_counter]);
+    }
+#endif
+
+    if ( object_is_centred_in_box == true ) {
+        object_is_centred_in_box = false;
+        SwapRealSpaceQuadrants( );
+    }
+
+    // Now that we have the cross correlation map, we can use the fact that given an image and a
+    // copy shifted by (dx) = XS(k) = X(k) * exp(-2pi i kx dx)
+    // We have XCF(k) = X(k) * XS(K)
+    // Dividing by the magnidue XS(K) / |XS(K)| leaves just the phase shift term, which can be amplified by the peak shift multiplier
+    // eg.g exp(a)^b = exp(a*b)
+    const float epsilon  = 0.01f;
+    Image       tmp_abs  = *this;
+    Image       tmp_copy = *this;
+
+    tmp_abs.Abs( );
+    tmp_abs.AddConstant(epsilon);
+
+    for ( int i = 0; i < real_memory_allocated / 2; i++ ) {
+        tmp_copy.complex_values[i] /= tmp_abs.real_values[2 * i];
+        complex_values[i] *= pow(tmp_copy.complex_values[i], peak_shift_multiplier);
+    }
+
+    BackwardFFT( );
+
+    for ( int i = 0; i < real_memory_allocated; i++ ) {
+        if ( ! isfinite(real_values[i]) ) {
+            real_values[i] = 0.0f;
+        }
+    }
+
+    found_peak = FindPeakWithParabolaFit(0, 3 * (peak_shift_multiplier + 1));
+
+    if ( must_fft == true )
+        other_image.BackwardFFT( );
 }
 
 void Image::FindPeakAtOriginFast2DMask(int wanted_max_pix_x, int wanted_max_pix_y) {

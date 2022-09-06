@@ -79,5 +79,8 @@ constexpr float SCATTERING_PARAMETERS_B[17][5] = {
 
 };
 
+// TODO: add summary if logic checks out.
+
+constexpr float atomic_to_pixel_offset = 0.5f;
 } // namespace cistem
 #endif

@@ -880,7 +880,6 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                                pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][11]);
 
             rotmat *= particle_rot;
-            particle_rot.PrintMatrix( );
             // Randomly set noise atoms before copying in. Initially, there is a copy of every real atom, at the same x,y,z coords. For frame zero we
             // want to randomly rotate each noise particle, and offset each particle by a random amount that ensures no overlap with the real particle.
             // The first two noise particles are set to not overlap. Additional particles are able to overlap, which I think is more likely with high crowding (multiple layers of particles.)

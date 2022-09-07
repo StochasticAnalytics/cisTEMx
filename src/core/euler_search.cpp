@@ -16,15 +16,16 @@ EulerSearch::EulerSearch( ) {
     //	best_values = NULL;
     //	starting_values = NULL;
     //parameter_map = NULL;
-    angular_step_size = 0.0;
-    phi_max           = 0.0;
-    phi_start         = 0.0;
-    theta_max         = 0.0;
-    theta_start       = 0.0;
-    psi_max           = 0.0;
-    psi_step          = 0.0;
-    psi_start         = 0.0;
-    resolution_limit  = 0.0;
+    angular_step_size         = 0.0;
+    phi_max                   = 0.0;
+    phi_start                 = 0.0;
+    theta_max                 = 0.0;
+    theta_min_for_random_dist = 0.0;
+    theta_start               = 0.0;
+    psi_max                   = 0.0;
+    psi_step                  = 0.0;
+    psi_start                 = 0.0;
+    resolution_limit          = 0.0;
     //	best_score = - std::numeric_limits<float>::max();
     test_mirror  = false;
     max_search_x = 0.0;
@@ -70,6 +71,7 @@ EulerSearch& EulerSearch::operator=(const EulerSearch* other_search) {
         phi_max                     = other_search->phi_max;
         phi_start                   = other_search->phi_start;
         theta_max                   = other_search->theta_max;
+        theta_min_for_random_dist   = other_search->theta_min_for_random_dist;
         theta_start                 = other_search->theta_start;
         psi_max                     = other_search->psi_max;
         psi_step                    = other_search->psi_step;
@@ -291,21 +293,8 @@ void EulerSearch::CalculateRandomSearchPositions( ) {
 
     if ( list_of_search_parameters != NULL )
         Deallocate2DFloatArray(list_of_search_parameters, number_of_search_positions);
-    //	{
-    //		for (i = 0; i < 2; ++i)
-    //		{
-    //			delete [] list_of_search_parameters[i];						// delete inner arrays of floats
-    //		}
-    //		delete [] list_of_search_parameters;							// delete array of pointers to float arrays
-    //	}
 
     Allocate2DFloatArray(list_of_search_parameters, number_of_search_positions, 2);
-    //	list_of_search_parameters = new float* [2];							// dynamic array (size 2) of pointers to float
-
-    //	for (i = 0; i < 2; ++i)
-    //	{
-    //		list_of_search_parameters[i] = new float[number_of_search_positions];	// each i-th pointer is now pointing to dynamic array (size number_of_positions) of actual float values
-    //	}
 
     while ( number_of_positions < number_of_search_positions ) {
         if ( parameter_map.phi ) {
@@ -348,8 +337,6 @@ void EulerSearch::SetSymmetryLimits( ) {
     wxChar symmetry_type;
     long   symmetry_number;
 
-    _is_symmetry_limit_set = true;
-
     if ( symmetry_symbol.Length( ) < 1 ) {
         MyPrintWithDetails("Error: Must specify symmetry symbol\n");
         DEBUG_ABORT;
@@ -365,58 +352,56 @@ void EulerSearch::SetSymmetryLimits( ) {
         }
     }
 
-    if ( symmetry_type == 'C' ) {
-        if ( symmetry_number == 0 ) {
-            MyPrintWithDetails("Error: Invalid n after symmetry symbol\n");
-            DEBUG_ABORT;
+    switch ( symmetry_type ) {
+        case 'C': {
+            if ( symmetry_number == 0 ) {
+                MyPrintWithDetails("Error: Invalid n after symmetry symbol\n");
+                DEBUG_ABORT;
+            }
+
+            phi_max     = 360.0 / symmetry_number;
+            theta_max   = 90.0;
+            test_mirror = true;
+            break;
         }
+        case 'D': {
+            if ( symmetry_number == 0 ) {
+                MyPrintWithDetails("Error: Invalid n after symmetry symbol\n");
+                DEBUG_ABORT;
+            }
 
-        phi_max     = 360.0 / symmetry_number;
-        theta_max   = 90.0;
-        test_mirror = true;
-
-        return;
-    }
-
-    if ( symmetry_type == 'D' ) {
-        if ( symmetry_number == 0 ) {
-            MyPrintWithDetails("Error: Invalid n after symmetry symbol\n");
-            DEBUG_ABORT;
+            phi_max     = 360.0 / symmetry_number;
+            theta_max   = 90.0;
+            test_mirror = false;
+            break;
         }
-
-        phi_max     = 360.0 / symmetry_number;
-        theta_max   = 90.0;
-        test_mirror = false;
-
-        return;
+        case 'T': {
+            phi_max     = 180.0;
+            theta_max   = 54.7;
+            test_mirror = false;
+            break;
+        }
+        case 'O': {
+            phi_max     = 90.0;
+            theta_max   = 54.7;
+            test_mirror = false;
+            break;
+        }
+        case 'I': {
+            phi_max     = 180.0;
+            theta_max   = 31.7;
+            test_mirror = false;
+            break;
+        }
+        default: {
+            MyPrintWithDetails("Error: Invalid symmetry symbol\n");
+            DEBUG_ABORT;
+            break;
+        }
     }
 
-    if ( symmetry_type == 'T' ) {
-        phi_max     = 180.0;
-        theta_max   = 54.7;
-        test_mirror = false;
-
-        return;
-    }
-
-    if ( symmetry_type == 'O' ) {
-        phi_max     = 90.0;
-        theta_max   = 54.7;
-        test_mirror = false;
-
-        return;
-    }
-
-    if ( symmetry_type == 'I' ) {
-        phi_max     = 180.0;
-        theta_max   = 31.7;
-        test_mirror = false;
-
-        return;
-    }
-
-    MyPrintWithDetails("Error: Invalid symmetry symbol\n");
-    DEBUG_ABORT;
+    theta_min_for_random_dist = cosf(deg_2_rad(theta_max));
+    _is_symmetry_limit_set    = true;
 }
 
 void EulerSearch::GetRandomEulerAngles(float& phi, float& theta, float& psi) {
@@ -424,9 +409,10 @@ void EulerSearch::GetRandomEulerAngles(float& phi, float& theta, float& psi) {
 
     phi = _my_rand.GetUniformRandomSTD(0.f, phi_max);
     // The upper bound is not inclusive so acosf will be inbounds
-    theta = acosf(2.f * _my_rand.GetUniformRandomSTD(0.f, 1.f) - 1.f);
-    theta = fmodf(rad_2_deg(phi), theta_max);
-    psi   = _my_rand.GetUniformRandomSTD(0.f, 360.f);
+    // to get theta 0-pi acosf -1.0 to 1.0
+    theta = rad_2_deg(acosf(_my_rand.GetUniformRandomSTD(theta_min_for_random_dist, 1.f)));
+
+    psi = _my_rand.GetUniformRandomSTD(0.f, 360.f);
 }
 
 /**

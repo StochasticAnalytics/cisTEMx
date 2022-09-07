@@ -25,6 +25,7 @@ class EulerSearch {
     float   phi_max;
     float   phi_start;
     float   theta_max;
+    float   theta_min_for_random_dist;
     float   theta_start;
     float   psi_max;
     float   psi_step;

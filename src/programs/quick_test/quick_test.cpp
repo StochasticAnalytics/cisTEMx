@@ -44,6 +44,19 @@ bool QuickTestApp::DoCalculation( ) {
     my_rotation_matrix.SetToEulerRotation(-l_psi, -l_theta, -l_phi);
     my_symmetry_matrix.Init("C1");
 
+    ParameterMap my_dummy_map;
+    EulerSearch  my_angle_restrictions;
+    my_angle_restrictions.InitGrid(symmetry_symbol, 0.5, 0., 0., 360, 1.5, 0., 1.0f * 2, my_dummy_map, 5);
+    NumericTextFile my_results_file("results.txt", OPEN_TO_WRITE, 3);
+    float           r[3];
+    for ( int i = 0; i < 10000; i++ ) {
+        my_angle_restrictions.GetRandomEulerAngles(l_phi, l_theta, l_psi);
+        my_rotation_matrix.SetToEulerRotation(l_phi, l_theta, 0);
+
+        my_rotation_matrix.RotateCoords(0.f, 0.f, 1.f, r[0], r[1], r[2]);
+        my_results_file.WriteLine(r);
+    }
+    exit(1);
     for ( int theta = -4; theta < 5; theta++ ) {
         float my_theta = float(theta * 5.f);
         other_rotation_matrix.SetToEulerRotation(-l_psi, -l_theta + my_theta, -l_phi);

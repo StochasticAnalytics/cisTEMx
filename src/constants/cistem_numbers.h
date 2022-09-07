@@ -24,6 +24,12 @@ template <typename _Tp>
 inline constexpr _Tp pi_v = static_cast<_Tp>(3.141592653589793238462643383279502884L);
 
 template <typename _Tp>
+inline constexpr _Tp two_pi_v = _Tp(2) * pi_v<_Tp>;
+
+template <typename _Tp>
+inline constexpr _Tp half_pi_v = _Tp(0.5) * pi_v<_Tp>;
+
+template <typename _Tp>
 inline constexpr _Tp inv_pi_v = _Tp(1) / pi_v<_Tp>;
 
 template <typename _Tp>

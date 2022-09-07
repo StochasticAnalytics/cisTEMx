@@ -744,6 +744,8 @@ bool SimulateApp::DoCalculation( ) {
         exit(-1);
     }
 
+    sp.SetImagingParameters(wanted_pixel_size, kV);
+
     if ( make_particle_stack > 0 ) {
 
         sp.InitPdbEnsemble(SHIFT_BY_CENTER_OF_MASS, minimum_padding_x_and_y, minimum_thickness_z,
@@ -1499,12 +1501,10 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 scattering_potential[iSlab].SetToConstant(0.0f);
                 coords.Allocate(&inelastic_potential[iSlab], (PaddingStatus)solvent, true, true);
 
-                //            inelastic_potential[iSlab].Allocate(current_specimen.vol_nX, current_specimen.vol_nY,1);
                 inelastic_potential[iSlab].SetToConstant(0.0f);
 
                 if ( SAVE_REF ) {
                     coords.Allocate(&ref_potential[iSlab], (PaddingStatus)solvent, true, true);
-                    //                ref_potential[iSlab].Allocate(current_specimen.vol_nX, current_specimen.vol_nY,1);
                 }
 
                 slab_nZ    = slabIDX_end[iSlab] - slabIDX_start[iSlab] + 1; // + 2*this->size_neighborhood;

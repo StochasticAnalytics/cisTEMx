@@ -29,6 +29,8 @@ EulerSearch::EulerSearch( ) {
     test_mirror  = false;
     max_search_x = 0.0;
     max_search_y = 0.0;
+
+    _is_symmetry_limit_set = false;
 }
 
 EulerSearch::EulerSearch(const EulerSearch& other_search) // copy constructor
@@ -76,6 +78,7 @@ EulerSearch& EulerSearch::operator=(const EulerSearch* other_search) {
         parameter_map               = other_search->parameter_map;
         test_mirror                 = other_search->test_mirror;
         symmetry_symbol             = other_search->symmetry_symbol;
+        _is_symmetry_limit_set      = other_search->_is_symmetry_limit_set;
 
         if ( list_of_search_parameters != NULL )
             Deallocate2DFloatArray(list_of_search_parameters, number_of_search_positions);
@@ -345,6 +348,8 @@ void EulerSearch::SetSymmetryLimits( ) {
     wxChar symmetry_type;
     long   symmetry_number;
 
+    _is_symmetry_limit_set = true;
+
     if ( symmetry_symbol.Length( ) < 1 ) {
         MyPrintWithDetails("Error: Must specify symmetry symbol\n");
         DEBUG_ABORT;
@@ -412,6 +417,16 @@ void EulerSearch::SetSymmetryLimits( ) {
 
     MyPrintWithDetails("Error: Invalid symmetry symbol\n");
     DEBUG_ABORT;
+}
+
+void EulerSearch::GetRandomEulerAngles(float& phi, float& theta, float& psi) {
+    MyDebugAssertTrue(_is_symmetry_limit_set, "Symmetry limits not set");
+
+    phi = _my_rand.GetUniformRandomSTD(0.f, phi_max);
+    // The upper bound is not inclusive so acosf will be inbounds
+    theta = acosf(2.f * _my_rand.GetUniformRandomSTD(0.f, 1.f) - 1.f);
+    theta = fmodf(rad_2_deg(phi), theta_max);
+    psi   = _my_rand.GetUniformRandomSTD(0.f, 360.f);
 }
 
 /**

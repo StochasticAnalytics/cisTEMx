@@ -837,6 +837,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
      * Take an array of PDB objects and create a single array of atoms transformed according to the timestep
     */
     // wxPrintf("\n\nTransforming local and combining\n");
+    // std::cerr << " My size their size " << atoms.size( ) << " dd " << pdb_ensemble->atoms.size( ) << std::endl;
 
     int   current_pdb        = 0;
     int   current_particle   = 0;
@@ -864,7 +865,8 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
         if ( this->atoms.capacity( ) < pdb_ensemble[current_pdb].number_of_atoms ) {
             this->atoms.reserve(pdb_ensemble[current_pdb].number_of_atoms);
         }
-        // wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].atoms.size( ), atoms.size( ));
+        wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].atoms.size( ), atoms.size( ));
+        std::cerr << " number of particles intialized " << pdb_ensemble[current_pdb].number_of_particles_initialized << std::endl;
         for ( current_particle = 0; current_particle < pdb_ensemble[current_pdb].number_of_particles_initialized; current_particle++ ) {
             ox = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][0];
             oy = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][1];
@@ -937,9 +939,9 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                 }
             }
             else {
-
+                this->atoms.clear( );
                 for ( current_atom = 0; current_atom < pdb_ensemble[current_pdb].number_of_atoms; current_atom++ ) {
-                    this->atoms[current_atom] = (pdb_ensemble[current_pdb].atoms[current_atom]);
+                    this->atoms.push_back(pdb_ensemble[current_pdb].atoms[current_atom]);
                 }
 
                 if ( pdb_ensemble[current_pdb].generate_noise_atoms && frame_number == 0 ) {

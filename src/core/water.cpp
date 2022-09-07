@@ -19,9 +19,6 @@ Water::Water(const PDB* current_specimen, int wanted_size_neighborhood, float wa
 }
 
 Water::~Water( ) {
-    if ( is_allocated_water_coords ) {
-        delete[] water_coords;
-    }
 }
 
 void Water::Init(const PDB* current_specimen, int wanted_size_neighborhood, float wanted_pixel_size, float wanted_dose_per_frame, RotationMatrix max_rotation, float in_plane_rotation, int* padX, int* padY, int nThreads, bool pad_based_on_rotation) {
@@ -148,7 +145,7 @@ void Water::SeedWaters3d( ) {
     // 																	  (this->vol_nY - this->size_neighborhood) *
     // 		 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	  (this->vol_nZ - this->size_neighborhood)), random_sigma_cutoff, random_sigma_negativo);
 
-    water_coords              = new AtomPos[n_waters_possible];
+    water_coords.reserve(n_waters_possible);
     is_allocated_water_coords = true;
 
     //  There are millions to billions of waters. We want to schedule the threads in a way that avoids atomic collisions
@@ -182,9 +179,10 @@ void Water::SeedWaters3d( ) {
 
                         if ( my_rand.GetUniformRandomSTD(0.0, 1.0) > random_sigma_cutoff ) {
 
-                            water_coords[number_of_waters].x = (float)iInner;
-                            water_coords[number_of_waters].y = (float)jInner;
-                            water_coords[number_of_waters].z = (float)k;
+                            water_coords.emplace_back(AtomType::water, float(iInner), float(jInner), float(k));
+                            // water_coords[number_of_waters].x = (float)iInner;
+                            // water_coords[number_of_waters].y = (float)jInner;
+                            // water_coords[number_of_waters].z = (float)k;
                             number_of_waters++;
                         }
                     }

@@ -112,6 +112,13 @@ void Water::Init(const PDB* current_specimen, int wanted_size_neighborhood, floa
     this->vol_oZ = floor(this->vol_nZ / 2);
 }
 
+/**
+ * @brief Water::SeedWaters3d
+ * This method randomly seeds water (or carbon) based on the density of the amorphous material. With this implmentation, at most 4 waters may be assigned
+ * to each voxel, such that the linear pixel size must be > 0.0394 Angstroms = 0.03142 / 8 cubic Ang volume = density of LDA.
+ * @param n_waters_lower_bound
+ * @param random_sigma_cutoff
+ */
 void Water::SeedWaters3d( ) {
 
     // Volume in Ang / (ang^3/nm^3 * nm^3/nWaters) buffer by 10%
@@ -127,23 +134,22 @@ void Water::SeedWaters3d( ) {
     }
 
     wxPrintf("Atoms per nm^3 %3.3f, vol (in Ang^3) %2.2f %2.2f %2.2f\n", waters_per_angstrom_cubed * 1000, this->vol_angX, this->vol_angY, this->vol_angZ);
-    double n_waters_lower_bound = waters_per_angstrom_cubed * (this->vol_angX * this->vol_angY * this->vol_angZ);
-    long   n_waters_possible    = (long)floor(1.1 * n_waters_lower_bound); // maybe make this a real vector so it is extensible.
-    // wxPrintf("specimen volume is %3.3e nm expecting %3.3e waters\n",(this->vol_angX * this->vol_angY * this->vol_angZ)/1000,n_waters_lower_bound);
+    const float n_waters_lower_bound = waters_per_angstrom_cubed * (this->vol_angX * this->vol_angY * this->vol_angZ);
+    // FIXME:: this estimate should be more accurate
+    long n_waters_possible = (long)floor(1.05 * n_waters_lower_bound); // maybe make this a real vector so it is extensible.
+    wxPrintf("specimen volume is %3.3e nm expecting %3.3e waters\n", (this->vol_angX * this->vol_angY * this->vol_angZ) / 1000, n_waters_lower_bound);
 
     RandomNumberGenerator my_rand(pi_v<float>);
 
-    // FIXME is the multiplication by pixel size correct? I am not so sure.
-    const float random_sigma_cutoff   = 1 - (n_waters_lower_bound / double((this->vol_nX - (this->size_neighborhood * this->pixel_size)) *
-                                                                         (this->vol_nY - (this->size_neighborhood * this->pixel_size)) *
-                                                                         (this->vol_nZ - (this->size_neighborhood * this->pixel_size))));
-    const float random_sigma_negativo = -1 * random_sigma_cutoff;
-    float       current_random;
-    const float random_sigma = 0.5 / this->pixel_size; // random shift in pixel values
-    float       thisRand;
-    // wxPrintf("cuttoff is %2.6e %2.6e %f %f\n",n_waters_lower_bound,double((this->vol_nX - this->size_neighborhood) *
-    // 																	  (this->vol_nY - this->size_neighborhood) *
-    // 		 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	  (this->vol_nZ - this->size_neighborhood)), random_sigma_cutoff, random_sigma_negativo);
+    // // We want to add waters with a density == n_waters_lower_bound / volume in angstroms
+    // const float random_sigma_cutoff   = 1 - (n_waters_lower_bound / double((this->vol_nX - (this->size_neighborhood * this->pixel_size)) *
+    //                                                                      (this->vol_nY - (this->size_neighborhood * this->pixel_size)) *
+    //                                                                      (this->vol_nZ - (this->size_neighborhood * this->pixel_size))));
+
+    // We want to add waters with a density == n_waters_lower_bound / volume in angstroms
+    const float probablity_of_water_in_voxel_octent = 1 - n_waters_lower_bound / float(this->vol_nX * this->vol_nY * this->vol_nZ * 8);
+
+    std::cerr << "probablity_of_water_in_voxel_octent " << probablity_of_water_in_voxel_octent << std::endl;
 
     water_coords.reserve(n_waters_possible);
     is_allocated_water_coords = true;
@@ -156,40 +162,44 @@ void Water::SeedWaters3d( ) {
     // Break up the x/y dims into ~ nThreads^2 thread blocks
     int incX = ceil(vol_nX / nThreads);
     int incY = ceil(vol_nY / nThreads);
-    int iLower, iUpper, jLower, jUpper, xUpper, yUpper;
+    int iLower, iUpper, jLower, jUpper; //, xUpper, yUpper;
 
-    xUpper = this->vol_nX - this->size_neighborhood;
-    yUpper = this->vol_nY - this->size_neighborhood;
+    // xUpper = this->vol_nX - this->size_neighborhood;
+    // yUpper = this->vol_nY - this->size_neighborhood;
 
+    // The outer two loops are over the blocks in x/y that should be handled by each thread.
+    // This logic falls apart as the specimen is tilted. FIXME
     for ( int i = 0; i < nThreads; i++ ) {
-        iLower = i * incX + size_neighborhood;
-        iUpper = (1 + i) * incX + size_neighborhood;
+        iLower = i * incX;
+        iUpper = iLower + incX;
         for ( int j = 0; j < nThreads; j++ ) {
-            jLower = j * incY + size_neighborhood;
-            jUpper = (1 + j) * incY + size_neighborhood;
+            jLower = j * incY;
+            jUpper = jLower + incY;
 
-            //			for (int k = this->size_neighborhood; k < this->vol_nZ - this->size_neighborhood; k++)
-            for ( int k = 0; k < this->vol_nZ; k++ )
-
-            {
+            // For each block
+            for ( int k = 0; k < this->vol_nZ; k++ ) {
                 for ( int iInner = iLower; iInner < iUpper; iInner++ ) {
-                    //					if (iInner > xUpper) { continue; }
                     for ( int jInner = jLower; jInner < jUpper; jInner++ ) {
-                        //						if (jInner > yUpper) { continue; }
 
-                        if ( my_rand.GetUniformRandomSTD(0.0, 1.0) > random_sigma_cutoff ) {
-
-                            water_coords.emplace_back(AtomType::water, float(iInner), float(jInner), float(k));
-                            // water_coords[number_of_waters].x = (float)iInner;
-                            // water_coords[number_of_waters].y = (float)jInner;
-                            // water_coords[number_of_waters].z = (float)k;
-                            number_of_waters++;
+                        // For each sub-voxel octant
+                        for ( float qz = -0.5f; qz <= 0.5f; qz += 1.f ) {
+                            for ( float qy = -0.5f; qy <= 0.5f; qy += 1.f ) {
+                                for ( float qx = -0.5f; qx <= 0.5f; qx += 1.f ) {
+                                    if ( my_rand.GetUniformRandomSTD(0.0, 1.0) > probablity_of_water_in_voxel_octent )
+                                        water_coords.emplace_back(AtomType::water, float(iInner) + qx, float(jInner) + qy, float(k) + qz);
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    // We won't add any more waters, so free up the extra memory
+    // TODO: does freeing cost more than leaving it be?
+    water_coords.shrink_to_fit( );
+    number_of_waters = water_coords.size( );
 
     wxPrintf("waters added %3.3e (%2.2f%)\n", (float)this->number_of_waters, 100.0f * (float)this->number_of_waters / n_waters_lower_bound);
 }

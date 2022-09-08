@@ -401,7 +401,6 @@ void EulerSearch::SetSymmetryLimits( ) {
     }
 
     theta_min_for_random_dist = cosf(deg_2_rad(theta_max));
-    _is_symmetry_limit_set    = true;
 }
 
 void EulerSearch::GetRandomEulerAngles(float& phi, float& theta, float& psi) {

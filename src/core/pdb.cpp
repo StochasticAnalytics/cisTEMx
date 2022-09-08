@@ -865,8 +865,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
         if ( this->atoms.capacity( ) < pdb_ensemble[current_pdb].number_of_atoms ) {
             this->atoms.reserve(pdb_ensemble[current_pdb].number_of_atoms);
         }
-        wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].atoms.size( ), atoms.size( ));
-        std::cerr << " number of particles intialized " << pdb_ensemble[current_pdb].number_of_particles_initialized << std::endl;
+        // wxPrintf("Checking %ld %ld\n", pdb_ensemble[current_pdb].atoms.size( ), atoms.size( ));
         for ( current_particle = 0; current_particle < pdb_ensemble[current_pdb].number_of_particles_initialized; current_particle++ ) {
             ox = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][0];
             oy = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_orientation[0][1];
@@ -939,6 +938,8 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                 }
             }
             else {
+                // TODO: consider using the assignment instead
+                // this->atoms = pdb_ensemble[current_pdb].atoms;
                 this->atoms.clear( );
                 for ( current_atom = 0; current_atom < pdb_ensemble[current_pdb].number_of_atoms; current_atom++ ) {
                     this->atoms.push_back(pdb_ensemble[current_pdb].atoms[current_atom]);

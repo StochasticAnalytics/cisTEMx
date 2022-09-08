@@ -2,9 +2,16 @@
 #define _SRC_CORE_EULER_SEARCH_H_
 #include <cistem_config.h>
 
+#include "../constants/cistem_numbers.h"
+
 class GpuImage;
 
 class EulerSearch {
+
+  private:
+    bool                  _is_symmetry_limit_set;
+    RandomNumberGenerator _my_rand{pi_v<float>};
+
     // Brute-force search to find matching projections
 
   public:
@@ -18,6 +25,7 @@ class EulerSearch {
     float   phi_max;
     float   phi_start;
     float   theta_max;
+    float   theta_min_for_random_dist;
     float   theta_start;
     float   psi_max;
     float   psi_step;
@@ -63,8 +71,11 @@ class EulerSearch {
     void                         CalculateGridSearchPositions(bool random_start_angle = true);
 #endif
 
+    // TODO: make this use the newer GetRandomEulerAngles() which evenly sample the euler sphere
     void CalculateRandomSearchPositions( );
     void SetSymmetryLimits( );
+    void GetRandomEulerAngles(float& phi, float& theta, float& psi);
+
     //	void RotateFourier2DFromIndex(Image &image_to_rotate, Image &rotated_image, Kernel2D &kernel_index);
     //	void RotateFourier2DIndex(Image &image_to_rotate, Kernel2D &kernel_index, AnglesAndShifts &rotation_angle, float resolution_limit = 1.0, float padding_factor = 1.0);
     Kernel2D ReturnLinearInterpolatedFourierKernel2D(Image& image_to_rotate, float& x, float& y);

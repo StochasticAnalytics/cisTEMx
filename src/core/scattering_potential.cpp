@@ -88,21 +88,21 @@ void ScatteringPotential::InitPdbEnsemble(bool              shift_by_center_of_m
 
     for ( int iPDB = 0; iPDB < pdb_file_names.size( ); iPDB++ ) {
 
-        pdb_ensemble[iPDB] = PDB(pdb_file_names[iPDB],
-                                 access_type_read,
-                                 _pixel_size,
-                                 records_per_line,
-                                 minimum_padding_x_and_y,
-                                 minimum_thickness_z,
-                                 max_number_of_noise_particles,
-                                 wanted_noise_particle_radius_as_mutliple_of_particle_radius,
-                                 wanted_noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
-                                 wanted_noise_particle_radius_randomizer_upper_bound_as_praction_of_particle_radius,
-                                 wanted_tilt_angle_to_emulate,
-                                 shift_by_center_of_mass,
-                                 is_alpha_fold_prediction,
-                                 wanted_star_file,
-                                 use_star_file);
+        pdb_ensemble.emplace_back(pdb_file_names[iPDB],
+                                  access_type_read,
+                                  _pixel_size,
+                                  records_per_line,
+                                  minimum_padding_x_and_y,
+                                  minimum_thickness_z,
+                                  max_number_of_noise_particles,
+                                  wanted_noise_particle_radius_as_mutliple_of_particle_radius,
+                                  wanted_noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
+                                  wanted_noise_particle_radius_randomizer_upper_bound_as_praction_of_particle_radius,
+                                  wanted_tilt_angle_to_emulate,
+                                  shift_by_center_of_mass,
+                                  is_alpha_fold_prediction,
+                                  wanted_star_file,
+                                  use_star_file);
     }
 }
 
@@ -226,7 +226,6 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
         n_atoms_added = 0;
 
         atom_id = current_specimen->atoms.at(current_atom).atom_type;
-        // std::cerr << "atom_id = " << atom_id << std::endl;
         if ( atom_id == hydrogen )
             continue;
 

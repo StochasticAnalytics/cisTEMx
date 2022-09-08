@@ -837,6 +837,7 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
      * Take an array of PDB objects and create a single array of atoms transformed according to the timestep
     */
     // wxPrintf("\n\nTransforming local and combining\n");
+    // std::cerr << " My size their size " << atoms.size( ) << " dd " << pdb_ensemble->atoms.size( ) << std::endl;
 
     int   current_pdb        = 0;
     int   current_particle   = 0;
@@ -937,9 +938,11 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                 }
             }
             else {
-
+                // TODO: consider using the assignment instead
+                // this->atoms = pdb_ensemble[current_pdb].atoms;
+                this->atoms.clear( );
                 for ( current_atom = 0; current_atom < pdb_ensemble[current_pdb].number_of_atoms; current_atom++ ) {
-                    this->atoms[current_atom] = (pdb_ensemble[current_pdb].atoms[current_atom]);
+                    this->atoms.push_back(pdb_ensemble[current_pdb].atoms[current_atom]);
                 }
 
                 if ( pdb_ensemble[current_pdb].generate_noise_atoms && frame_number == 0 ) {

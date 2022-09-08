@@ -1026,7 +1026,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                 shift_x.push_back(this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 3.0f); // + 10 * iTilt); // should be in the low tens of Angstroms
                 shift_y.push_back(this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 3.0f);
-                shift_z.push_back(this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 1000); // should be in the low tens of Nanometers
+                shift_z.push_back(this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 0.05 * mean_defocus); // should be in the low tens of Nanometers
 
                 mag_diff.push_back(1.0f);
             }
@@ -2346,6 +2346,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     bool    over_write = true;
     MRCFile mrc_out_final(this->output_filename, over_write);
 
+    // FIXME: This will not work if there is a path in the filename.
     std::string fileNameRefSum = "perfRef_" + this->output_filename;
     MRCFile     mrc_ref_final;
     if ( SAVE_REF ) {

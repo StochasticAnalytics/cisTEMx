@@ -44,8 +44,8 @@ MyFindParticlesPanel::MyFindParticlesPanel(wxWindow* parent)
 
     ResetDefaults( );
 
-    GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyFindParticlesPanel::OnGroupComboBox, this);
-    ImageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyFindParticlesPanel::OnImageComboBox, this);
+    GroupComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyFindParticlesPanel::OnGroupComboBox, this);
+    ImageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyFindParticlesPanel::OnImageComboBox, this);
 
     ExclusionRadiusNumericCtrl->SetPrecision(0);
     TemplateRadiusNumericCtrl->SetPrecision(0);

@@ -24,7 +24,7 @@ Generate3DPanel::Generate3DPanel(wxWindow* parent)
     input_params_combo_is_dirty       = false;
     selected_refinement_package       = -1;
 
-    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &Generate3DPanel::OnRefinementPackageComboBox, this);
+    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &Generate3DPanel::OnRefinementPackageComboBox, this);
     Bind(RETURN_PROCESSED_IMAGE_EVT, &Generate3DPanel::OnOrthThreadComplete, this);
 
     if ( ShowRefinementResultsPanel->TopBottomSplitter->IsSplit( ) == true )
@@ -377,11 +377,12 @@ void Generate3DPanel::NewRefinementPackageSelected( ) {
 }
 
 void Generate3DPanel::OnRefinementPackageComboBox(wxCommandEvent& event) {
-
+    std::cerr << "OnRefinementPackageComboBox" << std::endl;
     NewRefinementPackageSelected( );
 }
 
 void Generate3DPanel::OnInputParametersComboBox(wxCommandEvent& event) {
+    std::cerr << "OnInputParametersComboBox" << std::endl;
     //SetDefaults();
 }
 

@@ -11,7 +11,7 @@ ExportRefinementPackageWizard::ExportRefinementPackageWizard(wxWindow* parent)
     current_package = &refinement_package_asset_panel->all_refinement_packages.Item(refinement_package_asset_panel->selected_refinement_package);
 
     ParameterSelectPanel->FillComboBox(refinement_package_asset_panel->selected_refinement_package, true);
-    //ParameterSelectPanel->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &ExportRefinementPackageWizard::OnParamsComboBox, this);
+    //ParameterSelectPanel->AssetComboBox->Bind(wxEVT_CHOICE, &ExportRefinementPackageWizard::OnParamsComboBox, this);
 
     ClassComboBox->Freeze( );
 
@@ -23,7 +23,7 @@ ExportRefinementPackageWizard::ExportRefinementPackageWizard(wxWindow* parent)
 }
 
 ExportRefinementPackageWizard::~ExportRefinementPackageWizard( ) {
-    //ParameterSelectPanel->AssetComboBox->Unbind(wxEVT_COMMAND_COMBOBOX_SELECTED, &ExportRefinementPackageWizard::OnParamsComboBox, this);
+    //ParameterSelectPanel->AssetComboBox->Unbind(wxEVT_CHOICE, &ExportRefinementPackageWizard::OnParamsComboBox, this);
 }
 
 void ExportRefinementPackageWizard::OnParamsComboBox(wxCommandEvent& event) {

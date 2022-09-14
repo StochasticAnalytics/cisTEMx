@@ -65,7 +65,7 @@ AutoRefine3DPanel::AutoRefine3DPanel(wxWindow* parent)
     //	input_params_combo_is_dirty = false;
     selected_refinement_package = -1;
 
-    RefinementPackageSelectPanel->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &AutoRefine3DPanel::OnRefinementPackageComboBox, this);
+    RefinementPackageSelectPanel->AssetComboBox->Bind(wxEVT_CHOICE, &AutoRefine3DPanel::OnRefinementPackageComboBox, this);
     Bind(wxEVT_AUTOMASKERTHREAD_COMPLETED, &AutoRefine3DPanel::OnMaskerThreadComplete, this);
     Bind(wxEVT_MULTIPLY3DMASKTHREAD_COMPLETED, &AutoRefine3DPanel::OnMaskerThreadComplete, this);
     Bind(RETURN_PROCESSED_IMAGE_EVT, &AutoRefine3DPanel::OnOrthThreadComplete, this);

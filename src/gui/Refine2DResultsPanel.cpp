@@ -14,8 +14,8 @@ Refine2DResultsPanel::Refine2DResultsPanel(wxWindow* parent, wxWindowID id, cons
     input_params_combo_is_dirty         = false;
     classification_selections_are_dirty = false;
 
-    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &Refine2DResultsPanel::OnRefinementPackageComboBox, this);
-    InputParametersComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &Refine2DResultsPanel::OnInputParametersComboBox, this);
+    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &Refine2DResultsPanel::OnRefinementPackageComboBox, this);
+    InputParametersComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &Refine2DResultsPanel::OnInputParametersComboBox, this);
     ClassumDisplayPanel->Bind(wxEVT_RIGHT_DOWN, &Refine2DResultsPanel::OnClassumRightClick, this);
     ClassumDisplayPanel->Bind(wxEVT_LEFT_DOWN, &Refine2DResultsPanel::OnClassumLeftClick, this);
     Layout( );
@@ -303,6 +303,7 @@ void Refine2DResultsPanel::OnRefinementPackageComboBox(wxCommandEvent& event) {
 }
 
 void Refine2DResultsPanel::OnInputParametersComboBox(wxCommandEvent& event) {
+    wxPrintf("OnInputParametersComboBox\n");
     if ( RefinementPackageComboBox->GetSelection( ) >= 0 ) {
         long        current_class = refinement_package_asset_panel->all_refinement_packages[RefinementPackageComboBox->GetSelection( )].classification_ids[InputParametersComboBox->GetSelection( )];
         wxArrayLong wanted_images = main_frame->current_project.database.Return2DClassMembers(current_class, selected_class);

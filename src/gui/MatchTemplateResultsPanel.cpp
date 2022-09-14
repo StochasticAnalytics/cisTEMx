@@ -37,7 +37,7 @@ MatchTemplateResultsPanel::MatchTemplateResultsPanel(wxWindow* parent)
     Bind(wxEVT_CHAR_HOOK, &MatchTemplateResultsPanel::OnCharHook, this);
     ResultDataView->my_parents_name        = "Match Template Results";
     ResultDataView->OnHeaderClickInterrupt = &OnHeaderClick;
-    TemplateComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MatchTemplateResultsPanel::OnTemplateComboBox, this);
+    TemplateComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MatchTemplateResultsPanel::OnTemplateComboBox, this);
 }
 
 void MatchTemplateResultsPanel::OnTemplateComboBox(wxCommandEvent& event) {

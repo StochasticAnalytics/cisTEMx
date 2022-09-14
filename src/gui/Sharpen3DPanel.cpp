@@ -20,7 +20,7 @@ Sharpen3DPanel::Sharpen3DPanel(wxWindow* parent)
     active_thread_id = -1;
     next_thread_id   = 1;
 
-    VolumeComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &Sharpen3DPanel::OnVolumeComboBox, this);
+    VolumeComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &Sharpen3DPanel::OnVolumeComboBox, this);
     Bind(RETURN_SHARPENING_RESULTS_EVT, &Sharpen3DPanel::OnSharpenThreadComplete, this);
     Bind(wxEVT_TIMER, &Sharpen3DPanel::OnGuageTimer, this);
 }

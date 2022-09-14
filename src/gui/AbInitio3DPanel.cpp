@@ -25,7 +25,7 @@ AbInitio3DPanel::AbInitio3DPanel(wxWindow* parent)
     selected_refinement_package         = -1;
 
     my_abinitio_manager.SetParent(this);
-    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &AbInitio3DPanel::OnRefinementPackageComboBox, this);
+    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &AbInitio3DPanel::OnRefinementPackageComboBox, this);
     Bind(wxEVT_AUTOMASKERTHREAD_COMPLETED, &AbInitio3DPanel::OnMaskerThreadComplete, this);
     Bind(RETURN_PROCESSED_IMAGE_EVT, &AbInitio3DPanel::OnOrthThreadComplete, this);
     Bind(wxEVT_RESAMPLE_VOLUME_EVENT, &AbInitio3DPanel::OnVolumeResampled, this);

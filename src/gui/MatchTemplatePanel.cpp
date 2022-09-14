@@ -61,7 +61,7 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     SymmetryComboBox->Append("T2");
     SymmetryComboBox->SetSelection(0);
 
-    GroupComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MatchTemplatePanel::OnGroupComboBox, this);
+    GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MatchTemplatePanel::OnGroupComboBox, this);
 }
 
 /*

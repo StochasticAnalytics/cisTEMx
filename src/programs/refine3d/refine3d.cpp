@@ -79,9 +79,6 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
         }
     }
 
-    // // FIXME: testing
-    // comparison_object->whiten = false;
-
 #ifdef ENABLEGPU
 
     // Flip the overrides;

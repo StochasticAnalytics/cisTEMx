@@ -33,7 +33,7 @@ MyRefinementResultsPanel::MyRefinementResultsPanel(wxWindow* parent)
 }
 
 void MyRefinementResultsPanel::OnClassComboBoxChange(wxCommandEvent& event) {
-    wxPrintf("Changed\n");
+    //wxPrintf("Changed\n");
     //	current_class = FSCPlotPanel->ClassComboBox->GetSelection();
     //FillAngles();
     //	ParameterListCtrl->RefreshItems(0, ParameterListCtrl->GetItemCount() - 1);
@@ -97,7 +97,7 @@ void MyRefinementResultsPanel::UpdateBufferedFullRefinement( ) {
 
 void MyRefinementResultsPanel::OnJobDetailsToggle(wxCommandEvent& event) {
     Freeze( );
-    wxPrintf("Toggle\n");
+
     if ( JobDetailsToggleButton->GetValue( ) == true ) {
         JobDetailsPanel->Show(true);
     }

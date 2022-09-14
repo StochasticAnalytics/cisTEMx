@@ -23,11 +23,9 @@ MemoryComboBox::~MemoryComboBox( ) {
 }
 
 void MemoryComboBox::OnComboBox(wxCommandEvent& event) {
-    std::cerr << "On Combo BOx " << currently_selected_id << std::endl;
     if ( GetSelection( ) >= 0 ) {
         currently_selected_id = associated_ids.Item(GetSelection( ));
     }
-    std::cerr << "after " << currently_selected_id << std::endl;
     event.Skip( );
 }
 

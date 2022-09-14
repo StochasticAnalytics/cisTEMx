@@ -49,7 +49,7 @@ RefineCTFPanel::RefineCTFPanel(wxWindow* parent)
     input_params_combo_is_dirty       = false;
     selected_refinement_package       = -1;
 
-    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &RefineCTFPanel::OnRefinementPackageComboBox, this);
+    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &RefineCTFPanel::OnRefinementPackageComboBox, this);
     Bind(RETURN_PROCESSED_IMAGE_EVT, &RefineCTFPanel::OnOrthThreadComplete, this);
     Bind(wxEVT_MULTIPLY3DMASKTHREAD_COMPLETED, &RefineCTFPanel::OnMaskerThreadComplete, this);
     Bind(wxEVT_AUTOMASKERTHREAD_COMPLETED, &RefineCTFPanel::OnMaskerThreadComplete, this);

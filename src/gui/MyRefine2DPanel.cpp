@@ -23,8 +23,8 @@ MyRefine2DPanel::MyRefine2DPanel(wxWindow* parent)
 
     ResultDisplayPanel->Initialise(CAN_FFT | START_WITH_FOURIER_SCALING | KEEP_TABS_LINKED_IF_POSSIBLE);
 
-    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyRefine2DPanel::OnRefinementPackageComboBox, this);
-    InputParametersComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyRefine2DPanel::OnInputParametersComboBox, this);
+    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyRefine2DPanel::OnRefinementPackageComboBox, this);
+    InputParametersComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyRefine2DPanel::OnInputParametersComboBox, this);
 
     Bind(wxEVT_WRITECLASSIFICATIONSTARFILETHREAD_COMPLETED, &MyRefine2DPanel::OnStarFileWriteThreadComplete, this);
 

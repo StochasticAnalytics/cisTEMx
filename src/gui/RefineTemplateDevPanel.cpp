@@ -42,7 +42,7 @@ RefineTemplateDevPanel::RefineTemplateDevPanel(wxWindow* parent)
     PixelSizeSearchRangeNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);
     HighResolutionLimitNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);
 
-    GroupComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &RefineTemplateDevPanel::OnGroupComboBox, this);
+    GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &RefineTemplateDevPanel::OnGroupComboBox, this);
 }
 
 bool RefineTemplateDevPanel::CheckGroupHasTemplateMatchRunDone( ) {

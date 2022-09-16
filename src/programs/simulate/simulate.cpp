@@ -2251,7 +2251,8 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
         // If we aren't simulating a tilt-series, the exposure should be reset, and a new distribution of waters created.
         if ( ! make_tilt_series ) {
-            water_box.number_of_waters   = 0;
+            water_box.number_of_waters = 0;
+            water_box.water_coords.clear( );
             this->current_total_exposure = this->pre_exposure;
         }
 

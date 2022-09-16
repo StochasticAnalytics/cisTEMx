@@ -6,6 +6,8 @@ class DisplayRefinementResultsPanel : public DisplayRefinementResultsPanelParent
     DisplayRefinementResultsPanel(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxTAB_TRAVERSAL, const wxString& name = wxPanelNameStr);
 
     void Clear( );
+
+    const char* Type( ) const { return "DisplayRefinementResultsPanel"; }
 };
 
 class DisplayCTFRefinementResultsPanel : public DisplayCTFRefinementResultsPanelParent {
@@ -13,6 +15,8 @@ class DisplayCTFRefinementResultsPanel : public DisplayCTFRefinementResultsPanel
     DisplayCTFRefinementResultsPanel(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxTAB_TRAVERSAL, const wxString& name = wxPanelNameStr);
 
     void Clear( );
+
+    const char* Type( ) const { return "DisplayCTFRefinementResultsPanel"; };
 };
 
 #endif

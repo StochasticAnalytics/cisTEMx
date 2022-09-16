@@ -28,6 +28,8 @@ class MyFSCPanel : public FSCPanel {
     void SaveImageClick(wxCommandEvent& event);
     void HighlightClass(int wanted_class);
 
+    const char* Type( ) const { return "MyFSCPanel"; };
+
     //// end generated class members
 };
 

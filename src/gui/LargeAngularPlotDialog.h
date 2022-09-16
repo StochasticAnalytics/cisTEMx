@@ -8,6 +8,8 @@ class LargeAngularPlotDialog : public LargeAngularPlotDialogParent {
     void OnCopyToClipboardClick(wxCommandEvent& event);
     void OnCloseButtonClick(wxCommandEvent& event);
     void OnSaveButtonClick(wxCommandEvent& event);
+
+    const char* Type( ) const { return "LargeAngularPlotDialog"; };
 };
 
 #endif

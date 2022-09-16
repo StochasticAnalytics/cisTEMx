@@ -23,6 +23,8 @@ class AtomicCoordinatesImportDialog : public AtomicCoordinatesImportDialogParent
     void OnTextKeyPress(wxKeyEvent& event);
     void CheckImportButtonStatus( );
     void TextChanged(wxCommandEvent& event);
+
+    const char* Type( ) const { return "AtomicCoordinatesImportDialog"; };
 };
 
 #endif // __MyMovieImportDialog__

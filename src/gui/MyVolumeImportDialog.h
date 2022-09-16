@@ -23,6 +23,8 @@ class MyVolumeImportDialog : public VolumeImportDialog {
     void OnTextKeyPress(wxKeyEvent& event);
     void CheckImportButtonStatus( );
     void TextChanged(wxCommandEvent& event);
+
+    const char* Type( ) const { return "MyVolumeImportDialog"; };
 };
 
 #endif // __MyMovieImportDialog__

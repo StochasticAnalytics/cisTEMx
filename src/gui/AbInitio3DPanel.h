@@ -123,6 +123,8 @@ class AbInitioManager {
 
     void OnMaskerThreadComplete( );
     void DoMasking( );
+
+    const char* Type( ) const { return "AbInitioManager"; };
 };
 
 class AbInitio3DPanel : public AbInitio3DPanelParent {

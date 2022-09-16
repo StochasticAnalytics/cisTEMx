@@ -29,6 +29,8 @@ class ImportRefinementPackageWizard : public ImportRefinementPackageWizardParent
         if ( win )
             win->Enable(true);
     }
+
+    const char* Type( ) const { return "ImportRefinementPackageWizard"; };
 };
 
 #endif

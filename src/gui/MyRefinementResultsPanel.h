@@ -34,4 +34,6 @@ class MyRefinementResultsPanel : public RefinementResultsPanel {
     void ClearJobInfo( );
 
     void Clear( );
+
+    const char* Type( ) const { return "MyRefinementResultsPanel"; };
 };

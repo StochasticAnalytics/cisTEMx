@@ -18,8 +18,8 @@ MyRefinementResultsPanel::MyRefinementResultsPanel(wxWindow* parent)
     OrthPanel->Initialise(START_WITH_FOURIER_SCALING | DO_NOT_SHOW_STATUS_BAR);
     OrthPanel->my_notebook->Bind(wxEVT_AUINOTEBOOK_PAGE_CHANGED, &MyRefinementResultsPanel::OnDisplayTabChange, this);
 
-    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyRefinementResultsPanel::OnRefinementPackageComboBox, this);
-    InputParametersComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyRefinementResultsPanel::OnInputParametersComboBox, this);
+    RefinementPackageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyRefinementResultsPanel::OnRefinementPackageComboBox, this);
+    InputParametersComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyRefinementResultsPanel::OnInputParametersComboBox, this);
 
 #include "icons/show_angles.cpp"
 #include "icons/show_text.cpp"
@@ -29,7 +29,7 @@ MyRefinementResultsPanel::MyRefinementResultsPanel(wxWindow* parent)
     AngularPlotDetailsButton->SetBitmap(angles_popup_bmp);
     ParametersDetailButton->SetBitmap(parameters_popup_bmp);
 
-    //	FSCPlotPanel->ClassComboBox->Connect( wxEVT_COMMAND_COMBOBOX_SELECTED, wxCommandEventHandler( MyRefinementResultsPanel::OnClassComboBoxChange ), NULL, this );
+    //	FSCPlotPanel->ClassComboBox->Connect( wxEVT_CHOICE, wxCommandEventHandler( MyRefinementResultsPanel::OnClassComboBoxChange ), NULL, this );
 }
 
 void MyRefinementResultsPanel::OnClassComboBoxChange(wxCommandEvent& event) {
@@ -42,8 +42,8 @@ void MyRefinementResultsPanel::OnClassComboBoxChange(wxCommandEvent& event) {
 }
 
 void MyRefinementResultsPanel::OnDisplayTabChange(wxAuiNotebookEvent& event) {
-    wxPrintf("Changed to tab %i\n", OrthPanel->my_notebook->GetSelection( ));
-    wxPrintf("highlighting %i\n", OrthPanel->my_notebook->GetSelection( ));
+    // wxPrintf("Changed to tab %i\n", OrthPanel->my_notebook->GetSelection( ));
+    // wxPrintf("highlighting %i\n", OrthPanel->my_notebook->GetSelection( ));
     if ( OrthPanel->my_notebook->GetSelection( ) >= 0 ) {
         FSCPlotPanel->HighlightClass(OrthPanel->my_notebook->GetSelection( ));
         FillAngles(OrthPanel->my_notebook->GetSelection( ));
@@ -74,7 +74,7 @@ void MyRefinementResultsPanel::FillInputParametersComboBox(void) {
 }
 
 void MyRefinementResultsPanel::UpdateCachedRefinement( ) {
-    //	wxPrintf("refinement package selection = %i, parameter selcetion = %i\n", refinement_results_panel->RefinementPackageComboBox->GetSelection(), refinement_results_panel->InputParametersComboBox->GetSelection());
+    // wxPrintf("refinement package selection = %i, parameter selcetion = %i\n", refinement_results_panel->RefinementPackageComboBox->GetSelection( ), refinement_results_panel->InputParametersComboBox->GetSelection( ));
     if ( currently_displayed_refinement == NULL || refinement_package_asset_panel->all_refinement_packages[refinement_results_panel->RefinementPackageComboBox->GetSelection( )].refinement_ids[refinement_results_panel->InputParametersComboBox->GetSelection( )] != currently_displayed_refinement->refinement_id ) {
         //wxProgressDialog progress_dialog("Please wait", "Retrieving refinement result from database...", 0, this);
 
@@ -159,14 +159,15 @@ void MyRefinementResultsPanel::OnRefinementPackageComboBox(wxCommandEvent& event
 }
 
 void MyRefinementResultsPanel::OnInputParametersComboBox(wxCommandEvent& event) {
+    // wxPrintf("Changed to input parameters %i\n", InputParametersComboBox->GetSelection( ));
     if ( RefinementPackageComboBox->GetSelection( ) >= 0 ) {
         UpdateCachedRefinement( );
         FSCPlotPanel->AddRefinement(currently_displayed_refinement);
         DrawOrthViews( ); // Should redraw angles also
-        if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
-            FillAngles(OrthPanel->my_notebook->GetSelection( ));
-        if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
-            WriteJobInfo(OrthPanel->my_notebook->GetSelection( ));
+        // if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
+        //     FillAngles(OrthPanel->my_notebook->GetSelection( ));
+        // if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
+        //     WriteJobInfo(OrthPanel->my_notebook->GetSelection( ));
 
         //AngularPlotPanel->Clear();
     }
@@ -190,11 +191,13 @@ void MyRefinementResultsPanel::FillAngles(int wanted_class) {
 
 void MyRefinementResultsPanel::DrawOrthViews( ) {
 
+    MyDebugAssertTrue(currently_displayed_refinement->number_of_classes <= currently_displayed_refinement->class_refinement_results.GetCount( ), "Number of classes is greater than the number of class refinement results");
+
     if ( RefinementPackageComboBox->GetSelection( ) >= 0 && currently_displayed_refinement != NULL ) {
         OrthPanel->Freeze( );
         wxString current_orth_filename;
         long     array_position;
-        OrthPanel->my_notebook->Unbind(wxEVT_AUINOTEBOOK_PAGE_CHANGED, &MyRefinementResultsPanel::OnDisplayTabChange, this);
+        // OrthPanel->my_notebook->Unbind(wxEVT_AUINOTEBOOK_PAGE_CHANGED, &MyRefinementResultsPanel::OnDisplayTabChange, this);
 
         if ( OrthPanel->my_notebook->GetPageCount( ) != currently_displayed_refinement->number_of_classes ) {
             OrthPanel->Clear( );

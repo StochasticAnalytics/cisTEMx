@@ -8,6 +8,8 @@ class MyFrealignExportDialog : public FrealignExportDialog {
     void OnCancelButtonClick(wxCommandEvent& event);
     void OnExportButtonClick(wxCommandEvent& event);
     void OnOutputImageStackFileChanged(wxFileDirPickerEvent& event);
+
+    const char* Type( ) const { return "MyFrealignExportDialog"; };
 };
 
 #endif

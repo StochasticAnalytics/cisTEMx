@@ -30,6 +30,8 @@ class
 
     //	mpFXYVector* likelihood_vector_layer;
     mpFXYVector* sigma_vector_layer;
+
+    const char* Type( ) const { return "AbInitioPlotPanel"; };
 };
 
 #endif

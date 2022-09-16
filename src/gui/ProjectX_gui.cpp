@@ -1309,6 +1309,7 @@ RefinementResultsPanel::RefinementResultsPanel( wxWindow* parent, wxWindowID id,
 	fgSizer11->Add( m_staticText285, 0, wxALIGN_CENTER_VERTICAL|wxALIGN_RIGHT|wxALL, 5 );
 
 	InputParametersComboBox = new RefinementPickerComboPanel( m_panel49, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	InputParametersComboBox->SetFont( wxFont( 10, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Sans") ) );
 	InputParametersComboBox->SetMinSize( wxSize( 350,-1 ) );
 	InputParametersComboBox->SetMaxSize( wxSize( 350,-1 ) );
 
@@ -8977,6 +8978,35 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 	bSizer441->Fit( InputParamsPanel );
 	bSizer364->Add( InputParamsPanel, 1, wxEXPAND | wxALL, 5 );
 
+
+	bSizer451->Add( bSizer364, 1, wxEXPAND, 5 );
+
+
+	bSizer43->Add( bSizer451, 0, wxEXPAND, 5 );
+
+	wxBoxSizer* bSizer46;
+	bSizer46 = new wxBoxSizer( wxHORIZONTAL );
+
+	OutputTextPanel = new wxPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	OutputTextPanel->Hide();
+
+	wxBoxSizer* bSizer56;
+	bSizer56 = new wxBoxSizer( wxVERTICAL );
+
+	output_textctrl = new wxTextCtrl( OutputTextPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_READONLY );
+	bSizer56->Add( output_textctrl, 1, wxALL|wxEXPAND, 5 );
+
+
+	OutputTextPanel->SetSizer( bSizer56 );
+	OutputTextPanel->Layout();
+	bSizer56->Fit( OutputTextPanel );
+	bSizer46->Add( OutputTextPanel, 20, wxEXPAND | wxALL, 5 );
+
+	ShowRefinementResultsPanel = new DisplayRefinementResultsPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	ShowRefinementResultsPanel->Hide();
+
+	bSizer46->Add( ShowRefinementResultsPanel, 80, wxEXPAND | wxALL, 5 );
+
 	ExpertPanel = new wxScrolledWindow( this, wxID_ANY, wxDefaultPosition, wxSize( -1,-1 ), wxVSCROLL );
 	ExpertPanel->SetScrollRate( 5, 5 );
 	ExpertPanel->Hide();
@@ -9213,31 +9243,7 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 	ExpertPanel->SetSizer( InputSizer );
 	ExpertPanel->Layout();
 	InputSizer->Fit( ExpertPanel );
-	bSizer364->Add( ExpertPanel, 0, wxALL|wxEXPAND, 5 );
-
-
-	bSizer451->Add( bSizer364, 1, wxEXPAND, 5 );
-
-
-	bSizer43->Add( bSizer451, 0, wxEXPAND, 5 );
-
-	wxBoxSizer* bSizer46;
-	bSizer46 = new wxBoxSizer( wxHORIZONTAL );
-
-	OutputTextPanel = new wxPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
-	OutputTextPanel->Hide();
-
-	wxBoxSizer* bSizer56;
-	bSizer56 = new wxBoxSizer( wxVERTICAL );
-
-	output_textctrl = new wxTextCtrl( OutputTextPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_READONLY );
-	bSizer56->Add( output_textctrl, 1, wxALL|wxEXPAND, 5 );
-
-
-	OutputTextPanel->SetSizer( bSizer56 );
-	OutputTextPanel->Layout();
-	bSizer56->Fit( OutputTextPanel );
-	bSizer46->Add( OutputTextPanel, 20, wxEXPAND | wxALL, 5 );
+	bSizer46->Add( ExpertPanel, 0, wxALL|wxEXPAND, 5 );
 
 	InfoPanel = new wxPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer61;
@@ -9251,11 +9257,6 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 	InfoPanel->Layout();
 	bSizer61->Fit( InfoPanel );
 	bSizer46->Add( InfoPanel, 1, wxEXPAND | wxALL, 5 );
-
-	ShowRefinementResultsPanel = new DisplayRefinementResultsPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
-	ShowRefinementResultsPanel->Hide();
-
-	bSizer46->Add( ShowRefinementResultsPanel, 80, wxEXPAND | wxALL, 5 );
 
 
 	bSizer43->Add( bSizer46, 1, wxEXPAND, 5 );
@@ -9372,7 +9373,7 @@ AutoRefine3DPanelParent::AutoRefine3DPanelParent( wxWindow* parent, wxWindowID i
 
 	use_gpu_checkboxAR3D = new wxCheckBox( StartPanel, wxID_ANY, wxT("Use GPU"), wxDefaultPosition, wxDefaultSize, 0 );
 	use_gpu_checkboxAR3D->SetValue(true);
-	bSizer60->Add( use_gpu_checkboxAR3D, 1, wxALL|wxEXPAND|wxALIGN_CENTER_HORIZONTAL, 5 );
+	bSizer60->Add( use_gpu_checkboxAR3D, 1, wxALL|wxEXPAND, 5 );
 
 	StartRefinementButton = new wxButton( StartPanel, wxID_ANY, wxT("Start Refinement"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer60->Add( StartRefinementButton, 0, wxALL|wxEXPAND, 5 );

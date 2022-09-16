@@ -66,6 +66,8 @@ class RefineTemplateDevPanel : public RefineTemplateDevPanelParent {
 
     void Reset( );
     void ResetDefaults( );
+
+    const char* Type( ) const { return "RefineTemplateDevPanel"; };
 };
 
 #endif

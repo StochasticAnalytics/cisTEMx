@@ -31,6 +31,8 @@ class
     void SetIciness(float iciness);
     void SetImageAssetID(int image_asset_id);
     void SetDefocus(float defocus_in_angstroms);
+
+    const char* Type( ) const { return "PickingResultsDisplayPanel"; };
 };
 
 #endif

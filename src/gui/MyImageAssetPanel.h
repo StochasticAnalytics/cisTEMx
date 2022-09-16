@@ -40,4 +40,6 @@ class MyImageAssetPanel : public MyAssetPanelParent {
     ImageAsset* ReturnAssetPointer(long wanted_asset);
 
     wxString ReturnItemText(long item, long column) const;
+
+    const char* Type( ) const { return "ImageAssetsPanel"; };
 };

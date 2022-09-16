@@ -1588,7 +1588,7 @@ void RefinementManager::SetupRefinementJob( ) {
             bool use_statistics = false;
 #else
             bool use_statistics = true;
-            
+
 #endif
 
             wxString ouput_matching_projections = "";

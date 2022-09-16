@@ -60,6 +60,8 @@ class AngularDistributionPlotPanel : public wxPanel {
 
     int colour_change_step;
     int min_number_of_projections_to_be_red;
+
+    const char* Type( ) const { return "AngularDistributionPlotPanel"; };
 };
 
 class AngularDistributionPlotPanelHistogram : public AngularDistributionPlotPanel {

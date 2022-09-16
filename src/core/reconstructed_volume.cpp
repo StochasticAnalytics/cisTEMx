@@ -132,7 +132,8 @@ void ReconstructedVolume::CopyAllButVolume(const ReconstructedVolume* other_volu
         was_corrected       = other_volume->was_corrected;
         has_been_filtered   = other_volume->has_been_filtered;
         whitened_projection = other_volume->whitened_projection;
-        current_projection  = other_volume->current_projection;
+        if ( other_volume->current_projection.is_in_memory )
+            current_projection = other_volume->current_projection;
         if ( other_volume->projection_initialized )
             current_projection = other_volume->current_projection;
         projection_initialized = other_volume->projection_initialized;

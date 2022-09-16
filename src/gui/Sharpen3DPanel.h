@@ -33,6 +33,8 @@ class Sharpen3DPanel : public Sharpen3DPanelParent {
     void FillVolumePanels( );
     void Reset( );
     void ResetDefaults( );
+
+    const char* Type( ) const { return "Sharpen3DPanel"; };
 };
 
 class SharpenMapThread : public wxThread {

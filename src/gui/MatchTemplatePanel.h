@@ -105,6 +105,8 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     void        ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event);
     wxArrayLong CheckForUnfinishedWork(bool is_checked, bool is_from_check_box);
+
+    const char* Type( ) const { return "MatchTemplatePanel"; };
 };
 
 #endif

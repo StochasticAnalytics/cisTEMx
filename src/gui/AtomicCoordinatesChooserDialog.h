@@ -12,6 +12,8 @@ class AtomicCoordinatesChooserDialog : public AtomicCoordinatesChooserDialogPare
     AtomicCoordinatesChooserDialog(wxWindow* parent);
     virtual void OnCancelClick(wxCommandEvent& event);
     virtual void OnRenameClick(wxCommandEvent& event);
+
+    const char* Type( ) const { return "AtomicCoordinatesChooserDialog"; };
 };
 
 #endif

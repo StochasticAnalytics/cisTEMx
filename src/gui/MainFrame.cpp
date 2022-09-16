@@ -8,6 +8,8 @@
 #define SERVER_ID 100
 #define SOCKET_ID 101
 
+// #define PRINT_WORKFLOW_DEBUGGING_INFO
+
 extern MyAssetsPanel*                assets_panel;
 extern MyMovieAssetPanel*            movie_asset_panel;
 extern MyImageAssetPanel*            image_asset_panel;
@@ -201,42 +203,6 @@ void MyMainFrame::OnMenuBookChange(wxBookCtrlEvent& event) {
     if ( event.GetOldSelection( ) == 3 ) {
         picking_results_panel->UpdateResultsFromBitmapPanel( );
     }
-
-#ifdef __WXOSX__
-    /*
-	   The below is necessary for the MacOS GUI to behave well.
-	   We need to make sure the list books (rows of icons) are drawn properly
-	   and also the first panel that will be shown.
-	   The other panels will be redrawn explicitely later on when the user
-	   clicks around.
-	 */
-    if ( event.GetSelection( ) == 1 ) {
-        assets_panel->AssetsBook->Refresh( );
-        movie_asset_panel->Layout( );
-        movie_asset_panel->Refresh( );
-    }
-    else if ( event.GetSelection( ) == 2 ) {
-        actions_panel->ActionsBook->Refresh( );
-        align_movies_panel->Layout( );
-        align_movies_panel->Refresh( );
-    }
-    else if ( event.GetSelection( ) == 3 ) {
-        results_panel->ResultsBook->Refresh( );
-        movie_results_panel->Layout( );
-        movie_results_panel->Refresh( );
-    }
-    else if ( event.GetSelection( ) == 4 ) {
-        settings_panel->SettingsBook->Refresh( );
-        run_profiles_panel->Layout( );
-        run_profiles_panel->Refresh( );
-    }
-#ifdef EXPERIMENTAL
-    else if ( event.GetSelection( ) == 5 ) {
-        experimental_panel->ExperimentalBook->Refresh( );
-        //TODO: Layout and Refresh the first Experimental panel
-    }
-#endif
-#endif
 }
 
 void MyMainFrame::ResetAllPanels( ) {
@@ -882,22 +848,49 @@ bool MyMainFrame::MigrateProject(wxString old_project_directory, wxString new_pr
 template <class FrameTypeFrom, class FrameTypeTo>
 void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output_frame, wxString frame_name) {
 
+    wxWindowUpdateLocker noUpdates(this);
+
+#ifdef PRINT_WORKFLOW_DEBUGGING_INFO
+    std::cerr << "\n\nUpdating workflow" << std::endl;
+    std::cerr << "Frame name " << frame_name << std::endl;
+#endif
     // Record the currently displayed page so we can maintain it.
+    // These are the left columen, currently Overview, Assets, Actions, Results, Settings, <Experimental>
     int displayed_page_idx = MenuBook->FindPage(MenuBook->GetCurrentPage( ));
 
     // Get the stored index of the input frame so we can replace it in-place.
     int current_page_idx = MenuBook->FindPage(input_frame);
+
+    // For whatever reason, after switching to wx 3.1 this method doesn't work if we are trying to operate on the selected page,
+    // so with updates frozen, switch off that page and then switch back on.
+    if ( current_page_idx == displayed_page_idx ) {
+        // Assuming we are never altering the Overview panel in the workflow, but maybe this isn't a good assumption?
+        MenuBook->SetSelection(0);
+    }
     MenuBook->RemovePage(current_page_idx);
 
-    // Set the parent to the output frame
+#ifdef PRINT_WORKFLOW_DEBUGGING_INFO
+    std::cerr << "Displayed page idx " << displayed_page_idx << std::endl;
+    std::cerr << "Current page idx " << current_page_idx << std::endl;
+    std::cerr << "Input frame type " << input_frame->Type( ) << std::endl;
+    std::cerr << "Output frame type " << output_frame->Type( ) << std::endl;
+#endif
+    // Set the parent to the output frame. These are the panels that are shared between the SPA and TM actions workflows
+    // TODO: It would be nice to have a header that defines what panels belong to which workflows and use that rather than setting manually here.
     align_movies_panel->Reparent(output_frame->ActionsBook);
     findctf_panel->Reparent(output_frame->ActionsBook);
     generate_3d_panel->Reparent(output_frame->ActionsBook);
     sharpen_3d_panel->Reparent(output_frame->ActionsBook);
 
-    // TODO: number two needs to be set from some record.
-    MenuBook->InsertPage(current_page_idx, output_frame, frame_name, false, current_page_idx);
+    // Insert the new page at the same index as the old page.
+    // Note: (from wxDocs) that currently you need to explicitly call wxNotebook::RemovePage() before reparenting a notebook page.
+    // Note: I'm not sure that the 5th arg is necessary or correct.
+    constexpr bool select_this_page = false;
+    MyDebugAssertTrue(
+            MenuBook->InsertPage(current_page_idx, output_frame, frame_name, select_this_page, current_page_idx), "Failed to insert page into MenuBook");
 
+    // Sets the selection to the page that was previously displayed.
+    // Also generates page chaninge events. Which could be avoided by using MenuBook->ChangeSelection(displayed_page_idx);
     MenuBook->SetSelection(displayed_page_idx);
 
     Layout( );
@@ -908,22 +901,22 @@ void MyMainFrame::SetSingleParticleWorkflow(bool triggered_by_gui_event) {
 
     // The idenitiy of the event (selecting worflow menu) defines the output panel.
     if ( current_workflow != cistem::workflow::single_particle ) {
-        previous_workflow = current_workflow;
         // With only two workflows, we don't need the switch, but
-        switch ( current_workflow ) {
-            case cistem::workflow::template_matching: {
-                UpdateWorkflow(actions_panel_tm, actions_panel_spa, "Actions");
+        // switch ( current_workflow ) {
+        //     case cistem::workflow::template_matching: {
 
-                // If other panels, e.g. results is a likely next candidate, it should go here.
-                // TODO: if there are multiple panels to switch, we'll need to only do the update and set the icon for the LAST call in this sequence.
-                break;
-            }
-            default: {
-                MyDebugAssertTrue(false, "Unknown workflow");
-                break;
-            }
-        }
+        UpdateWorkflow(actions_panel_tm, actions_panel_spa, "Actions");
         current_workflow = cistem::workflow::single_particle;
+        // If other panels, e.g. results is a likely next candidate, it should go here.
+        // TODO: if there are multiple panels to switch, we'll need to only do the update and set the icon for the LAST call in this sequence.
+        // break;
+        //     }
+        //     default: {
+        //         MyDebugAssertTrue(false, "Unknown workflow");
+        //         break;
+        //     }
+        // }
+
         if ( current_project.is_open ) {
             current_project.RecordCurrentWorkflowInDB(current_workflow);
         }
@@ -939,8 +932,9 @@ void MyMainFrame::OnSingleParticleWorkflow(wxCommandEvent& event) {
 }
 
 void MyMainFrame::SetTemplateMatchingWorkflow(bool triggered_by_gui_event) {
+
+    // The idenitiy of the event (selecting worflow menu) defines the output panel.
     if ( current_workflow != cistem::workflow::template_matching ) {
-        previous_workflow = current_workflow;
         UpdateWorkflow(actions_panel_spa, actions_panel_tm, "Actions");
         current_workflow = cistem::workflow::template_matching;
         if ( current_project.is_open ) {

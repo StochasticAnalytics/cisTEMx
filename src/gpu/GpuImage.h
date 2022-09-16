@@ -180,6 +180,7 @@ class GpuImage {
     void SetToConstant(float val);
     void SetToConstant(Npp32fc val);
     void Conj( ); // FIXME
+    void MultiplyPixelWise(float& other_array); // dose filter for example
     void MultiplyPixelWise(GpuImage& other_image); /**CPU_eq**/
     void MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image); /**CPU_eq**/
 
@@ -193,7 +194,7 @@ class GpuImage {
                   int wanted_coordinate_of_box_center_y,
                   int wanted_coordinate_of_box_center_z);
 
-    void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value);
+    void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value, bool zero_central_pixel = false);
 
     void ClipIntoReturnMask(GpuImage* other_image);
 
@@ -214,7 +215,7 @@ class GpuImage {
     template <typename T>
     void BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision);
 
-    void Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value);
+    void Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value, bool zero_central_pixel = false);
     void Consume(GpuImage* other_image);
     void CopyCpuImageMetaData(Image& cpu_image);
     void CopyGpuImageMetaData(const GpuImage* other_image);

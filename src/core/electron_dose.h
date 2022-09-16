@@ -1,13 +1,10 @@
+#include "../constants/constants.h"
+
 class ElectronDose {
   private:
 
   public:
     float acceleration_voltage;
-
-    float critical_dose_a;
-    float critical_dose_b;
-    float critical_dose_c;
-    float reduced_critical_dose_b;
 
     float voltage_scaling_factor;
 
@@ -22,11 +19,13 @@ class ElectronDose {
     float ReturnCummulativeDoseFilter(float dose_at_start_of_exposure, float dose_at_end_of_exosure, float critical_dose);
     void  CalculateCummulativeDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish);
 
-    void CalculateDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish);
+    // Image defin in electron_dose.cpp, GpuImage in src/gpu/core_extensions/electron_dose_gpu
+    template <class ImageType>
+    void CalculateDoseFilterAs1DArray(ImageType* ref_image, float* filter_array, float dose_start, float dose_finish);
 };
 
 inline float ElectronDose::ReturnCriticalDose(float spatial_frequency) {
-    return (critical_dose_a * powf(spatial_frequency, reduced_critical_dose_b) + critical_dose_c) * voltage_scaling_factor;
+    return (cistem::electron_dose::critical_dose_a * powf(spatial_frequency, cistem::electron_dose::reduced_critical_dose_b) + cistem::electron_dose::critical_dose_c) * voltage_scaling_factor;
 }
 
 inline float ElectronDose::ReturnDoseFilter(float dose_at_end_of_frame, float critical_dose) {

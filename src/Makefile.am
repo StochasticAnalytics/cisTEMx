@@ -271,6 +271,7 @@ libgpucore_a_SOURCES  =      gpu/core_extensions/stop_watch_gpu.cu \
                              gpu/TensorManager.cu \
                              gpu/GpuImage.cu \
                              gpu/core_extensions/euler_search_gpu.cu \
+                             gpu/core_extensions/electron_dose_gpu.cu \
                              programs/refine3d/batched_search.cu 
 if ENABLE_FASTFFT_AM
     libgpucore_a_SOURCES += ext/FastFFT/src/FastFFT.cu

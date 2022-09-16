@@ -2158,6 +2158,15 @@ void GpuImage::MeanStdDev( ) {
     this->img_stdDev = float(npp_stdDev);
 }
 
+void GpuImage::MultiplyPixelWise(const float* other_array, const int other_array_size) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Not in Fourier space");
+    MyDebugAssertTrue(other_array_size == real_memory_allocated / 2, "Array size does not match image size");
+
+    NppInit( );
+    nppErr(nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_array, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
+}
+
 void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     NppInit( );
@@ -3881,7 +3890,8 @@ __global__ void ClipIntoFourierSpaceKernel(cufftComplex* source_complex_values_g
                                            int3          source_logical_upper_bound_complex,
                                            int3          source_physical_upper_bound_complex,
                                            int3          destination_physical_upper_bound_complex,
-                                           cufftComplex  out_of_bounds_value);
+                                           cufftComplex  out_of_bounds_value,
+                                           bool          zero_central_pixel);
 
 __global__ void ClipIntoFourierSpaceKernel(cufftComplex* source_complex_values_gpu,
                                            cufftComplex* destination_complex_values_gpu,
@@ -3892,7 +3902,8 @@ __global__ void ClipIntoFourierSpaceKernel(cufftComplex* source_complex_values_g
                                            int3          source_logical_upper_bound_complex,
                                            int3          source_physical_upper_bound_complex,
                                            int3          destination_physical_upper_bound_complex,
-                                           cufftComplex  out_of_bounds_value) {
+                                           cufftComplex  out_of_bounds_value,
+                                           bool          zero_central_pixel) {
     int3 index_coord = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                                  blockIdx.y * blockDim.y + threadIdx.y,
                                  blockIdx.z);
@@ -3968,12 +3979,16 @@ __global__ void ClipIntoFourierSpaceKernel(cufftComplex* source_complex_values_g
         new_value        = source_complex_values_gpu[source_index];
     }
 
-    destination_complex_values_gpu[destination_index] = new_value;
+    if ( destination_index == 0 && zero_central_pixel )
+        destination_complex_values_gpu[destination_index] = cufftComplex(0.0f, 0.0f);
+    else
+        destination_complex_values_gpu[destination_index] = new_value;
 }
 
-void GpuImage::Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value) {
+void GpuImage::Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value, bool zero_central_pixel) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(wanted_x_dimension != 0 && wanted_y_dimension != 0 && wanted_z_dimension != 0, "Resize dimension is zero");
+    MyDebugAssertFalse(zero_central_pixel && is_in_real_space, "Zero central pixel only works in Fourier space");
 
     if ( dims.x == wanted_x_dimension && dims.y == wanted_y_dimension && dims.z == wanted_z_dimension ) {
         wxPrintf("Wanted dimensions are the same as current dimensions.\n");
@@ -3988,7 +4003,7 @@ void GpuImage::Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted
         ClipInto(&temp_image, wanted_padding_value, false, 1.0, 0, 0, 0);
     }
     else {
-        ClipIntoFourierSpace(&temp_image, wanted_padding_value);
+        ClipIntoFourierSpace(&temp_image, wanted_padding_value, zero_central_pixel);
     }
 
     // wxPrintf("Consuming temp image\n");
@@ -4148,7 +4163,7 @@ void GpuImage::Consume(GpuImage* other_image) {
     return;
 }
 
-void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value) {
+void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value, bool zero_central_pixel) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(destination_image->is_in_memory_gpu, "Destination image memory not allocated");
     MyDebugAssertTrue(destination_image->object_is_centred_in_box && object_is_centred_in_box, "ClipInto assumes both images are centered at the moment.");
@@ -4169,7 +4184,9 @@ void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_pa
                                                                                       logical_upper_bound_complex,
                                                                                       physical_upper_bound_complex,
                                                                                       destination_image->physical_upper_bound_complex,
-                                                                                      make_cuComplex(wanted_padding_value, 0.0));
+                                                                                      make_cuComplex(wanted_padding_value,
+                                                                                                     0.0,
+                                                                                                     zero_central_pixel));
 
     postcheck;
     cudaStreamSynchronize(cudaStreamPerThread);

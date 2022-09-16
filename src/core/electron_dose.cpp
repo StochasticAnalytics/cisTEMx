@@ -37,15 +37,10 @@ void ElectronDose::Init(float wanted_acceleration_voltage, float wanted_pixel_si
     }
 
     pixel_size = wanted_pixel_size;
-
-    critical_dose_a         = 0.24499;
-    critical_dose_b         = -1.6649;
-    critical_dose_c         = 2.8141;
-    reduced_critical_dose_b = critical_dose_b / 2.f;
 }
 
 template <>
-void ElectronDose::CalculateDoseFilterAs1DArray<Image>(Image* ref_image, float* filter_array, float dose_start, float dose_finish) {
+void ElectronDose::CalculateDoseFilterAs1DArray<Image>(Image* ref_image, float* filter_array, float dose_start, float dose_finish, bool restore_power) {
 
     //	MyDebugAssertTrue(ref_image->logical_z_dimension == 1, "Reference Image is a 3D!");
 
@@ -81,10 +76,6 @@ void ElectronDose::CalculateDoseFilterAs1DArray<Image>(Image* ref_image, float* 
 
     filter_array[0] = 1.0;
 }
-
-// Make sure we compile both specializations
-template void ElectronDose::CalculateDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish);
-template void ElectronDose::CalculateDoseFilterAs1DArray(GpuImage* ref_image, float* filter_array, float dose_start, float dose_finish, bool restore_power);
 
 void ElectronDose::CalculateCummulativeDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish) {
 

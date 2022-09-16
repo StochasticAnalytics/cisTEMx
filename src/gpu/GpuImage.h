@@ -175,12 +175,15 @@ class GpuImage {
     ////////////////////////////////////////////////////////////////////////
 
     void QuickAndDirtyWriteSlices(std::string filename, int first_slice, int last_slice); /**CPU_eq**/
+
+    void QuickAndDirtyWriteSlice(std::string filename, int first_slice) { QuickAndDirtyWriteSlices(filename, first_slice, first_slice); }; /**CPU_eq**/
+
     void PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift); /**CPU_eq**/
     void MultiplyByConstant(float scale_factor); /**CPU_eq**/
     void SetToConstant(float val);
     void SetToConstant(Npp32fc val);
     void Conj( ); // FIXME
-    void MultiplyPixelWise(float& other_array); // dose filter for example
+    void MultiplyPixelWise(const float& other_array, const int other_array_size); // dose filter for example
     void MultiplyPixelWise(GpuImage& other_image); /**CPU_eq**/
     void MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image); /**CPU_eq**/
 
@@ -188,11 +191,13 @@ class GpuImage {
 
     void SwapFourierSpaceQuadrants( );
     void SwapRealSpaceQuadrants( ); /**CPU_eq**/
-    void ClipInto(GpuImage* other_image, float wanted_padding_value, /**CPU_eq**/
-                  bool fill_with_noise, float wanted_noise_sigma,
-                  int wanted_coordinate_of_box_center_x,
-                  int wanted_coordinate_of_box_center_y,
-                  int wanted_coordinate_of_box_center_z);
+    void ClipInto(GpuImage* other_image,
+                  float     wanted_padding_value              = 0.f, /**CPU_eq**/
+                  bool      fill_with_noise                   = false,
+                  float     wanted_noise_sigma                = 1.f,
+                  int       wanted_coordinate_of_box_center_x = 0,
+                  int       wanted_coordinate_of_box_center_y = 0,
+                  int       wanted_coordinate_of_box_center_z = 0);
 
     void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value, bool zero_central_pixel = false);
 

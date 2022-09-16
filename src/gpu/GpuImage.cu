@@ -2158,13 +2158,13 @@ void GpuImage::MeanStdDev( ) {
     this->img_stdDev = float(npp_stdDev);
 }
 
-void GpuImage::MultiplyPixelWise(const float* other_array, const int other_array_size) {
+void GpuImage::MultiplyPixelWise(const float& other_array, const int other_array_size) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Not in Fourier space");
     MyDebugAssertTrue(other_array_size == real_memory_allocated / 2, "Array size does not match image size");
 
     NppInit( );
-    nppErr(nppiMul_32fc_C1IR_Ctx((Npp32fc*)other_array, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
+    nppErr(nppiMul_32fc_C1IR_Ctx((Npp32fc*)&other_array, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
 }
 
 void GpuImage::MultiplyPixelWise(GpuImage& other_image) {
@@ -3980,8 +3980,10 @@ __global__ void ClipIntoFourierSpaceKernel(cufftComplex* source_complex_values_g
         new_value        = source_complex_values_gpu[source_index];
     }
 
-    if ( destination_index == 0 && zero_central_pixel )
-        destination_complex_values_gpu[destination_index] = cufftComplex(0.0f, 0.0f);
+    if ( destination_index == 0 && zero_central_pixel ) {
+        destination_complex_values_gpu[destination_index].x = 0.0f;
+        destination_complex_values_gpu[destination_index].y = 0.0f;
+    }
     else
         destination_complex_values_gpu[destination_index] = new_value;
 }
@@ -4175,6 +4177,7 @@ void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_pa
 
     ReturnLaunchParameters(destination_image->dims, false);
 
+    cufftComplex padding_value = {wanted_padding_value, wanted_padding_value};
     precheck;
     ClipIntoFourierSpaceKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
                                                                                       destination_image->complex_values_gpu,
@@ -4185,9 +4188,8 @@ void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_pa
                                                                                       logical_upper_bound_complex,
                                                                                       physical_upper_bound_complex,
                                                                                       destination_image->physical_upper_bound_complex,
-                                                                                      make_cuComplex(wanted_padding_value,
-                                                                                                     0.0,
-                                                                                                     zero_central_pixel));
+                                                                                      padding_value,
+                                                                                      zero_central_pixel);
 
     postcheck;
     cudaStreamSynchronize(cudaStreamPerThread);

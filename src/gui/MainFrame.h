@@ -5,7 +5,6 @@
 class MyMainFrame : public MainFrame, public SocketCommunicator {
     bool                   is_fullscreen;
     cistem::workflow::Enum current_workflow;
-    cistem::workflow::Enum previous_workflow;
 
   public:
     /** Constructor */
@@ -104,8 +103,6 @@ class MyMainFrame : public MainFrame, public SocketCommunicator {
     void OnTemplateMatchingWorkflow(wxCommandEvent& event);
 
     inline cistem::workflow::Enum ReturnCurrentWorkflow( ) { return current_workflow; };
-
-    inline cistem::workflow::Enum ReturnPreviousWorkflow( ) { return previous_workflow; };
 
     inline void ManuallyUpdateWorkflowMenuCheckBox( ) {
 

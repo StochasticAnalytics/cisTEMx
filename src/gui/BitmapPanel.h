@@ -21,6 +21,8 @@ class BitmapPanel : public wxPanel {
 
     bool  should_show;
     float font_size_multiplier;
+
+    const char* Type( ) const { return "BitmapPanel"; };
 };
 
 #endif

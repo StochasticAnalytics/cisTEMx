@@ -56,6 +56,8 @@ class MyFindCTFPanel : public FindCTFPanel {
 
     void Reset( );
     void ResetDefaults( );
+
+    const char* Type( ) const { return "FindCTFPanel"; };
 };
 
 #endif // __AlignMoviesPanel__

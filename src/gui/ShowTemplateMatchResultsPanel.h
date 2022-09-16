@@ -25,6 +25,8 @@ class
     void FillPeakInfoTable(float threshold_used);
 
     void SetActiveResult(TemplateMatchJobResults& result_to_show);
+
+    const char* Type( ) const { return "ShowTemplateMatchResultsPanel"; };
 };
 
 #endif

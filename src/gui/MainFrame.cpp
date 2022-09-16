@@ -881,14 +881,20 @@ bool MyMainFrame::MigrateProject(wxString old_project_directory, wxString new_pr
 
 template <class FrameTypeFrom, class FrameTypeTo>
 void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output_frame, wxString frame_name) {
-
+    std::cerr << "Updating workflow" << std::endl;
+    std::cerr << "Frame name " << frame_name << std::endl;
     // Record the currently displayed page so we can maintain it.
+    // These are the left columen, currently Overview, Assets, Actions, Results, Settings, <Experimental>
     int displayed_page_idx = MenuBook->FindPage(MenuBook->GetCurrentPage( ));
 
+    std::cerr << "Displayed page idx " << displayed_page_idx << std::endl;
     // Get the stored index of the input frame so we can replace it in-place.
     int current_page_idx = MenuBook->FindPage(input_frame);
     MenuBook->RemovePage(current_page_idx);
 
+    std::cerr << "Current page idx " << current_page_idx << std::endl;
+    std::cerr << "Input frame type " << input_frame->Type( ) << std::endl;
+    std::cerr << "Output frame type " << output_frame->Type( ) << std::endl;
     // Set the parent to the output frame
     align_movies_panel->Reparent(output_frame->ActionsBook);
     findctf_panel->Reparent(output_frame->ActionsBook);
@@ -896,6 +902,7 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
     sharpen_3d_panel->Reparent(output_frame->ActionsBook);
 
     // TODO: number two needs to be set from some record.
+    // Note: (from wxDocs) that currently you need to explicitly call wxNotebook::RemovePage() before reparenting a notebook page.
     MenuBook->InsertPage(current_page_idx, output_frame, frame_name, false, current_page_idx);
 
     MenuBook->SetSelection(displayed_page_idx);

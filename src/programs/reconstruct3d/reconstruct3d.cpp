@@ -192,7 +192,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
     Image               current_ctf_image;
     Image               current_beamtilt_image;
     Image               projection_image;
-    Image               padded_projection_image;
     Image               cropped_projection_image;
     Image               unmasked_image;
     Image               padded_image;
@@ -702,15 +701,21 @@ bool Reconstruct3DApp::DoCalculation( ) {
         my_progress = new ProgressBar(images_to_process_per_thread);
     current_image = 0;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(input_3d, input_star_file, input_stack, resolution_limit_rec, original_box_size, box_size,                                                                                                                                                       \
-                                                                   first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, crop_images, symmetry_weight, score_threshold, use_input_reconstruction,                                                                     \
-                                                                   pixel_size, my_progress, outer_mask_radius, mask_falloff, current_image, padded_box_size, binning_factor,                                                                                                                                        \
-                                                                   rotational_blurring, number_of_rotations, psi_step, psi_start, smoothing_factor, intermediate_box_size, original_pixel_size, calculate_complex_ctf, parameter_averages,                                                                          \
-                                                                   parameter_variances, fsc_particle_repeat, score_weight_conversion, my_symmetry, correct_ewald_sphere, my_reconstruction_1, my_reconstruction_2, center_mass,                                                                                     \
-                                                                   images_to_process_per_thread, apply_exposure_filter_during_reconstruction) private(i, j, image_counter, input_particle, current_image_local, input_parameters, temp_float, input_ctf, variance, average, current_ctf,                            \
-                                                                                                                                                      input_image_local, projection_image, padded_projection_image, temp3_image_local, padded_image, cropped_projection_image, temp_image_local, temp2_image_local, \
+#pragma omp parallel num_threads(max_threads) default(none) shared(input_3d, std::cerr, input_star_file, input_stack, resolution_limit_rec, original_box_size, box_size,                                                                                                                   \
+                                                                   first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, crop_images, symmetry_weight, score_threshold, use_input_reconstruction,                                            \
+                                                                   pixel_size, my_progress, outer_mask_radius, mask_falloff, current_image, padded_box_size, binning_factor,                                                                                                               \
+                                                                   rotational_blurring, number_of_rotations, psi_step, psi_start, smoothing_factor, intermediate_box_size, original_pixel_size, calculate_complex_ctf, parameter_averages,                                                 \
+                                                                   parameter_variances, fsc_particle_repeat, score_weight_conversion, my_symmetry, correct_ewald_sphere, my_reconstruction_1, my_reconstruction_2, center_mass,                                                            \
+                                                                   images_to_process_per_thread, apply_exposure_filter_during_reconstruction) private(i, j, image_counter, input_particle, current_image_local, input_parameters, temp_float, input_ctf, variance, average, current_ctf,   \
+                                                                                                                                                      input_image_local, projection_image, temp3_image_local, padded_image, cropped_projection_image, temp_image_local, temp2_image_local, \
                                                                                                                                                       current_ctf_image, current_beamtilt_image, unmasked_image, ssq_X, psi, rotation_angle, rotation_cache)
     { // for omp
+        Image               padded_projection_image;
+        ReconstructedVolume input_3d_;
+        if ( use_input_reconstruction ) {
+            input_3d_.CopyAllButVolume(&input_3d);
+            input_3d_.density_map = input_3d.density_map;
+        }
 
         Curve noise_power_spectrum_local;
         noise_power_spectrum_local = noise_power_spectrum;
@@ -723,8 +728,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
             cropped_projection_image.Allocate(box_size, box_size, false);
         if ( resolution_limit_rec != 0.0 && crop_images )
             temp2_image_local.Allocate(intermediate_box_size, intermediate_box_size, true);
-        if ( padding != 1.0 )
-            padded_projection_image.Allocate(input_3d.density_map->logical_x_dimension, input_3d.density_map->logical_y_dimension, false);
+        if ( padding != 1.0 && use_input_reconstruction )
+            padded_projection_image.Allocate(input_3d_.density_map->logical_x_dimension, input_3d_.density_map->logical_y_dimension, false);
         if ( rotational_blurring && use_input_reconstruction ) {
             padded_image.Allocate(padded_box_size, padded_box_size, true);
             rotation_cache = new Image[number_of_rotations];
@@ -814,7 +819,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
             if ( use_input_reconstruction ) {
                 input_particle.alignment_parameters.Init(input_parameters.phi, input_parameters.theta, input_parameters.psi, 0.0, 0.0);
                 if ( padding != 1.0 ) {
-                    input_3d.density_map->ExtractSlice(padded_projection_image, input_particle.alignment_parameters);
+                    input_3d_.density_map->ExtractSlice(padded_projection_image, input_particle.alignment_parameters);
                     padded_projection_image.SwapRealSpaceQuadrants( );
                     padded_projection_image.BackwardFFT( );
                     padded_projection_image.ClipInto(&projection_image);
@@ -823,7 +828,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                         projection_image.SwapRealSpaceQuadrants( );
                 }
                 else {
-                    input_3d.density_map->ExtractSlice(projection_image, input_particle.alignment_parameters);
+                    input_3d_.density_map->ExtractSlice(projection_image, input_particle.alignment_parameters);
                     if ( crop_images )
                         projection_image.SwapRealSpaceQuadrants( );
                 }
@@ -1243,8 +1248,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
             cropped_projection_image.Deallocate( );
         if ( resolution_limit_rec != 0.0 && crop_images )
             temp2_image_local.Deallocate( );
-        if ( padding != 1.0 )
-            padded_projection_image.Deallocate( );
         if ( rotational_blurring && use_input_reconstruction ) {
             padded_image.Deallocate( );
             delete[] rotation_cache;

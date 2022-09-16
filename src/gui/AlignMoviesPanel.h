@@ -56,6 +56,8 @@ class MyAlignMoviesPanel : public AlignMoviesPanel {
 
     void Reset( );
     void ResetDefaults( );
+
+    const char* Type( ) const { return "AlignMoviesPanel"; };
 };
 
 #endif // __AlignMoviesPanel__

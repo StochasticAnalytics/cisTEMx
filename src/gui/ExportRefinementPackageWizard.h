@@ -34,6 +34,8 @@ class ExportRefinementPackageWizard : public ExportRefinementPackageWizardParent
     }
 
     RefinementPackage* current_package;
+
+    const char* Type( ) const { return "ExportRefinementPackageWizard"; };
 };
 
 #endif

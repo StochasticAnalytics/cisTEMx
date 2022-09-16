@@ -125,6 +125,8 @@ class MyAssetPanelParent : public AssetPanelParent {
     void Reset( );
 
     virtual void UpdateInfo( ) = 0;
+
+    const char* Type( ) const { return "MyAssetPanelParent"; };
 };
 
 class GroupDropTarget : public wxDropTarget {

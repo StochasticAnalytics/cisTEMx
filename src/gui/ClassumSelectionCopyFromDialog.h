@@ -12,6 +12,8 @@ class ClassumSelectionCopyFromDialog : public ClassumSelectionCopyFromDialogPare
 
     wxArrayInt original_array_positions;
     int        selected_selection_array_position;
+
+    const char* Type( ) const { return "ClassumSelectionCopyFromDialog"; };
 };
 
 #endif // __ClassumSelectionCopyFromDialog__

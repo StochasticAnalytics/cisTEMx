@@ -49,4 +49,6 @@ class MyMovieAssetPanel : public MyAssetPanelParent {
     void CompletelyRemoveAsset(long wanted_asset);
     void CompletelyRemoveAssetByID(long wanted_asset_id);
     void DoAfterDeletionCleanup( );
+
+    const char* Type( ) const { return "MovieAssetsPanel"; };
 };

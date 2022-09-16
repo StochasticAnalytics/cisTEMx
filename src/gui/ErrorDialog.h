@@ -16,6 +16,8 @@ class MyErrorDialog : public ErrorDialog {
     //// end generated class members
 
     void OnClickOK(wxCommandEvent& event);
+
+    const char* Type( ) const { return "MyErrorDialog"; };
 };
 
 #endif // __ErrorDialog__

@@ -58,4 +58,6 @@ class MyFindCTFResultsPanel : public FindCTFResultsPanel {
     bool group_combo_is_dirty;
 
     wxString current_fill_command;
+
+    const char* Type( ) const { return "MyFindCTFResultsPanel"; };
 };

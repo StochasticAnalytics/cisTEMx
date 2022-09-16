@@ -70,6 +70,8 @@ class ClassificationManager {
     void ProcessAllJobsFinished( );
 
     void RemoveFilesFromScratch( );
+
+    const char* Type( ) const { return "ClassificationManager"; }
 };
 
 class MyRefine2DPanel : public Refine2DPanel {
@@ -129,6 +131,8 @@ class MyRefine2DPanel : public Refine2DPanel {
     JobTracker my_job_tracker;
 
     friend class ClassificationManager;
+
+    const char* Type( ) const { return "MyRefine2DPanel"; };
 };
 
 #endif // __MyRefine2DPanel__

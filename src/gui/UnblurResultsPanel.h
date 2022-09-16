@@ -29,6 +29,8 @@ class
 
     mpFXYVector* current_x_shift_vector_layer;
     mpFXYVector* current_y_shift_vector_layer;
+
+    const char* Type( ) const { return "UnblurResultsPanel"; };
 };
 
 #endif

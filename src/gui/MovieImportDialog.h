@@ -29,6 +29,8 @@ class MyMovieImportDialog : public MovieImportDialog {
     void OnGainFilePickerChanged(wxFileDirPickerEvent& event);
     void OnResampleMoviesCheckBox(wxCommandEvent& event);
     void OnSkipFullIntegrityCheckCheckBox(wxCommandEvent& event);
+
+    const char* Type( ) const { return "MyMovieImportDialog"; };
 };
 
 #endif // __MyMovieImportDialog__

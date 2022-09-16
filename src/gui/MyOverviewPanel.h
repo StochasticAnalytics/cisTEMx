@@ -8,6 +8,8 @@ class MyOverviewPanel : public OverviewPanel {
     void SetWelcomeInfo( );
     void SetProjectInfo( );
     void OnInfoURL(wxTextUrlEvent& event);
+
+    const char* Type( ) const { return "MyOverviewPanel"; };
 };
 
 #endif // __MyOverviewPanel__

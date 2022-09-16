@@ -46,6 +46,8 @@ class JobPanel : public wxPanel, public SocketCommunicator {
 
     JobPanel(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize(869, 566), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString);
     ~JobPanel( );
+
+    const char* Type( ) const { return "JobPanel"; };
 };
 
 #endif

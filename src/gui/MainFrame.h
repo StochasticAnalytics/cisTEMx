@@ -118,6 +118,8 @@ class MyMainFrame : public MainFrame, public SocketCommunicator {
         }
     }
 
+    const char* Type( ) const { return "MainFrame"; };
+
     //LaunchJob(JobPanel *parent_panel, )
 };
 

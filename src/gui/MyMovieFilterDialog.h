@@ -10,6 +10,8 @@ class MyFilterDialog : public FilterDialog {
     virtual void OnFilterClick(wxCommandEvent& event);
     virtual void BuildSearchCommand( ) = 0;
     void         SizeAndPosition( );
+
+    const char* Type( ) const { return "MyFilterDialog"; };
 };
 
 class MyMovieFilterDialog : public MyFilterDialog {

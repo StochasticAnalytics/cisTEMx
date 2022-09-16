@@ -111,6 +111,8 @@ class MyFindParticlesPanel : public FindParticlesPanel {
 
     int number_of_particles_picked;
 
+    const char* Type( ) const { return "MyFindParticlesPanel"; };
+
   private:
     ParticleFinder particle_finder;
 

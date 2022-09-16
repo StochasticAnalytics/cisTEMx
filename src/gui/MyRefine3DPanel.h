@@ -114,6 +114,8 @@ class RefinementManager {
 
     void DoMasking( );
 
+    const char* Type( ) const { return "RefinementManager"; };
+
     //	void StartRefinement();
     //	void StartReconstruction();
 };

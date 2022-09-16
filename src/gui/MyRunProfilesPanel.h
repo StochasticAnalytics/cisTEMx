@@ -73,6 +73,8 @@ class MyRunProfilesPanel : public RunProfilesPanel {
     void WriteRunProfilesToDisk(wxString filename, wxArrayInt profiles_to_write);
     bool ImportRunProfilesFromDisk(wxString filename);
     void Reset( );
+
+    const char* Type( ) const { return "MyRunProfilesPanel"; };
 };
 
 #endif // __MyRunProfilesPanel__

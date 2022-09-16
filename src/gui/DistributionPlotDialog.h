@@ -32,6 +32,8 @@ class DistributionPlotDialog : public DistributionPlotDialogParent {
     void OnUpperBoundYKillFocus(wxFocusEvent& event);
     void OnUpperBoundYSetFocus(wxFocusEvent& event);
 
+    const char* Type( ) const { return "DistributionPlotDialog"; };
+
   private:
     int       number_of_data_series;
     int*      number_of_points_in_data_series;

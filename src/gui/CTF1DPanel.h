@@ -29,6 +29,8 @@ class
     mpFXYVector* current_ctf_fit_vector_layer;
     mpFXYVector* current_quality_of_fit_vector_layer;
     mpFXYVector* current_amplitude_vector_layer;
+
+    const char* Type( ) const { return "CTF1DPanel"; };
 };
 
 #endif

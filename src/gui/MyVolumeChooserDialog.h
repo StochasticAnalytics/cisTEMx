@@ -12,6 +12,8 @@ class MyVolumeChooserDialog : public VolumeChooserDialog {
     MyVolumeChooserDialog(wxWindow* parent);
     virtual void OnCancelClick(wxCommandEvent& event);
     virtual void OnRenameClick(wxCommandEvent& event);
+
+    const char* Type( ) const { return "MyVolumeChooserDialog"; };
 };
 
 #endif

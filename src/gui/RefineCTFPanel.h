@@ -103,6 +103,8 @@ class CTFRefinementManager {
 
     void DoMasking( );
 
+    const char* Type( ) const { return "CTFRefinementManager"; }
+
     //	void StartRefinement();
     //	void StartReconstruction();
 };
@@ -184,6 +186,8 @@ class RefineCTFPanel : public RefineCTFPanelParent {
 
     void OnOrthThreadComplete(ReturnProcessedImageEvent& my_event);
     void OnMaskerThreadComplete(wxThreadEvent& my_event);
+
+    const char* Type( ) const { return "RefineCTFPanel"; };
 };
 
 #endif // __RefineCTFPanel__

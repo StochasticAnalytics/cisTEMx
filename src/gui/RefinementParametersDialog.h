@@ -13,6 +13,8 @@ class RefinementParametersDialog : public RefinementParametersDialogParent {
     void OnCharHook(wxKeyEvent& event);
 
     void SetActiveClassButton(int wanted_class);
+
+    const char* Type( ) const { return "RefinementParametersDialog"; };
 };
 
 #endif

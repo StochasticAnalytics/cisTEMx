@@ -43,6 +43,8 @@ class
     bool input_params_combo_is_dirty;
     bool classification_selections_are_dirty;
     int  selected_class;
+
+    const char* Type( ) const { return "Refine2DResultsPanel"; };
 };
 
 enum {

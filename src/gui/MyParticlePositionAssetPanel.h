@@ -38,4 +38,6 @@ class MyParticlePositionAssetPanel : public MyAssetPanelParent {
     void DoAfterDeletionCleanup( );
 
     ParticlePositionAsset* ReturnAssetPointer(long wanted_asset);
+
+    const char* Type( ) const { return "ParticlePositionAssetsPanel"; };
 };

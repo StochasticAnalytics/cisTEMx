@@ -115,6 +115,8 @@ class AutoRefinementManager {
 
     void DoMasking( );
 
+    const char* Type( ) const { return "AutoRefinementManager"; };
+
     //	void StartRefinement();
     //	void StartReconstruction();
 };

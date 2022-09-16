@@ -27,7 +27,10 @@ class AssetPickerComboPanel : public AssetPickerComboPanelParent {
     void ChangeValue(wxString value_to_set) {}
 
     virtual void GetAssetFromPopup( );
+
     //virtual bool FillComboBox() = 0;
+
+    const char* Type( ) const { return "AssetPickerComboPanel"; };
 };
 
 class ClassSelectionPickerComboPanel : public AssetPickerComboPanel {

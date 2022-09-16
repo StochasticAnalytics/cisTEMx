@@ -102,6 +102,8 @@ class Generate3DPanel : public Generate3DPanelParent {
 
     void ProcessJobResult(JobResult* result_to_process);
     void ProcessAllJobsFinished( );
+
+    const char* Type( ) const { return "Generate3DPanel"; };
 };
 
 #endif // __MyRefine3DPanel__

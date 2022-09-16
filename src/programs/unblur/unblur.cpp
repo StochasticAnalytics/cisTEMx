@@ -453,11 +453,12 @@ bool UnBlurApp::DoCalculation( ) {
     total_processed           = 0;
 
     // Reduce the memory footprint for cases where the input stack will be binned
-    image_counter = 0;
+    image_counter  = 0;
+    int cpu_offset = 0;
     for ( preprocess_block_counter = 0; preprocess_block_counter < number_of_preprocess_blocks; preprocess_block_counter++ ) {
 #ifndef ENABLEGPU
         if ( preprocess_block_counter > 0 ) {
-            image_stack_ = &image_stack[preprocess_block_counter * image_stack[0].real_memory_allocated];
+            cpu_offset += max_threads;
         }
 #endif
 
@@ -466,13 +467,13 @@ bool UnBlurApp::DoCalculation( ) {
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
             // Read from disk
             // image_stack[image_counter - 1].ReadSlice(&input_file, image_counter);
-            image_stack_[(position_in_stack - 1) % max_threads].ReadSlice(&input_file, position_in_stack);
+            image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].ReadSlice(&input_file, position_in_stack);
         }
         profile_timing.lap("read in frames");
 
 #pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
-            int sub_stack_index = (position_in_stack - 1) % max_threads;
+            int sub_stack_index = (position_in_stack - 1) % max_threads + cpu_offset;
             // Dark correction
             if ( ! movie_is_dark_corrected ) {
                 profile_timing.start("dark correct");

@@ -21,7 +21,7 @@ class ElectronDose {
 
     // Image defin in electron_dose.cpp, GpuImage in src/gpu/core_extensions/electron_dose_gpu
     template <class ImageType>
-    void CalculateDoseFilterAs1DArray(ImageType* ref_image, float* filter_array, float dose_start, float dose_finish);
+    void CalculateDoseFilterAs1DArray(ImageType* ref_image, float* filter_array, float dose_start, float dose_finish, bool restore_power = false);
 };
 
 inline float ElectronDose::ReturnCriticalDose(float spatial_frequency) {

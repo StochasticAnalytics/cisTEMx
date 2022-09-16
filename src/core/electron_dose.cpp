@@ -84,7 +84,7 @@ void ElectronDose::CalculateDoseFilterAs1DArray<Image>(Image* ref_image, float* 
 
 // Make sure we compile both specializations
 template void ElectronDose::CalculateDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish);
-template void ElectronDose::CalculateDoseFilterAs1DArray(GpuImage* ref_image, float* filter_array, float dose_start, float dose_finish);
+template void ElectronDose::CalculateDoseFilterAs1DArray(GpuImage* ref_image, float* filter_array, float dose_start, float dose_finish, bool restore_power);
 
 void ElectronDose::CalculateCummulativeDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish) {
 

@@ -2635,6 +2635,7 @@ void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_com
     cpu_image.is_in_real_space = is_in_real_space;
 }
 
+// TODO: should the return type be moved, is that handled already by the compiler?
 Image GpuImage::CopyDeviceToNewHost(bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
     Image new_cpu_image;
     new_cpu_image.Allocate(dims.x, dims.y, dims.z, true, false);

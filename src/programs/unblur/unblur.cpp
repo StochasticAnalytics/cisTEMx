@@ -1,4 +1,12 @@
+#include <cistem_config.h>
+
+#ifdef ENABLEGPU
+#warning "GPU enabled in refine3d"
+#include "../../gpu/gpu_core_headers.h"
+#include "../../gpu/GpuImage.h"
+#else
 #include "../../core/core_headers.h"
+#endif
 
 // The timing that unblur originally tracks is always on, by direct reference to cistem_timer::StopWatch
 // The profiling for development is under conrtol of --enable-profiling.
@@ -666,15 +674,31 @@ bool UnBlurApp::DoCalculation( ) {
             profile_timing.lap("amplitude spectrum");
         }
 
+        // We don't want any copying of the timer, so just let them all have a pointer, only thread zero will do anything with it.
+        StopWatch* shared_ptr;
+        shared_ptr = &profile_timing;
+
+#ifdef ENABLEGPU
+        shared_ptr->start("calc dose filter");
+        my_electron_dose->CalculateDoseFilterAs1DArray(image_stack, sum_image.real_values_gpu, pre_exposure_amount, exposure_per_frame);
+        shared_ptr->lap("calc dose filter");
+
+        shared_ptr->start("write out frames");
+        if ( saved_aligned_frames == true ) {
+            for ( image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
+                image_stack[image_counter].QuickAndDirtyWriteSlice(aligned_frames_filename, image_counter + 1);
+            }
+        }
+        shared_ptr->lap("write out frames");
+
+        // We'll sync her as we can overlap writing of frames (if requested) with the dose filter calculation.
+        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+#else
         // allocate arrays for the filter, and the sum of squares..
         profile_timing.start("setup dose filter");
         dose_filter_sum_of_squares = new float[image_stack[0].real_memory_allocated / 2];
         ZeroFloatArray(dose_filter_sum_of_squares, image_stack[0].real_memory_allocated / 2);
         profile_timing.lap("setup dose filter");
-
-        // We don't want any copying of the timer, so just let them all have a pointer, only thread zero will do anything with it.
-        StopWatch* shared_ptr;
-        shared_ptr = &profile_timing;
 
 #pragma omp parallel default(shared) num_threads(max_threads) shared(shared_ptr) private(image_counter, dose_filter, pixel_counter)
         { // for omp
@@ -727,6 +751,7 @@ bool UnBlurApp::DoCalculation( ) {
             }
         }
         profile_timing.lap("final sum");
+#endif
     }
     else // just add them
     {
@@ -741,8 +766,13 @@ bool UnBlurApp::DoCalculation( ) {
         profile_timing.lap("final sum");
     }
 
+#ifdef ENABLEGPU
+    // FIXME: do I need the new here?
+    Image* output_sum = new Image( );
+    *output_sum       = sum_image.CopyDeviceToNewHost(true, true, true);
+#else
+    Image* output_sum = &sum_image;
     // if we are restoring the power - do it here..
-
     if ( should_dose_filter == true && should_restore_power == true ) {
         profile_timing.start("restore power");
         for ( pixel_counter = 0; pixel_counter < sum_image.real_memory_allocated / 2; pixel_counter++ ) {
@@ -752,18 +782,18 @@ bool UnBlurApp::DoCalculation( ) {
         }
         profile_timing.lap("restore power");
     }
-
+#endif
     // do we need to write out the amplitude spectra
 
     if ( write_out_amplitude_spectrum == true ) {
         profile_timing.start("write out amplitude spectrum");
         Image current_power_spectrum;
-        current_power_spectrum.Allocate(sum_image.logical_x_dimension, sum_image.logical_y_dimension, true);
+        current_power_spectrum.Allocate(output_sum->logical_x_dimension, output_sum->logical_y_dimension, true);
 
         //		if (should_dose_filter == true) sum_image_no_dose_filter.ComputeAmplitudeSpectrumFull2D(&current_power_spectrum);
-        //	else sum_image.ComputeAmplitudeSpectrumFull2D(&current_power_spectrum);
+        //	else output_sum->ComputeAmplitudeSpectrumFull2D(&current_power_spectrum);
 
-        sum_image.ComputeAmplitudeSpectrumFull2D(&current_power_spectrum);
+        output_sum->ComputeAmplitudeSpectrumFull2D(&current_power_spectrum);
 
         // Set origin of amplitude spectrum to 0.0
         current_power_spectrum.real_values[current_power_spectrum.ReturnReal1DAddressFromPhysicalCoord(current_power_spectrum.physical_address_of_box_center_x, current_power_spectrum.physical_address_of_box_center_y, current_power_spectrum.physical_address_of_box_center_z)] = 0.0;
@@ -773,11 +803,11 @@ bool UnBlurApp::DoCalculation( ) {
 
         // make it square
 
-        int micrograph_square_dimension = std::max(sum_image.logical_x_dimension, sum_image.logical_y_dimension);
+        int micrograph_square_dimension = std::max(output_sum->logical_x_dimension, output_sum->logical_y_dimension);
         if ( IsOdd((micrograph_square_dimension)) )
             micrograph_square_dimension++;
 
-        if ( sum_image.logical_x_dimension != micrograph_square_dimension || sum_image.logical_y_dimension != micrograph_square_dimension ) {
+        if ( output_sum->logical_x_dimension != micrograph_square_dimension || output_sum->logical_y_dimension != micrograph_square_dimension ) {
             Image current_input_image_square;
             current_input_image_square.Allocate(micrograph_square_dimension, micrograph_square_dimension, false);
             current_power_spectrum.ClipInto(&current_input_image_square, 0);
@@ -833,13 +863,13 @@ bool UnBlurApp::DoCalculation( ) {
     if ( write_out_small_sum_image == true ) {
         profile_timing.start("write out small sum image");
         // work out a good size..
-        int   largest_dimension = std::max(sum_image.logical_x_dimension, sum_image.logical_y_dimension);
+        int   largest_dimension = std::max(output_sum->logical_x_dimension, output_sum->logical_y_dimension);
         float scale_factor      = float(SCALED_IMAGE_SIZE) / float(largest_dimension);
 
         if ( scale_factor < 1.0 ) {
             Image buffer_image;
-            buffer_image.Allocate(myroundint(sum_image.logical_x_dimension * scale_factor), myroundint(sum_image.logical_y_dimension * scale_factor), 1, false);
-            sum_image.ClipInto(&buffer_image);
+            buffer_image.Allocate(myroundint(output_sum->logical_x_dimension * scale_factor), myroundint(output_sum->logical_y_dimension * scale_factor), 1, false);
+            output_sum->ClipInto(&buffer_image);
             buffer_image.QuickAndDirtyWriteSlice(small_sum_image_filename, 1, true);
         }
         profile_timing.lap("write out small sum image");
@@ -848,11 +878,11 @@ bool UnBlurApp::DoCalculation( ) {
     // now we just need to write out the final sum..
     profile_timing.start("write out sum image");
     MRCFile output_file(output_filename, true);
-    sum_image.BackwardFFT( );
-    sum_image.WriteSlice(&output_file, 1); // I made this change as the file is only used once, and this way it is not created until it is actually written, which is cleaner for cancelled / crashed jobs
+    output_sum->BackwardFFT( );
+    output_sum->WriteSlice(&output_file, 1); // I made this change as the file is only used once, and this way it is not created until it is actually written, which is cleaner for cancelled / crashed jobs
     output_file.SetPixelSize(output_pixel_size);
     EmpiricalDistribution density_distribution;
-    sum_image.UpdateDistributionOfRealValues(&density_distribution);
+    output_sum->UpdateDistributionOfRealValues(&density_distribution);
     output_file.SetDensityStatistics(density_distribution.GetMinimum( ), density_distribution.GetMaximum( ), density_distribution.GetSampleMean( ), sqrtf(density_distribution.GetSampleVariance( )));
     output_file.CloseFile( );
     profile_timing.lap("write out sum image");

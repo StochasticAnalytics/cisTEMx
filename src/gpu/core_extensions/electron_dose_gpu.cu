@@ -130,29 +130,50 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(const float* __restrict___ 
 };
 
 template <>
-void ElectronDose::CalculateDoseFilterAs1DArray<GpuImage>(GpuImage* ref_image, float* filter_array, float dose_start, float dose_finish) {
+void ElectronDose::CalculateDoseFilterAs1DArray<GpuImage>(GpuImage* ref_image, float* filter_array, float dose_start, float dose_finish, bool restore_power) {
 
     const float reduced_fourier_voxel_size = ref_image->fourier_voxel_size.x / pixel_size;
     const float pixel_size_sq              = pixel_size * pixel_size;
 
     float2* output_data = reinterpret_cast<float2*>(filter_array);
 
-    // Different than the CPU implementation, dose_start is assumed to be pre_exposure and dose per frame = dose_finish -dose_start
+    // Different than the CPU implementation, dose_start is assumed to be pre_exposure and dose per frame = dose_finish
     ref_image->ReturnLaunchParameters(ref_image->dims, false);
-    precheck
-            ApplyDoseFilterAndRestorePowerKernel<<<ref_image->gridDims, ref_image->threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image->real_values_gpu,
-                                                                                                                              dose_start,
-                                                                                                                              dose_finish - dose_start,
-                                                                                                                              float2 * output_data,
-                                                                                                                              pixel_size,
-                                                                                                                              voltage_scaling_factor,
-                                                                                                                              ref_image->fourier_voxel_size.x,
-                                                                                                                              ref_image->fourier_voxel_size.y,
-                                                                                                                              pixel_size_sq,
-                                                                                                                              ref_image->dims.w / 2,
-                                                                                                                              ref_image->dims.y,
-                                                                                                                              ref_image->dims.z,
-                                                                                                                              ref_image->physical_index_of_first_negative_frequency.y);
-    postcheck
+
+    if ( restore_power ) {
+        precheck
+                ApplyDoseFilterAndRestorePowerKernel<<<ref_image->gridDims, ref_image->threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image->real_values_gpu,
+                                                                                                                                  dose_start,
+                                                                                                                                  dose_finish,
+                                                                                                                                  float2 * output_data,
+                                                                                                                                  pixel_size,
+                                                                                                                                  voltage_scaling_factor,
+                                                                                                                                  ref_image->fourier_voxel_size.x,
+                                                                                                                                  ref_image->fourier_voxel_size.y,
+                                                                                                                                  pixel_size_sq,
+                                                                                                                                  ref_image->dims.w / 2,
+                                                                                                                                  ref_image->dims.y,
+                                                                                                                                  ref_image->dims.z,
+                                                                                                                                  ref_image->physical_index_of_first_negative_frequency.y);
+        postcheck
+    }
+    else {
+        precheck
+                ApplyDoseFilterKernel<<<ref_image->gridDims, ref_image->threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image->real_values_gpu,
+                                                                                                                   dose_start,
+                                                                                                                   dose_finish,
+                                                                                                                   float2 * output_data,
+                                                                                                                   pixel_size,
+                                                                                                                   voltage_scaling_factor,
+                                                                                                                   ref_image->fourier_voxel_size.x,
+                                                                                                                   ref_image->fourier_voxel_size.y,
+                                                                                                                   pixel_size_sq,
+                                                                                                                   ref_image->dims.w / 2,
+                                                                                                                   ref_image->dims.y,
+                                                                                                                   ref_image->dims.z,
+                                                                                                                   ref_image->physical_index_of_first_negative_frequency.y);
+        postcheck
+    }
+
     //	MyDebugAssertTrue(ref_image->logical_z_dimension == 1, "Reference Image is a 3D!");
 }

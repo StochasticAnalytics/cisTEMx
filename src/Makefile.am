@@ -247,7 +247,7 @@ noinst_LIBRARIES = libcore.a libguicore.a
 
 bin_PROGRAMS = unblur cisTEM_job_control console_test applyctf reconstruct3d merge3d project3d refine3d calc_occ ctffind remove_outlier_pixels resize resample reset_mrc_header estimate_dataset_ssnr find_particles montage extract_particles sum_all_mrc_files sum_all_tif_files apply_gain_ref scale_with_mask refine2d merge2d mag_distortion_correct apply_mask convert_tif_to_mrc remove_inf_and_nan make_orth_views sharpen_map calculate_fsc make_size_map prepare_stack prepare_stack_classaverage align_symmetry subtract_from_stack binarize  move_volume_xyz  symmetry_expand_stack_and_par fft local_resolution local_resolution_finalize local_resolution_filter subtract_two_stacks add_two_stacks multiply_two_stacks divide_two_stacks invert_stack convert_par_to_star align_coordinates find_dqe combine_via_max refine_ctf estimate_beamtilt remove_relion_stripes warp_to_cistem create_mask invert_hand quick_test append_stacks cisTEM convert_star_to_binary convert_binary_to_star convert_eer_to_mrc azimuthal_average normalize_stack print_stack_statistics combine_stacks_by_star match_template refine_template make_template_result prepare_stack_matchtemplate
 if WANT_CISTEM_GPU_AM
-    bin_PROGRAMS += refine3d_gpu match_template_gpu
+    bin_PROGRAMS += refine3d_gpu match_template_gpu unblur_gpu
 endif
 
 if EXPERIMENTAL_AM   
@@ -486,6 +486,13 @@ unblur_SOURCES  = programs/unblur/unblur.cpp
 unblur_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 unblur_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 unblur_LDADD    = libcore.a $(LIBS) $(WX_LIBS_BASE)
+
+ifdef WANT_CISTEM_GPU_AM
+unblur_gpu_SOURCES  = programs/unblur/unblur.cpp
+unblur_gpu_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
+unblur_gpu_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
+unblur_gpu_LDADD    = libgpucore.a libcore.a $(WX_LIBS_BASE) $(CUDA_LIBS)
+endif
 
 applyctf_SOURCES  = programs/applyctf/applyctf.cpp
 applyctf_CXXFLAGS = $(WX_CPPFLAGS_BASE)

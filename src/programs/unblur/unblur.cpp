@@ -240,6 +240,12 @@ bool UnBlurApp::DoCalculation( ) {
     Image sum_image;
     Image sum_image_no_dose_filter;
 
+#ifdef ENABLEGPU
+    wxPrintf("Running unblur with GPU enabled\n");
+#else
+    wxPrintf("Running unblur without GPU enabled\n");
+#endif
+
     // get the arguments for this job..
 
     std::string input_filename                       = my_current_job.arguments[0].ReturnStringArgument( );
@@ -285,22 +291,18 @@ bool UnBlurApp::DoCalculation( ) {
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
 
     //my_current_job.PrintAllArguments();
-
     // StopWatch objects
     cistem_timer::StopWatch unblur_timing;
     StopWatch               profile_timing;
     StopWatch               profile_timing_refinement_method;
-
-    float temp_float[2];
+    float                   temp_float[2];
 
     if ( IsOdd(number_of_frames_for_running_average == false) )
         SendError("Error: number of frames for running average must be odd");
 
     // The Files
-
     if ( ! DoesFileExist(input_filename) ) {
-        SendError(wxString::Format("Error: Input movie %s not found\n", input_filename));
-        exit(-1);
+        SendErrorAndCrash(wxString::Format("Error: Input movie %s not found\n", input_filename));
     }
     ImageFile input_file;
     bool      input_file_is_valid = input_file.OpenFile(input_filename, false, false, false, eer_super_res_factor, eer_frames_per_image);
@@ -311,7 +313,6 @@ bool UnBlurApp::DoCalculation( ) {
         wxPrintf("Input file looks OK, proceeding\n");
     }
     //MRCFile output_file(output_filename, true); changed to quick and dirty write as the file is only used once, and this way it is not created until it is actually written, which is cleaner for cancelled / crashed jobs
-
     ImageFile gain_file;
     ImageFile dark_file;
 

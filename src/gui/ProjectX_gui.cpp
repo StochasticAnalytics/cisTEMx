@@ -6578,6 +6578,10 @@ AlignMoviesPanel::AlignMoviesPanel( wxWindow* parent, wxWindowID id, const wxPoi
 	wxBoxSizer* bSizer60;
 	bSizer60 = new wxBoxSizer( wxVERTICAL );
 
+	use_gpu_checkboxUnblur = new wxCheckBox( StartPanel, wxID_ANY, wxT("Use GPU"), wxDefaultPosition, wxDefaultSize, 0 );
+	use_gpu_checkboxUnblur->SetValue(true);
+	bSizer60->Add( use_gpu_checkboxUnblur, 0, wxALL, 5 );
+
 	StartAlignmentButton = new wxButton( StartPanel, wxID_ANY, wxT("Start Alignment"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer60->Add( StartAlignmentButton, 0, wxALL, 5 );
 

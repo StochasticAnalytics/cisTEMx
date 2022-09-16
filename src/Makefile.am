@@ -487,7 +487,7 @@ unblur_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 unblur_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 unblur_LDADD    = libcore.a $(LIBS) $(WX_LIBS_BASE)
 
-ifdef WANT_CISTEM_GPU_AM
+if WANT_CISTEM_GPU_AM
 unblur_gpu_SOURCES  = programs/unblur/unblur.cpp
 unblur_gpu_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
 unblur_gpu_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)

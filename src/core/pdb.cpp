@@ -1175,19 +1175,17 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
 void PDB::TransformGlobalAndSortOnZ(long number_of_non_water_atoms, float shift_x, float shift_y, float shift_z, RotationMatrix rotmat) {
 
     long  current_atom;
-    float ix, iy, iz; // input coords for current atom
     float tx, ty, tz; // transformed coords for current atom
 
+    std::cerr << "Transforming and sorting on Z\n";
+    std::cerr << "Shift x, y, z: " << shift_x << ", " << shift_y << ", " << shift_z << "\n";
     for ( current_atom = 0; current_atom < number_of_non_water_atoms; current_atom++ ) {
-        ix = shift_x + atoms[current_atom].x_coordinate;
-        iy = shift_y + atoms[current_atom].y_coordinate;
-        iz = shift_z + atoms[current_atom].z_coordinate;
 
-        rotmat.RotateCoords(ix, iy, iz, tx, ty, tz);
+        rotmat.RotateCoords(atoms[current_atom].x_coordinate, atoms[current_atom].y_coordinate, atoms[current_atom].z_coordinate, tx, ty, tz);
 
-        atoms[current_atom].x_coordinate = tx;
-        atoms[current_atom].y_coordinate = ty;
-        atoms[current_atom].z_coordinate = tz;
+        atoms[current_atom].x_coordinate = tx + shift_x;
+        atoms[current_atom].y_coordinate = ty + shift_y;
+        atoms[current_atom].z_coordinate = tz + shift_z;
     }
 
     // I am not sure if putting the conditionals in the last loop would prevent vectorization, so this would be good to look at.

@@ -155,7 +155,7 @@ class SimulateApp : public MyApp {
     float minimum_thickness_z            = 20.0f;
 
     bool ONLY_SAVE_SUMS          = true;
-    bool DO_NOT_RANDMOIZE_ANGLES = false;
+    bool DO_NOT_RANDOMIZE_ANGLES = false;
     int  MODIFY_ONLY_SIGNAL      = 0;
 
     // To add error to the global alignment
@@ -442,7 +442,7 @@ void SimulateApp::DoInteractiveUserInput( ) {
     if ( command_line_parser.Found("save-frames") )
         ONLY_SAVE_SUMS = false;
     if ( command_line_parser.Found("skip-random-angles") )
-        DO_NOT_RANDMOIZE_ANGLES = true;
+        DO_NOT_RANDOMIZE_ANGLES = true;
     if ( command_line_parser.Found("only-modify-signal-3d", &temp_long) ) {
         MODIFY_ONLY_SIGNAL = (int)temp_long;
     }
@@ -967,19 +967,19 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         for ( int iTilt = 0; iTilt < number_of_images; iTilt++ ) {
 
             // to create a conical tilt (1.8*iTilt)+
-            tilt_psi[iTilt] = tilt_axis + this->stdErr * my_rand.GetNormalRandomSTD(0.0f, in_plane_sigma);
+            tilt_psi.push_back(tilt_axis + this->stdErr * my_rand.GetNormalRandomSTD(0.0f, in_plane_sigma));
             ; // *(2*PI);
             //            tilt_theta[iTilt] = -((tilt_range - (float)iTilt*tilt_inc) + this->stdErr *   my_rand.GetExponentialRandomSTD(0.0f,tilt_angle_sigma);
 
-            tilt_theta[iTilt] = SET_TILT_ANGLES[iTilt];
+            tilt_theta.push_back(SET_TILT_ANGLES[iTilt]);
             if ( DO_PRINT ) {
                 wxPrintf("%f\n", SET_TILT_ANGLES[iTilt]);
             }
-            tilt_phi[iTilt] = 0.0f;
-            shift_x[iTilt]  = this->stdErr * my_rand.GetUniformRandomSTD(-8.f, 8.f);
-            shift_y[iTilt]  = this->stdErr * my_rand.GetUniformRandomSTD(-8.f, 8.f);
-            shift_z[iTilt]  = 0.0f;
-            mag_diff[iTilt] = 1.0f + this->stdErr * my_rand.GetNormalRandomSTD(0.0f, magnification_sigma);
+            tilt_phi.push_back(0.0f);
+            shift_x.push_back(this->stdErr * my_rand.GetUniformRandomSTD(-8.f, 8.f));
+            shift_y.push_back(this->stdErr * my_rand.GetUniformRandomSTD(-8.f, 8.f));
+            shift_z.push_back(0.0f);
+            mag_diff.push_back(1.0f + this->stdErr * my_rand.GetNormalRandomSTD(0.0f, magnification_sigma));
         }
     }
     else if ( this->make_particle_stack > 0 ) {
@@ -1008,27 +1008,27 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             if ( this->use_existing_params ) {
                 //                this->parameter_file.ReadLine(this->parameter_vect);
 
-                tilt_psi[iTilt]   = input_star_file.ReturnPsi(iTilt); //parameter_vect[1];
-                tilt_theta[iTilt] = input_star_file.ReturnTheta(iTilt); //parameter_vect[2];
-                tilt_phi[iTilt]   = input_star_file.ReturnPhi(iTilt); //parameter_vect[3];
+                tilt_psi.push_back(input_star_file.ReturnPsi(iTilt)); //parameter_vect[1];
+                tilt_theta.push_back(input_star_file.ReturnTheta(iTilt)); //parameter_vect[2];
+                tilt_phi.push_back(input_star_file.ReturnPhi(iTilt)); //parameter_vect[3];
 
-                shift_x[iTilt]  = input_star_file.ReturnXShift(iTilt); //parameter_vect[4];
-                shift_y[iTilt]  = input_star_file.ReturnYShift(iTilt); //parameter_vect[5];
-                shift_z[iTilt]  = 0;
-                mag_diff[iTilt] = input_star_file.ReturnPixelSize(iTilt) / this->unscaled_pixel_size; //parameter_vect[6];
+                shift_x.push_back(input_star_file.ReturnXShift(iTilt)); //parameter_vect[4];
+                shift_y.push_back(input_star_file.ReturnYShift(iTilt)); //parameter_vect[5];
+                shift_z.push_back(0);
+                mag_diff.push_back(input_star_file.ReturnPixelSize(iTilt) / this->unscaled_pixel_size); //parameter_vect[6];
             }
             else {
                 // FIXME this isn't really a good sampling
-                tilt_psi[iTilt]   = my_rand.GetUniformRandomSTD(0.f, 360.f);
-                tilt_theta[iTilt] = my_rand.GetUniformRandomSTD(0, r_theta_max);
+                tilt_psi.push_back(my_rand.GetUniformRandomSTD(0.f, 360.f));
+                tilt_theta.push_back(my_rand.GetUniformRandomSTD(0, r_theta_max));
                 // tilt_phi[iTilt]   = -1 * tilt_psi[iTilt] + my_rand.GetUniformRandomSTD(0.f, r_phi_max); //*(2*PI);
-                tilt_phi[iTilt] = my_rand.GetUniformRandomSTD(0.f, r_phi_max); //*(2*PI);
+                tilt_phi.push_back(my_rand.GetUniformRandomSTD(0.f, r_phi_max)); //*(2*PI);
 
-                shift_x[iTilt] = this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 3.0f; // should be in the low tens of Angstroms
-                shift_y[iTilt] = this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 3.0f;
-                shift_z[iTilt] = this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 1000; // should be in the low tens of Nanometers
+                shift_x.push_back(this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 3.0f); // + 10 * iTilt); // should be in the low tens of Angstroms
+                shift_y.push_back(this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 3.0f);
+                shift_z.push_back(this->stdErr * my_rand.GetNormalRandomSTD(0.0f, 1.f) * 0.05 * mean_defocus); // should be in the low tens of Nanometers
 
-                mag_diff[iTilt] = 1.0f;
+                mag_diff.push_back(1.0f);
             }
         }
     }
@@ -1043,18 +1043,28 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         shift_y.reserve(number_of_images);
         shift_z.reserve(number_of_images);
         mag_diff.reserve(number_of_images);
-        max_tilt      = 0.0;
-        tilt_theta[0] = 0;
+        max_tilt = 0.0;
+        tilt_theta.push_back(0);
 
-        tilt_psi[0]   = 0;
-        tilt_theta[0] = 0;
-        tilt_phi[0]   = 0;
-        shift_x[0]    = 0;
-        shift_y[0]    = 0;
-        shift_z[0]    = 0;
-        mag_diff[0]   = 1.0f;
+        tilt_psi.push_back(0);
+        tilt_theta.push_back(0);
+        tilt_phi.push_back(0);
+        shift_x.push_back(0);
+        shift_y.push_back(0);
+        shift_z.push_back(0);
+        mag_diff.push_back(1.0f);
     }
 
+    std::cerr << "DO NOT RANDOMIZE IS " << DO_NOT_RANDOMIZE_ANGLES << " asdf " << std::endl;
+    if ( DO_NOT_RANDOMIZE_ANGLES ) {
+        std::cerr << "size of phi is " << tilt_phi.size( ) << std::endl;
+        for ( int i = 0; i < tilt_phi.size( ); i++ ) {
+            std::cerr << "zeroing angles " << i << std::endl;
+            tilt_phi[i]   = 0.0f;
+            tilt_theta[i] = 0.0f;
+            tilt_psi[i]   = 0.0f;
+        }
+    }
     // I don't think the frames need to be saved in these first two stacks. Rather they are accumulated
     Image*         img_frame              = nullptr;
     Image*         ref_frame              = nullptr;
@@ -1161,7 +1171,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         // Scale the mean_defocus so that it is equivalent to 300KeV for experiment
 
         // Override any rotations when making a 3d reference
-        if ( do3d || DO_PHASE_PLATE || DO_NOT_RANDMOIZE_ANGLES ) {
+        if ( do3d || DO_PHASE_PLATE || DO_NOT_RANDOMIZE_ANGLES ) {
             particle_rot.SetToIdentity( );
             rotate_waters.SetToIdentity( );
             max_rotation.SetToIdentity( );
@@ -1349,6 +1359,8 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
             timer.start("Xform Global");
             current_specimen.TransformGlobalAndSortOnZ(sp.ReturnTotalNumberOfNonWaterAtoms( ), shift_x[iTilt] + total_drift, shift_y[iTilt] + total_drift, 0.0f, rotate_waters);
+            // current_specimen.TransformGlobalAndSortOnZ(sp.ReturnTotalNumberOfNonWaterAtoms( ), iTilt * 10 + total_drift, 0, 0.f, rotate_waters);
+
             timer.lap("Xform Global");
 
             // Compute the solvent fraction, with ratio of protein/ water density.
@@ -2202,6 +2214,8 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 parameters.position_in_stack = iTilt + 1;
             else
                 parameters.position_in_stack = (iTilt * (int)number_of_frames) + iFrame + 1;
+
+            std::cerr << "tilt phi is " << tilt_phi[iTilt] << std::endl;
             parameters.psi     = tilt_psi[iTilt];
             parameters.theta   = tilt_theta[iTilt];
             parameters.phi     = tilt_phi[iTilt];
@@ -2332,6 +2346,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     bool    over_write = true;
     MRCFile mrc_out_final(this->output_filename, over_write);
 
+    // FIXME: This will not work if there is a path in the filename.
     std::string fileNameRefSum = "perfRef_" + this->output_filename;
     MRCFile     mrc_ref_final;
     if ( SAVE_REF ) {

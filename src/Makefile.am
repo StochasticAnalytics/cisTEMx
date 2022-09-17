@@ -460,12 +460,22 @@ cisTEM_job_control_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 cisTEM_job_control_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 cisTEM_job_control_LDADD    = libcore.a $(WX_LIBS_BASE) 
 
+# unlike other programs where we build program/ program_gpu to maintain
+# both codepaths with the most src code overlap as possible, for console tests
+# we often have to write a distinct enough version of the test for the GPU
+# that we just write seperate methods and use precompiler guards (one binary.)
 console_test_SOURCES  = programs/console_test/console_test.cpp 
+if WANT_CISTEM_GPU_AM 
+console_test_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
+console_test_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
+else
 console_test_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 console_test_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+endif
 
 console_test_LDSTRING=
-if ENABLE_FASTFFT_AM
+if WANT_CISTEM_GPU_AM
+# WANT_CISTEM_GPU_AM also implies ENABLE_FASTFFT_AM 
     console_test_LDSTRING += libgpucore.a
 endif
 

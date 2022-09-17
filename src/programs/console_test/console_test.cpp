@@ -5,7 +5,13 @@
 #include <unordered_map>
 #include "wx/socket.h"
 
+#ifdef ENABLEGPU
+#warning "GPU enabled in refine3d"
+#include "../../gpu/gpu_core_headers.h"
+#include "../../gpu/GpuImage.h"
+#else
 #include "../../core/core_headers.h"
+#endif
 
 #ifdef _CISTEM_MODULES
 import hello;
@@ -103,6 +109,9 @@ class MyTestApp : public MyApp {
     void TestMaskCentralCross( );
     void TestStarToBinaryFileConversion( );
     void TestElectronExposureFilter( );
+#ifdef ENABLEGPU
+    void TestElectronExposureFilterGPU( );
+#endif
     void TestEmpiricalDistribution( );
     void TestSumOfSquaresFourierAndFFTNormalization( );
     void TestRandomVariableFunctions( );
@@ -166,6 +175,9 @@ bool MyTestApp::DoCalculation( ) {
     TestMaskCentralCross( );
     TestStarToBinaryFileConversion( );
     TestElectronExposureFilter( );
+#ifdef ENABLEGPU
+    TestElectronExposureFilterGPU( );
+#endif
     TestDatabase( );
     TestEmpiricalDistribution( );
     TestSumOfSquaresFourierAndFFTNormalization( );
@@ -690,6 +702,101 @@ void MyTestApp::TestElectronExposureFilter( ) {
 
     EndTest( );
 }
+
+#ifdef ENABLEGPU
+void MyTestApp::TestElectronExposureFilterGPU( ) {
+    // TODO: Depends on ZeroFloatArray, but this has no test.
+    BeginTest("Test Electron Exposure Filter GPU");
+
+    /*
+  Test exposure filter for a simple square image size, over all voltages and three pixel sizes.
+  The "ground truth" values are taken from a print out using the code for electron_dose.* from commit 
+  cdd0c04e984412661c983ab7176954093b502ad5 Dec 9, 2021
+  using this line in the inner loop (once for odd once for even)
+    for (auto & indx : indx_even)
+    {
+        wxPrintf("%3.9f, ", dose_filter_odd[indx]);
+    }
+  */
+    const int size_small = 1024;
+
+    std::vector<float> accelerating_voltage_vector = {300.f, 200.f, 100.f}; // only three supported values.
+    std::vector<float> pixel_size_vector           = {0.72, 1.0, 2.1}; // values not chosen for any  good reason.
+    std::vector<int>   indx_even                   = {0, 13, size_small / 3, size_small - 1};
+    std::vector<int>   indx_odd                    = {0, 13, (size_small + 1) / 3, size_small};
+
+    std::vector<float> ground_truth_even    = {1.000000000, 0.929921567, 0.017324856, 0.010133515, 1.000000000, 0.958591580, 0.031609546, 0.015432503, 1.000000000, 0.987710178, 0.155882418, 0.065504745, 1.000000000, 0.913183212, 0.006285460, 0.003215143, 1.000000000, 0.948510230, 0.013328240, 0.005439333, 1.000000000, 0.984661400, 0.097948194, 0.033139121, 1.000000000, 0.872345626, 0.000488910, 0.000178414, 1.000000000, 0.923584640, 0.001513943, 0.000393374, 1.000000000, 0.977023780, 0.030387951, 0.005955920};
+    std::vector<float> ground_truth_odd     = {1.000000000, 0.930029809, 0.017352197, 0.010144006, 1.000000000, 0.958656907, 0.031672075, 0.015455280, 1.000000000, 0.987729967, 0.156189293, 0.065646693, 1.000000000, 0.913316071, 0.006297863, 0.003219303, 1.000000000, 0.948590994, 0.013361209, 0.005449366, 1.000000000, 0.984686077, 0.098189279, 0.033228900, 1.000000000, 0.872536480, 0.000490361, 0.000178761, 1.000000000, 0.923702955, 0.001519577, 0.000394466, 1.000000000, 0.977060616, 0.030500494, 0.005980202};
+    int                ground_truth_counter = 0;
+    ElectronDose*      my_electron_dose;
+
+    Image test_image_small_even, test_image_small_odd;
+    test_image_small_even.Allocate(size_small, size_small, true);
+    test_image_small_odd.Allocate(size_small + 1, size_small + 1, true);
+
+    // The dose filter is applied to the image as the cost of calculating it is lower than just
+    // re-using a pre-calculated filter (in the event it is even re-used!)
+    // Right now, using it in unblur, we apply it to a stack of images. The last image in the stack will
+    // be for the results (i.e. sum_image in unblur)
+    constexpr int                      n_images     = 1;
+    constexpr int                      d_array_size = n_images + 1;
+    std::array<GpuImage, d_array_size> d_test_image_small_even;
+    std::array<GpuImage, d_array_size> d_test_image_small_odd;
+
+    for ( int i = 0; i < d_array_size; i++ ) {
+        bool pin_host_memory = (i == 0) ? true : false;
+        d_test_image_small_even.at(i).Init(test_image_small_even, pin_host_memory);
+        d_test_image_small_odd.at(i).Init(test_image_small_odd, pin_host_memory);
+    }
+
+    // So no filters are actually calculated as in the cpu test
+
+    for ( auto& acceleration_voltage : accelerating_voltage_vector ) {
+        for ( auto& pixel_size : pixel_size_vector ) {
+            my_electron_dose = new ElectronDose(acceleration_voltage, pixel_size);
+
+            // We can get the filter values if we supply an input image that has a value of 1.0
+            for ( int i = 0; i < d_array_size; i++ ) {
+                d_test_image_small_even.at(i).SetToConstant(1.0f);
+                d_test_image_small_odd.at(i).SetToConstant(1.0f);
+            }
+
+            // Note: two differences to the cpu call a) we need to specifically NOT restore the noise power, and we pass the total exposure
+            // as pre_exposure, and 0 as the exposure per frame, this way all three images should have the same dose filter applied.
+            constexpr float pre_exposure       = 30.f;
+            constexpr float exposure_per_frame = 0.f;
+            my_electron_dose->CalculateDoseFilterAs1DArray<GpuImage>(d_test_image_small_even.data( ), d_test_image_small_even[n_images].real_values_gpu, pre_exposure, exposure_per_frame, n_images, false);
+            my_electron_dose->CalculateDoseFilterAs1DArray<GpuImage>(d_test_image_small_odd.data( ), d_test_image_small_odd[n_images].real_values_gpu, pre_exposure, exposure_per_frame, n_images, false);
+
+            for ( auto& indx : indx_even ) {
+                for ( int i = 0; i < n_images; i++ ) {
+                    std::cerr << "Testing image %i" << i << std::endl;
+                    // Copy back to the host for comparison
+                    static constexpr bool free_gpu_mem   = false;
+                    static constexpr bool unpin_host_mem = false;
+                    d_test_image_small_even.at(i).CopyDeviceToHost(free_gpu_mem, unpin_host_mem);
+                    d_test_image_small_odd.at(i).CopyDeviceToHostAndSynchronize(free_gpu_mem, unpin_host_mem);
+
+                    if ( ! FloatsAreAlmostTheSame(test_image_small_even.real_values[indx], ground_truth_even[ground_truth_counter]) ) {
+                        wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images, acceleration_voltage, pixel_size, test_image_small_even.real_values[indx], ground_truth_even[ground_truth_counter]);
+                        FailTest;
+                    }
+                    if ( ! FloatsAreAlmostTheSame(test_image_small_odd.real_values[indx], ground_truth_odd[ground_truth_counter]) ) {
+                        wxPrintf("Failed for image %i/%i kv,pix,od: %3.f %3.3f, values %f %f\n", i, n_images, acceleration_voltage, pixel_size, test_image_small_odd.real_values[indx], ground_truth_odd[ground_truth_counter]);
+                        FailTest;
+                    }
+                }
+                ground_truth_counter++;
+            }
+
+            delete my_electron_dose;
+        }
+    }
+
+    EndTest( );
+}
+
+#endif // #ifdef ENABLEGPU
 
 void MyTestApp::TestEmpiricalDistribution( ) {
     CheckDependencies({"MRCFile::OpenFile", "MRCFile::ReadSlice"});

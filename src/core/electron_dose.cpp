@@ -40,7 +40,7 @@ void ElectronDose::Init(float wanted_acceleration_voltage, float wanted_pixel_si
 }
 
 template <>
-void ElectronDose::CalculateDoseFilterAs1DArray<Image>(Image* ref_image, float* filter_array, float dose_start, float dose_finish, bool restore_power) {
+void ElectronDose::CalculateDoseFilterAs1DArray<Image>(Image* ref_image, float* filter_array, float dose_start, float dose_finish, int n_images, bool restore_power) {
 
     //	MyDebugAssertTrue(ref_image->logical_z_dimension == 1, "Reference Image is a 3D!");
 

@@ -751,6 +751,7 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
 
     // So no filters are actually calculated as in the cpu test
 
+    ground_truth_counter = 0;
     for ( auto& acceleration_voltage : accelerating_voltage_vector ) {
         for ( auto& pixel_size : pixel_size_vector ) {
             my_electron_dose = new ElectronDose(acceleration_voltage, pixel_size);
@@ -768,25 +769,25 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
             my_electron_dose->CalculateDoseFilterAs1DArray<GpuImage, float2>(d_test_image_small_even, d_filtered_output.complex_values_gpu, pre_exposure, exposure_per_frame, n_images, false);
 
             for ( int i = 0; i < n_images; i++ ) {
-                ground_truth_counter = 0;
-                std::cerr << "Testing image " << i << std::endl;
+                int per_image_gt_counter = ground_truth_counter;
                 // Copy back to the host for comparison
                 static constexpr bool free_gpu_mem   = false;
                 static constexpr bool unpin_host_mem = false;
                 d_filtered_output.CopyDeviceToHostAndSynchronize(free_gpu_mem, unpin_host_mem);
 
                 for ( auto& indx : indx_even ) {
-                    if ( ! FloatsAreAlmostTheSame(filtered_output.real_values[indx * 2], ground_truth_even[ground_truth_counter]) ) {
-                        // wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
-                        //          acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[ground_truth_counter]);
+                    if ( ! FloatsAreAlmostTheSame(filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]) ) {
+                        wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
+                                 acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[ground_truth_counter]);
 
                         FailTest;
                     }
-                    wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
-                             acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[ground_truth_counter]);
-                    ground_truth_counter++;
+                    // wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
+                    //          acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]);
+                    per_image_gt_counter++;
                 }
             }
+            ground_truth_counter += indx_even.size( );
 
             delete my_electron_dose;
         }

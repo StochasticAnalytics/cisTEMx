@@ -2348,7 +2348,7 @@ void GpuImage::SetToConstant(Npp32fc scale_factor_complex) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 
     NppInit( );
-    nppErr(nppiSet_32fc_C1R_Ctx((Npp32fc)scale_factor_complex, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
+    nppErr(nppiSet_32fc_C1R_Ctx((Npp32fc)scale_factor_complex, (Npp32fc*)complex_values_gpu, pitch, npp_ROI_fourier_space, nppStream));
 }
 
 void GpuImage::Conj( ) {

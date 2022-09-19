@@ -691,7 +691,7 @@ bool UnBlurApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
         shared_ptr->start("calc dose filter");
-        my_electron_dose->CalculateDoseFilterAs1DArray(image_stack, sum_image.real_values_gpu, pre_exposure_amount, exposure_per_frame);
+        my_electron_dose->CalculateDoseFilterAs1DArray(image_stack, sum_image.complex_values_gpu, pre_exposure_amount, exposure_per_frame);
         shared_ptr->lap("calc dose filter");
 
         shared_ptr->start("write out frames");

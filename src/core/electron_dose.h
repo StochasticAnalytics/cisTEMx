@@ -20,8 +20,8 @@ class ElectronDose {
     void  CalculateCummulativeDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish);
 
     // Image defin in electron_dose.cpp, GpuImage in src/gpu/core_extensions/electron_dose_gpu
-    template <class ImageType>
-    void CalculateDoseFilterAs1DArray(ImageType* ref_image, float* filter_array, float dose_start, float dose_finish, int n_images = 1, bool restore_power = false);
+    template <class ImageType, class OutputType>
+    void CalculateDoseFilterAs1DArray(ImageType* ref_image, OutputType* filter_array, float dose_start, float dose_finish, int n_images = 1, bool restore_power = false);
 };
 
 inline float ElectronDose::ReturnCriticalDose(float spatial_frequency) {

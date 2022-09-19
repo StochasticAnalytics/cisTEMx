@@ -3,7 +3,7 @@
 #include "../../gpu/gpu_core_headers.h"
 #include "../../gpu/GpuImage.h"
 
-#define ELECTRON_DOSE_DEBUG_PRINT
+// #define ELECTRON_DOSE_DEBUG_PRINT
 
 class StealStdoutBackFromWX {
 
@@ -48,11 +48,9 @@ ApplyDoseFilterKernel(const GpuImage* __restrict__ image_data,
                       float       pre_exposure,
                       const float dose_per_frame,
                       float2*     output_data,
-                      const float pixel_size,
                       const float voltage_scaling_factor,
                       const float fourier_voxel_size_x,
                       const float fourier_voxel_size_y,
-                      const float pixel_size_sq,
                       const int   pixel_pitch,
                       const int   NY,
                       const int   NZ,
@@ -68,10 +66,10 @@ ApplyDoseFilterKernel(const GpuImage* __restrict__ image_data,
     const int address = x + y * pixel_pitch;
     // logical fourier index
     y        = (y >= physical_index_of_first_negative_frequency_y) ? (y - NY) : y;
-    float ky = y * fourier_voxel_size_y;
+    float ky = float(y) * fourier_voxel_size_y;
     ky *= ky;
 
-    float kx = x * fourier_voxel_size_x;
+    float kx = float(x) * fourier_voxel_size_x;
     kx       = kx * kx + ky;
 
     float real_sum = 0.f;
@@ -79,9 +77,9 @@ ApplyDoseFilterKernel(const GpuImage* __restrict__ image_data,
     float filter_coeff;
 
     for ( int z = 0; z < NZ; z++ ) {
-        // #ifdef ELECTRON_DOSE_DEBUG_PRINT
-        //         printf("Index is %i, %i, %i, %i \n", x, y, z, address); //, image_data[z].complex_values_gpu[address].x);
-        // #endif
+#ifdef ELECTRON_DOSE_DEBUG_PRINT
+        printf("Index is %i, %i, %i, %i \n", x, y, z, address); //, image_data[z].complex_values_gpu[address].x);
+#endif
 
         filter_coeff = ReturnDoseFilter(pre_exposure, ReturnCriticalDose(kx, voltage_scaling_factor));
         real_sum += image_data[z].complex_values_gpu[address].x * filter_coeff;
@@ -89,13 +87,13 @@ ApplyDoseFilterKernel(const GpuImage* __restrict__ image_data,
         pre_exposure += dose_per_frame;
     }
 
-#ifdef ELECTRON_DOSE_DEBUG_PRINT
-    printf("Index is %i, %i, %i, %i \n", x, y, 0, address); //, image_data[z].complex_values_gpu[address].x);
-#endif
+    // #ifdef ELECTRON_DOSE_DEBUG_PRINT
+    //     printf("Index is %i, %i, %i, %i \n", x, y, 0, address); //, image_data[z].complex_values_gpu[address].x);
+    // #endif
 
-    if ( x == 0 && y == 0 ) {
-        output_data[0].x = 1.0;
-        output_data[0].y = 0.0;
+    if ( address == 0 ) {
+        output_data[0].x = 1.0f;
+        output_data[0].y = 0.0f;
     }
     else {
         output_data[address].x = real_sum;
@@ -107,11 +105,9 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(const GpuImage* __restrict_
                                                      float       pre_exposure,
                                                      const float dose_per_frame,
                                                      float2*     output_data,
-                                                     const float pixel_size,
                                                      const float voltage_scaling_factor,
                                                      const float fourier_voxel_size_x,
                                                      const float fourier_voxel_size_y,
-                                                     const float pixel_size_sq,
                                                      const int   pixel_pitch,
                                                      const int   NY,
                                                      const int   NZ,
@@ -148,9 +144,9 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(const GpuImage* __restrict_
     // This should never be zero
     sum_of_squares = sqrtf(sum_of_squares);
 
-    if ( x == 0 && y == 0 ) {
-        output_data[0].x = 1.0;
-        output_data[0].y = 0.0;
+    if ( address == 0 ) {
+        output_data[0].x = 1.0f;
+        output_data[0].y = 0.0f;
     }
     else {
         output_data[address].x = real_sum / sum_of_squares;
@@ -159,49 +155,42 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(const GpuImage* __restrict_
 };
 
 template <>
-void ElectronDose::CalculateDoseFilterAs1DArray<GpuImage>(GpuImage* ref_image, float* output_data, float pre_exposure, float exposure_per_frame, int n_images, bool restore_power) {
-
-    const float reduced_fourier_voxel_size = ref_image->fourier_voxel_size.x / pixel_size;
-    const float pixel_size_sq              = pixel_size * pixel_size;
+void ElectronDose::CalculateDoseFilterAs1DArray<GpuImage, float2>(GpuImage* ref_image, float2* output_data, float pre_exposure, float exposure_per_frame, int n_images, bool restore_power) {
 
     // Different than the CPU implementation, dose_start is assumed to be pre_exposure and dose per frame = dose_finish
-    ref_image->ReturnLaunchParameters(ref_image->dims, false);
+    ref_image[0].ReturnLaunchParameters(ref_image[0].dims, false);
 
 #ifdef ELECTRON_DOSE_DEBUG_PRINT
     StealStdoutBackFromWX my_stdout("/tmp/gpulog_class.txt");
 #endif
     if ( restore_power ) {
         precheck
-                ApplyDoseFilterAndRestorePowerKernel<<<ref_image->gridDims, ref_image->threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image,
-                                                                                                                                  pre_exposure,
-                                                                                                                                  exposure_per_frame,
-                                                                                                                                  (float2*)output_data,
-                                                                                                                                  pixel_size,
-                                                                                                                                  voltage_scaling_factor,
-                                                                                                                                  ref_image->fourier_voxel_size.x,
-                                                                                                                                  ref_image->fourier_voxel_size.y,
-                                                                                                                                  pixel_size_sq,
-                                                                                                                                  ref_image->dims.w / 2,
-                                                                                                                                  ref_image->dims.y,
-                                                                                                                                  n_images,
-                                                                                                                                  ref_image->physical_index_of_first_negative_frequency.y);
+                ApplyDoseFilterAndRestorePowerKernel<<<ref_image[0].gridDims, ref_image[0].threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image,
+                                                                                                                                      pre_exposure,
+                                                                                                                                      exposure_per_frame,
+                                                                                                                                      output_data,
+                                                                                                                                      voltage_scaling_factor,
+                                                                                                                                      ref_image[0].fourier_voxel_size.x / pixel_size,
+                                                                                                                                      ref_image[0].fourier_voxel_size.y / pixel_size,
+                                                                                                                                      ref_image[0].dims.w / 2,
+                                                                                                                                      ref_image[0].dims.y,
+                                                                                                                                      n_images,
+                                                                                                                                      ref_image[0].physical_index_of_first_negative_frequency.y);
         postcheck
     }
     else {
         precheck
-                ApplyDoseFilterKernel<<<ref_image->gridDims, ref_image->threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image,
-                                                                                                                   pre_exposure,
-                                                                                                                   exposure_per_frame,
-                                                                                                                   (float2*)output_data,
-                                                                                                                   pixel_size,
-                                                                                                                   voltage_scaling_factor,
-                                                                                                                   ref_image->fourier_voxel_size.x,
-                                                                                                                   ref_image->fourier_voxel_size.y,
-                                                                                                                   pixel_size_sq,
-                                                                                                                   ref_image->dims.w / 2,
-                                                                                                                   ref_image->dims.y,
-                                                                                                                   n_images,
-                                                                                                                   ref_image->physical_index_of_first_negative_frequency.y);
+                ApplyDoseFilterKernel<<<ref_image[0].gridDims, ref_image[0].threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image,
+                                                                                                                       pre_exposure,
+                                                                                                                       exposure_per_frame,
+                                                                                                                       output_data,
+                                                                                                                       voltage_scaling_factor,
+                                                                                                                       ref_image[0].fourier_voxel_size.x / pixel_size,
+                                                                                                                       ref_image[0].fourier_voxel_size.y / pixel_size,
+                                                                                                                       ref_image[0].dims.w / 2,
+                                                                                                                       ref_image[0].dims.y,
+                                                                                                                       n_images,
+                                                                                                                       ref_image[0].physical_index_of_first_negative_frequency.y);
 #ifdef ELECTRON_DOSE_DEBUG_PRINT
         cudaDeviceSynchronize( );
         cudaDeviceReset( );

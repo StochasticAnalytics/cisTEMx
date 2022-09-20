@@ -302,7 +302,6 @@ GpuImage& GpuImage::operator=(const GpuImage* other_gpu_image) {
             CopyGpuImageMetaData(other_gpu_image);
             Allocate(other_gpu_image->dims.x, other_gpu_image->dims.y, other_gpu_image->dims.z, other_gpu_image->is_in_real_space);
         }
-
         precheck;
         cudaErr(cudaMemcpyAsync(real_values_gpu, other_gpu_image->real_values_gpu, sizeof(cufftReal) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
         postcheck;

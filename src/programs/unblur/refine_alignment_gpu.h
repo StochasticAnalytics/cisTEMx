@@ -34,14 +34,6 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     std::vector<float> current_x_shifts(number_of_images);
     std::vector<float> current_y_shifts(number_of_images);
 
-    std::cerr << "size and max size of vector are (n_images) " << current_x_shifts.size( ) << " " << current_x_shifts.max_size( ) << " " << number_of_images << std::endl;
-    int iv = 0;
-    for ( auto& x : current_x_shifts ) {
-        // print initialzed values for verification
-        std::cerr << "current_x_shifts " << iv << " " << x << std::endl;
-        iv++;
-    }
-
     float middle_image_x_shift;
     float middle_image_y_shift;
 
@@ -53,8 +45,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     if ( savitzy_golay_window_size < 5 )
         savitzy_golay_window_size = 5;
 
-    GpuImage              sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
-    GpuImage              sum_of_images_minus_current(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+    GpuImage sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+    GpuImage sum_of_images_minus_current(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+
     std::vector<GpuImage> running_average_stack;
     Peak                  my_peak;
 
@@ -124,7 +117,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
-            sum_of_images_minus_current.CopyFrom(&sum_of_images);
+            std::cerr << "prepare sum " << image_counter << std::endl;
+            cudaErr(cudaMemcpyAsync(sum_of_images_minus_current.real_values_gpu, sum_of_images.real_values_gpu, sum_of_images.real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+            sum_of_images_minus_current.is_in_real_space = sum_of_images.is_in_real_space;
             if ( use_running_average )
                 sum_of_images_minus_current.SubtractImage(&running_average_stack[image_counter]);
             else
@@ -271,7 +266,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
         // going to be doing another round so we need to make the new sum..
         profile_timing_refinement_method.start("remake sum");
-        sum_of_images.SetToConstant(0.0);
+        sum_of_images.SetToConstant(0.0f);
 
         for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             sum_of_images.AddImage(&input_stack[image_counter]);

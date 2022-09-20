@@ -810,12 +810,13 @@ void MyTestApp::TestGpuAddImageStack( ) {
     Image              ground_truth(size, size, 1, true);
 
     sum_image.SetToConstant(0.0f);
+    ground_truth.SetToConstant(0.f);
 
-    int pixel_counter;
+    int pixel_counter = 0;
     for ( int iImg = 0; iImg < n_images; iImg++ ) {
         image_stack[iImg].Allocate(size, size, true);
         for ( int i = 0; i < image_stack[iImg].real_memory_allocated; i++ ) {
-            image_stack[iImg].real_values[i] = pixel_counter;
+            image_stack[iImg].real_values[i] = 1.f; //float(pixel_counter);
             ground_truth.real_values[i] += image_stack[iImg].real_values[i];
             pixel_counter++;
         }
@@ -834,15 +835,19 @@ void MyTestApp::TestGpuAddImageStack( ) {
     // Make sure all the copying is finished
     d_sum_image.Init(sum_image);
     d_sum_image.CopyHostToDeviceAndSynchronize( );
-
     d_sum_image.AddImageStack<float>(d_test_image);
-    d_sum_image.CopyDeviceToHostAndSynchronize( );
+    d_sum_image.CopyDeviceToHostAndSynchronize(false, false);
 
-    for ( int i = 0; i < d_sum_image.real_memory_allocated; i++ ) {
-        if ( ! FloatsAreAlmostTheSame(d_sum_image.real_values[i], ground_truth.real_values[i]) ) {
-            wxPrintf("Failed for pixel %i, values %f %f\n", i, d_sum_image.real_values[i], ground_truth.real_values[i]);
-            FailTest;
+    pixel_counter = 0;
+    for ( int j = 0; j < sum_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < sum_image.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(sum_image.real_values[pixel_counter], ground_truth.real_values[pixel_counter]) ) {
+                wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, sum_image.real_values[pixel_counter], ground_truth.real_values[pixel_counter]);
+                FailTest;
+            }
+            pixel_counter++;
         }
+        pixel_counter += sum_image.padding_jump_value;
     }
 
     EndTest( );

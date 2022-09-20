@@ -348,7 +348,7 @@ class GpuImage {
     void printVal(std::string msg, int idx);
     bool HasSameDimensionsAs(GpuImage& other_image);
 
-    bool HasSameDimensionsAs(GpuImage* other_image) { HasSameDimensionsAs(*other_image); };
+    bool HasSameDimensionsAs(GpuImage* other_image) { return HasSameDimensionsAs(*other_image); };
 
     bool HasSameDimensionsAs(Image* other_image);
     void Zeros( );

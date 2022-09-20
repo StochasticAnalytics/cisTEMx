@@ -2304,10 +2304,12 @@ float GpuImage::ReturnSumOfRealValues( ) {
 // }
 
 template <typename StorageType>
-__global__ void AddImageStackKernel(StorageType** data_ptrs,
+__global__ void AddImageStackKernel(StorageType** stack_ptrs,
+                                    StorageType*  output,
                                     const int     NX,
                                     const int     NY,
-                                    const int     NZ) {
+                                    const size_t  NZ,
+                                    const int     pixel_pitch) {
 
     int x = physical_X_2d_grid( );
     if ( x >= NX )
@@ -2320,26 +2322,23 @@ __global__ void AddImageStackKernel(StorageType** data_ptrs,
     // Whether we are in real space or not doesn't matter, the padding values would
     // only affect the padding values, st. NX = pixel_pitch
 
-    int address = x + NX * y;
+    int address = x + pixel_pitch * y;
     for ( int z = 0; z < NZ; z++ ) {
         if constexpr ( std::is_same<StorageType, __half>::value ) {
             // COnvert
-            sum += __half2float(data_ptrs[z + 1][address]);
+            sum += __half2float(stack_ptrs[z][address]);
         }
         else {
-            sum += data_ptrs[z + 1][address];
+            sum += stack_ptrs[z][address];
         }
-        address += NX * NY;
     }
-
-    address = x + NX * y;
 
     if constexpr ( std::is_same<StorageType, __half>::value ) {
         // COnvert
-        data_ptrs[0][address] = __float2half(sum);
+        output[address] = __float2half(sum);
     }
     else {
-        data_ptrs[0][address] = sum;
+        output[address] = sum;
     }
 }
 
@@ -2364,36 +2363,43 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
     MyDebugAssertTrue(input_stack[0].is_in_real_space == output_image.is_in_real_space, "Not in real space");
 
     constexpr bool use_real_space_grid_for_any_type = true;
-    input_stack[0].ReturnLaunchParameters(input_stack[0].dims, use_real_space_grid_for_any_type);
+    this->ReturnLaunchParameters(this->dims, use_real_space_grid_for_any_type);
 
+    void** stack_ptrs;
     precheck;
     if constexpr ( std::is_same<StorageType, __half>::value ) {
-        // FIXME: make this a member buffer that only needs to be created once and track allocation for destruction
-        // Then you'll also need to set the output_poniter outide (maybe rename to stack_ptrs)
-        __half** data_ptrs;
-        cudaErr(cudaMallocAsync(&data_ptrs, sizeof(__half*) * (dims.z + 1), cudaStreamPerThread));
-        cudaErr(cudaMemcpyAsync(data_ptrs[0], output_image.real_values_16f, sizeof(__half*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        cudaErr(cudaMallocManaged(&stack_ptrs, sizeof(__half*) * (input_stack.size( ))));
         for ( int iPtr = 0; iPtr < input_stack.size( ); iPtr++ ) {
-            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], input_stack[iPtr].real_values_16f, sizeof(__half*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+            stack_ptrs[iPtr] = input_stack[iPtr].real_values_16f;
         }
-        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(data_ptrs,
-                                                                                               this->dims.w,
+        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>((__half**)stack_ptrs,
+                                                                                               (__half*)output_image.real_values_16f,
+                                                                                               this->dims.x,
                                                                                                this->dims.y,
-                                                                                               this->dims.z);
+                                                                                               input_stack.size( ),
+                                                                                               this->dims.w);
     }
     else {
-        float** data_ptrs;
-        cudaErr(cudaMallocAsync(&data_ptrs, sizeof(float*) * (dims.z + 1), cudaStreamPerThread));
-        cudaErr(cudaMemcpyAsync(data_ptrs[0], output_image.real_values_16f, sizeof(float*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        cudaErr(cudaMallocManaged(&stack_ptrs, sizeof(float*) * (input_stack.size( ))));
         for ( int iPtr = 0; iPtr < input_stack.size( ); iPtr++ ) {
-            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], input_stack[iPtr].real_values, sizeof(float*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+            stack_ptrs[iPtr] = input_stack[iPtr].real_values_gpu;
         }
-        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(data_ptrs,
-                                                                                               this->dims.w,
+
+        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>((float**)stack_ptrs,
+                                                                                               (float*)output_image.real_values_gpu,
+                                                                                               this->dims.x,
                                                                                                this->dims.y,
-                                                                                               this->dims.z);
+                                                                                               input_stack.size( ),
+                                                                                               this->dims.w);
     }
     postcheck;
+
+    // FIXME: get rid of sync
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    for ( int i = 0; i < input_stack.size( ); i++ ) {
+        stack_ptrs[i] = nullptr;
+    }
+    cudaErr(cudaFree(stack_ptrs));
 }
 
 template void GpuImage::AddImageStack<float>(std::vector<GpuImage>& input_stack, GpuImage& output_image);

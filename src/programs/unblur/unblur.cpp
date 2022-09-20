@@ -941,5 +941,5 @@ bool UnBlurApp::DoCalculation( ) {
     delete[] output_sum;
 #endif
 
-    return;
+    return true;
 }

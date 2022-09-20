@@ -125,26 +125,16 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             else
                 sum_of_images_minus_current.SubtractImage(&input_stack[image_counter]);
 
-#ifdef ENABLEGPU
-            // Specialization to merge tehse operations into one kernel
-            // TODO: merge the following into a single kernel
-            // sum - current, apply bfactor, mask central cross, conj, multiply, over-sample shift
-            sum_of_images_minus_current.ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
+            // sum_of_images_minus_current.ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
 
-#else
-            sum_of_images_minus_current.ApplyBFactor(unitless_bfactor);
-            if ( mask_central_cross == true ) {
-                sum_of_images_minus_current.MaskCentralCross(width_of_vertical_line, width_of_horizontal_line);
-            }
-#endif
             profile_timing_refinement_method.lap("prepare sum");
             // compute the cross correlation function and find the peak
             // TODO: just replace with batched backfft as in euler search gpu
             profile_timing_refinement_method.start("compute cross correlation");
-            if ( use_running_average )
-                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
-            else
-                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
+            // if ( use_running_average )
+            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
+            // else
+            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
 
             profile_timing_refinement_method.lap("compute cross correlation");
             profile_timing_refinement_method.start("find peak");
@@ -166,11 +156,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             current_x_shifts[image_counter] = my_peak.x;
             current_y_shifts[image_counter] = my_peak.y;
         }
-        profile_timing_refinement_method.start("deallocate sum minus");
 
-        // TODO: no good reason for this deallocation
-        sum_of_images_minus_current.Deallocate( );
-        profile_timing_refinement_method.lap("deallocate sum minus");
         // smooth the shifts
         profile_timing_refinement_method.start("smooth shifts");
         x_shifts_curve.ClearData( );

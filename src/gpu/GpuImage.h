@@ -346,7 +346,10 @@ class GpuImage {
     bool InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
-    bool HasSameDimensionsAs(GpuImage* other_image);
+    bool HasSameDimensionsAs(GpuImage& other_image);
+
+    bool HasSameDimensionsAs(GpuImage* other_image) { HasSameDimensionsAs(*other_image); };
+
     bool HasSameDimensionsAs(Image* other_image);
     void Zeros( );
 
@@ -370,9 +373,9 @@ class GpuImage {
     void AddImage(GpuImage* other_image) { AddImage(*other_image); }; // for compatibility with Image class
 
     template <typename StorageType>
-    void AddImageStack( );
+    void AddImageStack(std::vector<GpuImage>& input_stack);
     template <typename StorageType>
-    void AddImageStack(GpuImage& output_image);
+    void AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& output_image);
 
     void SubtractImage(GpuImage& other_image);
 

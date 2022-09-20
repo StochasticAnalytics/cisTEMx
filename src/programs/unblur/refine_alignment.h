@@ -1,20 +1,20 @@
-void unblur_refine_alignment(Image*     input_stack,
-                             int        number_of_images,
-                             int        max_iterations,
-                             float      unitless_bfactor,
-                             bool       mask_central_cross,
-                             int        width_of_vertical_line,
-                             int        width_of_horizontal_line,
-                             float      inner_radius_for_peak_search,
-                             float      outer_radius_for_peak_search,
-                             float      max_shift_convergence_threshold,
-                             float      pixel_size,
-                             int        number_of_frames_for_running_average,
-                             int        savitzy_golay_window_size,
-                             int        max_threads,
-                             float*     x_shifts,
-                             float*     y_shifts,
-                             StopWatch& profile_timing_refinement_method) {
+void unblur_refine_alignment(std::vector<Image>& input_stack,
+                             int                 number_of_images,
+                             int                 max_iterations,
+                             float               unitless_bfactor,
+                             bool                mask_central_cross,
+                             int                 width_of_vertical_line,
+                             int                 width_of_horizontal_line,
+                             float               inner_radius_for_peak_search,
+                             float               outer_radius_for_peak_search,
+                             float               max_shift_convergence_threshold,
+                             float               pixel_size,
+                             int                 number_of_frames_for_running_average,
+                             int                 savitzy_golay_window_size,
+                             int                 max_threads,
+                             float*              x_shifts,
+                             float*              y_shifts,
+                             StopWatch&          profile_timing_refinement_method) {
 
     profile_timing_refinement_method.mark_entry_or_exit_point( );
 
@@ -44,11 +44,9 @@ void unblur_refine_alignment(Image*     input_stack,
     if ( savitzy_golay_window_size < 5 )
         savitzy_golay_window_size = 5;
 
-    Image  sum_of_images;
-    Image* running_average_stack;
-
-    Image* stack_for_alignment; // pointer that can be switched between running average stack and image stack if necessary
-    Peak   my_peak;
+    Image              sum_of_images;
+    std::vector<Image> running_average_stack;
+    Peak               my_peak;
 
     Curve x_shifts_curve;
     Curve y_shifts_curve;
@@ -57,18 +55,14 @@ void unblur_refine_alignment(Image*     input_stack,
     sum_of_images.SetToConstant(0.0f);
 
     profile_timing_refinement_method.start("allocate running average");
-    if ( number_of_frames_for_running_average > 1 ) {
-        running_average_stack = new Image[number_of_images];
+    bool use_running_average = (number_of_frames_for_running_average > 1) ? true : false;
 
+    if ( use_running_average ) {
+        running_average_stack.reserve(number_of_images);
         for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
-            running_average_stack[image_counter].Allocate(input_stack[image_counter].logical_x_dimension, input_stack[image_counter].logical_y_dimension, 1, false);
+            running_average_stack.emplace_back(input_stack[image_counter].logical_x_dimension, input_stack[image_counter].logical_y_dimension, 1, false);
         }
-
-        stack_for_alignment = running_average_stack;
     }
-    else
-        stack_for_alignment = input_stack;
-    profile_timing_refinement_method.lap("allocate running average");
 
     // prepare the initial sum
     profile_timing_refinement_method.start("prepare initial sum");
@@ -125,7 +119,10 @@ void unblur_refine_alignment(Image*     input_stack,
                 // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
                 profile_timing_refinement_method.start("prepare sum");
                 sum_of_images_minus_current.CopyFrom(&sum_of_images);
-                sum_of_images_minus_current.SubtractImage(&stack_for_alignment[image_counter]);
+                if ( use_running_average )
+                    sum_of_images_minus_current.SubtractImage(&running_average_stack[image_counter]);
+                else
+                    sum_of_images_minus_current.SubtractImage(&input_stack[image_counter]);
 
                 sum_of_images_minus_current.ApplyBFactor(unitless_bfactor);
                 if ( mask_central_cross == true ) {
@@ -135,7 +132,10 @@ void unblur_refine_alignment(Image*     input_stack,
                 profile_timing_refinement_method.lap("prepare sum");
                 // compute the cross correlation function and find the peak
                 profile_timing_refinement_method.start("compute cross correlation");
-                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&stack_for_alignment[image_counter]);
+                if ( use_running_average )
+                    sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
+                else
+                    sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
                 profile_timing_refinement_method.lap("compute cross correlation");
                 profile_timing_refinement_method.start("find peak");
                 my_peak = sum_of_images_minus_current.FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
@@ -235,9 +235,6 @@ void unblur_refine_alignment(Image*     input_stack,
             delete[] current_x_shifts;
             delete[] current_y_shifts;
 
-            if ( number_of_frames_for_running_average > 1 ) {
-                delete[] running_average_stack;
-            }
             profile_timing_refinement_method.lap("cleanup");
             profile_timing_refinement_method.mark_entry_or_exit_point( );
             return;

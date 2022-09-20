@@ -111,6 +111,7 @@ class MyTestApp : public MyApp {
     void TestElectronExposureFilter( );
 #ifdef ENABLEGPU
     void TestElectronExposureFilterGPU( );
+    void TestGpuAddImageStack( );
 #endif
     void TestEmpiricalDistribution( );
     void TestSumOfSquaresFourierAndFFTNormalization( );
@@ -177,6 +178,7 @@ bool MyTestApp::DoCalculation( ) {
     TestElectronExposureFilter( );
 #ifdef ENABLEGPU
     TestElectronExposureFilterGPU( );
+    TestGpuAddImageStack( );
 #endif
     TestDatabase( );
     TestEmpiricalDistribution( );
@@ -796,6 +798,55 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
     EndTest( );
 }
 
+void MyTestApp::TestGpuAddImageStack( ) {
+    BeginTest("Test Gpu::AddImageStack");
+
+    constexpr int n_images = 10;
+    constexpr int size     = 16;
+
+    // Setup the reference data
+    std::vector<Image> image_stack(n_images);
+    Image              sum_image(size, size, 1, true);
+    Image              ground_truth(size, size, 1, true);
+
+    sum_image.SetToConstant(0.0f);
+
+    int pixel_counter;
+    for ( int iImg = 0; iImg < n_images; iImg++ ) {
+        image_stack[iImg].Allocate(size, size, true);
+        for ( int i = 0; i < image_stack[iImg].real_memory_allocated; i++ ) {
+            image_stack[iImg].real_values[i] = pixel_counter;
+            ground_truth.real_values[i] += image_stack[iImg].real_values[i];
+            pixel_counter++;
+        }
+    }
+
+    std::vector<GpuImage> d_test_image(n_images);
+    GpuImage              d_sum_image;
+
+    for ( int i = 0; i < n_images; i++ ) {
+        d_test_image[i].Init(image_stack[i]);
+        d_test_image[i].CopyHostToDevice(false);
+    }
+
+    MyDebugAssertTrue(d_test_image.size( ) == n_images, "d_test_image.size() != n_images");
+
+    // Make sure all the copying is finished
+    d_sum_image.Init(sum_image);
+    d_sum_image.CopyHostToDeviceAndSynchronize( );
+
+    d_sum_image.AddImageStack<float>(d_test_image);
+    d_sum_image.CopyDeviceToHostAndSynchronize( );
+
+    for ( int i = 0; i < d_sum_image.real_memory_allocated; i++ ) {
+        if ( ! FloatsAreAlmostTheSame(d_sum_image.real_values[i], ground_truth.real_values[i]) ) {
+            wxPrintf("Failed for pixel %i, values %f %f\n", i, d_sum_image.real_values[i], ground_truth.real_values[i]);
+            FailTest;
+        }
+    }
+
+    EndTest( );
+}
 #endif // #ifdef ENABLEGPU
 
 void MyTestApp::TestEmpiricalDistribution( ) {

@@ -1,21 +1,21 @@
 
-void unblur_refine_alignment(GpuImage*  input_stack,
-                             int        number_of_images,
-                             int        max_iterations,
-                             float      unitless_bfactor,
-                             bool       mask_central_cross,
-                             int        width_of_vertical_line,
-                             int        width_of_horizontal_line,
-                             float      inner_radius_for_peak_search,
-                             float      outer_radius_for_peak_search,
-                             float      max_shift_convergence_threshold,
-                             float      pixel_size,
-                             int        number_of_frames_for_running_average,
-                             int        savitzy_golay_window_size,
-                             int        max_threads,
-                             float*     x_shifts,
-                             float*     y_shifts,
-                             StopWatch& profile_timing_refinement_method) {
+void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
+                             int                    number_of_images,
+                             int                    max_iterations,
+                             float                  unitless_bfactor,
+                             bool                   mask_central_cross,
+                             int                    width_of_vertical_line,
+                             int                    width_of_horizontal_line,
+                             float                  inner_radius_for_peak_search,
+                             float                  outer_radius_for_peak_search,
+                             float                  max_shift_convergence_threshold,
+                             float                  pixel_size,
+                             int                    number_of_frames_for_running_average,
+                             int                    savitzy_golay_window_size,
+                             int                    max_threads,
+                             float*                 x_shifts,
+                             float*                 y_shifts,
+                             StopWatch&             profile_timing_refinement_method) {
 
     profile_timing_refinement_method.mark_entry_or_exit_point( );
 
@@ -53,32 +53,22 @@ void unblur_refine_alignment(GpuImage*  input_stack,
     if ( savitzy_golay_window_size < 5 )
         savitzy_golay_window_size = 5;
 
-    GpuImage  sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
-    GpuImage  sum_of_images_minus_current(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
-    GpuImage* running_average_stack;
-
-    GpuImage* stack_for_alignment; // pointer that can be switched between running average stack and image stack if necessary
-    Peak      my_peak;
+    GpuImage              sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+    GpuImage              sum_of_images_minus_current(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+    std::vector<GpuImage> running_average_stack;
+    Peak                  my_peak;
 
     Curve x_shifts_curve;
     Curve y_shifts_curve;
 
     sum_of_images.SetToConstant(0.f);
-
+    bool use_running_average = (number_of_frames_for_running_average > 1) ? true : false;
     profile_timing_refinement_method.start("allocate running average");
-    if ( number_of_frames_for_running_average > 1 ) {
-        running_average_stack = new GpuImage[number_of_images];
-
+    if ( use_running_average ) {
+        running_average_stack.reserve(number_of_images);
         for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
-            running_average_stack[image_counter].Allocate(input_stack[image_counter].dims.x, input_stack[image_counter].dims.y, 1, false);
+            running_average_stack.emplace_back(input_stack[image_counter].dims.x, input_stack[image_counter].dims.y, 1, false);
         }
-
-        stack_for_alignment = running_average_stack;
-    }
-    else {
-        // FIXME: ensure that you are only assigning the pointer and there aren't any bugs in your operator definition that
-        // results in a copy;
-        stack_for_alignment = input_stack;
     }
 
     profile_timing_refinement_method.lap("allocate running average");
@@ -86,7 +76,10 @@ void unblur_refine_alignment(GpuImage*  input_stack,
     // prepare the initial sum
     profile_timing_refinement_method.start("prepare initial sum");
 
-    stack_for_alignment->AddImageStack<float>(sum_of_images);
+    if ( use_running_average )
+        sum_of_images.AddImageStack<float>(running_average_stack);
+    else
+        sum_of_images.AddImageStack<float>(input_stack);
 
     profile_timing_refinement_method.lap("prepare initial sum");
     // perform the main alignment loop until we reach a max shift less than wanted, or max iterations
@@ -132,7 +125,10 @@ void unblur_refine_alignment(GpuImage*  input_stack,
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
             sum_of_images_minus_current.CopyFrom(&sum_of_images);
-            sum_of_images_minus_current.SubtractImage(&stack_for_alignment[image_counter]);
+            if ( use_running_average )
+                sum_of_images_minus_current.SubtractImage(&running_average_stack[image_counter]);
+            else
+                sum_of_images_minus_current.SubtractImage(&input_stack[image_counter]);
 
 #ifdef ENABLEGPU
             // Specialization to merge tehse operations into one kernel
@@ -150,7 +146,11 @@ void unblur_refine_alignment(GpuImage*  input_stack,
             // compute the cross correlation function and find the peak
             // TODO: just replace with batched backfft as in euler search gpu
             profile_timing_refinement_method.start("compute cross correlation");
-            sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&stack_for_alignment[image_counter]);
+            if ( use_running_average )
+                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
+            else
+                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
+
             profile_timing_refinement_method.lap("compute cross correlation");
             profile_timing_refinement_method.start("find peak");
 #ifdef ENABLEGPU
@@ -260,9 +260,6 @@ void unblur_refine_alignment(GpuImage*  input_stack,
             profile_timing_refinement_method.start("cleanup");
             wxPrintf("returning, iteration = %li, max_shift = %f\n", iteration_counter, max_shift);
 
-            if ( number_of_frames_for_running_average > 1 ) {
-                delete[] running_average_stack;
-            }
             profile_timing_refinement_method.lap("cleanup");
             // No need to apply the shifts unless it is our final iteration on the full stack, perhaps better yet we apply outside this method?
             profile_timing_refinement_method.mark_entry_or_exit_point( );

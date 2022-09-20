@@ -472,12 +472,12 @@ bool GpuImage::HasSameDimensionsAs(Image* other_image) {
         return false;
 }
 
-bool GpuImage::HasSameDimensionsAs(GpuImage* other_image) {
+bool GpuImage::HasSameDimensionsAs(GpuImage& other_image) {
     // Functions that call this method also assume these asserts are being called here, so do not remove.
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
+    MyDebugAssertTrue(other_image.is_in_memory_gpu, "Other image Memory not allocated");
 
-    if ( dims.x == other_image->dims.x && dims.y == other_image->dims.y && dims.z == other_image->dims.z )
+    if ( dims.x == other_image.dims.x && dims.y == other_image.dims.y && dims.z == other_image.dims.z )
         return true;
     else
         return false;
@@ -2343,37 +2343,28 @@ __global__ void AddImageStackKernel(StorageType** data_ptrs,
     }
 }
 
-/**
- * @brief Sum an image stack and place the results in the first image.
-*/
 template <typename StorageType>
-void GpuImage::AddImageStack( ) {
-    if ( dims.z == 1 ) {
-        wxPrintf("\nWarning: Only one image in stack, nothing to add.\n\n");
-        return;
-    }
-    else {
-        // FIXME: Double check that passing *this by reference doesn't somehow create a copy or move
-        AddImageStack<StorageType>(*this);
-    }
+void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack) {
+    AddImageStack<StorageType>(input_stack, *this);
+    return;
 }
 
-template void GpuImage::AddImageStack<float>( );
-template void GpuImage::AddImageStack<__half>( );
+template void GpuImage::AddImageStack<float>(std::vector<GpuImage>& input_stack);
+template void GpuImage::AddImageStack<__half>(std::vector<GpuImage>& input_stack);
 
 /**
  * @brief Sum an image stack and place the results in the output image.
 */
 template <typename StorageType>
-void GpuImage::AddImageStack(GpuImage& output_image) {
-    MyDebugAssertTrue(HasSameDimensionsAs(&output_image), "Images have different dimensions");
-    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& output_image) {
+    MyDebugAssertTrue(input_stack[0].HasSameDimensionsAs(output_image), "Images have different dimensions");
+    MyDebugAssertTrue(input_stack[0].is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(output_image.is_in_memory_gpu, "Output Memory not allocated");
     // Maybe check all the images in the stack?
-    MyDebugAssertTrue(is_in_real_space == output_image.is_in_real_space, "Not in real space");
+    MyDebugAssertTrue(input_stack[0].is_in_real_space == output_image.is_in_real_space, "Not in real space");
 
     constexpr bool use_real_space_grid_for_any_type = true;
-    ReturnLaunchParameters(dims, use_real_space_grid_for_any_type);
+    input_stack[0].ReturnLaunchParameters(input_stack[0].dims, use_real_space_grid_for_any_type);
 
     precheck;
     if constexpr ( std::is_same<StorageType, __half>::value ) {
@@ -2382,8 +2373,8 @@ void GpuImage::AddImageStack(GpuImage& output_image) {
         __half** data_ptrs;
         cudaErr(cudaMallocAsync(&data_ptrs, sizeof(__half*) * (dims.z + 1), cudaStreamPerThread));
         cudaErr(cudaMemcpyAsync(data_ptrs[0], output_image.real_values_16f, sizeof(__half*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-        for ( int iPtr = 0; iPtr < dims.z; iPtr++ ) {
-            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], real_values_16f, sizeof(__half*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        for ( int iPtr = 0; iPtr < input_stack.size( ); iPtr++ ) {
+            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], input_stack[iPtr].real_values_16f, sizeof(__half*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
         }
         AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(data_ptrs,
                                                                                                this->dims.w,
@@ -2394,8 +2385,8 @@ void GpuImage::AddImageStack(GpuImage& output_image) {
         float** data_ptrs;
         cudaErr(cudaMallocAsync(&data_ptrs, sizeof(float*) * (dims.z + 1), cudaStreamPerThread));
         cudaErr(cudaMemcpyAsync(data_ptrs[0], output_image.real_values_16f, sizeof(float*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-        for ( int iPtr = 0; iPtr < dims.z; iPtr++ ) {
-            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], real_values, sizeof(float*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        for ( int iPtr = 0; iPtr < input_stack.size( ); iPtr++ ) {
+            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], input_stack[iPtr].real_values, sizeof(float*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
         }
         AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(data_ptrs,
                                                                                                this->dims.w,
@@ -2405,8 +2396,8 @@ void GpuImage::AddImageStack(GpuImage& output_image) {
     postcheck;
 }
 
-template void GpuImage::AddImageStack<float>(GpuImage& output_image);
-template void GpuImage::AddImageStack<__half>(GpuImage& output_image);
+template void GpuImage::AddImageStack<float>(std::vector<GpuImage>& input_stack, GpuImage& output_image);
+template void GpuImage::AddImageStack<__half>(std::vector<GpuImage>& input_stack, GpuImage& output_image);
 
 void GpuImage::AddImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array

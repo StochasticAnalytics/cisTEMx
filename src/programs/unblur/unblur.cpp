@@ -352,22 +352,23 @@ bool UnBlurApp::DoCalculation( ) {
     long slice_byte_size;
 
 #ifdef ENABLEGPU
-    GpuImage* unbinned_image_stack; // We will allocate this later depending on if we are binning or not.
-    GpuImage* image_stack = new GpuImage[number_of_input_images];
-    GpuImage  sum_image;
-    GpuImage  sum_image_no_dose_filter;
+    std::vector<GpuImage> unbinned_image_stack; // We will allocate this later depending on if we are binning or not.
+    std::vector<GpuImage> image_stack(number_of_input_images);
+    GpuImage              sum_image;
+    GpuImage              sum_image_no_dose_filter;
     // For now, we are doing some of the preprocessing on the cpu so we need this array
-    Image* image_stack_ = new Image[max_threads];
+    // We want the default constructed valued as we read in the images
+    std::vector<Image> image_stack_(max_threads);
 #else
-    Image* unbinned_image_stack; // We will allocate this later depending on if we are binning or not.
-    Image* image_stack = new Image[number_of_input_images];
-    Image  sum_image;
-    Image  sum_image_no_dose_filter;
-    Image* image_stack_ = &image_stack[0]; // Since we don't need extra images for the host code, we'll just increment this pinter and reference back to the full image stacks
-    // Image* image_stack_ = new Image[max_threads];
+    std::vector<Image> unbinned_image_stack; // We will allocate this later depending on if we are binning or not.
+    // Unlike the GPU version, we wan the default constructed images here
+    std::vector<Image>  image_stack(number_of_input_images);
+    Image               sum_image;
+    Image               sum_image_no_dose_filter;
+    std::vector<Image>& image_stack_ = image_stack;
 #endif
 
-    Image* running_average_stack; // we will allocate this later if necessary;
+    std::vector<Image> running_average_stack(0); // we will allocate this later if necessary;
 
     Image gain_image;
     Image dark_image;
@@ -576,13 +577,16 @@ bool UnBlurApp::DoCalculation( ) {
     // if we are going to be binning, we need to allocate the unbinned array..
 
     if ( pre_binning_factor > 1 ) {
-        unbinned_image_stack = image_stack;
-
+        unbinned_image_stack = std::move(image_stack);
+        image_stack.clear( );
 #ifdef ENABLEGPU
-        image_stack = new GpuImage[number_of_input_images];
+        std::vector<GpuImage> tmp(number_of_input_images);
 #else
-        image_stack = new Image[number_of_input_images];
+        std::vector<Image> tmp(number_of_input_images);
 #endif
+        image_stack = std::move(tmp);
+        // We'll construct the image stack in place, so we don't need to allocate it here
+
         pixel_size = output_pixel_size * pre_binning_factor;
     }
     else {
@@ -606,8 +610,7 @@ bool UnBlurApp::DoCalculation( ) {
         profile_timing.start("make prebinned stack");
 #pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
         for ( image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
-            image_stack[image_counter].Allocate(unbinned_image_stack[image_counter].logical_x_dimension / pre_binning_factor, unbinned_image_stack[image_counter].logical_y_dimension / pre_binning_factor, 1, false);
-            unbinned_image_stack[image_counter].ClipInto(&image_stack[image_counter]);
+            image_stack.at(image_counter).Allocate(unbinned_image_stack[image_counter].logical_x_dimension / pre_binning_factor, unbinned_image_stack[image_counter].logical_y_dimension / pre_binning_factor, 1, false);
             //image_stack[image_counter].QuickAndDirtyWriteSlice("binned.mrc", image_counter + 1);
         }
         profile_timing.lap("make prebinned stack");
@@ -628,8 +631,8 @@ bool UnBlurApp::DoCalculation( ) {
     if ( pre_binning_factor > 1 ) {
         // we don't need the binned images anymore..
 
-        delete[] image_stack;
-        image_stack = unbinned_image_stack;
+        image_stack.clear( );
+        image_stack = std::move(unbinned_image_stack);
         pixel_size  = output_pixel_size;
 
         // Adjust the shifts, then phase shift the original images
@@ -685,7 +688,7 @@ bool UnBlurApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
         shared_ptr->start("calc dose filter");
-        my_electron_dose->CalculateDoseFilterAs1DArray(image_stack, sum_image.complex_values_gpu, pre_exposure_amount, exposure_per_frame);
+        my_electron_dose->CalculateDoseFilterAs1DArray(image_stack.data( ), sum_image.complex_values_gpu, pre_exposure_amount, exposure_per_frame);
         shared_ptr->lap("calc dose filter");
 
         shared_ptr->start("write out frames");
@@ -923,7 +926,6 @@ bool UnBlurApp::DoCalculation( ) {
     delete[] result_array;
     delete[] x_shifts;
     delete[] y_shifts;
-    delete[] image_stack;
 
     if ( should_dose_filter == true ) {
         delete my_electron_dose;
@@ -939,5 +941,5 @@ bool UnBlurApp::DoCalculation( ) {
     delete[] output_sum;
 #endif
 
-    return true;
+    return;
 }

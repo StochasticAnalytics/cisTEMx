@@ -86,6 +86,7 @@ class Image {
     // Methods
 
     Image( );
+    Image(int wanted_x_size, int wanted_y_size, int wanted_z_size = 1, bool is_in_real_space = true, bool do_fft_planning = true);
     Image(const Image& other_image); // copy constructor
     ~Image( );
 

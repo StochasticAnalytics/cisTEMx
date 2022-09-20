@@ -18,6 +18,7 @@ class GpuImage {
 
   public:
     GpuImage( );
+    GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size = 1, bool is_in_real_space = true, bool do_fft_planning = true);
     GpuImage(const GpuImage& other_gpu_image); // copy constructor
     GpuImage(Image& cpu_image);
     ~GpuImage( );
@@ -346,6 +347,7 @@ class GpuImage {
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
     bool HasSameDimensionsAs(GpuImage* other_image);
+    bool HasSameDimensionsAs(Image* other_image);
     void Zeros( );
 
     void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);
@@ -366,6 +368,11 @@ class GpuImage {
     void AddImage(GpuImage& other_image);
 
     void AddImage(GpuImage* other_image) { AddImage(*other_image); }; // for compatibility with Image class
+
+    template <typename StorageType>
+    void AddImageStack( );
+    template <typename StorageType>
+    void AddImageStack(GpuImage& output_image);
 
     void SubtractImage(GpuImage& other_image);
 

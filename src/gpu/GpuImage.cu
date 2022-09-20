@@ -259,6 +259,13 @@ GpuImage::GpuImage( ) {
     SetupInitialValues( );
 }
 
+GpuImage::GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool is_in_real_space, bool do_fft_planning) {
+    is_meta_data_initialized = false;
+    SetupInitialValues( );
+    // do_fft_planning is not used in the GPU code path, but is present in the cpu
+    Allocate(wanted_x_size, wanted_y_size, wanted_z_size, is_in_real_space);
+}
+
 GpuImage::GpuImage(Image& cpu_image) {
     is_meta_data_initialized = false;
     SetupInitialValues( );
@@ -454,11 +461,21 @@ void GpuImage::PrintNppStreamContext( ) {
     wxPrintf("  GpuImage.pitch bytes/ elements %ld/ %ld\n", pitch, pitch / sizeof(float));
 }
 
+bool GpuImage::HasSameDimensionsAs(Image* other_image) {
+    // Functions that call this method also assume these asserts are being called here, so do not remove.
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(other_image->is_in_memory, "Other image Memory not allocated");
+
+    if ( dims.x == other_image->logical_x_dimension && dims.y == other_image->logical_y_dimension && dims.z == other_image->logical_z_dimension )
+        return true;
+    else
+        return false;
+}
+
 bool GpuImage::HasSameDimensionsAs(GpuImage* other_image) {
     // Functions that call this method also assume these asserts are being called here, so do not remove.
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
-    // end of dependent asserts.
 
     if ( dims.x == other_image->dims.x && dims.y == other_image->dims.y && dims.z == other_image->dims.z )
         return true;
@@ -1763,21 +1780,13 @@ Peak GpuImage::FindPeakWithParabolaFit(float inner_radius_for_peak_search, float
 
     MyDebugAssertTrue(is_in_real_space, "This function is only for real space images.");
     MyDebugAssertTrue(dims.z == 1, "This function is only for 2D images.");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    constexpr bool should_block_until_complete = true;
+    constexpr bool free_gpu_memory             = false;
 
-    Peak     my_peak;
-    GpuImage buffer;
-    int      size = myroundint(outer_radius_for_peak_search * 2.0f) + 1;
-    if ( size % 2 != 0 )
-        size++;
-    buffer.Allocate(size, size, true);
-    ClipInto(&buffer, 0.f, false, 0.f, 0, 0, 0);
-    // Since we free the GPU memory after the copy, we have to make sure the kernel is complete.
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-
-    bool  should_block_until_complete = true;
-    bool  free_gpu_memory             = true;
-    Image cpu_buffer                  = buffer.CopyDeviceToNewHost(should_block_until_complete, free_gpu_memory);
-    my_peak                           = cpu_buffer.FindPeakWithParabolaFit(inner_radius_for_peak_search, outer_radius_for_peak_search);
+    std::cerr << "Size x,y,z is : " << dims.x << ", " << dims.y << ", " << dims.z << std::endl;
+    Image cpu_buffer = CopyDeviceToNewHost(should_block_until_complete, free_gpu_memory);
+    Peak  my_peak    = cpu_buffer.FindPeakWithParabolaFit(inner_radius_for_peak_search, outer_radius_for_peak_search);
     wxPrintf("Peak found at %f, %f\n", my_peak.x, my_peak.y);
 
     return my_peak;
@@ -2294,6 +2303,111 @@ float GpuImage::ReturnSumOfRealValues( ) {
 //     return (float3)*tmpValComplex;
 // }
 
+template <typename StorageType>
+__global__ void AddImageStackKernel(StorageType** data_ptrs,
+                                    const int     NX,
+                                    const int     NY,
+                                    const int     NZ) {
+
+    int x = physical_X_2d_grid( );
+    if ( x >= NX )
+        return;
+    int y = physical_Y_2d_grid( );
+    if ( y >= NY )
+        return;
+
+    float sum = 0.0f;
+    // Whether we are in real space or not doesn't matter, the padding values would
+    // only affect the padding values, st. NX = pixel_pitch
+
+    int address = x + NX * y;
+    for ( int z = 0; z < NZ; z++ ) {
+        if constexpr ( std::is_same<StorageType, __half>::value ) {
+            // COnvert
+            sum += __half2float(data_ptrs[z + 1][address]);
+        }
+        else {
+            sum += data_ptrs[z + 1][address];
+        }
+        address += NX * NY;
+    }
+
+    address = x + NX * y;
+
+    if constexpr ( std::is_same<StorageType, __half>::value ) {
+        // COnvert
+        data_ptrs[0][address] = __float2half(sum);
+    }
+    else {
+        data_ptrs[0][address] = sum;
+    }
+}
+
+/**
+ * @brief Sum an image stack and place the results in the first image.
+*/
+template <typename StorageType>
+void GpuImage::AddImageStack( ) {
+    if ( dims.z == 1 ) {
+        wxPrintf("\nWarning: Only one image in stack, nothing to add.\n\n");
+        return;
+    }
+    else {
+        // FIXME: Double check that passing *this by reference doesn't somehow create a copy or move
+        AddImageStack<StorageType>(*this);
+    }
+}
+
+template void GpuImage::AddImageStack<float>( );
+template void GpuImage::AddImageStack<__half>( );
+
+/**
+ * @brief Sum an image stack and place the results in the output image.
+*/
+template <typename StorageType>
+void GpuImage::AddImageStack(GpuImage& output_image) {
+    MyDebugAssertTrue(HasSameDimensionsAs(&output_image), "Images have different dimensions");
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(output_image.is_in_memory_gpu, "Output Memory not allocated");
+    // Maybe check all the images in the stack?
+    MyDebugAssertTrue(is_in_real_space == output_image.is_in_real_space, "Not in real space");
+
+    constexpr bool use_real_space_grid_for_any_type = true;
+    ReturnLaunchParameters(dims, use_real_space_grid_for_any_type);
+
+    precheck;
+    if constexpr ( std::is_same<StorageType, __half>::value ) {
+        // FIXME: make this a member buffer that only needs to be created once and track allocation for destruction
+        // Then you'll also need to set the output_poniter outide (maybe rename to stack_ptrs)
+        __half** data_ptrs;
+        cudaErr(cudaMallocAsync(&data_ptrs, sizeof(__half*) * (dims.z + 1), cudaStreamPerThread));
+        cudaErr(cudaMemcpyAsync(data_ptrs[0], output_image.real_values_16f, sizeof(__half*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        for ( int iPtr = 0; iPtr < dims.z; iPtr++ ) {
+            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], real_values_16f, sizeof(__half*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        }
+        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(data_ptrs,
+                                                                                               this->dims.w,
+                                                                                               this->dims.y,
+                                                                                               this->dims.z);
+    }
+    else {
+        float** data_ptrs;
+        cudaErr(cudaMallocAsync(&data_ptrs, sizeof(float*) * (dims.z + 1), cudaStreamPerThread));
+        cudaErr(cudaMemcpyAsync(data_ptrs[0], output_image.real_values_16f, sizeof(float*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        for ( int iPtr = 0; iPtr < dims.z; iPtr++ ) {
+            cudaErr(cudaMemcpyAsync(data_ptrs[iPtr + 1], real_values, sizeof(float*), cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+        }
+        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(data_ptrs,
+                                                                                               this->dims.w,
+                                                                                               this->dims.y,
+                                                                                               this->dims.z);
+    }
+    postcheck;
+}
+
+template void GpuImage::AddImageStack<float>(GpuImage& output_image);
+template void GpuImage::AddImageStack<__half>(GpuImage& output_image);
+
 void GpuImage::AddImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array
     MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
@@ -2544,15 +2658,16 @@ void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
 void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
 
     MyDebugAssertTrue(is_in_memory_gpu, "GPU memory not allocated");
+    MyDebugAssertTrue(cpu_image.is_in_memory, "CPU memory not allocated");
+    MyDebugAssertTrue(HasSameDimensionsAs(&cpu_image), "CPU image size mismatch");
+
     // TODO other asserts on size etc.
 
-    float* tmpPinnedPtr;
     // FIXME for now always pin the memory - this might be a bad choice for single copy or small images, but is required for asynch xfer and is ~2x as fast after pinning
     cudaErr(cudaHostRegister(cpu_image.real_values, sizeof(float) * real_memory_allocated, cudaHostRegisterDefault));
-    cudaErr(cudaHostGetDevicePointer(&tmpPinnedPtr, cpu_image.real_values, 0));
 
     precheck;
-    cudaErr(cudaMemcpyAsync(tmpPinnedPtr, real_values_gpu, real_memory_allocated * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
+    cudaErr(cudaMemcpyAsync(cpu_image.real_values, real_values_gpu, real_memory_allocated * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
     postcheck;
 
     if ( should_block_until_complete )
@@ -2564,11 +2679,8 @@ void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_comple
     // If we ran Deallocate, this the memory is already unpinned.
     if ( unpin_host_memory && is_host_memory_pinned ) {
         cudaErr(cudaHostUnregister(real_values));
-        is_host_memory_pinned = false;
+        // Note: do not change the is_host_memory_pinned flag here, as we are just dealing with this temporary image.
     }
-
-    // always unregister the temporary pointer as it is not associated with a GpuImage
-    cudaErr(cudaHostUnregister(tmpPinnedPtr));
 }
 
 void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
@@ -2622,7 +2734,6 @@ void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_com
 
     // cpu_image.complex_values = complex_values_gpu;
 
-    cpu_image.is_in_memory = is_in_memory;
     //cpu_image.padding_jump_value = padding_jump_value;
     cpu_image.image_memory_should_not_be_deallocated = image_memory_should_not_be_deallocated;
 
@@ -2637,8 +2748,9 @@ void GpuImage::CopyDeviceToNewHost(Image& cpu_image, bool should_block_until_com
 
 // TODO: should the return type be moved, is that handled already by the compiler?
 Image GpuImage::CopyDeviceToNewHost(bool should_block_until_complete, bool free_gpu_memory, bool unpin_host_memory) {
-    Image new_cpu_image;
-    new_cpu_image.Allocate(dims.x, dims.y, dims.z, true, false);
+    MyDebugAssertTrue(is_in_memory_gpu, "Image is not in memory on the GPU");
+
+    Image new_cpu_image(dims.x, dims.y, dims.z, true, true);
 
     //new_cpu_image.Allocate(dims.x,dims.y);
     CopyDeviceToNewHost(new_cpu_image, should_block_until_complete, free_gpu_memory);
@@ -3645,6 +3757,11 @@ bool GpuImage::Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size,
     dims.x                 = wanted_x_size;
     dims.y                 = wanted_y_size;
     dims.z                 = wanted_z_size;
+
+    // For compatibility with CPU image methods
+    logical_x_dimension = wanted_x_size;
+    logical_y_dimension = wanted_y_size;
+    logical_z_dimension = wanted_z_size;
 
     // first_x_dimension
     if ( IsEven(wanted_x_size) == true )

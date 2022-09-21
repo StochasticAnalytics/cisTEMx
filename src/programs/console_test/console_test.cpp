@@ -1560,6 +1560,7 @@ void MyTestApp::TestFilterFunctions( ) {
     test_image.QuickAndDirtyReadSlice(hiv_images_80x80x10_filename.ToStdString( ), 1);
     test_image.ForwardFFT( );
     test_image.ApplyBFactor(1500);
+    test_image.QuickAndDirtyWriteSlice("/tmp/test_apply_bfactor.mrc", 1);
     test_image.BackwardFFT( );
 
     if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.027244) == false )
@@ -1570,6 +1571,40 @@ void MyTestApp::TestFilterFunctions( ) {
         FailTest;
 
     EndTest( );
+
+#ifdef ENABLEGPU
+
+    BeginTest("GpuImage::ApplyBFactor");
+
+    test_image.QuickAndDirtyReadSlice(hiv_images_80x80x10_filename.ToStdString( ), 1);
+    GpuImage d_test_image;
+    d_test_image.Init(test_image);
+    d_test_image.CopyHostToDevice(true);
+    // We synced so we can reset the host memory to be sure we don't get a false positive on failed copy back.
+    test_image.SetToConstant(0.f);
+    d_test_image.ForwardFFT( );
+    d_test_image.ApplyBFactor(1500, 0.f, 0.f);
+    d_test_image.BackwardFFT( );
+    d_test_image.CopyDeviceToHostAndSynchronize( );
+
+    test_image.QuickAndDirtyWriteSlice("/tmp/d_test_apply_bfactor.mrc", 1);
+
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.027244) == false ) {
+        FailTest;
+        std::cerr << "test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0) = " << test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0) << std::endl;
+    }
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 1.320998) == false ) {
+        FailTest;
+        std::cerr << "test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0) = " << test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0) << std::endl;
+    }
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.012282) == false ) {
+        FailTest;
+        std::cerr << "test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0) = " << test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0) << std::endl;
+    }
+
+    EndTest( );
+
+#endif
 }
 
 void MyTestApp::TestMaskCentralCross( ) {

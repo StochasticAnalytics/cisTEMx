@@ -39,6 +39,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     float max_shift;
     float total_shift;
+    int   phase_multiplier = 1;
 
     if ( IsOdd(savitzy_golay_window_size) == false )
         savitzy_golay_window_size++;
@@ -87,6 +88,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     // perform the main alignment loop until we reach a max shift less than wanted, or max iterations
     float wanted_inner_radius_for_peak_search;
     for ( iteration_counter = 0; iteration_counter <= max_iterations; iteration_counter++ ) {
+
         wanted_inner_radius_for_peak_search = (iteration_counter == 0) ? inner_radius_for_peak_search : 0.0f;
         batch.SetMinSearchExtension(myroundint(wanted_inner_radius_for_peak_search));
         std::cerr << "min_pix " << batch.min_pixel_radius_x_y( ) << std::endl;
@@ -149,7 +151,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                 // FIXME
                 sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
             else
-                input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current, correlation_map);
+                input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current, correlation_map, phase_multiplier);
 
             correlation_map.BackwardFFTBatched(1);
 
@@ -178,8 +180,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             profile_timing_refinement_method.lap("find peak");
             // update the shifts..
 
-            current_x_shifts[image_counter] = my_peak.x;
-            current_y_shifts[image_counter] = my_peak.y;
+            current_x_shifts[image_counter] = my_peak.x / (1 + phase_multiplier);
+            current_y_shifts[image_counter] = my_peak.y / (1 + phase_multiplier);
         }
 
         // smooth the shifts

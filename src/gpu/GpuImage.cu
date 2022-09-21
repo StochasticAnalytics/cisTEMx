@@ -16,7 +16,9 @@
 // #define USE_BLOCK_REDUCE
 #define USE_FP16_FOR_WHITENPS
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values, const cufftComplex* __restrict__ img_complex_values, cufftComplex* result_values, int4 dims);
+// __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values, const cufftComplex* __restrict__ img_complex_values, cufftComplex* result_values, int4 dims);
+// __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values, const cufftComplex* __restrict__ img_complex_values, cufftComplex* result_values, int4 dims, int phase_multiplier);
+
 __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_output, const int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufftReal* phi, cufftReal* theta,
                                    int4 dims, float c_psi, float c_phi, float c_theta);
@@ -478,7 +480,60 @@ bool GpuImage::HasSameDimensionsAs(GpuImage& other_image) {
         return false;
 }
 
-void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image) {
+__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
+                                                        const cufftComplex* __restrict__ img_complex_values,
+                                                        cufftComplex* result_values,
+                                                        int4          dims) {
+    int x = physical_X( );
+    if ( x > dims.w / 2 )
+        return;
+    int y = physical_Y( );
+    if ( y > dims.y )
+        return;
+
+    int address = x + (dims.w / 2) * y;
+    int stride  = (dims.w / 2) * dims.y;
+
+    const Complex img_val = (Complex)img_complex_values[address];
+
+    for ( int k = 0; k < dims.z; k++ ) {
+        result_values[address] = (cufftComplex)ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
+        address += stride;
+    }
+}
+
+__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
+                                                        const cufftComplex* __restrict__ img_complex_values,
+                                                        cufftComplex* result_values,
+                                                        int4          dims,
+                                                        const int     phase_multiplier) {
+    int x = physical_X( );
+    if ( x > dims.w / 2 )
+        return;
+    int y = physical_Y( );
+    if ( y > dims.y )
+        return;
+
+    int address = x + (dims.w / 2) * y;
+    int stride  = (dims.w / 2) * dims.y;
+
+    constexpr float epsilon = 1e-1f;
+    const Complex   img_val = (Complex)img_complex_values[address];
+    Complex         C;
+    Complex         M;
+
+    for ( int k = 0; k < dims.z; k++ ) {
+        C = ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
+        M = ComplexScale(C, 1.0f / (ComplexModulus(C) + epsilon));
+        for ( int i = 0; i < phase_multiplier; i++ ) {
+            C = ComplexMul(C, M);
+        }
+        result_values[address] = (cufftComplex)C;
+        address += stride;
+    }
+}
+
+void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image, int phase_multiplier) {
     // FIXME when adding real space complex images
     MyDebugAssertFalse(is_in_real_space, "Image is in real space");
     MyDebugAssertFalse(other_image.is_in_real_space, "Other image is in real space");
@@ -492,13 +547,21 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
 
     // Multiplier to avoid conditionals in the kernel, if size z == 1 image z is zero resulting in a broadcast of the 2d through the batch.
     // FIXME: somehow this doesn't work.
-
-    precheck;
     ReturnLaunchParameters(dims, false);
 
     // Override and loop over z in kernel allowing re-use of the image value if broadcast.
     gridDims.z = 1;
-    MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
+    ReturnLaunchParameters(dims, false);
+
+    // Override and loop over z in kernel allowing re-use of the image value if broadcast.
+    gridDims.z = 1;
+    precheck;
+    if ( phase_multiplier > 0 ) {
+        MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims, phase_multiplier);
+    }
+    else {
+        MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
+    }
     postcheck;
 }
 
@@ -1115,28 +1178,6 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
     //	return (float)(*dotProd * 2.0f);
     //	return (float)(returnValue * 2.0f);
-}
-
-__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
-                                                        const cufftComplex* __restrict__ img_complex_values,
-                                                        cufftComplex* result_values,
-                                                        int4          dims) {
-    int x = physical_X( );
-    if ( x > dims.w / 2 )
-        return;
-    int y = physical_Y( );
-    if ( y > dims.y )
-        return;
-
-    int address = x + (dims.w / 2) * y;
-    int stride  = (dims.w / 2) * dims.y;
-
-    const Complex img_val = (Complex)img_complex_values[address];
-
-    for ( int k = 0; k < dims.z; k++ ) {
-        result_values[address] = (cufftComplex)ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
-        address += stride;
-    }
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {

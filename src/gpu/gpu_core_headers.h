@@ -80,7 +80,7 @@ constexpr int ntds_y_WhitenPS = 32;
 typedef float2                            Complex;
 static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
 static __device__ __host__ inline void    ComplexScale(Complex*, float);
-static __device__ __host__ inline Complex ComplexScale(Complex&, float&);
+static __device__ __host__ inline Complex ComplexScale(Complex&, float);
 static __device__ __host__ inline Complex ComplexMul(Complex, Complex);
 static __device__ __host__ inline Complex ComplexConjMul(Complex, Complex);
 static __device__ __host__ inline Complex ComplexConjMulAndScale(Complex a, Complex b, float s);
@@ -97,8 +97,16 @@ static __device__ __host__ inline Complex ComplexAdd(Complex a, Complex b) {
     return c;
 }
 
+// // Complex scale
+// static __device__ __host__ inline Complex ComplexScale(Complex& a, float& s) {
+//     Complex c;
+//     c.x = s * a.x;
+//     c.y = s * a.y;
+//     return c;
+// }
+
 // Complex scale
-static __device__ __host__ inline Complex ComplexScale(Complex& a, float& s) {
+static __device__ __host__ inline Complex ComplexScale(Complex& a, float s) {
     Complex c;
     c.x = s * a.x;
     c.y = s * a.y;

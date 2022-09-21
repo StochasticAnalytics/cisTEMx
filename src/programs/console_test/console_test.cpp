@@ -1560,7 +1560,6 @@ void MyTestApp::TestFilterFunctions( ) {
     test_image.QuickAndDirtyReadSlice(hiv_images_80x80x10_filename.ToStdString( ), 1);
     test_image.ForwardFFT( );
     test_image.ApplyBFactor(1500);
-    test_image.QuickAndDirtyWriteSlice("/tmp/test_apply_bfactor.mrc", 1);
     test_image.BackwardFFT( );
 
     if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.027244) == false )
@@ -1586,8 +1585,6 @@ void MyTestApp::TestFilterFunctions( ) {
     d_test_image.ApplyBFactor(1500, 0.f, 0.f);
     d_test_image.BackwardFFT( );
     d_test_image.CopyDeviceToHostAndSynchronize( );
-
-    test_image.QuickAndDirtyWriteSlice("/tmp/d_test_apply_bfactor.mrc", 1);
 
     if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.027244) == false ) {
         FailTest;

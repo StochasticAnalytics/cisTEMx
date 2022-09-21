@@ -131,10 +131,10 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             // compute the cross correlation function and find the peak
             // TODO: just replace with batched backfft as in euler search gpu
             profile_timing_refinement_method.start("compute cross correlation");
-            // if ( use_running_average )
-            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
-            // else
-            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
+            if ( use_running_average )
+                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
+            else
+                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
 
             profile_timing_refinement_method.lap("compute cross correlation");
             profile_timing_refinement_method.start("find peak");

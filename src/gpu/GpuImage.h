@@ -61,8 +61,9 @@ class GpuImage {
 
     // These arrays can be used to pass pointers for an image stack into a kernel. Initialize each type empty and explicitly
     // since the GpuImage class itself is not tempalted. TODO: use tempalte parameters when re-writing
-    DevicePointerArray<float>  ptr_array_32f;
     DevicePointerArray<__half> ptr_array_16f;
+    DevicePointerArray<float>  ptr_array_32f;
+    DevicePointerArray<float2> ptr_array_32fc;
 
     float*               real_values; // !<  Real array to hold values for REAL images.
     std::complex<float>* complex_values; // !<  Complex array to hold values for COMP images.

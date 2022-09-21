@@ -688,7 +688,9 @@ bool UnBlurApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
         shared_ptr->start("calc dose filter");
-        my_electron_dose->CalculateDoseFilterAs1DArray(image_stack.data( ), sum_image.complex_values_gpu, pre_exposure_amount, exposure_per_frame);
+        // FIXME: restore power should be optional and needs a test in consoltest
+        bool temp_fixme_restore_power = false;
+        my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, float2*>(image_stack, sum_image.complex_values_gpu, pre_exposure_amount, exposure_per_frame, temp_fixme_restore_power);
         shared_ptr->lap("calc dose filter");
 
         shared_ptr->start("write out frames");
@@ -776,7 +778,7 @@ bool UnBlurApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
     // FIXME: do I need the new here?
-    Image* output_sum = new Image( );
+    Image* output_sum = new Image[1];
     *output_sum       = sum_image.CopyDeviceToNewHost(true, true, true);
 #else
     Image* output_sum = &sum_image;
@@ -941,6 +943,7 @@ bool UnBlurApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
     // Just a non-owning  pointer on the cpu both
+    output_sum->Deallocate( );
     delete[] output_sum;
 #endif
 

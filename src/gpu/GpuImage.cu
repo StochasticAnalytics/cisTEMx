@@ -2406,7 +2406,7 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
     else {
         output_image.ptr_array_32f.resize(input_stack.size( ));
         for ( int iPtr = 0; iPtr < input_stack.size( ); iPtr++ ) {
-            output_image.ptr_array_32f.SetPointer((float*)input_stack[iPtr].real_values_16f, iPtr);
+            output_image.ptr_array_32f.SetPointer((float*)input_stack[iPtr].real_values_gpu, iPtr);
         }
 
         AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(output_image.ptr_array_32f.ptr_array,
@@ -2419,8 +2419,8 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
     postcheck;
 }
 
-template void GpuImage::AddImageStack<float>(std::vector<GpuImage>& input_stack, GpuImage& output_image);
-template void GpuImage::AddImageStack<__half>(std::vector<GpuImage>& input_stack, GpuImage& output_image);
+template void GpuImage::AddImageStack<float>(std::vector<GpuImage>&, GpuImage&);
+template void GpuImage::AddImageStack<__half>(std::vector<GpuImage>&, GpuImage&);
 
 void GpuImage::AddImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array

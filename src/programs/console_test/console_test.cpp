@@ -739,9 +739,9 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
     // re-using a pre-calculated filter (in the event it is even re-used!)
     // Right now, using it in unblur, we apply it to a stack of images. The last image in the stack will
     // be for the results (i.e. sum_image in unblur)
-    constexpr int n_images = 1;
-    GpuImage*     d_test_image_small_even;
-    cudaErr(cudaMallocManaged(&d_test_image_small_even, n_images * sizeof(GpuImage)));
+    constexpr int         n_images = 1;
+    std::vector<GpuImage> d_test_image_small_even(n_images);
+
     GpuImage d_filtered_output;
 
     for ( int i = 0; i < n_images; i++ ) {
@@ -765,10 +765,10 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
             d_filtered_output.SetToConstant(3.0f);
             // Note: two differences to the cpu call a) we need to specifically NOT restore the noise power, and we pass the total exposure
             // as pre_exposure, and 0 as the exposure per frame, this way all three images should have the same dose filter applied.
-            constexpr float pre_exposure       = 30.f;
-            constexpr float exposure_per_frame = 0.f;
+            float pre_exposure       = 30.f;
+            float exposure_per_frame = 0.f;
 
-            my_electron_dose->CalculateDoseFilterAs1DArray<GpuImage, float2>(d_test_image_small_even, d_filtered_output.complex_values_gpu, pre_exposure, exposure_per_frame, n_images, false);
+            my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, float2*>(d_test_image_small_even, d_filtered_output.complex_values_gpu, pre_exposure, exposure_per_frame, false);
 
             for ( int i = 0; i < n_images; i++ ) {
                 int per_image_gt_counter = ground_truth_counter;
@@ -794,7 +794,6 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
             delete my_electron_dose;
         }
     }
-    cudaErr(cudaFree(d_test_image_small_even));
     EndTest( );
 }
 

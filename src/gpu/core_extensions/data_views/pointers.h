@@ -29,12 +29,14 @@ class DevicePointerArray {
     }
 
     inline void Deallocate( ) {
-        // Make sure any non-owned data are left alone.
-        for ( int i = 0; i < _size; i++ ) {
-            ptr_array[i] = nullptr;
+        if ( _size > 0 ) {
+            // Make sure any non-owned data are left alone.
+            for ( int i = 0; i < _size; i++ ) {
+                ptr_array[i] = nullptr;
+            }
+            cudaErr(cudaFree(ptr_array));
         }
-        cudaErr(cudaFree(ptr_array));
-        _size = 0;
+
         return;
     }
 

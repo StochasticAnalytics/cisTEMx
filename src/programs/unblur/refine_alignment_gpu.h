@@ -46,7 +46,16 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         savitzy_golay_window_size = 5;
 
     GpuImage sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+    GpuImage correlation_map(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
     GpuImage sum_of_images_minus_current(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+
+    BatchedSearch batch;
+    int           batch_size  = 1;
+    bool          test_mirror = false;
+    int           max_pix_x   = myroundint(outer_radius_for_peak_search / pixel_size);
+    std::cerr << "min_pix " << batch.min_pixel_radius_x_y( ) << std::endl;
+
+    batch.Init(sum_of_images, number_of_images, batch_size, test_mirror, max_pix_x, max_pix_x);
 
     std::vector<GpuImage> running_average_stack;
     Peak                  my_peak;
@@ -79,6 +88,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     float wanted_inner_radius_for_peak_search;
     for ( iteration_counter = 0; iteration_counter <= max_iterations; iteration_counter++ ) {
         wanted_inner_radius_for_peak_search = (iteration_counter == 0) ? inner_radius_for_peak_search : 0.0f;
+        batch.SetMinSearchExtension(myroundint(wanted_inner_radius_for_peak_search));
+        std::cerr << "min_pix " << batch.min_pixel_radius_x_y( ) << std::endl;
 
         //	wxPrintf("Starting iteration number %li\n\n", iteration_counter);
         max_shift = -std::numeric_limits<float>::max( );
@@ -130,26 +141,40 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             profile_timing_refinement_method.lap("prepare sum");
             // compute the cross correlation function and find the peak
             // TODO: just replace with batched backfft as in euler search gpu
+            // NOTE: the output XCF is stored in the fp16 buffer of the calling image
+            // Do not swap the conjugated image
+            correlation_map.is_in_real_space = false;
             profile_timing_refinement_method.start("compute cross correlation");
             if ( use_running_average )
+                // FIXME
                 sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
             else
-                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
+                input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current, correlation_map);
+
+            correlation_map.BackwardFFTBatched(1);
+
+            // FIXME: shouldn't have to do this here
+            correlation_map.SwapRealSpaceQuadrants( );
+            correlation_map.is_in_real_space         = true;
+            correlation_map.object_is_centred_in_box = true;
+
+            // if ( use_running_average )
+            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
+            // else
+            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
 
             profile_timing_refinement_method.lap("compute cross correlation");
             profile_timing_refinement_method.start("find peak");
-#ifdef ENABLEGPU
-            my_peak.x     = 0.0f;
-            my_peak.y     = 0.0f;
-            my_peak.value = 0.0f;
-            // TODO: Since our peak area should be quite small, create a GPU method for cudaMemcpy2Dasync
-            // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1ge529b926e8fb574c2666a9a1d58b0dc1
-            // Ideally, we would only write out that size from the backFFT through a callback or FastFFT - optimizations for later
 
-#else
+            // sum_of_images_minus_current.CopyFP16buffertoFP32(false);
+            // cudaErr(cudaDeviceSynchronize( ));
+            // sum_of_images_minus_current.QuickAndDirtyWriteSlice("/tmp/xcf.mrc", 1);
+            // exit(0);
+
             // For testing on the GPU this is just doing a copy which is of course a bit of a waste
-            my_peak = sum_of_images_minus_current.FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
-#endif
+            // my_peak = sum_of_images_minus_current.FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
+
+            my_peak = correlation_map.FindPeakAtCenterFast2d(batch);
             profile_timing_refinement_method.lap("find peak");
             // update the shifts..
 

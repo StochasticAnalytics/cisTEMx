@@ -16,9 +16,6 @@
 // #define USE_BLOCK_REDUCE
 #define USE_FP16_FOR_WHITENPS
 
-__global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
-__global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
-
 __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values, const cufftComplex* __restrict__ img_complex_values, cufftComplex* result_values, int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_output, const int4 dims);
 __global__ void MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufftReal* phi, cufftReal* theta,
@@ -1643,7 +1640,7 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
        applies some logic, and then sums rings, then deals with sums.
        This is unecessary though.
        Condition 1: out of resolution limits = 0.f, same for array and ring
-       Condition 2: if ab* is identically zero we don't add to any shells, 
+       Condition 2: if ab* is identically zero we don't add to any shells,
        but in practice this can only happen if a == 0.f || b == 0.f, so we can just multiply set a = 0 if b = 0 or vice versa.
        Condition 3: if sum(bb*) in a ring is identically zero, we don't add to the final sums. This is the "perfect" projection image, so it 
        should only be zero in a shell if we set it that way with a mask, and will be zero everywhere in that shell. (There could be an
@@ -1724,6 +1721,7 @@ float GpuImage::GetWeightedCorrelationWithImage(GpuImage& projection_image, GpuI
 
 void GpuImage::CalculateCrossCorrelationImageWith(GpuImage* other_image) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image memory not allocated");
     MyDebugAssertTrue(is_in_real_space == other_image->is_in_real_space, "Images are in different spaces");
     MyDebugAssertTrue(HasSameDimensionsAs(other_image) == true, "Images are different sizes");
 
@@ -1737,6 +1735,7 @@ void GpuImage::CalculateCrossCorrelationImageWith(GpuImage* other_image) {
         other_image->ForwardFFT( );
     }
 
+    // TODO: to get a centered XCF we only want to swap one of these, check euler_search_gpu for reference
     if ( object_is_centred_in_box == true ) {
         object_is_centred_in_box = false;
         SwapRealSpaceQuadrants( );
@@ -1826,6 +1825,7 @@ __global__ void FindPeakAtOriginFast2DKernel(const T* __restrict__ real_values,
 template <typename T>
 __global__ void FindPeakAtCenterFast2DKernel(const T* __restrict__ real_values,
                                              IntegerPeak* device_peak,
+                                             const int    min_pix_x_y,
                                              const int    max_pix_x,
                                              const int    max_pix_y,
                                              const int    NX,
@@ -1851,20 +1851,25 @@ __global__ void FindPeakAtCenterFast2DKernel(const T* __restrict__ real_values,
         x -= NX / 2;
         y -= NY / 2;
 
-        if ( x < max_pix_x && x > -max_pix_x && y < max_pix_y && y > -max_pix_y ) {
+        // I don't like these logicals, it would be better to define a mask that can be applied during conj. multiplications
+        if ( (x > min_pix_x_y || x < -min_pix_x_y) && (y > min_pix_x_y || y < -min_pix_x_y) ) {
 
-            if constexpr ( std::is_same<T, __half>::value ) {
-                tmp_max_val = gMax(__half2float(real_values[physical_linear_idx]), max_val);
-            }
-            else {
-                tmp_max_val = gMax(float(real_values[physical_linear_idx]), max_val);
-            }
-            if ( tmp_max_val > max_val ) {
-                max_val    = tmp_max_val;
-                my_max_idx = physical_linear_idx;
+            if ( x < max_pix_x && x > -max_pix_x && y < max_pix_y && y > -max_pix_y ) {
+
+                if constexpr ( std::is_same<T, __half>::value ) {
+                    tmp_max_val = gMax(__half2float(real_values[physical_linear_idx]), max_val);
+                }
+                else {
+                    tmp_max_val = gMax(float(real_values[physical_linear_idx]), max_val);
+                }
+                if ( tmp_max_val > max_val ) {
+                    max_val    = tmp_max_val;
+                    my_max_idx = physical_linear_idx;
+                }
             }
         }
     }
+
     __syncthreads( );
 
     blockReduceMax(max_val, my_max_idx);
@@ -1889,8 +1894,9 @@ Peak GpuImage::FindPeakAtCenterFast2d(const BatchedSearch& batch, bool load_half
 
     Peak my_peak;
 
-    int max_pix_x = batch.max_pixel_radius_x( );
-    int max_pix_y = batch.max_pixel_radius_y( );
+    int max_pix_x   = batch.max_pixel_radius_x( );
+    int max_pix_y   = batch.max_pixel_radius_y( );
+    int min_pix_x_y = batch.min_pixel_radius_x_y( );
 
     const int shrink_max_area = 4;
     if ( max_pix_x > dims.x / 2 - shrink_max_area )
@@ -1906,12 +1912,12 @@ Peak GpuImage::FindPeakAtCenterFast2d(const BatchedSearch& batch, bool load_half
 
     if ( load_half_precision ) {
         precheck;
-        FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, batch._d_peak_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
+        FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, batch._d_peak_buffer, min_pix_x_y, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
         postcheck;
     }
     else {
         precheck;
-        FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, batch._d_peak_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
+        FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_gpu, batch._d_peak_buffer, min_pix_x_y, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
         postcheck;
     }
 
@@ -2938,27 +2944,36 @@ void GpuImage::BackwardFFT( ) {
     npp_ROI = npp_ROI_real_space;
 }
 
-template <typename T>
-void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision) {
+template <typename LoadType, typename StoreType>
+void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool load_half_precision) {
     MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image is already in real space");
-    MyDebugAssertTrue(load_half_precision ? is_allocated_16f_buffer : true, "FP16 memory is not allocated, but is requested.");
+
+    if constexpr ( std::is_same<StoreType, __half2>::value ) {
+        // We always store the output in the fp16 buffer,
+        BufferInit(b_16f);
+    }
+    else {
+        // We would do something else here if it was enabled, but it is not.
+        // NOTE: I guess
+        static_assert(std::is_same<StoreType, __half2>::value, "GpuImage::BackwardFFTAfterComplexConjMul: StoreType must be __half2");
+    }
 
     SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f, (void*)real_values_gpu, (void*)complex_values_gpu);
 
     if ( ! is_set_complexConjMulLoad ) {
-        cufftCallbackStoreC              h_complexConjMulLoad;
-        cufftCallbackStoreR              h_mipCCGStore;
-        CB_complexConjMulLoad_params<T>* d_params;
-        CB_complexConjMulLoad_params<T>  h_params;
+        cufftCallbackStoreC                     h_complexConjMulLoad;
+        cufftCallbackStoreR                     h_mipCCGStore;
+        CB_complexConjMulLoad_params<LoadType>* d_params;
+        CB_complexConjMulLoad_params<LoadType>  h_params;
         h_params.scale  = ft_normalization_factor * ft_normalization_factor;
-        h_params.target = (T*)image_to_multiply;
+        h_params.target = (LoadType*)image_to_multiply;
 #ifdef USE_ASYNC_MALLOC_FREE
-        cudaErr(cudaMallocAsync((void**)&d_params, sizeof(CB_complexConjMulLoad_params<T>), cudaStreamPerThread));
+        cudaErr(cudaMallocAsync((void**)&d_params, sizeof(CB_complexConjMulLoad_params<LoadType>), cudaStreamPerThread));
 #else
-        cudaErr(cudaMalloc((void**)&d_params, sizeof(CB_complexConjMulLoad_params<T>)));
+        cudaErr(cudaMalloc((void**)&d_params, sizeof(CB_complexConjMulLoad_params<LoadType>)));
 #endif
-        cudaErr(cudaMemcpyAsync(d_params, &h_params, sizeof(CB_complexConjMulLoad_params<T>), cudaMemcpyHostToDevice, cudaStreamPerThread));
+        cudaErr(cudaMemcpyAsync(d_params, &h_params, sizeof(CB_complexConjMulLoad_params<LoadType>), cudaMemcpyHostToDevice, cudaStreamPerThread));
         if ( load_half_precision ) {
             cudaErr(cudaMemcpyFromSymbol(&h_complexConjMulLoad, d_complexConjMulLoad_16f, sizeof(h_complexConjMulLoad)));
         }
@@ -2967,7 +2982,6 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
         }
 
         cudaErr(cudaMemcpyFromSymbol(&h_mipCCGStore, d_mipCCGAndStorePtr, sizeof(h_mipCCGStore)));
-        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_complexConjMulLoad, CUFFT_CB_LD_COMPLEX, (void**)&d_params));
         //		void** fake_params;real_values_16f
         cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
@@ -2988,8 +3002,8 @@ void GpuImage::BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_ha
     npp_ROI = npp_ROI_real_space;
 }
 
-template void GpuImage::BackwardFFTAfterComplexConjMul(__half2* image_to_multiply, bool load_half_precision);
-template void GpuImage::BackwardFFTAfterComplexConjMul(cufftComplex* image_to_multiply, bool load_half_precision);
+template void GpuImage::BackwardFFTAfterComplexConjMul<__half2, __half2>(__half2* image_to_multiply, bool load_half_precision);
+template void GpuImage::BackwardFFTAfterComplexConjMul<cufftComplex, __half2>(cufftComplex* image_to_multiply, bool load_half_precision);
 
 void GpuImage::Record( ) {
     cudaErr(cudaEventRecord(npp_calc_event, cudaStreamPerThread));
@@ -3326,6 +3340,10 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(other_image->is_in_memory_gpu, "Other image Memory not allocated");
 
+    if ( ! is_in_real_space ) {
+        MyDebugAssertTrue(false, "Call ClipIntoFourierSpace");
+    };
+
     int3 wanted_coordinate_of_box_center = make_int3(wanted_coordinate_of_box_center_x,
                                                      wanted_coordinate_of_box_center_y,
                                                      wanted_coordinate_of_box_center_z);
@@ -3620,31 +3638,7 @@ void GpuImage::Deallocate( ) {
     }
 }
 
-void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
-    // FIXME when adding real space complex images.
-    // FIXME should probably be called COPYorConvert
-    MyDebugAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
-
-    BufferInit(b_16f);
-
-    precheck;
-    if ( is_in_real_space ) {
-        ReturnLaunchParameters(dims, true);
-        ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_fp16, this->dims);
-    }
-    else {
-        ReturnLaunchParameters(dims, false);
-        ConvertToHalfPrecisionKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_fp16, this->dims, this->physical_upper_bound_complex);
-    }
-    postcheck;
-
-    if ( deallocate_single_precision ) {
-        cudaErr(cudaFree(real_values_gpu));
-        is_in_memory_gpu = false;
-    }
-}
-
-__global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
+__global__ void CopyFP32toFP16bufferKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,
                             blockIdx.z);
@@ -3657,7 +3651,7 @@ __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __h
     }
 }
 
-__global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
+__global__ void CopyFP32toFP16bufferKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,
                             blockIdx.z);
@@ -3667,6 +3661,85 @@ __global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_va
         int address = d_ReturnFourier1DAddressFromPhysicalCoord(coords, physical_upper_bound_complex);
 
         complex_16f_values[address] = __float22half2_rn(complex_32f_values[address]);
+    }
+}
+
+__global__ void CopyFP16buffertoFP32KernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
+    int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
+                            blockIdx.y * blockDim.y + threadIdx.y,
+                            blockIdx.z);
+
+    if ( coords.x < dims.w && coords.y < dims.y && coords.z < dims.z ) {
+
+        int address              = d_ReturnReal1DAddressFromPhysicalCoord(coords, dims);
+        real_32f_values[address] = __half2float(real_16f_values[address]);
+    }
+}
+
+__global__ void CopyFP16buffertoFP32KernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
+    int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
+                            blockIdx.y * blockDim.y + threadIdx.y,
+                            blockIdx.z);
+
+    if ( coords.x < dims.w / 2 && coords.y < dims.y && coords.z < dims.z ) {
+
+        int address                 = d_ReturnFourier1DAddressFromPhysicalCoord(coords, physical_upper_bound_complex);
+        complex_32f_values[address] = __half22float2(complex_16f_values[address]);
+    }
+}
+
+void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
+    // FIXME when adding real space complex images.
+    // FIXME should probably be called COPYorConvert
+    MyDebugAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
+
+    BufferInit(b_16f);
+
+    precheck;
+    if ( is_in_real_space ) {
+        ReturnLaunchParameters(dims, true);
+        CopyFP32toFP16bufferKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_fp16, this->dims);
+    }
+    else {
+        ReturnLaunchParameters(dims, false);
+        CopyFP32toFP16bufferKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_fp16, this->dims, this->physical_upper_bound_complex);
+    }
+    postcheck;
+
+    if ( deallocate_single_precision ) {
+        cudaErr(cudaFree(real_values_gpu));
+        is_in_memory_gpu = false;
+    }
+}
+
+void GpuImage::CopyFP16buffertoFP32(bool deallocate_half_precision) {
+    // FIXME when adding real space complex images.
+    // FIXME should probably be called COPYorConvert
+    MyDebugAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
+    MyDebugAssertTrue(is_allocated_16f_buffer, "Image is in not on the GPU!");
+
+    BufferInit(b_16f);
+
+    precheck;
+    if ( is_in_real_space ) {
+        ReturnLaunchParameters(dims, true);
+        CopyFP16buffertoFP32KernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_fp16, this->dims);
+    }
+    else {
+        ReturnLaunchParameters(dims, false);
+        CopyFP16buffertoFP32KernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_fp16, this->dims, this->physical_upper_bound_complex);
+    }
+    postcheck;
+
+    if ( deallocate_half_precision ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+        cudaErr(cudaFreeAsync(real_values_16f, cudaStreamPerThread));
+#else
+        cudaErr(cudaFree(real_values_16f));
+#endif
+        is_allocated_16f_buffer = false;
+        real_values_16f         = nullptr;
+        complex_values_16f      = nullptr;
     }
 }
 

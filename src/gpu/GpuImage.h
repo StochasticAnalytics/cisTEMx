@@ -225,8 +225,8 @@ class GpuImage {
     void BackwardFFTBatched(int wanted_batch_size = 0); // if zero, defaults to dims.z
 
     void ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale);
-    template <typename T>
-    void BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision);
+    template <typename LoadType, typename StoreType = __half2>
+    void BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool load_half_precision);
 
     void Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value, bool zero_central_pixel = false);
     void Consume(GpuImage* other_image);
@@ -237,9 +237,11 @@ class GpuImage {
     float ReturnSumOfSquares( );
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
-    void  ConvertToHalfPrecision(bool deallocate_single_precision = true);
-    void  AllocateTmpVarsAndEvents( );
-    bool  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
+    void  CopyFP32toFP16buffer(bool deallocate_single_precision = true);
+    void  CopyFP16buffertoFP32(bool deallocate_half_precision = true);
+
+    void AllocateTmpVarsAndEvents( );
+    bool Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
 
     bool Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { return Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };
 

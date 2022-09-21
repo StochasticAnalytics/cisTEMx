@@ -1933,7 +1933,7 @@ void Image::RotateFourier2DGenerateIndex(Kernel2D**& kernel_index, float psi_max
     for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
         kernel_index[psi_i] =
                 new Kernel2D[real_memory_allocated / 2]; // each i-th pointer is now pointing to dynamic array (size
-                // number_of_positions) of actual float values
+        // number_of_positions) of actual float values
     }
 
     for ( psi_i = 0; psi_i < number_of_psi_positions; psi_i++ ) {
@@ -11925,8 +11925,8 @@ float Image::ReturnBeamTiltSignificanceScore(Image calculated_beam_tilt) {
     return 0.5f * PIf * powf((0.5f - binarized_score) * mask_radius_local, 2);
 }
 
-__global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
-__global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
+__global__ void CopyFP32toFP16bufferKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex);
+__global__ void CopyFP32toFP16bufferKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims);
 
 __global__ void MultiplyPixelWiseComplexConjugateKernel(cufftComplex* ref_complex_values, cufftComplex* img_complex_values, int4 dims, int3 physical_upper_bound_complex);
 __global__ void MipPixelWiseKernel(cufftReal* mip, const cufftReal* correlation_output, const int4 dims);
@@ -14213,7 +14213,7 @@ void GpuImage::Deallocate( ) {
     }
 }
 
-void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
+void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
 
     // FIXME when adding real space complex images.
     // FIXME should probably be called COPYorConvert
@@ -14223,11 +14223,11 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
 
     precheck if ( is_in_real_space ) {
         ReturnLaunchParamters(dims, true);
-        ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_16f, this->dims);
+        CopyFP32toFP16bufferKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_16f, this->dims);
     }
     else {
         ReturnLaunchParamters(dims, false);
-        ConvertToHalfPrecisionKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_16f, this->dims, this->physical_upper_bound_complex);
+        CopyFP32toFP16bufferKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_16f, this->dims, this->physical_upper_bound_complex);
     }
     postcheck
 
@@ -14237,7 +14237,7 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
     }
 }
 
-__global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
+__global__ void CopyFP32toFP16bufferKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
 
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,
@@ -14251,7 +14251,7 @@ __global__ void ConvertToHalfPrecisionKernelReal(cufftReal* real_32f_values, __h
     }
 }
 
-__global__ void ConvertToHalfPrecisionKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
+__global__ void CopyFP32toFP16bufferKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
 
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,

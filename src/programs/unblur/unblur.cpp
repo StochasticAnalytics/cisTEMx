@@ -535,6 +535,12 @@ bool UnBlurApp::DoCalculation( ) {
                 image_stack[position_in_stack - 1].Resize(myroundint(image_stack[position_in_stack - 1].logical_x_dimension / output_binning_factor), myroundint(image_stack[position_in_stack - 1].logical_y_dimension / output_binning_factor), 1, zero_central_pixel);
                 profile_timing.lap("resize");
             }
+
+            // profile_timing.start("swap quadrands");
+            // image_stack[position_in_stack - 1].SwapRealSpaceQuadrants( );
+            // profile_timing.lap("swap quadrands");
+            // // The swapping is done to center the output XCF, we don't want to trip any debug asserts, so override
+            // image_stack[position_in_stack - 1].object_is_centred_in_box = true;
 #else
             // FT
             profile_timing.start("forward FFT");
@@ -611,7 +617,12 @@ bool UnBlurApp::DoCalculation( ) {
 #pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
         for ( image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
             image_stack.at(image_counter).Allocate(unbinned_image_stack[image_counter].logical_x_dimension / pre_binning_factor, unbinned_image_stack[image_counter].logical_y_dimension / pre_binning_factor, 1, false);
-            //image_stack[image_counter].QuickAndDirtyWriteSlice("binned.mrc", image_counter + 1);
+// FIXME: add alias for ClipInto so it handles fourier space properly
+#ifdef ENABLEGPU
+            unbinned_image_stack[image_counter].ClipIntoFourierSpace(&image_stack[image_counter], 0.f, true);
+#else
+            unbinned_image_stack[image_counter].ClipInto(&image_stack[image_counter]);
+#endif
         }
         profile_timing.lap("make prebinned stack");
         // for the binned images, we don't want to insist on a super low termination factor.

@@ -927,10 +927,13 @@ bool UnBlurApp::DoCalculation( ) {
     delete[] x_shifts;
     delete[] y_shifts;
 
+#ifndef ENABLEGPU
+    // The dose filters are applied internally in the GPU method kernels
     if ( should_dose_filter == true ) {
         delete my_electron_dose;
         delete[] dose_filter_sum_of_squares;
     }
+#endif
     profile_timing.lap("cleanup");
     unblur_timing.print_times( );
     profile_timing.print_times( );

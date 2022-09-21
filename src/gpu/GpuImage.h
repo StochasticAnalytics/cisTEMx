@@ -11,6 +11,7 @@
 #include "../constants/constants.h"
 #include "TensorManager.h"
 #include "../programs/refine3d/batched_search.h"
+#include "core_extensions/data_views/pointers.h"
 
 class BatchedSearch;
 
@@ -57,6 +58,11 @@ class GpuImage {
     int   number_of_real_space_pixels; // !<	Total number of pixels in real space
     float ft_normalization_factor; // !<	Normalization factor for the Fourier transform (1/sqrt(N), where N is the number of pixels in real space)
     // Arrays to hold voxel values
+
+    // These arrays can be used to pass pointers for an image stack into a kernel. Initialize each type empty and explicitly
+    // since the GpuImage class itself is not tempalted. TODO: use tempalte parameters when re-writing
+    DevicePointerArray<float>  ptr_array_32f;
+    DevicePointerArray<__half> ptr_array_16f;
 
     float*               real_values; // !<  Real array to hold values for REAL images.
     std::complex<float>* complex_values; // !<  Complex array to hold values for COMP images.
@@ -343,6 +349,8 @@ class GpuImage {
     };
 
     void CopyFrom(GpuImage* other_image);
+    template <typename StorageType>
+    void CopyDataFrom(GpuImage& other_image);
     bool InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);

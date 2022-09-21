@@ -118,8 +118,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
             std::cerr << "prepare sum " << image_counter << std::endl;
-            cudaErr(cudaMemcpyAsync(sum_of_images_minus_current.real_values_gpu, sum_of_images.real_values_gpu, sum_of_images.real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
             sum_of_images_minus_current.is_in_real_space = sum_of_images.is_in_real_space;
+            sum_of_images_minus_current.CopyDataFrom<float>(sum_of_images);
             if ( use_running_average )
                 sum_of_images_minus_current.SubtractImage(&running_average_stack[image_counter]);
             else

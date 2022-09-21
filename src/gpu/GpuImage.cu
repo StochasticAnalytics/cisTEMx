@@ -385,6 +385,31 @@ void GpuImage::CopyFrom(GpuImage* other_image) {
     *this = other_image;
 }
 
+/**
+ * @brief Typically used to restore a fixed image in an iterative algo. 
+ * TODO: Locking mechanism and safety checks. It is assume you know you are not changing size, or modifying allocations etc.
+*/
+template <typename StorageType>
+void GpuImage::CopyDataFrom(GpuImage& other_image) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(other_image.is_in_memory_gpu, "Other image Memory not allocated");
+    MyDebugAssertTrue(dims.x == other_image.dims.x && dims.y == other_image.dims.y && dims.z == other_image.dims.z, "Dimensions do not match");
+    MyDebugAssertTrue(real_memory_allocated == other_image.real_memory_allocated, "Memory allocated does not match");
+
+    if constexpr ( std::is_same<StorageType, float>::value ) {
+        cudaErr(cudaMemcpyAsync(real_values_gpu, other_image.real_values_gpu, sizeof(float) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+    }
+    else if constexpr ( std::is_same<StorageType, __half>::value ) {
+        cudaErr(cudaMemcpyAsync(real_values_16f, other_image.real_values_16f, sizeof(__half) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+    }
+    else {
+        MyDebugAssertTrue(false, "Invalid StorageType");
+    }
+}
+
+template void GpuImage::CopyDataFrom<float>(GpuImage& other_image);
+template void GpuImage::CopyDataFrom<__half>(GpuImage& other_image);
+
 bool GpuImage::InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values) {
 
     bool gpu_memory_was_changed = false;
@@ -2364,14 +2389,14 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
     constexpr bool use_real_space_grid_for_any_type = true;
     this->ReturnLaunchParameters(this->dims, use_real_space_grid_for_any_type);
 
-    void** stack_ptrs;
     precheck;
     if constexpr ( std::is_same<StorageType, __half>::value ) {
-        cudaErr(cudaMallocManaged(&stack_ptrs, sizeof(__half*) * (input_stack.size( ))));
+        // No-op if already allocated
+        output_image.ptr_array_16f.resize(input_stack.size( ));
         for ( int iPtr = 0; iPtr < input_stack.size( ); iPtr++ ) {
-            stack_ptrs[iPtr] = input_stack[iPtr].real_values_16f;
+            output_image.ptr_array_16f.SetPointer((__half*)input_stack[iPtr].real_values_16f, iPtr);
         }
-        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>((__half**)stack_ptrs,
+        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(output_image.ptr_array_16f.ptr_array,
                                                                                                (__half*)output_image.real_values_16f,
                                                                                                this->dims.x,
                                                                                                this->dims.y,
@@ -2379,12 +2404,12 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
                                                                                                this->dims.w);
     }
     else {
-        cudaErr(cudaMallocManaged(&stack_ptrs, sizeof(float*) * (input_stack.size( ))));
+        output_image.ptr_array_32f.resize(input_stack.size( ));
         for ( int iPtr = 0; iPtr < input_stack.size( ); iPtr++ ) {
-            stack_ptrs[iPtr] = input_stack[iPtr].real_values_gpu;
+            output_image.ptr_array_32f.SetPointer((float*)input_stack[iPtr].real_values_16f, iPtr);
         }
 
-        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>((float**)stack_ptrs,
+        AddImageStackKernel<<<this->gridDims, this->threadsPerBlock, 0, cudaStreamPerThread>>>(output_image.ptr_array_32f.ptr_array,
                                                                                                (float*)output_image.real_values_gpu,
                                                                                                this->dims.x,
                                                                                                this->dims.y,
@@ -2392,13 +2417,6 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
                                                                                                this->dims.w);
     }
     postcheck;
-
-    // FIXME: get rid of sync
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    for ( int i = 0; i < input_stack.size( ); i++ ) {
-        stack_ptrs[i] = nullptr;
-    }
-    cudaErr(cudaFree(stack_ptrs));
 }
 
 template void GpuImage::AddImageStack<float>(std::vector<GpuImage>& input_stack, GpuImage& output_image);

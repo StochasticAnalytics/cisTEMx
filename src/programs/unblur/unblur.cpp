@@ -700,7 +700,7 @@ bool UnBlurApp::DoCalculation( ) {
 #ifdef ENABLEGPU
         shared_ptr->start("calc dose filter");
         // FIXME: restore power should be optional and needs a test in consoltest
-        bool temp_fixme_restore_power = false;
+        bool temp_fixme_restore_power = true;
         my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, float2*>(image_stack, sum_image.complex_values_gpu, pre_exposure_amount, exposure_per_frame, temp_fixme_restore_power);
         shared_ptr->lap("calc dose filter");
 

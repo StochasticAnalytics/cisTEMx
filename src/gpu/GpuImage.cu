@@ -480,8 +480,8 @@ bool GpuImage::HasSameDimensionsAs(GpuImage& other_image) {
         return false;
 }
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
-                                                        const cufftComplex* __restrict__ img_complex_values,
+__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ img_complex_values,
+                                                        const cufftComplex* __restrict__ ref_complex_values,
                                                         cufftComplex* result_values,
                                                         int4          dims) {
     int x = physical_X( );
@@ -494,16 +494,17 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __re
     int address = x + (dims.w / 2) * y;
     int stride  = (dims.w / 2) * dims.y;
 
-    const Complex img_val = (Complex)img_complex_values[address];
+    const Complex ref_val = (Complex)ref_complex_values[address];
 
     for ( int k = 0; k < dims.z; k++ ) {
-        result_values[address] = (cufftComplex)ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
+        // In cisTEM translational search is ref * conj(img) (which gives a passive xform, i.e. how the image needs to be shifted back to match the reference)
+        result_values[address] = (cufftComplex)ComplexConjMul(ref_val, (Complex)img_complex_values[address]);
         address += stride;
     }
 }
 
-__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ ref_complex_values,
-                                                        const cufftComplex* __restrict__ img_complex_values,
+__global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ img_complex_values,
+                                                        const cufftComplex* __restrict__ ref_complex_values,
                                                         cufftComplex* result_values,
                                                         int4          dims,
                                                         const int     phase_multiplier) {
@@ -517,33 +518,38 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __re
     int address = x + (dims.w / 2) * y;
     int stride  = (dims.w / 2) * dims.y;
 
-    constexpr float epsilon = 1e-1f;
-    const Complex   img_val = (Complex)img_complex_values[address];
-    Complex         C;
-    Complex         M;
+    constexpr float epsilon = 1e-6f;
+    // We have one referece image, and this is broadcasted to all images in the stack
+    const Complex ref_val = (Complex)ref_complex_values[address];
+    Complex       C;
+    Complex       phase_shift;
 
     for ( int k = 0; k < dims.z; k++ ) {
-        C = ComplexConjMul(img_val, (Complex)ref_complex_values[address]);
-        M = ComplexScale(C, 1.0f / (ComplexModulus(C) + epsilon));
+        // the result should be (ref * conj(ref * shift + noise)) = auto correlation of the reference and the phase shifted from the iamge
+        C = ComplexConjMul(ref_val, (Complex)img_complex_values[address]);
+        // remove the magnitude to get the phase shift (see saxton 1996)
+        phase_shift = ComplexScale(C, 1.0f / (ComplexModulus(C) + epsilon));
         for ( int i = 0; i < phase_multiplier; i++ ) {
-            C = ComplexMul(C, M);
+            C = ComplexMul(C, phase_shift);
         }
+        // float amplitude = ComplexModulus(C) + epsilon;
+        // ComplexScale(&C, 1.0f / amplitude);
         result_values[address] = (cufftComplex)C;
         address += stride;
     }
 }
 
-void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image, int phase_multiplier) {
+void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier) {
     // FIXME when adding real space complex images
     MyDebugAssertFalse(is_in_real_space, "Image is in real space");
-    MyDebugAssertFalse(other_image.is_in_real_space, "Other image is in real space");
+    MyDebugAssertFalse(reference_img.is_in_real_space, "Other image is in real space");
     MyDebugAssertTrue(result_image.is_in_memory_gpu, "Images not in memory");
-    MyDebugAssertTrue(dims.x == other_image.dims.x && dims.y == other_image.dims.y, "Images have different dimensions");
+    MyDebugAssertTrue(dims.x == reference_img.dims.x && dims.y == reference_img.dims.y, "Images have different dimensions");
     MyDebugAssertTrue(dims.x == result_image.dims.x && dims.y == result_image.dims.y, "Images have different dimensions");
 
     //  NppInit();
     //  Conj();
-    //  npp_stat = nppiMul_32sc_C1IRSfs((const Npp32sc *)complex_values_gpu, 1, (Npp32sc*)other_image.complex_values_gpu, 1, npp_ROI_complex, 0);
+    //  npp_stat = nppiMul_32sc_C1IRSfs((const Npp32sc *)complex_values_gpu, 1, (Npp32sc*)reference_img.complex_values_gpu, 1, npp_ROI_complex, 0);
 
     // Multiplier to avoid conditionals in the kernel, if size z == 1 image z is zero resulting in a broadcast of the 2d through the batch.
     // FIXME: somehow this doesn't work.
@@ -557,10 +563,10 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage
     gridDims.z = 1;
     precheck;
     if ( phase_multiplier > 0 ) {
-        MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims, phase_multiplier);
+        MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, reference_img.complex_values_gpu, result_image.complex_values_gpu, this->dims, phase_multiplier);
     }
     else {
-        MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, other_image.complex_values_gpu, result_image.complex_values_gpu, this->dims);
+        MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, reference_img.complex_values_gpu, result_image.complex_values_gpu, this->dims);
     }
     postcheck;
 }
@@ -3757,9 +3763,7 @@ void GpuImage::CopyFP16buffertoFP32(bool deallocate_half_precision) {
     // FIXME when adding real space complex images.
     // FIXME should probably be called COPYorConvert
     MyDebugAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
-    MyDebugAssertTrue(is_allocated_16f_buffer, "Image is in not on the GPU!");
-
-    BufferInit(b_16f);
+    MyDebugAssertTrue(is_allocated_16f_buffer, "fp16 buffer is not allocated is in not on the GPU!");
 
     precheck;
     if ( is_in_real_space ) {

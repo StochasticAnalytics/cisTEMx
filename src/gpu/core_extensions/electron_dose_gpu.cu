@@ -123,10 +123,10 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(float2**    image_data,
     const int address = x + y * pixel_pitch;
     // logical fourier index
     y        = (y >= physical_index_of_first_negative_frequency_y) ? (y - NY) : y;
-    float ky = y * fourier_voxel_size_y;
+    float ky = float(y) * fourier_voxel_size_y;
     ky *= ky;
 
-    float kx = x * fourier_voxel_size_x;
+    float kx = float(x) * fourier_voxel_size_x;
     kx       = kx * kx + ky;
 
     float real_sum = 0.f;
@@ -134,8 +134,8 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(float2**    image_data,
     float filter_coeff;
     float sum_of_squares = 0.f;
     for ( int z = 0; z < NZ; z++ ) {
-        filter_coeff   = ReturnDoseFilter(pre_exposure, ReturnCriticalDose(kx, voltage_scaling_factor));
-        sum_of_squares = filter_coeff * filter_coeff;
+        filter_coeff = ReturnDoseFilter(pre_exposure, ReturnCriticalDose(kx, voltage_scaling_factor));
+        sum_of_squares += (filter_coeff * filter_coeff);
         real_sum += image_data[z][address].x * filter_coeff;
         imag_sum += image_data[z][address].y * filter_coeff;
         pre_exposure += dose_per_frame;

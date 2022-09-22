@@ -39,7 +39,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     float max_shift;
     float total_shift;
-    int   phase_multiplier = 1;
+    int   phase_multiplier = 0;
 
     if ( IsOdd(savitzy_golay_window_size) == false )
         savitzy_golay_window_size++;
@@ -54,7 +54,6 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     int           batch_size  = 1;
     bool          test_mirror = false;
     int           max_pix_x   = myroundint(outer_radius_for_peak_search / pixel_size);
-    std::cerr << "min_pix " << batch.min_pixel_radius_x_y( ) << std::endl;
 
     batch.Init(sum_of_images, number_of_images, batch_size, test_mirror, max_pix_x, max_pix_x);
 
@@ -88,10 +87,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     // perform the main alignment loop until we reach a max shift less than wanted, or max iterations
     float wanted_inner_radius_for_peak_search;
     for ( iteration_counter = 0; iteration_counter <= max_iterations; iteration_counter++ ) {
-
         wanted_inner_radius_for_peak_search = (iteration_counter == 0) ? inner_radius_for_peak_search : 0.0f;
         batch.SetMinSearchExtension(myroundint(wanted_inner_radius_for_peak_search));
-        std::cerr << "min_pix " << batch.min_pixel_radius_x_y( ) << std::endl;
 
         //	wxPrintf("Starting iteration number %li\n\n", iteration_counter);
         max_shift = -std::numeric_limits<float>::max( );
@@ -128,9 +125,21 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         }
 
         for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+            float this_shift = sqrtf(powf(current_x_shifts[image_counter], 2) + powf(current_y_shifts[image_counter], 2));
+            if ( this_shift < 1 ) {
+                phase_multiplier = 2;
+            }
+            else {
+                if ( this_shift < batch.max_pixel_radius_x( ) / 2.5f ) {
+                    phase_multiplier = 1;
+                }
+                else {
+                    phase_multiplier = 0;
+                }
+            }
+            //phase_multiplier = (current_x_shifts[image_counter] < batch.max_pixel_radius_x( ) / 3.0f && current_y_shifts[image_counter] < batch.max_pixel_radius_y( ) / 3.0f && iteration_counter > 0) ? 1 : 0;
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
-            std::cerr << "prepare sum " << image_counter << std::endl;
             sum_of_images_minus_current.is_in_real_space = sum_of_images.is_in_real_space;
             sum_of_images_minus_current.CopyDataFrom<float>(sum_of_images);
             if ( use_running_average )
@@ -168,9 +177,10 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             profile_timing_refinement_method.lap("compute cross correlation");
             profile_timing_refinement_method.start("find peak");
 
-            // sum_of_images_minus_current.CopyFP16buffertoFP32(false);
+            // std::cerr << "On GPU : " << correlation_map.is_in_memory_gpu << std::endl;
+            // correlation_map.CopyFP16buffertoFP32(false);
             // cudaErr(cudaDeviceSynchronize( ));
-            // sum_of_images_minus_current.QuickAndDirtyWriteSlice("/tmp/xcf.mrc", 1);
+            // correlation_map.QuickAndDirtyWriteSlice("/tmp/xcf3.mrc", 1);
             // exit(0);
 
             // For testing on the GPU this is just doing a copy which is of course a bit of a waste

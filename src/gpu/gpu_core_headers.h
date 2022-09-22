@@ -76,14 +76,17 @@ void print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {
 // Limits for specific kernels
 constexpr int ntds_x_WhitenPS = 32;
 constexpr int ntds_y_WhitenPS = 32;
+
 // Complex data type
-typedef float2                            Complex;
-static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
-static __device__ __host__ inline void    ComplexScale(Complex*, float);
-static __device__ __host__ inline Complex ComplexScale(Complex&, float);
-static __device__ __host__ inline Complex ComplexMul(Complex, Complex);
-static __device__ __host__ inline Complex ComplexConjMul(Complex, Complex);
-static __device__ __host__ inline Complex ComplexConjMulAndScale(Complex a, Complex b, float s);
+typedef float2 Complex;
+
+// static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
+// static __device__ __host__ inline void    ComplexScale(Complex*, float);
+// static __device__ __host__ inline Complex ComplexScale(Complex&, float);
+// static __device__ __host__ inline Complex ComplexMul(Complex, Complex);
+// static __device__ __host__ inline Complex ComplexMul(Complex*, const Complex&);
+// static __device__ __host__ inline Complex ComplexConjMul(Complex, Complex);
+// static __device__ __host__ inline Complex ComplexConjMulAndScale(Complex a, Complex b, float s);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Complex operations
@@ -120,7 +123,7 @@ static __device__ __host__ inline void ComplexScale(Complex* a, float s) {
 }
 
 // Complex multiplication
-static __device__ __host__ inline Complex ComplexMul(Complex a, Complex b) {
+static __device__ __host__ inline Complex ComplexMul(const Complex& a, const Complex& b) {
     Complex c;
     c.x = a.x * b.x - a.y * b.y;
     c.y = a.x * b.y + a.y * b.x;

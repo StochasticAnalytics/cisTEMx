@@ -2686,9 +2686,8 @@ void GpuImage::CopyDeviceToHost(Image& cpu_image, bool should_block_until_comple
     if ( free_gpu_memory ) {
         Deallocate( );
     }
-    // If we ran Deallocate, this the memory is already unpinned.
-    if ( unpin_host_memory && is_host_memory_pinned ) {
-        cudaErr(cudaHostUnregister(real_values));
+    if ( unpin_host_memory ) {
+        cudaErr(cudaHostUnregister(cpu_image.real_values));
         // Note: do not change the is_host_memory_pinned flag here, as we are just dealing with this temporary image.
     }
 }

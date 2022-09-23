@@ -1,5 +1,22 @@
 #include "core_headers.h"
 
+// #define TIFF_FILE_PROFILING
+#define SWAP_Y_INLINE ;
+
+#ifdef SWAP_Y_INLINE
+constexpr int ifdef_swap_inline_i_am_one_otherwise_zero = 1;
+
+inline long GetAddressOfLine(const unsigned int& directory_counter, const int& start_slice, const tstrip_t& strip_counter, const unsigned int& rows_per_strip, const int& NX, const int& NY) {
+    return (NY - 1 - (strip_counter * rows_per_strip)) * NX + ((directory_counter - start_slice + 1) * NX * NY);
+}
+#else
+constexpr int ifdef_swap_inline_i_am_one_otherwise_zero = 0;
+
+inline long GetAddressOfLine(const unsigned int& directory_counter, const int& start_slice, const tstrip_t& strip_counter, const unsigned int& rows_per_strip, const int& NX, const int& NY) {
+    return strip_counter * rows_per_strip * NX + ((directory_counter - start_slice + 1) * NX * NY);
+}
+#endif
+
 TiffFile::TiffFile( ) {
     tif                                     = NULL;
     logical_dimension_x                     = 0;
@@ -16,7 +33,50 @@ TiffFile::~TiffFile( ) {
     CloseFile( );
 }
 
+template <typename OutputType, typename BufferType, bool four_bit_hack>
+void TiffFile::CopyBufferToOutputArray(OutputType* output_array, const BufferType* const buffer, const int& output_starting_address, const tmsize_t& number_of_bytes_placed_in_buffer) {
+    long       output_counter    = output_starting_address;
+    int        intra_row_counter = 0;
+    int        i_row             = 1;
+    BufferType tmp[2]; // We only need these for the 4bit hack, but declare them anyway
+    int        four_bit_hack_index;
+    if constexpr ( four_bit_hack )
+        four_bit_hack_index = 2;
+    else
+        four_bit_hack_index = 1;
+
+    for ( long counter = 0; counter < number_of_bytes_placed_in_buffer / sizeof(BufferType); counter++ ) {
+        if constexpr ( four_bit_hack ) {
+            tmp[0] = buffer[counter] & 0x0F;
+            tmp[1] = (buffer[counter] >> 4) & 0x0F;
+        }
+        else {
+            // we could just point at the address, but i doubt it makes any difference
+            tmp[0] = buffer[counter];
+        }
+        for ( int i = 0; i < four_bit_hack_index; i++ ) {
+            output_array[output_counter] = tmp[i];
+            output_counter++;
+            intra_row_counter++;
+            if ( intra_row_counter == ReturnXSize( ) ) {
+                // This will be the place to add fourier padding too
+                output_counter = output_starting_address - (i_row * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
+                i_row++;
+                intra_row_counter = 0;
+                if ( output_counter < 0 )
+                    output_counter += (ReturnXSize( ) * ReturnYSize( ) + ReturnXSize( ));
+                if ( output_counter < 0 || output_counter > ReturnXSize( ) * ReturnYSize( ) ) {
+                    wxPrintf(" counter size row %ld %i %i\n", output_counter, ReturnXSize( ), ReturnYSize( ));
+                }
+
+                // MyDebugAssertTrue(output_counter >= 0 && output_counter < ReturnXSize( ) * ReturnYSize( ), "output_counter out of bounds");
+            }
+        }
+    }
+}
+
 /*
+ * TOCONSIDER: Wouldn't checking the first and last be a good compromise on speed and saftey? Assuming a fair portion of corruptions come from truncation
  * By default, this method will check all the images within the file, to make sure
  * they are valid (not corrupted) and of the same dimensions. However, this can take
  * a long time. If you want to save that time, set check_only_the_first_image to true.
@@ -127,7 +187,7 @@ bool TiffFile::ReadLogicalDimensionsFromDisk(bool check_only_the_first_image) {
                 set_dir_ret = TIFFSetDirectory(tif, dircount - 1);
 
                 if ( set_dir_ret != 1 ) {
-                    MyPrintfRed("Warning: Image %i of file %s seems to be corrupted\n", dircount, filename.GetFullName( ));
+                    MyPrintfRed("Warning: image %i of file %s seems to be corrupted\n", dircount, filename.GetFullName( ));
                     return_value = false;
                     dircount--;
                     break;
@@ -137,7 +197,7 @@ bool TiffFile::ReadLogicalDimensionsFromDisk(bool check_only_the_first_image) {
                     TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &current_y);
 
                     if ( current_x != original_x || logical_dimension_y != current_y ) {
-                        MyPrintfRed("Warning: Image %i of file %s has dimensions %i,%i, whereas previous images had dimensions %i,%i\n", dircount, filename.GetFullName( ), current_x, current_y, original_x, logical_dimension_y);
+                        MyPrintfRed("Warning: image %i of file %s has dimensions %i,%i, whereas previous images had dimensions %i,%i\n", dircount, filename.GetFullName( ), current_x, current_y, original_x, logical_dimension_y);
                         return_value = false;
                         dircount--;
                         break;
@@ -168,6 +228,11 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
     MyDebugAssertTrue(tif != NULL, "File must be open");
     MyDebugAssertTrue(start_slice > 0 && end_slice >= start_slice && end_slice <= number_of_images, "Bad start or end slice number");
 
+#ifdef TIFF_FILE_PROFILING
+    cistem_timer::StopWatch timer;
+#else
+    cistem_timer_noop::StopWatch timer;
+#endif
     unsigned int bits_per_sample   = 0;
     unsigned int samples_per_pixel = 0;
     unsigned int sample_format     = 0;
@@ -179,17 +244,19 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
     tmsize_t number_of_bytes_placed_in_buffer;
 
     for ( unsigned int directory_counter = start_slice - 1; directory_counter < end_slice; directory_counter++ ) {
-
+        timer.start("tiff set directory");
         TIFFSetDirectory(tif, directory_counter);
-
+        timer.lap("tiff set directory");
         // We don't support tiles, only strips
         if ( TIFFIsTiled(tif) ) {
             MyPrintfRed("Error. Cannot read tiled TIF files. Filename = %s, Directory # %i. Number of tiles per image = %i\n", filename.GetFullPath( ), directory_counter, TIFFNumberOfTiles(tif));
         }
 
+        timer.start("tiff get field");
         // Get bit depth etc
         TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
         TIFFGetField(tif, TIFFTAG_SAMPLESPERPIXEL, &samples_per_pixel);
+
         if ( samples_per_pixel != 1 ) {
             MyPrintfRed("Error. Unsupported number of samples per pixel: %i. Filename = %s, Directory # %i\n", samples_per_pixel, filename.GetFullPath( ), directory_counter);
         }
@@ -197,14 +264,15 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
 
         // How many rows per strip?
         TIFFGetField(tif, TIFFTAG_ROWSPERSTRIP, &rows_per_strip);
-
+        timer.lap("tiff get field");
         // Copy & cast data from these rows into the output array
         switch ( sample_format ) {
             case SAMPLEFORMAT_UINT:
                 switch ( bits_per_sample ) {
                     case 8: {
+                        timer.start("alloc buff");
                         uint8* buf = new uint8[TIFFStripSize(tif)];
-
+                        timer.lap("alloc buff");
                         // Serial EM has the option to write out 4-bit compressed tif.  They way that this is done is to do it as an 8-bit with
                         // half the x dimension. If the file has specific dimensions, it is assumed to be 4-bit.  I've copied the check directly
                         // from David Mastronarde. - see function comments for sizeCanBe4BitK2SuperRes
@@ -228,49 +296,44 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
                                 if ( strip_counter < TIFFNumberOfStrips(tif) - 1 )
                                     MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ) / 2, "Unexpected number of bytes in uint8 buffer");
 
-                                output_counter = strip_counter * rows_per_strip * ReturnXSize( ) + ((directory_counter - start_slice + 1) * ReturnXSize( ) * ReturnYSize( ));
-
-                                for ( long counter = 0; counter < number_of_bytes_placed_in_buffer; counter++ ) {
-                                    low_4bits = buf[counter] & 0x0F;
-                                    hi_4bits  = (buf[counter] >> 4) & 0x0F;
-
-                                    output_array[output_counter] = float(low_4bits);
-                                    output_counter++;
-                                    output_array[output_counter] = float(hi_4bits);
-                                    output_counter++;
-                                }
+                                const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
+                                // All other calls use the default value of false for the last argument, so the pointer types can be implicitly deduced.
+                                // This is the only place we need to explicitly specify the types.
+                                CopyBufferToOutputArray<float, uint8, true>(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
                             }
                         }
                         else // not 4-bit
                         {
                             for ( strip_counter = 0; strip_counter < TIFFNumberOfStrips(tif); strip_counter++ ) {
-
+                                timer.start("read strip");
                                 number_of_bytes_placed_in_buffer = TIFFReadEncodedStrip(tif, strip_counter, (char*)buf, (tsize_t)-1);
+                                timer.lap("read strip");
                                 if ( strip_counter < TIFFNumberOfStrips(tif) - 1 )
                                     MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ), "Unexpected number of bytes in uint8 buffer");
 
-                                output_counter = strip_counter * rows_per_strip * ReturnXSize( ) + ((directory_counter - start_slice + 1) * ReturnXSize( ) * ReturnYSize( ));
-                                for ( long counter = 0; counter < number_of_bytes_placed_in_buffer; counter++ ) {
-                                    output_array[output_counter] = buf[counter];
-                                    output_counter++;
-                                }
+                                timer.start("copy strip");
+                                const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
+                                CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                                timer.lap("copy strip");
                             }
                         }
 
                         delete[] buf;
                     } break;
                     case 16: {
-                        uint16* buf = new uint16[TIFFStripSize(tif) / 2];
-
+                        timer.start("alloc buff");
+                        uint16* buf = new uint16[TIFFStripSize(tif) / sizeof(uint16)];
+                        timer.start("alloc buff");
                         for ( strip_counter = 0; strip_counter < TIFFNumberOfStrips(tif); strip_counter++ ) {
+                            timer.start("read strip");
                             number_of_bytes_placed_in_buffer = TIFFReadEncodedStrip(tif, strip_counter, (char*)buf, (tsize_t)-1);
-                            MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ) * 2, "Unexpected number of bytes in uint16 buffer");
+                            MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ) * sizeof(uint16), "Unexpected number of bytes in uint16 buffer");
+                            timer.lap("read strip");
+                            timer.start("copy strip");
+                            const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
+                            CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
 
-                            output_counter = strip_counter * rows_per_strip * ReturnXSize( ) + ((directory_counter - start_slice + 1) * ReturnXSize( ) * ReturnYSize( ));
-                            for ( long counter = 0; counter < number_of_bytes_placed_in_buffer / 2; counter++ ) {
-                                output_array[output_counter] = buf[counter];
-                                output_counter++;
-                            }
+                            timer.lap("copy strip");
                         }
                         delete[] buf;
                     } break;
@@ -282,17 +345,18 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
             case SAMPLEFORMAT_INT:
                 switch ( bits_per_sample ) {
                     case 16: {
-                        int16* buf = new int16[TIFFStripSize(tif) / 2];
-
+                        timer.start("alloc buff");
+                        int16* buf = new int16[TIFFStripSize(tif) / sizeof(int16)];
+                        timer.start("alloc buff");
                         for ( strip_counter = 0; strip_counter < TIFFNumberOfStrips(tif); strip_counter++ ) {
+                            timer.start("read strip");
                             number_of_bytes_placed_in_buffer = TIFFReadEncodedStrip(tif, strip_counter, (char*)buf, (tsize_t)-1);
-                            MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ) * 2, "Unexpected number of bytes in uint16 buffer");
-
-                            output_counter = strip_counter * rows_per_strip * ReturnXSize( ) + ((directory_counter - start_slice + 1) * ReturnXSize( ) * ReturnYSize( ));
-                            for ( long counter = 0; counter < number_of_bytes_placed_in_buffer / 2; counter++ ) {
-                                output_array[output_counter] = buf[counter];
-                                output_counter++;
-                            }
+                            MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ) * sizeof(int16), "Unexpected number of bytes in uint16 buffer");
+                            timer.lap("read strip");
+                            timer.start("copy strip");
+                            const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
+                            CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                            timer.lap("copy strip");
                         }
                         delete[] buf;
                     } break;
@@ -304,17 +368,19 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
             case SAMPLEFORMAT_IEEEFP: {
                 switch ( bits_per_sample ) {
                     case 32: {
-                        float* buf = new float[TIFFStripSize(tif) / 4];
-
+                        timer.start("alloc buff");
+                        float* buf = new float[TIFFStripSize(tif) / sizeof(float)];
+                        timer.start("alloc buff");
                         for ( strip_counter = 0; strip_counter < TIFFNumberOfStrips(tif); strip_counter++ ) {
+                            timer.start("read strip");
                             number_of_bytes_placed_in_buffer = TIFFReadEncodedStrip(tif, strip_counter, (char*)buf, (tsize_t)-1);
-                            MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ) * 4, "Unexpected number of bytes in float buffer");
+                            MyDebugAssertTrue(number_of_bytes_placed_in_buffer == rows_per_strip * ReturnXSize( ) * sizeof(float), "Unexpected number of bytes in float buffer");
+                            timer.lap("read strip");
+                            timer.start("copy strip");
 
-                            output_counter = strip_counter * rows_per_strip * ReturnXSize( ) + ((directory_counter - start_slice + 1) * ReturnXSize( ) * ReturnYSize( ));
-                            for ( long counter = 0; counter < number_of_bytes_placed_in_buffer / 4; counter++ ) {
-                                output_array[output_counter] = buf[counter];
-                                output_counter++;
-                            }
+                            const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
+                            CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                            timer.lap("copy strip");
                         }
                         delete[] buf;
                     } break;
@@ -329,14 +395,18 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
                 break;
         }
 
+#ifndef SWAP_Y_INLINE
         // Annoyingly, we need to swap the order of the lines to be "compatible" with MRC files etc
         {
+            timer.start("alloc swap lines");
             float* temp_line                      = new float[ReturnXSize( )];
             long   address_of_start_of_slice      = (directory_counter - start_slice + 1) * ReturnXSize( ) * ReturnYSize( );
             long   address_of_start_of_line       = address_of_start_of_slice;
             long   address_of_start_of_other_line = address_of_start_of_slice + (ReturnYSize( ) - 1) * ReturnXSize( );
             long   counter;
+            timer.lap("alloc swap lines");
 
+            timer.start("swap lines");
             for ( long line_counter = 0; line_counter < ReturnYSize( ) / 2; line_counter++ ) {
                 // Copy current line to a buffer
                 for ( counter = 0; counter < ReturnXSize( ); counter++ ) {
@@ -354,11 +424,14 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
                 address_of_start_of_line += ReturnXSize( );
                 address_of_start_of_other_line -= ReturnXSize( );
             }
+            timer.lap("swap lines");
 
             delete[] temp_line;
         }
-
+#endif
     } // end of loop over slices
+
+    timer.print_times( );
 }
 
 void TiffFile::WriteSliceToDisk(int slice_number, float* input_array) {

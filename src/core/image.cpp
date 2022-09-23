@@ -4962,12 +4962,15 @@ void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice) 
 
     is_in_real_space         = true;
     object_is_centred_in_box = true;
-
+    cistem_timer::StopWatch timer;
+    timer.start("READ SLICES");
     input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values);
-
+    timer.lap("READ SLICES");
     // we need to respace this to take into account the FFTW padding..
-
+    timer.start("FFTW PADDING");
     AddFFTWPadding( );
+    timer.lap("FFTW PADDING");
+    timer.print_times( );
 }
 
 //!> \brief Read a set of slices from disk (FFTW padding is done automatically)

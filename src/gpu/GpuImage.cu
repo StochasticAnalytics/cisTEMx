@@ -528,13 +528,11 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __re
         // the result should be (ref * conj(ref * shift + noise)) = auto correlation of the reference and the phase shifted from the iamge
         C = ComplexConjMul(ref_val, (Complex)img_complex_values[address]);
         // remove the magnitude to get the phase shift (see saxton 1996)
-        phase_shift = ComplexScale(C, 1.0f / (ComplexModulus(C) + epsilon));
-        for ( int i = 0; i < phase_multiplier; i++ ) {
-            C = ComplexMul(C, phase_shift);
-        }
+        __sincosf(float(phase_multiplier) * atan2f(C.y, C.x), &phase_shift.y, &phase_shift.x);
         // float amplitude = ComplexModulus(C) + epsilon;
         // ComplexScale(&C, 1.0f / amplitude);
-        result_values[address] = (cufftComplex)C;
+        result_values[address] = (cufftComplex)ComplexMul(C, phase_shift);
+
         address += stride;
     }
 }

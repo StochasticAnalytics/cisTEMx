@@ -24,7 +24,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     int  running_average_counter;
     int  start_frame_for_average;
     int  end_frame_for_average;
-    long iteration_counter;
+    int  iteration_counter;
 
     int number_of_middle_image    = number_of_images / 2;
     int running_average_half_size = (number_of_frames_for_running_average - 1) / 2;
@@ -126,7 +126,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
         for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             float this_shift = sqrtf(powf(current_x_shifts[image_counter], 2) + powf(current_y_shifts[image_counter], 2));
-            if ( this_shift < 1 ) {
+
+            if ( this_shift < 2.f ) {
                 phase_multiplier = 2;
             }
             else {
@@ -137,6 +138,10 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                     phase_multiplier = 0;
                 }
             }
+
+            phase_multiplier = std::min(phase_multiplier, iteration_counter);
+
+            std::cerr << "phase_multiplier = " << phase_multiplier << std::endl;
             //phase_multiplier = (current_x_shifts[image_counter] < batch.max_pixel_radius_x( ) / 3.0f && current_y_shifts[image_counter] < batch.max_pixel_radius_y( ) / 3.0f && iteration_counter > 0) ? 1 : 0;
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
@@ -180,7 +185,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             // std::cerr << "On GPU : " << correlation_map.is_in_memory_gpu << std::endl;
             // correlation_map.CopyFP16buffertoFP32(false);
             // cudaErr(cudaDeviceSynchronize( ));
-            // correlation_map.QuickAndDirtyWriteSlice("/tmp/xcf3.mrc", 1);
+            // correlation_map.QuickAndDirtyWriteSlice("/tmp/xcf" + std::to_string(phase_multiplier) + ".mrc", 1);
             // exit(0);
 
             // For testing on the GPU this is just doing a copy which is of course a bit of a waste

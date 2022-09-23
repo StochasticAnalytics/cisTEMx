@@ -467,14 +467,26 @@ bool UnBlurApp::DoCalculation( ) {
         }
 #endif
 
-        profile_timing.start("read in frames");
         // TODO: After implementing the reduced precision, test whether it makes sense to have parallel i/o here.
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
             // Read from disk
             // image_stack[image_counter - 1].ReadSlice(&input_file, image_counter);
+
+            // Read in frames would hand this, but I want to time allocations separately
+            profile_timing.start("allocate frames");
+            int this_index = (position_in_stack - 1) % max_threads + cpu_offset;
+            if ( image_stack_[this_index].logical_x_dimension != input_file.ReturnXSize( ) || image_stack_[this_index].logical_y_dimension != input_file.ReturnYSize( ) || image_stack_[this_index].logical_z_dimension != 1 || image_stack_[this_index].is_in_memory == false ) {
+                image_stack_[this_index].Deallocate( );
+                image_stack_[this_index].Allocate(input_file.ReturnXSize( ), input_file.ReturnYSize( ), 1);
+            }
+            profile_timing.lap("allocate frames");
+
+            profile_timing.start("read in frames");
             image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].ReadSlice(&input_file, position_in_stack);
+            // image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].QuickAndDirtyWriteSlice("/tmp/ip_swap.mrc", 1);
+            // exit(0);
+            profile_timing.lap("read in frames");
         }
-        profile_timing.lap("read in frames");
 
 #pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {

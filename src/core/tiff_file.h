@@ -26,8 +26,11 @@ class TiffFile : public AbstractImageFile {
 
     inline float ReturnPixelSize( ) { return pixel_size; };
 
-    template <typename OutputType, typename BufferType, bool four_bit_hack = false>
-    void CopyBufferToOutputArray(OutputType* output_array, const BufferType* const buffer, const int& output_starting_address, const tmsize_t& number_of_bytes_placed_in_buffer);
+    template <typename OutputType, typename BufferType>
+    void CopyBufferToOutputArray(OutputType* output_array, BufferType* buffer, const int& output_starting_address, const unsigned int& number_of_rows);
+
+    template <typename OutputType, typename BufferType>
+    void CopyBufferToOutputArray4bit(OutputType* output_array, BufferType* buffer, const int& output_starting_address, const tmsize_t& number_of_bytes_placed_in_buffer);
 
     inline bool IsOpen( ) {
         if ( tif ) {

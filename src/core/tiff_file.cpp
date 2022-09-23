@@ -33,44 +33,76 @@ TiffFile::~TiffFile( ) {
     CloseFile( );
 }
 
-template <typename OutputType, typename BufferType, bool four_bit_hack>
-void TiffFile::CopyBufferToOutputArray(OutputType* output_array, const BufferType* const buffer, const int& output_starting_address, const tmsize_t& number_of_bytes_placed_in_buffer) {
-    long       output_counter    = output_starting_address;
-    int        intra_row_counter = 0;
-    int        i_row             = 1;
-    BufferType tmp[2]; // We only need these for the 4bit hack, but declare them anyway
-    int        four_bit_hack_index;
-    if constexpr ( four_bit_hack )
-        four_bit_hack_index = 2;
-    else
-        four_bit_hack_index = 1;
+template <typename OutputType, typename BufferType>
+inline void TiffFile::CopyBufferToOutputArray(OutputType* output_array, BufferType* buffer, const int& output_starting_address, const unsigned int& number_of_rows) {
+    long        output_counter    = output_starting_address;
+    int         intra_row_counter = 0;
+    int         i_row             = 1;
+    BufferType* read_ptr;
+
+    if constexpr ( std::is_same_v<OutputType, BufferType> ) {
+        // This is quite a lot faster, but of course doesn't work if the types are different
+        for ( int i = 0; i < number_of_rows; i++ ) {
+            read_ptr = &buffer[i * ReturnXSize( )];
+            std::memcpy(&output_array[output_counter], read_ptr, ReturnXSize( ) * sizeof(BufferType));
+            output_counter = output_starting_address - (i * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
+            if ( output_counter < 0 )
+                output_counter += (ReturnXSize( ) * ReturnYSize( ));
+        }
+    }
+    else {
+        for ( int i = 0; i < number_of_rows; i++ ) {
+            read_ptr = &buffer[i * ReturnXSize( )];
+#pragma omp simd simdlen(8)
+            for ( int counter = 0; counter < ReturnXSize( ); counter++ ) {
+                output_array[output_counter] = read_ptr[counter];
+                output_counter++;
+            } // This will be the place to add fourier padding too
+            output_counter = output_starting_address - (i * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
+            if ( output_counter < 0 )
+                output_counter += (ReturnXSize( ) * ReturnYSize( ));
+            MyDebugAssertTrue(output_counter >= 0 && output_counter < ReturnXSize( ) * ReturnYSize( ), "output_counter out of bounds");
+        }
+    }
+}
+
+// Specialization for 4bit hack
+template <typename OutputType, typename BufferType>
+inline void TiffFile::CopyBufferToOutputArray4bit(OutputType* output_array, BufferType* buffer, const int& output_starting_address, const tmsize_t& number_of_bytes_placed_in_buffer) {
+    long  output_counter    = output_starting_address;
+    int   intra_row_counter = 0;
+    int   i_row             = 1;
+    uint8 lowbit;
+    uint8 highbit;
 
     for ( long counter = 0; counter < number_of_bytes_placed_in_buffer / sizeof(BufferType); counter++ ) {
-        if constexpr ( four_bit_hack ) {
-            tmp[0] = buffer[counter] & 0x0F;
-            tmp[1] = (buffer[counter] >> 4) & 0x0F;
-        }
-        else {
-            // we could just point at the address, but i doubt it makes any difference
-            tmp[0] = buffer[counter];
-        }
-        for ( int i = 0; i < four_bit_hack_index; i++ ) {
-            output_array[output_counter] = tmp[i];
-            output_counter++;
-            intra_row_counter++;
-            if ( intra_row_counter == ReturnXSize( ) ) {
-                // This will be the place to add fourier padding too
-                output_counter = output_starting_address - (i_row * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
-                i_row++;
-                intra_row_counter = 0;
-                if ( output_counter < 0 )
-                    output_counter += (ReturnXSize( ) * ReturnYSize( ) + ReturnXSize( ));
-                if ( output_counter < 0 || output_counter > ReturnXSize( ) * ReturnYSize( ) ) {
-                    wxPrintf(" counter size row %ld %i %i\n", output_counter, ReturnXSize( ), ReturnYSize( ));
-                }
+        lowbit  = buffer[counter] & 0x0F;
+        highbit = (buffer[counter] >> 4) & 0x0F;
 
-                // MyDebugAssertTrue(output_counter >= 0 && output_counter < ReturnXSize( ) * ReturnYSize( ), "output_counter out of bounds");
-            }
+        output_array[output_counter] = lowbit;
+        output_counter++;
+        intra_row_counter++;
+        if ( intra_row_counter == ReturnXSize( ) ) {
+            // This will be the place to add fourier padding too
+            output_counter = output_starting_address - (i_row * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
+            i_row++;
+            intra_row_counter = 0;
+            if ( output_counter < 0 )
+                output_counter += (ReturnXSize( ) * ReturnYSize( ));
+            MyDebugAssertTrue(output_counter >= 0 && output_counter < ReturnXSize( ) * ReturnYSize( ), "output_counter out of bounds");
+        }
+
+        output_array[output_counter] = highbit;
+        output_counter++;
+        intra_row_counter++;
+        if ( intra_row_counter == ReturnXSize( ) ) {
+            // This will be the place to add fourier padding too
+            output_counter = output_starting_address - (i_row * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
+            i_row++;
+            intra_row_counter = 0;
+            if ( output_counter < 0 )
+                output_counter += (ReturnXSize( ) * ReturnYSize( ));
+            MyDebugAssertTrue(output_counter >= 0 && output_counter < ReturnXSize( ) * ReturnYSize( ), "output_counter out of bounds");
         }
     }
 }
@@ -299,7 +331,7 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
                                 const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
                                 // All other calls use the default value of false for the last argument, so the pointer types can be implicitly deduced.
                                 // This is the only place we need to explicitly specify the types.
-                                CopyBufferToOutputArray<float, uint8, true>(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                                CopyBufferToOutputArray4bit(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
                             }
                         }
                         else // not 4-bit
@@ -313,7 +345,7 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
 
                                 timer.start("copy strip");
                                 const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
-                                CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                                CopyBufferToOutputArray(output_array, buf, output_starting_address, rows_per_strip);
                                 timer.lap("copy strip");
                             }
                         }
@@ -331,7 +363,7 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
                             timer.lap("read strip");
                             timer.start("copy strip");
                             const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
-                            CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                            CopyBufferToOutputArray(output_array, buf, output_starting_address, rows_per_strip);
 
                             timer.lap("copy strip");
                         }
@@ -355,7 +387,7 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
                             timer.lap("read strip");
                             timer.start("copy strip");
                             const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
-                            CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                            CopyBufferToOutputArray(output_array, buf, output_starting_address, rows_per_strip);
                             timer.lap("copy strip");
                         }
                         delete[] buf;
@@ -379,7 +411,7 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
                             timer.start("copy strip");
 
                             const long output_starting_address = GetAddressOfLine(directory_counter, start_slice, strip_counter, rows_per_strip, ReturnXSize( ), ReturnYSize( ));
-                            CopyBufferToOutputArray(output_array, buf, output_starting_address, number_of_bytes_placed_in_buffer);
+                            CopyBufferToOutputArray(output_array, buf, output_starting_address, rows_per_strip);
                             timer.lap("copy strip");
                         }
                         delete[] buf;

@@ -373,34 +373,34 @@ class Image {
     void AddFFTWPadding( );
     void RemoveFFTWPadding( );
 
-    inline void ReadSlice(MRCFile* input_file, long slice_to_read) {
+    inline void ReadSlice(MRCFile* input_file, long slice_to_read, bool add_fft_padding = true) {
         MyDebugAssertTrue(slice_to_read > 0, "Start slice is 0, the first slice is 1!");
         MyDebugAssertTrue(slice_to_read <= input_file->ReturnNumberOfSlices( ), "End slice (%li) is greater than number of slices in the file! (%i)", slice_to_read, input_file->ReturnNumberOfSlices( ));
-        ReadSlices(input_file, slice_to_read, slice_to_read);
+        ReadSlices(input_file, slice_to_read, slice_to_read, add_fft_padding);
     }; //!> \brief Read a a slice from disk..(this just calls ReadSlices)
 
-    inline void ReadSlice(DMFile* input_file, long slice_to_read) {
+    inline void ReadSlice(DMFile* input_file, long slice_to_read, bool add_fft_padding = true) {
         MyDebugAssertTrue(slice_to_read > 0, "Start slice is 0, the first slice is 1!");
         MyDebugAssertTrue(slice_to_read <= input_file->ReturnNumberOfSlices( ), "End slice (%li) is greater than number of slices in the file! (%i)", slice_to_read, input_file->ReturnNumberOfSlices( ));
-        ReadSlices(input_file, slice_to_read, slice_to_read);
+        ReadSlices(input_file, slice_to_read, slice_to_read, add_fft_padding);
     }; //!> \brief Read a a slice from disk..(this just calls ReadSlices)
 
-    inline void ReadSlice(EerFile* input_file, long slice_to_read) {
+    inline void ReadSlice(EerFile* input_file, long slice_to_read, bool add_fft_padding = true) {
         MyDebugAssertTrue(slice_to_read > 0, "Start slice is 0, the first slice is 1!");
         MyDebugAssertTrue(slice_to_read <= input_file->ReturnNumberOfSlices( ), "End slice (%li) is greater than number of slices in the file! (%i)", slice_to_read, input_file->ReturnNumberOfSlices( ));
-        ReadSlices(input_file, slice_to_read, slice_to_read);
+        ReadSlices(input_file, slice_to_read, slice_to_read, add_fft_padding);
     }; //!> \brief Read a a slice from disk..(this just calls ReadSlices)
 
-    inline void ReadSlice(ImageFile* input_file, long slice_to_read) {
+    inline void ReadSlice(ImageFile* input_file, long slice_to_read, bool add_fft_padding = true) {
         MyDebugAssertTrue(slice_to_read > 0, "Start slice is 0, the first slice is 1!");
         MyDebugAssertTrue(slice_to_read <= input_file->ReturnNumberOfSlices( ), "End slice (%li) is greater than number of slices in the file! (%i)", slice_to_read, input_file->ReturnNumberOfSlices( ));
-        ReadSlices(input_file, slice_to_read, slice_to_read);
+        ReadSlices(input_file, slice_to_read, slice_to_read, add_fft_padding);
     }; //!> \brief Read a a slice from disk..(this just calls ReadSlices)
 
-    void ReadSlices(MRCFile* input_file, long start_slice, long end_slice);
-    void ReadSlices(DMFile* input_file, long start_slice, long end_slice);
-    void ReadSlices(EerFile* input_file, long start_slice, long end_slice);
-    void ReadSlices(ImageFile* input_file, long start_slice, long end_slice);
+    void ReadSlices(MRCFile* input_file, long start_slice, long end_slice, bool add_fft_padding = true);
+    void ReadSlices(DMFile* input_file, long start_slice, long end_slice, bool add_fft_padding = true);
+    void ReadSlices(EerFile* input_file, long start_slice, long end_slice, bool add_fft_padding = true);
+    void ReadSlices(ImageFile* input_file, long start_slice, long end_slice, bool add_fft_padding = true);
 
     inline void WriteSlice(MRCFile* input_file, long slice_to_write) {
         MyDebugAssertTrue(slice_to_write > 0, "Start slice is 0, the first slice is 1!");

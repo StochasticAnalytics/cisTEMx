@@ -846,7 +846,7 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_meanstddev:
             if ( ! is_allocated_meanstddev_buffer ) {
                 int n_elem;
-                nppiMeanGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
+                nppiMeanStdDevGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
 #ifdef USE_ASYNC_MALLOC_FREE
                 cudaErr(cudaMallocAsync(&this->meanstddev_buffer, n_elem, nppStream.hStream));
 #else
@@ -2186,10 +2186,22 @@ void GpuImage::MeanStdDev( ) {
     NppInit( );
     BufferInit(b_meanstddev);
     nppErr(nppiMean_StdDev_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, meanstddev_buffer, &npp_mean, &npp_stdDev, nppStream));
-    cudaErr(cudaStreamSynchronize(nppStream.hStream));
+    // cudaErr(cudaStreamSynchronize(nppStream.hStream));
 
     this->img_mean   = float(npp_mean);
     this->img_stdDev = float(npp_stdDev);
+}
+
+void GpuImage::ReplaceOutliersWithMean(float maximum_n_sigmas) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
+
+    MeanStdDev( );
+    Npp32f max = img_mean + maximum_n_sigmas * img_stdDev;
+    Npp32f min = img_mean - maximum_n_sigmas * img_stdDev;
+    wxPrintf("min max %f, %f\n", min, max);
+    wxPrintf("mean std %f, %f\n", img_mean, img_stdDev);
+    nppErr(nppiThreshold_LTValGTVal_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, min, (Npp32f)img_mean, max, (Npp32f)img_mean, nppStream));
 }
 
 void GpuImage::MultiplyPixelWise(const float& other_array, const int other_array_size) {

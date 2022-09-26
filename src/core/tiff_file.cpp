@@ -6,14 +6,17 @@
 #ifdef SWAP_Y_INLINE
 constexpr int ifdef_swap_inline_i_am_one_otherwise_zero = 1;
 
+// Note: This assums FFTW padding
 inline long GetAddressOfLine(const unsigned int& directory_counter, const int& start_slice, const tstrip_t& strip_counter, const unsigned int& rows_per_strip, const int& NX, const int& NY) {
-    return (NY - 1 - (strip_counter * rows_per_strip)) * NX + ((directory_counter - start_slice + 1) * NX * NY);
+    // std::cerr << "inline size in bytes: " << (2 - (NX % 2) + NX) << std::endl;
+    // std::cerr << " ouput address " << (NY - 1 - (strip_counter * rows_per_strip)) * (2 - (NX % 2) + NX) + ((directory_counter + 1 - start_slice) * (2 - (NX % 2) + NX) * NY) << " " << std::endl;
+    return (NY - 1 - (strip_counter * rows_per_strip)) * (2 - (NX % 2) + NX) + ((directory_counter - start_slice + 1) * (2 - (NX % 2) + NX) * NY);
 }
 #else
 constexpr int ifdef_swap_inline_i_am_one_otherwise_zero = 0;
 
 inline long GetAddressOfLine(const unsigned int& directory_counter, const int& start_slice, const tstrip_t& strip_counter, const unsigned int& rows_per_strip, const int& NX, const int& NY) {
-    return strip_counter * rows_per_strip * NX + ((directory_counter - start_slice + 1) * NX * NY);
+    return strip_counter * rows_per_strip * (2 - (NX % 2) + NX) + ((directory_counter + 1 - start_slice) * (2 - (NX % 2) + NX) * NY);
 }
 #endif
 
@@ -38,6 +41,7 @@ inline void TiffFile::CopyBufferToOutputArray(OutputType* output_array, BufferTy
     long        output_counter    = output_starting_address;
     int         intra_row_counter = 0;
     int         i_row             = 1;
+    int         fftw_padding      = 2 - (ReturnXSize( ) % 2);
     BufferType* read_ptr;
 
     if constexpr ( std::is_same_v<OutputType, BufferType> ) {
@@ -45,23 +49,26 @@ inline void TiffFile::CopyBufferToOutputArray(OutputType* output_array, BufferTy
         for ( int i = 0; i < number_of_rows; i++ ) {
             read_ptr = &buffer[i * ReturnXSize( )];
             std::memcpy(&output_array[output_counter], read_ptr, ReturnXSize( ) * sizeof(BufferType));
-            output_counter = output_starting_address - (i * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
+            output_counter = output_starting_address - ((i + 1) * ifdef_swap_inline_i_am_one_otherwise_zero * (fftw_padding + ReturnXSize( )));
             if ( output_counter < 0 )
-                output_counter += (ReturnXSize( ) * ReturnYSize( ));
+                output_counter += ((fftw_padding + ReturnXSize( )) * ReturnYSize( ));
         }
     }
     else {
         for ( int i = 0; i < number_of_rows; i++ ) {
             read_ptr = &buffer[i * ReturnXSize( )];
-#pragma omp simd simdlen(8)
+            // wxPrintf("Start For row %i, padding %i, output_counter is %li and output_starting_address is %i and xsize is %i\n", i, fftw_padding, output_counter, output_starting_address, ReturnXSize( ));
+
+#pragma omp simd simdlen(4)
             for ( int counter = 0; counter < ReturnXSize( ); counter++ ) {
                 output_array[output_counter] = read_ptr[counter];
                 output_counter++;
-            } // This will be the place to add fourier padding too
-            output_counter = output_starting_address - (i * ifdef_swap_inline_i_am_one_otherwise_zero * ReturnXSize( ));
+            } // This will be the place to add fourier padding too FIXME: we need padding jumpvalue ehre (2)
+            output_counter = output_starting_address - ((i + 1) * ifdef_swap_inline_i_am_one_otherwise_zero * (fftw_padding + ReturnXSize( )));
             if ( output_counter < 0 )
-                output_counter += (ReturnXSize( ) * ReturnYSize( ));
+                output_counter += ((fftw_padding + ReturnXSize( )) * ReturnYSize( ));
             MyDebugAssertTrue(output_counter >= 0 && output_counter < ReturnXSize( ) * ReturnYSize( ), "output_counter out of bounds");
+            // wxPrintf("Inc For row %i, padding %i, output_counter is %li and output_starting_address is %i and xsize is %i\n", i, fftw_padding, output_counter, output_starting_address, ReturnXSize( ));
         }
     }
 }

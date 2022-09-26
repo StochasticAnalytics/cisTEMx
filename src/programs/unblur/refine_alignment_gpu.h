@@ -141,7 +141,6 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
             phase_multiplier = std::min(phase_multiplier, iteration_counter);
 
-            std::cerr << "phase_multiplier = " << phase_multiplier << std::endl;
             //phase_multiplier = (current_x_shifts[image_counter] < batch.max_pixel_radius_x( ) / 3.0f && current_y_shifts[image_counter] < batch.max_pixel_radius_y( ) / 3.0f && iteration_counter > 0) ? 1 : 0;
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");

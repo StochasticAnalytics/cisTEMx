@@ -396,6 +396,8 @@ class GpuImage {
 
     void AddSquaredImage(GpuImage& other_image);
 
+    void ReplaceOutliersWithMean(float maximum_n_sigmas);
+
     // Statitical Methods
     float ReturnSumOfRealValues( );
     // float3    ReturnSumOfRealValues3Channel( );

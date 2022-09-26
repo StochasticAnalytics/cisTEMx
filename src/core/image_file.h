@@ -28,10 +28,13 @@ class ImageFile : public AbstractImageFile {
     ImageFile(std::string wanted_filename, bool overwrite = false);
     ~ImageFile( );
 
-    int   ReturnXSize( );
-    int   ReturnYSize( );
-    int   ReturnZSize( );
-    int   ReturnNumberOfSlices( );
+    int ReturnXSize( );
+    int ReturnYSize( );
+    int ReturnZSize( );
+    int ReturnNumberOfSlices( );
+
+    inline int ReturnFileType( ) { return file_type; }
+
     float ReturnPixelSize( );
 
     bool IsOpen( );

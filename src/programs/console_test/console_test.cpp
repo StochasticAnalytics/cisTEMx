@@ -112,6 +112,7 @@ class MyTestApp : public MyApp {
 #ifdef ENABLEGPU
     void TestElectronExposureFilterGPU( );
     void TestGpuAddImageStack( );
+    void TestCpuvsGpuReplaceOutliers( );
 #endif
     void TestEmpiricalDistribution( );
     void TestSumOfSquaresFourierAndFFTNormalization( );
@@ -179,6 +180,7 @@ bool MyTestApp::DoCalculation( ) {
 #ifdef ENABLEGPU
     TestElectronExposureFilterGPU( );
     TestGpuAddImageStack( );
+    // TestCpuvsGpuReplaceOutliers( );
 #endif
     TestDatabase( );
     TestEmpiricalDistribution( );
@@ -848,6 +850,52 @@ void MyTestApp::TestGpuAddImageStack( ) {
         }
         pixel_counter += sum_image.padding_jump_value;
     }
+
+    EndTest( );
+}
+
+void MyTestApp::TestCpuvsGpuReplaceOutliers( ) {
+    BeginTest("GpuImage::ReplaceOutliersWithMean");
+
+    // The underlying functions in the Image class that calculate image mean and stdDev are validated elsewhere, so we compare to them here.
+    // TODO: confirm this is true!
+    Image test_image;
+    test_image.QuickAndDirtyReadSlice(hiv_image_80x80x1_filename.ToStdString( ), 1);
+    float sigma = sqrtf(test_image.ReturnVarianceOfRealValues( ));
+    float mean  = test_image.ReturnAverageOfRealValues( );
+
+    GpuImage d_test_image;
+    d_test_image.Init(test_image);
+    d_test_image.CopyHostToDeviceAndSynchronize( );
+    d_test_image.MeanStdDev( );
+
+    // first confirm the underlying statistical functions are working on the PGU
+    if ( ! FloatsAreAlmostTheSame(mean, d_test_image.img_mean) ) {
+        wxPrintf("Failed for mean determination values host (%f) device (%f)\n", mean, d_test_image.img_mean);
+        FailTest;
+    }
+    if ( ! FloatsAreAlmostTheSame(sigma, d_test_image.img_stdDev) ) {
+        wxPrintf("Failed for stdDev determination values host (%f) device (%f)\n", sigma, d_test_image.img_stdDev);
+        FailTest;
+    }
+
+    // Now test the outlier replacement
+    test_image.ReplaceOutliersWithMean(2.0f);
+    d_test_image.ReplaceOutliersWithMean(2.0f);
+
+    Image comparison = d_test_image.CopyDeviceToNewHost(true, true, true);
+
+    // int pixel_counter = 0;
+    // for ( int j = 0; j < comparison.logical_y_dimension; j++ ) {
+    //     for ( int i = 0; i < comparison.logical_x_dimension; i++ ) {
+    //         if ( ! FloatsAreAlmostTheSame(comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]) ) {
+    //             wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]);
+    //             FailTest;
+    //         }
+    //         pixel_counter++;
+    //     }
+    //     pixel_counter += comparison.padding_jump_value;
+    // }
 
     EndTest( );
 }

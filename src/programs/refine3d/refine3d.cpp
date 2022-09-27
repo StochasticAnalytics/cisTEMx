@@ -551,6 +551,7 @@ bool Refine3DApp::DoCalculation( ) {
     float image_shift_y;
     //	float low_resolution_contrast = 0.5f;
     bool file_read;
+    bool skip_local_refinement = false;
 
     bool take_random_best_parameter;
 
@@ -810,28 +811,11 @@ bool Refine3DApp::DoCalculation( ) {
         //		input_3d.density_map->SetMinimumValue(0.0);
     }
 
-    // The previous sizing of the search box based on the mask radius doesn't make any sort of sense, aside from trying to speed up the global search for CPUs.
-    // I moved the lines below /////       /////      from after the global loop to before, so that the refinement binning etc can be used for search as well as
-    // the should be on equal footing. I will probably do away with having a seperate 3d volume for search altogether, but as an incremental advance,
+    //	input_image.Allocate(input_stack.ReturnXSize(), input_stack.ReturnYSize(), true);
+    //	if (outer_mask_radius > input_image.physical_address_of_box_center_x * pixel_size- mask_falloff) outer_mask_radius = input_image.physical_address_of_box_center_x * pixel_size - mask_falloff;
+    //	if (mask_radius_search > input_image.physical_address_of_box_center_x * pixel_size- mask_falloff) mask_radius_search = input_image.physical_address_of_box_center_x * pixel_size - mask_falloff;
+    input_3d.mask_radius = outer_mask_radius;
 
-    if ( padding != 1.0 ) {
-        input_3d.density_map->Resize(input_3d.density_map->logical_x_dimension * padding, input_3d.density_map->logical_y_dimension * padding, input_3d.density_map->logical_z_dimension * padding, input_3d.density_map->ReturnAverageOfRealValuesOnEdges( ));
-        //		refine_statistics.part_SSNR.ResampleCurve(&refine_statistics.part_SSNR, refine_statistics.part_SSNR.number_of_points * padding);
-    }
-
-    // FIXME: this does a sinc correction which would not apply to a reference generated from atomic coordinates.
-    input_3d.PrepareForProjections(low_resolution_limit, high_resolution_limit);
-    // So we can share the global pointer
-
-    binning_factor_refine = input_3d.pixel_size / pixel_size;
-    binned_image_box_size = myroundint(input_stack.ReturnXSize( ) / binning_factor_refine);
-    //Scale to make projections compatible with images for ML calculation
-    //	input_3d.density_map->MultiplyByConstant(binning_factor_refine);
-    //	input_3d.density_map->MultiplyByConstant(powf(powf(binning_factor_refine, 1.0 / 3.0), 2));
-    wxPrintf("\nBinning factor for refinement = %f, new pixel size = %f\n", binning_factor_refine, input_3d.pixel_size);
-
-    input_3d.mask_radius       = outer_mask_radius;
-    bool skip_local_refinement = false;
     if ( do_global_search ) {
         if ( best_parameters_to_keep == 0 ) {
             best_parameters_to_keep = 1;
@@ -840,11 +824,16 @@ bool Refine3DApp::DoCalculation( ) {
         // Assume square particles
         search_reference_3d = input_3d;
         search_statistics   = input_statistics;
-        search_box_size     = search_reference_3d.density_map->logical_x_dimension;
-
+        search_box_size     = ReturnClosestFactorizedUpper(myroundint(2.0 / pixel_size * (std::max(max_search_x, max_search_y) + mask_radius_search)), 3, true);
+        if ( search_box_size > search_reference_3d.density_map->logical_x_dimension )
+            search_box_size = search_reference_3d.density_map->logical_x_dimension;
+        if ( search_box_size != search_reference_3d.density_map->logical_x_dimension * padding )
+            search_reference_3d.density_map->Resize(search_box_size * padding, search_box_size * padding, search_box_size * padding);
         if ( mask_radius_search > float(search_box_size) / 2.0 * pixel_size - mask_falloff )
             mask_radius_search = float(search_box_size) / 2.0 * pixel_size - mask_falloff;
-
+        //		search_reference_3d.PrepareForProjections(high_resolution_limit_search, true);
+        search_reference_3d.PrepareForProjections(low_resolution_limit, high_resolution_limit_search, true);
+        //		search_statistics.Init(search_reference_3d.pixel_size, search_reference_3d.density_map->logical_y_dimension / 2 + 1);
         binning_factor_search        = search_reference_3d.pixel_size / pixel_size;
         binned_search_image_box_size = myroundint(search_reference_3d.density_map->logical_x_dimension / padding);
         //		search_particle.Allocate(binned_search_image_box_size, binned_search_image_box_size);
@@ -870,6 +859,22 @@ bool Refine3DApp::DoCalculation( ) {
             psi_max = 360.0;
         wxPrintf("\nBox size for search = %i, binning factor = %f, new pixel size = %f, resolution limit = %f\nAngular step size = %f, in-plane = %f\n", search_reference_3d.density_map->logical_x_dimension, binning_factor_search, search_reference_3d.pixel_size, search_reference_3d.pixel_size * 2.0, angular_step, psi_step);
     }
+
+    if ( padding != 1.0 ) {
+        input_3d.density_map->Resize(input_3d.density_map->logical_x_dimension * padding, input_3d.density_map->logical_y_dimension * padding, input_3d.density_map->logical_z_dimension * padding, input_3d.density_map->ReturnAverageOfRealValuesOnEdges( ));
+        //		refine_statistics.part_SSNR.ResampleCurve(&refine_statistics.part_SSNR, refine_statistics.part_SSNR.number_of_points * padding);
+    }
+
+    //	input_3d.PrepareForProjections(high_resolution_limit);
+    input_3d.PrepareForProjections(low_resolution_limit, high_resolution_limit);
+    // So we can share the global pointer
+
+    binning_factor_refine = input_3d.pixel_size / pixel_size;
+    binned_image_box_size = myroundint(input_stack.ReturnXSize( ) / binning_factor_refine);
+    //Scale to make projections compatible with images for ML calculation
+    //	input_3d.density_map->MultiplyByConstant(binning_factor_refine);
+    //	input_3d.density_map->MultiplyByConstant(powf(powf(binning_factor_refine, 1.0 / 3.0), 2));
+    wxPrintf("\nBinning factor for refinement = %f, new pixel size = %f\n", binning_factor_refine, input_3d.pixel_size);
 
     //	temp_image.Allocate(input_file.ReturnXSize(), input_file.ReturnYSize(), true);
     sum_power.Allocate(input_stack.ReturnXSize( ), input_stack.ReturnYSize( ), false);

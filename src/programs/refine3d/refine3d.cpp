@@ -1721,10 +1721,10 @@ bool Refine3DApp::DoCalculation( ) {
             //			output_parameters.score = input_parameters.score;
             //			output_parameters.score_change = 0.0f;
             //		}
-            refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
+            // refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
 
             refine_particle_.SetParameters(output_parameters);
-            refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
+            // refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
 
             //		refine_particle_.SetAlignmentParameters(output_parameters.phi, output_parameters.theta, output_parameters.psi, 0.0, 0.0);
             //		unbinned_image.ClipInto(refine_particle_.particle_image);
@@ -1747,7 +1747,7 @@ bool Refine3DApp::DoCalculation( ) {
 
                 output_parameters.logp  = refine_particle_.ReturnLogLikelihood(input_image_, input_ctf, input_3d_, input_statistics, classification_resolution_limit, &frealign_score_local);
                 output_parameters.score = -100.0f * frealign_score_local;
-                refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
+                // refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
 
                 output_parameters.score_change = output_parameters.score - input_parameters.score;
             }

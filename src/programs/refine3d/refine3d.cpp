@@ -851,7 +851,7 @@ bool Refine3DApp::DoCalculation( ) {
 #ifdef CISTEM_DETERMINISTIC_OUTCOME
         psi_start = 0.0;
 #else
-        psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
+        psi_start             = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
 #endif
 
         psi_max = 0.0;
@@ -933,12 +933,15 @@ bool Refine3DApp::DoCalculation( ) {
                     current_line++;
                     if ( input_parameters.position_in_stack >= first_particle && input_parameters.position_in_stack <= last_particle ) {
                         file_read = false;
-                        if ( random_reset_counter == 0 )
-#ifdef CISTEM_DETERMINISTIC_OUTCOME
+                        if ( random_reset_counter == 0 ) {
+                            // FIXME: I don't know what this is supposed to be doing, but if non-zero, it causes huge slow downs.
                             temp_float = 0.0f;
-#else
-                            temp_float = global_random_number_generator.GetUniformRandom( );
-#endif
+                            // #ifdef CISTEM_DETERMINISTIC_OUTCOME
+                            //                             temp_float = 0.0f;
+                            // #else
+                            //                             temp_float = global_random_number_generator.GetUniformRandom( );
+                        }
+                        // #endif
                         if ( (temp_float >= 1.0 - 2.0f * percentage) || (random_reset_counter != 0) ) {
                             random_reset_counter++;
                             if ( random_reset_counter == random_reset_count )

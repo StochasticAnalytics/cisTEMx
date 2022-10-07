@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: bhimesbhimes/cistem_build_env:base_image_v1.4
+From: bhimesbhimes/cistem_build_env:base_image_v1.4.5
 #Stage: spython-base
 
 %setup 

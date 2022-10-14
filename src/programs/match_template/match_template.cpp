@@ -1781,13 +1781,13 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // loop until the found peak is below the threshold
 
 #ifdef TEST_FILTERED_MIP
-        int exclusion_radius = objective_aperture_resolution / pixel_size;
+        int exclusion_radius = pixel_size / objective_aperture_resolution;
 #else
         int exclusion_radius = input_reconstruction.logical_x_dimension / cistem::fraction_of_box_size_to_exclude_for_border + 1;
 #endif
 
         std::cerr << "Using exclusion radius of " << exclusion_radius << std::endl;
-        std::cerr << "with filtered mip this would be : " << objective_aperture_resolution / pixel_size << std::endl;
+        std::cerr << "with filtered mip this would be : " << pixel_size / objective_aperture_resolution << std::endl;
         std::cerr << "without filtered mip this would be : " << input_reconstruction.logical_x_dimension / cistem::fraction_of_box_size_to_exclude_for_border + 1 << std::endl;
 
         long nTrys = 0;

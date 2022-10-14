@@ -73,6 +73,11 @@ Image::Image( ) {
     SetupInitialValues( );
 }
 
+Image::Image(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool is_in_real_space, bool do_fft_planning) {
+    SetupInitialValues( );
+    Allocate(wanted_x_size, wanted_y_size, wanted_z_size, is_in_real_space, do_fft_planning);
+}
+
 Image::Image(const Image& other_image) // copy constructor
 {
 
@@ -4937,7 +4942,7 @@ bool Image::HasNegativeRealValue( ) {
     return false;
 }
 
-void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");
     MyDebugAssertTrue(end_slice <= input_file->ReturnNumberOfSlices( ), "End slice is greater than number of slices in the file!");
@@ -4957,17 +4962,25 @@ void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice) 
 
     is_in_real_space         = true;
     object_is_centred_in_box = true;
-
+    cistem_timer_noop::StopWatch timer;
+    timer.start("READ SLICES");
     input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values);
+    timer.lap("READ SLICES");
 
     // we need to respace this to take into account the FFTW padding..
-
-    AddFFTWPadding( );
+    timer.start("FFTW PADDING");
+    if ( add_fft_padding && ! input_file->ReturnFileType( ) == TIFF_FILE ) {
+        AddFFTWPadding( );
+    }
+    else {
+    }
+    timer.lap("FFTW PADDING");
+    timer.print_times( );
 }
 
 //!> \brief Read a set of slices from disk (FFTW padding is done automatically)
 
-void Image::ReadSlices(MRCFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(MRCFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
 
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");
@@ -4996,7 +5009,7 @@ void Image::ReadSlices(MRCFile* input_file, long start_slice, long end_slice) {
     AddFFTWPadding( );
 }
 
-void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
 
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");
@@ -5024,7 +5037,7 @@ void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice) {
 
 //!> \brief Read a set of slices from disk (FFTW padding is done automatically)
 
-void Image::ReadSlices(DMFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(DMFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
 
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");

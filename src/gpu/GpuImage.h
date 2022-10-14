@@ -11,6 +11,7 @@
 #include "../constants/constants.h"
 #include "TensorManager.h"
 #include "../programs/refine3d/batched_search.h"
+#include "core_extensions/data_views/pointers.h"
 
 class BatchedSearch;
 
@@ -18,6 +19,7 @@ class GpuImage {
 
   public:
     GpuImage( );
+    GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size = 1, bool is_in_real_space = true, bool do_fft_planning = true);
     GpuImage(const GpuImage& other_gpu_image); // copy constructor
     GpuImage(Image& cpu_image);
     ~GpuImage( );
@@ -56,6 +58,12 @@ class GpuImage {
     int   number_of_real_space_pixels; // !<	Total number of pixels in real space
     float ft_normalization_factor; // !<	Normalization factor for the Fourier transform (1/sqrt(N), where N is the number of pixels in real space)
     // Arrays to hold voxel values
+
+    // These arrays can be used to pass pointers for an image stack into a kernel. Initialize each type empty and explicitly
+    // since the GpuImage class itself is not tempalted. TODO: use tempalte parameters when re-writing
+    DevicePointerArray<__half> ptr_array_16f;
+    DevicePointerArray<float>  ptr_array_32f;
+    DevicePointerArray<float2> ptr_array_32fc;
 
     float*               real_values; // !<  Real array to hold values for REAL images.
     std::complex<float>* complex_values; // !<  Complex array to hold values for COMP images.
@@ -175,25 +183,33 @@ class GpuImage {
     ////////////////////////////////////////////////////////////////////////
 
     void QuickAndDirtyWriteSlices(std::string filename, int first_slice, int last_slice); /**CPU_eq**/
+
+    void QuickAndDirtyWriteSlice(std::string filename, int first_slice) { QuickAndDirtyWriteSlices(filename, first_slice, first_slice); }; /**CPU_eq**/
+
     void PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift); /**CPU_eq**/
     void MultiplyByConstant(float scale_factor); /**CPU_eq**/
     void SetToConstant(float val);
     void SetToConstant(Npp32fc val);
     void Conj( ); // FIXME
+    void MultiplyPixelWise(const float& other_array, const int other_array_size); // dose filter for example
     void MultiplyPixelWise(GpuImage& other_image); /**CPU_eq**/
     void MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image); /**CPU_eq**/
 
-    void MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image);
+    void MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image, int phase_multiplier);
+
+    void MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image) { MultiplyPixelWiseComplexConjugate(other_image, result_image, 0); };
 
     void SwapFourierSpaceQuadrants( );
     void SwapRealSpaceQuadrants( ); /**CPU_eq**/
-    void ClipInto(GpuImage* other_image, float wanted_padding_value, /**CPU_eq**/
-                  bool fill_with_noise, float wanted_noise_sigma,
-                  int wanted_coordinate_of_box_center_x,
-                  int wanted_coordinate_of_box_center_y,
-                  int wanted_coordinate_of_box_center_z);
+    void ClipInto(GpuImage* other_image,
+                  float     wanted_padding_value              = 0.f, /**CPU_eq**/
+                  bool      fill_with_noise                   = false,
+                  float     wanted_noise_sigma                = 1.f,
+                  int       wanted_coordinate_of_box_center_x = 0,
+                  int       wanted_coordinate_of_box_center_y = 0,
+                  int       wanted_coordinate_of_box_center_z = 0);
 
-    void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value);
+    void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value, bool zero_central_pixel = false);
 
     void ClipIntoReturnMask(GpuImage* other_image);
 
@@ -211,10 +227,10 @@ class GpuImage {
     void BackwardFFTBatched(int wanted_batch_size = 0); // if zero, defaults to dims.z
 
     void ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale);
-    template <typename T>
-    void BackwardFFTAfterComplexConjMul(T* image_to_multiply, bool load_half_precision);
+    template <typename LoadType, typename StoreType = __half2>
+    void BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool load_half_precision);
 
-    void Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value);
+    void Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value, bool zero_central_pixel = false);
     void Consume(GpuImage* other_image);
     void CopyCpuImageMetaData(Image& cpu_image);
     void CopyGpuImageMetaData(const GpuImage* other_image);
@@ -223,9 +239,11 @@ class GpuImage {
     float ReturnSumOfSquares( );
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
-    void  ConvertToHalfPrecision(bool deallocate_single_precision = true);
-    void  AllocateTmpVarsAndEvents( );
-    bool  Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
+    void  CopyFP32toFP16buffer(bool deallocate_single_precision = true);
+    void  CopyFP16buffertoFP32(bool deallocate_half_precision = true);
+
+    void AllocateTmpVarsAndEvents( );
+    bool Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
 
     bool Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { return Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };
 
@@ -336,10 +354,16 @@ class GpuImage {
     };
 
     void CopyFrom(GpuImage* other_image);
+    template <typename StorageType>
+    void CopyDataFrom(GpuImage& other_image);
     bool InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
-    bool HasSameDimensionsAs(GpuImage* other_image);
+    bool HasSameDimensionsAs(GpuImage& other_image);
+
+    bool HasSameDimensionsAs(GpuImage* other_image) { return HasSameDimensionsAs(*other_image); };
+
+    bool HasSameDimensionsAs(Image* other_image);
     void Zeros( );
 
     void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);
@@ -361,11 +385,18 @@ class GpuImage {
 
     void AddImage(GpuImage* other_image) { AddImage(*other_image); }; // for compatibility with Image class
 
+    template <typename StorageType>
+    void AddImageStack(std::vector<GpuImage>& input_stack);
+    template <typename StorageType>
+    void AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& output_image);
+
     void SubtractImage(GpuImage& other_image);
 
     void SubtractImage(GpuImage* other_image) { SubtractImage(*other_image); }; // for compatibility with Image class
 
     void AddSquaredImage(GpuImage& other_image);
+
+    void ReplaceOutliersWithMean(float maximum_n_sigmas);
 
     // Statitical Methods
     float ReturnSumOfRealValues( );

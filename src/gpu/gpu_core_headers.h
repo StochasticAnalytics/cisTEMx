@@ -40,18 +40,53 @@ const int MAX_GPU_COUNT = 32;
 #endif
 
 // clang-format on
+template <typename T>
+void print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {
+
+    cudaPointerAttributes attr;
+    cudaErr(cudaPointerGetAttributes(&attr, ptr));
+    std::cerr << "\n";
+    if ( ptr_name ) {
+        std::cerr << "Pointer " << ptr_name << std::endl;
+    }
+    std::cerr << "Your pointer is for: ";
+    switch ( attr.type ) {
+        case 0:
+            std::cerr << "Unmanaged memory" << std::endl;
+            break;
+        case 1:
+            std::cerr << "Host memory" << std::endl;
+            break;
+        case 2:
+            std::cerr << "Device memory" << std::endl;
+            break;
+        case 3:
+            std::cerr << "Managed memory" << std::endl;
+            break;
+        default:
+            std::cerr << "Unknown memory" << std::endl;
+            break;
+    }
+    std::cerr << "\n";
+    std::cerr << "with possible device address () " << attr.devicePointer << std::endl;
+    std::cerr << "with possible host address () " << attr.hostPointer << std::endl;
+    return;
+}
 
 // Limits for specific kernels
 constexpr int ntds_x_WhitenPS = 32;
 constexpr int ntds_y_WhitenPS = 32;
+
 // Complex data type
-typedef float2                            Complex;
-static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
-static __device__ __host__ inline void    ComplexScale(Complex*, float);
-static __device__ __host__ inline Complex ComplexScale(Complex&, float&);
-static __device__ __host__ inline Complex ComplexMul(Complex, Complex);
-static __device__ __host__ inline Complex ComplexConjMul(Complex, Complex);
-static __device__ __host__ inline Complex ComplexConjMulAndScale(Complex a, Complex b, float s);
+typedef float2 Complex;
+
+// static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
+// static __device__ __host__ inline void    ComplexScale(Complex*, float);
+// static __device__ __host__ inline Complex ComplexScale(Complex&, float);
+// static __device__ __host__ inline Complex ComplexMul(Complex, Complex);
+// static __device__ __host__ inline Complex ComplexMul(Complex*, const Complex&);
+// static __device__ __host__ inline Complex ComplexConjMul(Complex, Complex);
+// static __device__ __host__ inline Complex ComplexConjMulAndScale(Complex a, Complex b, float s);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Complex operations
@@ -65,8 +100,16 @@ static __device__ __host__ inline Complex ComplexAdd(Complex a, Complex b) {
     return c;
 }
 
+// // Complex scale
+// static __device__ __host__ inline Complex ComplexScale(Complex& a, float& s) {
+//     Complex c;
+//     c.x = s * a.x;
+//     c.y = s * a.y;
+//     return c;
+// }
+
 // Complex scale
-static __device__ __host__ inline Complex ComplexScale(Complex& a, float& s) {
+static __device__ __host__ inline Complex ComplexScale(Complex& a, float s) {
     Complex c;
     c.x = s * a.x;
     c.y = s * a.y;
@@ -80,7 +123,7 @@ static __device__ __host__ inline void ComplexScale(Complex* a, float s) {
 }
 
 // Complex multiplication
-static __device__ __host__ inline Complex ComplexMul(Complex a, Complex b) {
+static __device__ __host__ inline Complex ComplexMul(const Complex& a, const Complex& b) {
     Complex c;
     c.x = a.x * b.x - a.y * b.y;
     c.y = a.x * b.y + a.y * b.x;

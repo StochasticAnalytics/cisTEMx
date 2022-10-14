@@ -32,6 +32,13 @@ constexpr std::array<float, 8> hydration_radius_vals       = {0.1750f, -0.1350f,
         avoiding the need for static_cast<type>(enum) anywhere we want to do an assignment or comparison.      
 */
 
+namespace electron_dose {
+constexpr float critical_dose_a         = 0.24499f;
+constexpr float critical_dose_b         = -1.6649f;
+constexpr float critical_dose_c         = 2.8141f;
+constexpr float reduced_critical_dose_b = critical_dose_b / 2.f;
+} // namespace electron_dose
+
 // To ensure data base type parity, force int type (even though this should be the default).
 namespace job_type {
 enum Enum : int {

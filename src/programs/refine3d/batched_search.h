@@ -15,6 +15,7 @@ class BatchedSearch {
 
   public:
     BatchedSearch( );
+
     ~BatchedSearch( );
 
     void Deallocate( );
@@ -25,6 +26,10 @@ class BatchedSearch {
     void SetMaxSearchExtension(int max_pixel_radius_x, int max_pixel_radius_y) {
         _max_pixel_radius_x = max_pixel_radius_x;
         _max_pixel_radius_y = max_pixel_radius_y;
+    }
+
+    void SetMinSearchExtension(int wanted_min_pixel_radius_x_y) {
+        _min_pixel_radius_x_y = wanted_min_pixel_radius_x_y;
     }
 
     inline int is_initialized( ) const {
@@ -44,6 +49,8 @@ class BatchedSearch {
     inline int max_pixel_radius_x( ) const { return _max_pixel_radius_x; };
 
     inline int max_pixel_radius_y( ) const { return _max_pixel_radius_y; };
+
+    inline int min_pixel_radius_x_y( ) const { return _min_pixel_radius_x_y; };
 
     inline int intra_loop_inc( ) const { return _intra_loop_inc; };
 
@@ -96,6 +103,8 @@ class BatchedSearch {
     int _intra_loop_inc;
     int _intra_loop_batch_size;
 
+    // min defaults to 0
+    int _min_pixel_radius_x_y = {0};
     int _max_pixel_radius_x;
     int _max_pixel_radius_y;
     int _stride;

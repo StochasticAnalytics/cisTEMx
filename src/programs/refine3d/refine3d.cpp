@@ -1014,7 +1014,7 @@ bool Refine3DApp::DoCalculation( ) {
     timer.lap("refine3d setup");
 
     if ( do_global_search ) {
-        timer.start("generate projection cache for global search");
+        timer.start("generate projection cache");
         //for (i = 0; i < search_particle.number_of_parameters; i++) {search_particle.parameter_map[i] = refine_particle.parameter_map[i];}
         search_particle.parameter_map = refine_particle.parameter_map;
         // Set parameter_map for x,y translations to true since they will always be searched and refined in a global search
@@ -1062,7 +1062,7 @@ bool Refine3DApp::DoCalculation( ) {
             global_euler_search.max_search_y = max_search_y;
         else
             global_euler_search.max_search_y = 0.0;
-        timer.lap("generate projection cache for global search");
+        timer.lap("generate projection cache");
     }
 
     wxPrintf("\nAverage sigma noise = %f, average LogP = %f\nAverage ShiftX = %f, average ShiftY = %f\nSigma ShiftX = %f, sigma ShiftY = %f\n\nNumber of particles to refine = %i\n\n",

@@ -109,6 +109,11 @@ class MyTestApp : public MyApp {
     void TestMaskCentralCross( );
     void TestStarToBinaryFileConversion( );
     void TestElectronExposureFilter( );
+#ifdef ENABLEGPU
+    void TestElectronExposureFilterGPU( );
+    void TestGpuAddImageStack( );
+    void TestCpuvsGpuReplaceOutliers( );
+#endif
     void TestEmpiricalDistribution( );
     void TestSumOfSquaresFourierAndFFTNormalization( );
     void TestRandomVariableFunctions( );
@@ -172,6 +177,11 @@ bool MyTestApp::DoCalculation( ) {
     TestMaskCentralCross( );
     TestStarToBinaryFileConversion( );
     TestElectronExposureFilter( );
+#ifdef ENABLEGPU
+    TestElectronExposureFilterGPU( );
+    TestGpuAddImageStack( );
+    // TestCpuvsGpuReplaceOutliers( );
+#endif
     TestDatabase( );
     TestEmpiricalDistribution( );
     TestSumOfSquaresFourierAndFFTNormalization( );
@@ -696,6 +706,200 @@ void MyTestApp::TestElectronExposureFilter( ) {
 
     EndTest( );
 }
+
+#ifdef ENABLEGPU
+void MyTestApp::TestElectronExposureFilterGPU( ) {
+    // TODO: Depends on ZeroFloatArray, but this has no test.
+    BeginTest("Test Electron Exposure Filter GPU");
+
+    /*
+  Test exposure filter for a simple square image size, over all voltages and three pixel sizes.
+  The "ground truth" values are taken from a print out using the code for electron_dose.* from commit 
+  cdd0c04e984412661c983ab7176954093b502ad5 Dec 9, 2021
+  using this line in the inner loop (once for odd once for even)
+    for (auto & indx : indx_even)
+    {
+        wxPrintf("%3.9f, ", dose_filter_odd[indx]);
+    }
+  */
+    const int size_small = 1024;
+
+    std::vector<float> accelerating_voltage_vector = {300.f, 200.f, 100.f}; // only three supported values.
+    std::vector<float> pixel_size_vector           = {0.72, 1.0, 2.1}; // values not chosen for any  good reason.
+    std::vector<int>   indx_even                   = {0, 13, size_small / 3, size_small - 1};
+    // Note that moving forward, only even sized images are supported in the gpu code path (and any new cpu code I enter.)
+    // I leave the "even" in the name now to make the comparison to the current CPU test more clear.
+    std::vector<float> ground_truth_even = {1.000000000, 0.929921567, 0.017324856, 0.010133515, 1.000000000, 0.958591580, 0.031609546, 0.015432503, 1.000000000, 0.987710178, 0.155882418, 0.065504745, 1.000000000, 0.913183212, 0.006285460, 0.003215143, 1.000000000, 0.948510230, 0.013328240, 0.005439333, 1.000000000, 0.984661400, 0.097948194, 0.033139121, 1.000000000, 0.872345626, 0.000488910, 0.000178414, 1.000000000, 0.923584640, 0.001513943, 0.000393374, 1.000000000, 0.977023780, 0.030387951, 0.005955920};
+    int                ground_truth_counter;
+    ElectronDose*      my_electron_dose;
+
+    Image test_image_small_even, filtered_output;
+    test_image_small_even.Allocate(size_small, size_small, true);
+    filtered_output.Allocate(size_small, size_small, true);
+
+    // The dose filter is applied to the image as the cost of calculating it is lower than just
+    // re-using a pre-calculated filter (in the event it is even re-used!)
+    // Right now, using it in unblur, we apply it to a stack of images. The last image in the stack will
+    // be for the results (i.e. sum_image in unblur)
+    constexpr int         n_images = 1;
+    std::vector<GpuImage> d_test_image_small_even(n_images);
+
+    GpuImage d_filtered_output;
+
+    for ( int i = 0; i < n_images; i++ ) {
+        bool pin_host_memory = (i == 0) ? true : false;
+        d_test_image_small_even[i].Init(test_image_small_even, pin_host_memory);
+    }
+
+    d_filtered_output.Init(filtered_output, true, true);
+
+    // So no filters are actually calculated as in the cpu test
+
+    ground_truth_counter = 0;
+    for ( auto& acceleration_voltage : accelerating_voltage_vector ) {
+        for ( auto& pixel_size : pixel_size_vector ) {
+            my_electron_dose = new ElectronDose(acceleration_voltage, pixel_size);
+
+            // We can get the filter values if we supply an input image that has a value of 1.0
+            for ( int i = 0; i < n_images; i++ ) {
+                d_test_image_small_even[i].SetToConstant(1.0f);
+            }
+            d_filtered_output.SetToConstant(3.0f);
+            // Note: two differences to the cpu call a) we need to specifically NOT restore the noise power, and we pass the total exposure
+            // as pre_exposure, and 0 as the exposure per frame, this way all three images should have the same dose filter applied.
+            float pre_exposure       = 30.f;
+            float exposure_per_frame = 0.f;
+
+            my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, float2*>(d_test_image_small_even, d_filtered_output.complex_values_gpu, pre_exposure, exposure_per_frame, false);
+
+            for ( int i = 0; i < n_images; i++ ) {
+                int per_image_gt_counter = ground_truth_counter;
+                // Copy back to the host for comparison
+                static constexpr bool free_gpu_mem   = false;
+                static constexpr bool unpin_host_mem = false;
+                d_filtered_output.CopyDeviceToHostAndSynchronize(free_gpu_mem, unpin_host_mem);
+
+                for ( auto& indx : indx_even ) {
+                    if ( ! FloatsAreAlmostTheSame(filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]) ) {
+                        wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
+                                 acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[ground_truth_counter]);
+
+                        FailTest;
+                    }
+                    // wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
+                    //          acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]);
+                    per_image_gt_counter++;
+                }
+            }
+            ground_truth_counter += indx_even.size( );
+
+            delete my_electron_dose;
+        }
+    }
+    EndTest( );
+}
+
+void MyTestApp::TestGpuAddImageStack( ) {
+    BeginTest("Test Gpu::AddImageStack");
+
+    constexpr int n_images = 10;
+    constexpr int size     = 16;
+
+    // Setup the reference data
+    std::vector<Image> image_stack(n_images);
+    Image              sum_image(size, size, 1, true);
+    Image              ground_truth(size, size, 1, true);
+
+    sum_image.SetToConstant(0.0f);
+    ground_truth.SetToConstant(0.f);
+
+    int pixel_counter = 0;
+    for ( int iImg = 0; iImg < n_images; iImg++ ) {
+        image_stack[iImg].Allocate(size, size, true);
+        for ( int i = 0; i < image_stack[iImg].real_memory_allocated; i++ ) {
+            image_stack[iImg].real_values[i] = 1.f; //float(pixel_counter);
+            ground_truth.real_values[i] += image_stack[iImg].real_values[i];
+            pixel_counter++;
+        }
+    }
+
+    std::vector<GpuImage> d_test_image(n_images);
+    GpuImage              d_sum_image;
+
+    for ( int i = 0; i < n_images; i++ ) {
+        d_test_image[i].Init(image_stack[i]);
+        d_test_image[i].CopyHostToDevice(false);
+    }
+
+    MyDebugAssertTrue(d_test_image.size( ) == n_images, "d_test_image.size() != n_images");
+
+    // Make sure all the copying is finished
+    d_sum_image.Init(sum_image);
+    d_sum_image.CopyHostToDeviceAndSynchronize( );
+    d_sum_image.AddImageStack<float>(d_test_image);
+    d_sum_image.CopyDeviceToHostAndSynchronize(false, false);
+
+    pixel_counter = 0;
+    for ( int j = 0; j < sum_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < sum_image.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(sum_image.real_values[pixel_counter], ground_truth.real_values[pixel_counter]) ) {
+                wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, sum_image.real_values[pixel_counter], ground_truth.real_values[pixel_counter]);
+                FailTest;
+            }
+            pixel_counter++;
+        }
+        pixel_counter += sum_image.padding_jump_value;
+    }
+
+    EndTest( );
+}
+
+void MyTestApp::TestCpuvsGpuReplaceOutliers( ) {
+    BeginTest("GpuImage::ReplaceOutliersWithMean");
+
+    // The underlying functions in the Image class that calculate image mean and stdDev are validated elsewhere, so we compare to them here.
+    // TODO: confirm this is true!
+    Image test_image;
+    test_image.QuickAndDirtyReadSlice(hiv_image_80x80x1_filename.ToStdString( ), 1);
+    float sigma = sqrtf(test_image.ReturnVarianceOfRealValues( ));
+    float mean  = test_image.ReturnAverageOfRealValues( );
+
+    GpuImage d_test_image;
+    d_test_image.Init(test_image);
+    d_test_image.CopyHostToDeviceAndSynchronize( );
+    d_test_image.MeanStdDev( );
+
+    // first confirm the underlying statistical functions are working on the PGU
+    if ( ! FloatsAreAlmostTheSame(mean, d_test_image.img_mean) ) {
+        wxPrintf("Failed for mean determination values host (%f) device (%f)\n", mean, d_test_image.img_mean);
+        FailTest;
+    }
+    if ( ! FloatsAreAlmostTheSame(sigma, d_test_image.img_stdDev) ) {
+        wxPrintf("Failed for stdDev determination values host (%f) device (%f)\n", sigma, d_test_image.img_stdDev);
+        FailTest;
+    }
+
+    // Now test the outlier replacement
+    test_image.ReplaceOutliersWithMean(2.0f);
+    d_test_image.ReplaceOutliersWithMean(2.0f);
+
+    Image comparison = d_test_image.CopyDeviceToNewHost(true, true, true);
+
+    // int pixel_counter = 0;
+    // for ( int j = 0; j < comparison.logical_y_dimension; j++ ) {
+    //     for ( int i = 0; i < comparison.logical_x_dimension; i++ ) {
+    //         if ( ! FloatsAreAlmostTheSame(comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]) ) {
+    //             wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]);
+    //             FailTest;
+    //         }
+    //         pixel_counter++;
+    //     }
+    //     pixel_counter += comparison.padding_jump_value;
+    // }
+
+    EndTest( );
+}
+#endif // #ifdef ENABLEGPU
 
 void MyTestApp::TestEmpiricalDistribution( ) {
     CheckDependencies({"MRCFile::OpenFile", "MRCFile::ReadSlice"});
@@ -1414,6 +1618,38 @@ void MyTestApp::TestFilterFunctions( ) {
         FailTest;
 
     EndTest( );
+
+#ifdef ENABLEGPU
+
+    BeginTest("GpuImage::ApplyBFactor");
+
+    test_image.QuickAndDirtyReadSlice(hiv_images_80x80x10_filename.ToStdString( ), 1);
+    GpuImage d_test_image;
+    d_test_image.Init(test_image);
+    d_test_image.CopyHostToDevice(true);
+    // We synced so we can reset the host memory to be sure we don't get a false positive on failed copy back.
+    test_image.SetToConstant(0.f);
+    d_test_image.ForwardFFT( );
+    d_test_image.ApplyBFactor(1500, 0.f, 0.f);
+    d_test_image.BackwardFFT( );
+    d_test_image.CopyDeviceToHostAndSynchronize( );
+
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0), 0.027244) == false ) {
+        FailTest;
+        std::cerr << "test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0) = " << test_image.ReturnRealPixelFromPhysicalCoord(0, 0, 0) << std::endl;
+    }
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0), 1.320998) == false ) {
+        FailTest;
+        std::cerr << "test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0) = " << test_image.ReturnRealPixelFromPhysicalCoord(40, 40, 0) << std::endl;
+    }
+    if ( FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0), 0.012282) == false ) {
+        FailTest;
+        std::cerr << "test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0) = " << test_image.ReturnRealPixelFromPhysicalCoord(79, 79, 0) << std::endl;
+    }
+
+    EndTest( );
+
+#endif
 }
 
 void MyTestApp::TestMaskCentralCross( ) {

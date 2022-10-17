@@ -7,7 +7,7 @@
 #include "../../programs/refine3d/batched_search.h"
 
 // #define USE_CUTENSOR_FOR_REDUCTION
-// #define SYNC_//timer
+// #define SYNC_TIMER
 // #define PRINT_EXTRA_SEARCH_INFO
 
 /**

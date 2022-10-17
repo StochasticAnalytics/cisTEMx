@@ -101,10 +101,10 @@ if test "$want_cuda" = "yes" ; then
 	if test -n "$cuda_home_path"
 	then
 	  CUDA_CFLAGS="-I$cuda_home_path/include -I/opt/cuTensor/include"
-      CUDA_LIBS="-L/opt/cuTensor/lib/cistem_version -L$cuda_home_path/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lcurand_static  -lcutensor_static -lcublasLt_static -lculibos -lcudart_static -lrt"
+      CUDA_LIBS="-L/opt/cuTensor/lib/cistem_version -L$cuda_home_path/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lnppitc_static -lcurand_static  -lcutensor_static -lcublasLt_static -lculibos -lcudart_static -lrt"
 	else
 	  CUDA_CFLAGS="-I/usr/local/cuda/include -I/opt/cuTensor/include"
-	  CUDA_LIBS="-L/opt/cuTensor/lib/cistem_version -L/usr/local/cuda/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lcurand_static  -lcutensor_static -lcublasLt_static -lculibos -lcudart_static -lrt"
+	  CUDA_LIBS="-L/opt/cuTensor/lib/cistem_version -L/usr/local/cuda/$libdir -lcufft_static -lnppial_static -lnppist_static -lnppc_static -lnppidei_static -lnppitc_static -lcurand_static  -lcutensor_static -lcublasLt_static -lculibos -lcudart_static -lrt"
 	fi
 
 

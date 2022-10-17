@@ -73,6 +73,11 @@ Image::Image( ) {
     SetupInitialValues( );
 }
 
+Image::Image(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool is_in_real_space, bool do_fft_planning) {
+    SetupInitialValues( );
+    Allocate(wanted_x_size, wanted_y_size, wanted_z_size, is_in_real_space, do_fft_planning);
+}
+
 Image::Image(const Image& other_image) // copy constructor
 {
 

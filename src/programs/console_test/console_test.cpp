@@ -5,7 +5,13 @@
 #include <unordered_map>
 #include "wx/socket.h"
 
+#ifdef ENABLEGPU
+#warning "GPU enabled in refine3d"
+#include "../../gpu/gpu_core_headers.h"
+#include "../../gpu/GpuImage.h"
+#else
 #include "../../core/core_headers.h"
+#endif
 
 #ifdef _CISTEM_MODULES
 import hello;

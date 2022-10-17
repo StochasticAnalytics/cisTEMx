@@ -886,8 +886,10 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
     // Note: (from wxDocs) that currently you need to explicitly call wxNotebook::RemovePage() before reparenting a notebook page.
     // Note: I'm not sure that the 5th arg is necessary or correct.
     constexpr bool select_this_page = false;
-    MyDebugAssertTrue(
-            MenuBook->InsertPage(current_page_idx, output_frame, frame_name, select_this_page, current_page_idx), "Failed to insert page into MenuBook");
+
+    // I would have thought putting the debug assert around the call to InsertPage would work, but it somehow doesn't?
+    bool successful_insert = MenuBook->InsertPage(current_page_idx, output_frame, frame_name, select_this_page, current_page_idx);
+    MyDebugAssertTrue(successful_insert, "Failed to insert page into MenuBook");
 
     // Sets the selection to the page that was previously displayed.
     // Also generates page chaninge events. Which could be avoided by using MenuBook->ChangeSelection(displayed_page_idx);

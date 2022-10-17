@@ -1827,6 +1827,7 @@ class AlignMoviesPanel : public JobPanel
 		wxPanel* StartPanel;
 		wxStaticText* RunProfileText;
 		MemoryComboBox* RunProfileComboBox;
+		wxCheckBox* use_gpu_checkboxUnblur;
 		wxButton* StartAlignmentButton;
 
 		// Virtual event handlers, override them in your derived class

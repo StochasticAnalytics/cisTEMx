@@ -23,7 +23,7 @@ Note; this is a performance check and changes data movement.
 */
 ////////////////////////////////////////////////////////////
 
-// #define CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
+#define CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
 
 ////////////////////////////////////////////////////////////
 /*

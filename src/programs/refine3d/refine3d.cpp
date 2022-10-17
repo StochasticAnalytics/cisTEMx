@@ -1433,7 +1433,7 @@ bool Refine3DApp::DoCalculation( ) {
 #endif
                 timer.lap("refining search FrealignObjFunct 1");
                 if ( do_global_search_ ) {
-                    timer.start("global search local");
+                    timer.start("global search");
                     //				my_time_in = wxDateTime::UNow();
                     search_particle_.ResetImageFlags( );
                     search_particle_.pixel_size = search_reference_3d_.pixel_size;
@@ -1565,7 +1565,8 @@ bool Refine3DApp::DoCalculation( ) {
                         istart = 1;
                     else
                         istart = 0;
-
+                    timer.lap("global search");
+                    timer.start("global search refinement");
                     if ( take_random_best_parameter == true ) {
                         float best_value  = euler_search_.list_of_best_parameters[1][5];
                         float worst_value = euler_search_.list_of_best_parameters[best_parameters_to_keep][5];
@@ -1683,7 +1684,7 @@ bool Refine3DApp::DoCalculation( ) {
                     refine_particle_.SetParameters(output_parameters, true);
                     output_parameters.score_change = output_parameters.score - input_parameters.score;
                     //				my_time_out = wxDateTime::UNow(); wxPrintf("global search done: ms taken = %li\n", my_time_out.Subtract(my_time_in).GetMilliseconds());
-                    timer.lap("global search local");
+                    timer.lap("global search refinement");
                 }
 
                 if ( do_local_refinement_ ) {

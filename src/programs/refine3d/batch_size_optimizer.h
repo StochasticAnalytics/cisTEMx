@@ -26,7 +26,7 @@ class BatchSizeOptimizer {
 
                 if ( print_best_batch_size ) {
 
-                    if ( omp_get_thread_num( ) == 0 ) {
+                    if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
                         std::cerr << "\n\tOptimal batch size found: " << returned_batch_size << "\n";
                         print_best_batch_size = false;
                     }

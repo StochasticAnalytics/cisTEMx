@@ -30,7 +30,6 @@ class
 
     // Depends on compilation mode --enable-profiling
     StopWatch timer;
-    int       wanted_batch_size = 1;
 
   private:
 };
@@ -233,10 +232,10 @@ void Refine3DApp::AddCommandLineOptions( ) {
 
 void Refine3DApp::DoInteractiveUserInput( ) {
 
-    long temp_long;
-    if ( command_line_parser.Found("batch-size", &temp_long) ) {
-        wanted_batch_size = int(temp_long);
-    }
+    // long temp_long;
+    // if ( command_line_parser.Found("batch-size", &temp_long) ) {
+    //     wanted_batch_size = int(temp_long);
+    // }
 
     wxString input_particle_images;
     wxString input_star_filename;
@@ -504,8 +503,8 @@ bool Refine3DApp::DoCalculation( ) {
     int image_counter;
     int defocus_i;
     int best_defocus_i;
-    int random_reset_counter;
-    int random_reset_count = 10;
+    int random_reset_counter = 0;
+    int random_reset_count   = 10;
     int binned_image_box_size;
     int search_box_size;
     int binned_search_image_box_size;
@@ -529,7 +528,7 @@ bool Refine3DApp::DoCalculation( ) {
     float binning_factor_refine;
     float binning_factor_search;
     float mask_falloff = 20.0; // in Angstrom
-    float temp_float;
+    float temp_float   = 0.f;
     float psi_max;
     float psi_step;
     float psi_start;
@@ -908,8 +907,7 @@ bool Refine3DApp::DoCalculation( ) {
         number_of_terms.SetupXAxis(0.0f, 0.5f * sqrtf(2.0f), int((sum_power.logical_x_dimension / 2.0f + 1.0f) * sqrtf(2.0f) + 1.0f));
         if ( is_running_locally == true )
             my_progress = new ProgressBar(images_to_process / max_threads);
-        current_line         = 0;
-        random_reset_counter = 0;
+        current_line = 0;
 
 #pragma omp parallel num_threads(max_threads) default(none) shared(timer, input_star_file, first_particle, last_particle, my_progress, percentage, exclude_blank_edges, input_stack,                                                                                                                                                                                                            \
                                                                    outer_mask_radius, mask_falloff, number_of_blank_edges, sum_power, current_line, global_random_number_generator, random_reset_count, random_reset_counter) private(current_line_, input_parameters, image_counter, number_of_blank_edges_local, variance, temp_image_, sum_power_local, input_image_, temp_float, file_read, \
@@ -923,64 +921,70 @@ bool Refine3DApp::DoCalculation( ) {
             sum_power_local.Allocate(input_stack.ReturnXSize( ), input_stack.ReturnYSize( ), false);
             sum_power_local.SetToConstant(0.0f);
             file_read = false;
+            cisTEMParameterLine input_parameters_;
 
 #pragma omp for schedule(static, 1)
             for ( current_line_ = 0; current_line_ < input_star_file.ReturnNumberofLines( ); current_line_++ ) {
 #pragma omp critical
                 {
-                    input_parameters = input_star_file.ReturnLine(current_line);
-
+                    input_parameters_ = input_star_file.ReturnLine(current_line);
                     current_line++;
-                    if ( input_parameters.position_in_stack >= first_particle && input_parameters.position_in_stack <= last_particle ) {
-                        file_read = false;
+                    if ( input_parameters_.position_in_stack >= first_particle && input_parameters_.position_in_stack <= last_particle ) {
+                        file_read  = false;
+                        temp_float = global_random_number_generator.GetUniformRandom( );
+
+                        // random_reset_counter is initialized to 0 and shared between threads (hence the omp critical block)
                         if ( random_reset_counter == 0 ) {
-                            // FIXME: I don't know what this is supposed to be doing, but if non-zero, it causes huge slow downs.
-                            temp_float = 0.0f;
-                            // #ifdef CISTEM_DETERMINISTIC_OUTCOME
-                            //                             temp_float = 0.0f;
-                            // #else
-                            //                             temp_float = global_random_number_generator.GetUniformRandom( );
+                            // // FIXME: I don't know what this is supposed to be doing, but if non-zero, it causes huge slow downs.
+                            // temp_float = 0.0f;
+                            // // #ifdef CISTEM_DETERMINISTIC_OUTCOME
+                            // //                             temp_float = 0.0f;
+                            temp_float = global_random_number_generator.GetUniformRandom( );
                         }
                         // #endif
                         if ( (temp_float >= 1.0 - 2.0f * percentage) || (random_reset_counter != 0) ) {
                             random_reset_counter++;
                             if ( random_reset_counter == random_reset_count )
                                 random_reset_counter = 0;
-                            //						wxPrintf("reading %i\n", int(input_parameters[0] + 0.5f));
-                            input_image_.ReadSlice(&input_stack, input_parameters.position_in_stack);
+
+                            // EXPERIMENTAL-1: leave next 3 lines unless you are sure.
+                            // file_read is thread local, so there is no need to leave it in this critical block,
+                            // moving it outside allows other threads to go on and do work.
+                            // input_image_.ReadSlice(&input_stack, input_parameters.position_in_stack);
                             file_read = true;
                         }
                     }
-                }
-                if ( input_parameters.position_in_stack < first_particle || input_parameters.position_in_stack > last_particle )
-                    continue;
-                image_counter++;
+                } // end of omp critical section
 
-                if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
-                    my_progress->Update(image_counter);
+                if ( input_parameters_.position_in_stack >= first_particle && input_parameters_.position_in_stack <= last_particle ) {
+                    // This update logic only works if thread 0 is getting a the same amount of work as the other threads, which I
+                    // do not think is guaranteed under the current setup.
+                    image_counter++;
+                    if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
+                        my_progress->Update(image_counter);
 
-                if ( ! file_read )
-                    continue;
-                //			if ((temp_float < 1.0 - 2.0f * percentage) && (random_reset_counter == 0)) continue;
-                //			if ((global_random_number_generator.GetUniformRandom() < 1.0 - 2.0f * percentage)) continue;
-                //			input_image_.ReadSlice(&input_stack, int(input_parameters[0] + 0.5f));
-                mask_radius_for_noise = outer_mask_radius / input_parameters.pixel_size;
-                if ( 2.0 * mask_radius_for_noise + mask_falloff / input_parameters.pixel_size > 0.95f * input_stack.ReturnXSize( ) ) {
-                    mask_radius_for_noise = 0.95f * input_stack.ReturnXSize( ) / 2.0f - mask_falloff / 2.0f / input_parameters.pixel_size;
+                    if ( file_read ) {
+                        input_image_.ReadSlice(&input_stack, input_parameters_.position_in_stack);
+
+                        mask_radius_for_noise = outer_mask_radius / input_parameters_.pixel_size;
+                        if ( 2.0 * mask_radius_for_noise + mask_falloff / input_parameters_.pixel_size > 0.95f * input_stack.ReturnXSize( ) ) {
+                            mask_radius_for_noise = 0.95f * input_stack.ReturnXSize( ) / 2.0f - mask_falloff / 2.0f / input_parameters_.pixel_size;
+                        }
+                        if ( exclude_blank_edges && input_image_.ContainsBlankEdges(mask_radius_for_noise) ) {
+                            number_of_blank_edges_local++;
+                            continue;
+                        }
+                        variance = input_image_.ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0f, 0.0f, 0.0f, true);
+                        if ( variance == 0.0f )
+                            continue;
+                        input_image_.MultiplyByConstant(1.0f / sqrtf(variance));
+                        input_image_.CosineMask(mask_radius_for_noise, mask_falloff / input_parameters_.pixel_size, true);
+                        input_image_.ForwardFFT( );
+                        temp_image_.CopyFrom(&input_image_);
+                        temp_image_.ConjugateMultiplyPixelWise(input_image_);
+                        sum_power_local.AddImage(&temp_image_);
+                    }
                 }
-                if ( exclude_blank_edges && input_image_.ContainsBlankEdges(mask_radius_for_noise) ) {
-                    number_of_blank_edges_local++;
-                    continue;
-                }
-                variance = input_image_.ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0f, 0.0f, 0.0f, true);
-                if ( variance == 0.0f )
-                    continue;
-                input_image_.MultiplyByConstant(1.0f / sqrtf(variance));
-                input_image_.CosineMask(mask_radius_for_noise, mask_falloff / input_parameters.pixel_size, true);
-                input_image_.ForwardFFT( );
-                temp_image_.CopyFrom(&input_image_);
-                temp_image_.ConjugateMultiplyPixelWise(input_image_);
-                sum_power_local.AddImage(&temp_image_);
             }
 
 #pragma omp critical
@@ -997,6 +1001,7 @@ bool Refine3DApp::DoCalculation( ) {
 
         if ( is_running_locally == true )
             delete my_progress;
+
         sum_power.Compute1DRotationalAverage(noise_power_spectrum, number_of_terms);
         noise_power_spectrum.SquareRoot( );
         noise_power_spectrum.Reciprocal( );
@@ -1085,6 +1090,8 @@ bool Refine3DApp::DoCalculation( ) {
 
         ProjectionComparisonObjects comparison_object;
         BatchSizeOptimizer          batch_size_optimizer;
+        int                         wanted_batch_size = 1;
+
 #ifdef ENABLEGPU
         GpuImage* use_this_cache = gpu_projection_cache;
 #else

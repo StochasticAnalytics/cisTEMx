@@ -39,6 +39,8 @@ void BatchedSearch::Init(GpuImage& reference_image, int wanted_number_search_ima
     _max_pixel_radius_x = (max_pix_x == 0) ? reference_image.dims.x / 2 : max_pix_x;
     _max_pixel_radius_y = (max_pix_y == 0) ? reference_image.dims.y / 2 : max_pix_y;
 
+    _min_pixel_radius_x_y = 0;
+
     _stride = reference_image.dims.w * reference_image.dims.y;
 
     cudaErr(cudaMallocHost(&_peak_buffer, _batch_size * sizeof(IntegerPeak)));

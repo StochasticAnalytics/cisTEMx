@@ -4942,7 +4942,7 @@ bool Image::HasNegativeRealValue( ) {
     return false;
 }
 
-void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");
     MyDebugAssertTrue(end_slice <= input_file->ReturnNumberOfSlices( ), "End slice is greater than number of slices in the file!");
@@ -4972,7 +4972,7 @@ void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice) 
 
 //!> \brief Read a set of slices from disk (FFTW padding is done automatically)
 
-void Image::ReadSlices(MRCFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(MRCFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
 
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");
@@ -5001,7 +5001,7 @@ void Image::ReadSlices(MRCFile* input_file, long start_slice, long end_slice) {
     AddFFTWPadding( );
 }
 
-void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
 
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");
@@ -5029,7 +5029,7 @@ void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice) {
 
 //!> \brief Read a set of slices from disk (FFTW padding is done automatically)
 
-void Image::ReadSlices(DMFile* input_file, long start_slice, long end_slice) {
+void Image::ReadSlices(DMFile* input_file, long start_slice, long end_slice, bool add_fft_padding) {
 
     MyDebugAssertTrue(start_slice <= end_slice, "Start slice larger than end slice!");
     MyDebugAssertTrue(start_slice > 0, "Start slice is less than 0, the first slice is 1!");

@@ -40,6 +40,12 @@ AC_MSG_NOTICE([Setting up initial flags])
 want_cuda="no"
 AX_CUDA 
 
+# 
+# Check for extra requested programs beyond main functionality and testing
+#
+AX_ADDITIONAL_PROGRAMS
+
+
 #
 # Check to see if any special requests are made for the cpp standard. 
 #
@@ -299,15 +305,6 @@ AS_HELP_STRING([--with-fftw-dir=DIR],[Declare the root directory of fftw3, if it
     fi
 ])
 
-# Compile programs/samples/sample_functional_test.cpp 
-want_samples="no"
-AC_ARG_ENABLE(samples, AS_HELP_STRING([--enable-samples],[Compile with samples [default=no]]),[
-  if test "$enableval" = yes; then
-    want_samples="yes"
-  	AC_MSG_NOTICE([Compiling sample functional tests])	
-  fi
-  ]) 
-AM_CONDITIONAL([ENABLESAMPLES_AM], [test "$want_samples" = "yes"])
 
 # Use fine grained profiling
 
@@ -328,6 +325,16 @@ AC_ARG_ENABLE(deterministic-outcome, AS_HELP_STRING([--enable-deterministic-outc
   	AC_MSG_NOTICE([Compiling with deterministic-outcome])	
   fi
   ]) 
+
+AC_ARG_ENABLE(smooth-mip, AS_HELP_STRING([--smooth-mip],[Smooth avg/stdDev CCGs to reduce impact of ACF but still catch fringes/carbon/membranes etc. Use with caution  [default=no]]),[
+  if test "$enableval" = yes; then
+    AC_DEFINE([CISTEM_TEST_FILTERED_MIP], [], [Define experimental adjustment of the flat-fielding correction in TM])
+  	AC_MSG_NOTICE([Compiling with smooth-mip])	
+  fi
+  ]) 
+
+
+  
 
 want_webview="no"
 AC_ARG_ENABLE(wx-webview, AS_HELP_STRING([--enable-wx-webview],[Compile with experimental webview panel]),[

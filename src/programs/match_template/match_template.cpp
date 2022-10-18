@@ -14,10 +14,6 @@
 #include <FastFFT.h>
 #endif
 
-// Low pass the avg and std images to avoid false negatives due to auto-correlation.
-// Note this is not for production use and should be made a configureable flag FIXME
-#define TEST_FILTERED_MIP
-
 // Values for data that are passed around in the results.
 const int number_of_output_images     = 8; //mip, psi, theta, phi, pixel, defocus, sums, sqsums (scaled mip is not sent out)
 const int number_of_meta_data_values  = 6; // img_x, img_y, number cccs, histogram values.
@@ -1591,7 +1587,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
             aggregated_results[array_location].collated_pixel_square_sums[pixel_counter] = sqrtf(aggregated_results[array_location].collated_pixel_square_sums[pixel_counter] /
                                                                                                          aggregated_results[array_location].total_number_of_ccs -
                                                                                                  powf(aggregated_results[array_location].collated_pixel_sums[pixel_counter], 2));
-#ifndef TEST_FILTERED_MIP
+#ifndef CISTEM_TEST_FILTERED_MIP
             // ifdef, we want to modify the avg and stdDev image first
             if ( aggregated_results[array_location].collated_pixel_square_sums[pixel_counter] > 0.0f ) {
 
@@ -1609,7 +1605,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         }
 
         std::cerr << "Outside test filtered mip" << std::endl;
-#ifdef TEST_FILTERED_MIP
+#ifdef CISTEM_TEST_FILTERED_MIP
         // We assume the user has set the min pixel radius in pixels to match the expected radius of the particle, which is only true if
         // a) they are aware of this hack
         // b) the sample is a single particle (layered sample will have a different radius)
@@ -1780,7 +1776,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         // loop until the found peak is below the threshold
 
-#ifdef TEST_FILTERED_MIP
+#ifdef CISTEM_TEST_FILTERED_MIP
         int exclusion_radius = pixel_size / objective_aperture_resolution;
 #else
         int exclusion_radius = input_reconstruction.logical_x_dimension / cistem::fraction_of_box_size_to_exclude_for_border + 1;

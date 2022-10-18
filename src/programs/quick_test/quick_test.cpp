@@ -33,6 +33,35 @@ void QuickTestApp::DoInteractiveUserInput( ) {
 
 bool QuickTestApp::DoCalculation( ) {
 
+    Image mip, avg, std;
+    mip.QuickAndDirtyReadSlice("/scratch/siracusa/proc_EMPIAR-10894-KRas-G13D-SOS/small_test/Assets/TemplateMatching/n20aug20e_b2g1_00009gr_00002sq_v02_00002hln_00004esn.frames_3_0_mip_3_0.mrc", 1);
+    avg.QuickAndDirtyReadSlice("/scratch/siracusa/proc_EMPIAR-10894-KRas-G13D-SOS/small_test/Assets/TemplateMatching/n20aug20e_b2g1_00009gr_00002sq_v02_00002hln_00004esn.frames_3_0_avg_3_0.mrc", 1);
+    std.QuickAndDirtyReadSlice("/scratch/siracusa/proc_EMPIAR-10894-KRas-G13D-SOS/small_test/Assets/TemplateMatching/n20aug20e_b2g1_00009gr_00002sq_v02_00002hln_00004esn.frames_3_0_std_3_0.mrc", 1);
+
+    float pixel_size                    = 1.2f;
+    float objective_aperture_resolution = 188.0f;
+    float mask_falloff                  = 7.f;
+    mip.ReturnCosineMaskBandpassResolution(pixel_size, objective_aperture_resolution, mask_falloff);
+    // Masks for scattering inside (0) and outside (1) the objective aperture.
+
+    std::string test_base = "cutoff_300_control.mrc";
+    mip.QuickAndDirtyWriteSlice("/scratch/siracusa/proc_EMPIAR-10894-KRas-G13D-SOS/small_test/Assets/TemplateMatching/mip_" + test_base, 1);
+    avg.ForwardFFT( );
+    std.ForwardFFT( );
+    avg.CosineRingMask(-1.0f, objective_aperture_resolution, mask_falloff);
+    std.CosineRingMask(-1.0f, objective_aperture_resolution, mask_falloff);
+    avg.BackwardFFT( );
+    std.BackwardFFT( );
+    mip.SubtractImage(&avg);
+    for ( int pixel_counter = 0; pixel_counter < mip.real_memory_allocated; pixel_counter++ ) {
+        mip.real_values[pixel_counter] = (std.real_values[pixel_counter] > 0.000001) ? mip.real_values[pixel_counter] / std.real_values[pixel_counter] : 0.0f;
+    }
+    mip.QuickAndDirtyWriteSlice("/scratch/siracusa/proc_EMPIAR-10894-KRas-G13D-SOS/small_test/Assets/TemplateMatching/scaled_mip_" + test_base, 1);
+    avg.QuickAndDirtyWriteSlice("/scratch/siracusa/proc_EMPIAR-10894-KRas-G13D-SOS/small_test/Assets/TemplateMatching/avg_" + test_base, 1);
+
+    std.QuickAndDirtyWriteSlice("/scratch/siracusa/proc_EMPIAR-10894-KRas-G13D-SOS/small_test/Assets/TemplateMatching/std_" + test_base, 1);
+
+    exit(0);
     RotationMatrix my_rotation_matrix;
     RotationMatrix other_rotation_matrix;
     SymmetryMatrix my_symmetry_matrix;

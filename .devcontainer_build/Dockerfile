@@ -1,4 +1,4 @@
-FROM bhimesbhimes/cistem_build_env:base_image_v1.4
+FROM bhimesbhimes/cistem_build_env:base_image_v1.4.5
 
 # some rebuild comment
 

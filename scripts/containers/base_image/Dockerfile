@@ -20,7 +20,9 @@ ENV LANG en_US.utf8
 
 RUN apt-get update && apt-get install -y sudo
 
-RUN useradd -ms /bin/bash cisTEMx
+# By default this will create cisTEMx as uid==1000 which is not what we want as it is also going to be the user id
+# of a host user when building the top layer with singularity. < 1000 is reserved for system users. 814 is a somewhat random choice.
+RUN useradd --uid 814 -ms /bin/bash cisTEMx
 RUN echo "cisTEMx:cisTEMx" | chpasswd && adduser cisTEMx sudo
 
 # Install useful ubuntu packages libgtk2.0-dev

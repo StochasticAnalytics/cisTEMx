@@ -1615,11 +1615,11 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         float objective_aperture_resolution = pixel_size * estimated_radius_in_pixels * 4.0f;
         float mask_falloff                  = 7.f;
 
-        std::cerr << "Inside test filtered mip" << std::endl;
-        std::cerr << "Objective aperture resolution: " << objective_aperture_resolution << std::endl;
-        std::cerr << "Mask falloff: " << mask_falloff << std::endl;
-        std::cerr << "Pixel size: " << pixel_size << std::endl;
-        std::cerr << "Estimated radius in pixels: " << estimated_radius_in_pixels << std::endl;
+        // std::cerr << "Inside test filtered mip" << std::endl;
+        // std::cerr << "Objective aperture resolution: " << objective_aperture_resolution << std::endl;
+        // std::cerr << "Mask falloff: " << mask_falloff << std::endl;
+        // std::cerr << "Pixel size: " << pixel_size << std::endl;
+        // std::cerr << "Estimated radius in pixels: " << estimated_radius_in_pixels << std::endl;
 
         Image temp_filtered_img;
         temp_filtered_img.Allocate(temp_image.logical_x_dimension, temp_image.logical_y_dimension, true);
@@ -1781,10 +1781,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 #else
         int exclusion_radius = input_reconstruction.logical_x_dimension / cistem::fraction_of_box_size_to_exclude_for_border + 1;
 #endif
-
-        std::cerr << "Using exclusion radius of " << exclusion_radius << std::endl;
-        std::cerr << "with filtered mip this would be : " << pixel_size / objective_aperture_resolution << std::endl;
-        std::cerr << "without filtered mip this would be : " << input_reconstruction.logical_x_dimension / cistem::fraction_of_box_size_to_exclude_for_border + 1 << std::endl;
 
         long nTrys = 0;
         while ( 1 == 1 ) {

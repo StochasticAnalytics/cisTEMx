@@ -349,6 +349,21 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
 
     current_projection->ExtractSliceShiftAndCtf(current_density_map, &gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
                                                 swap_quadrants, apply_shifts, apply_ctf, absolute_ctf);
+
+
+#ifdef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
+    current_projection->CopyDeviceToHostAndSynchronize(false, false);
+
+    if ( whiten ) {
+        particle->particle_image->Whiten(particle->pixel_size / particle->filter_radius_high);
+    }
+    if ( mask_radius > 0.f ) {
+        // CosineMask is not implemented yet, but we can at least do the backFFT
+        particle->particle_image->BackwardFFT( );
+    }
+    return 0.f;
+#else
+
     if ( whiten ) {
         current_projection->Whiten(particle->pixel_size / particle->filter_radius_high);
     }
@@ -357,20 +372,6 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
         current_projection->BackwardFFT( );
     }
 
-    // #ifdef CISTEM_PROFILING
-    //     // When profiling, we want to distinguish between projection time and copy time
-    //     // We still have synchronization in the weighted correlation methods.
-    //     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    // #endif
-
-    // #if defined(COMPARE_GPU_CPU_SCORE) || defined(CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE_pcos)
-    //     current_projection->CopyDeviceToHostAndSynchronize(false, false);
-    // #endif
-
-#ifdef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
-    current_projection->CopyDeviceToHostAndSynchronize(false, false);
-    return 0.f;
-#else
     float filter_radius_high = fminf(powf(particle->pixel_size / particle->filter_radius_high, 2), 0.25);
     float filter_radius_low  = 0.0f;
     if ( particle->filter_radius_low != 0.0 )

@@ -4439,6 +4439,8 @@ ExperimentalPanel::~ExperimentalPanel()
 
 OverviewPanel::OverviewPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
+	this->SetFont( wxFont( 10, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Sans") ) );
+
 	wxBoxSizer* bSizer10;
 	bSizer10 = new wxBoxSizer( wxHORIZONTAL );
 
@@ -4449,10 +4451,14 @@ OverviewPanel::OverviewPanel( wxWindow* parent, wxWindowID id, const wxPoint& po
 	bSizer198 = new wxBoxSizer( wxVERTICAL );
 
 	WelcomePanel = new wxPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	WelcomePanel->SetFont( wxFont( 10, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Sans") ) );
+
 	wxBoxSizer* bSizer281;
 	bSizer281 = new wxBoxSizer( wxVERTICAL );
 
 	InfoText = new wxRichTextCtrl( WelcomePanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_READONLY|wxHSCROLL|wxVSCROLL|wxWANTS_CHARS );
+	InfoText->SetFont( wxFont( 10, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Sans") ) );
+
 	bSizer281->Add( InfoText, 1, wxEXPAND | wxALL, 5 );
 
 
@@ -6577,6 +6583,10 @@ AlignMoviesPanel::AlignMoviesPanel( wxWindow* parent, wxWindowID id, const wxPoi
 
 	wxBoxSizer* bSizer60;
 	bSizer60 = new wxBoxSizer( wxVERTICAL );
+
+	use_gpu_checkboxUnblur = new wxCheckBox( StartPanel, wxID_ANY, wxT("Use GPU"), wxDefaultPosition, wxDefaultSize, 0 );
+	use_gpu_checkboxUnblur->SetValue(true);
+	bSizer60->Add( use_gpu_checkboxUnblur, 0, wxALL, 5 );
 
 	StartAlignmentButton = new wxButton( StartPanel, wxID_ANY, wxT("Start Alignment"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer60->Add( StartAlignmentButton, 0, wxALL, 5 );

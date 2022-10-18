@@ -3,10 +3,6 @@
 ElectronDose::ElectronDose( ) {
     acceleration_voltage = -1;
 
-    critical_dose_a = 0.0;
-    critical_dose_b = 0.0;
-    critical_dose_c = 0.0;
-
     voltage_scaling_factor = 0.0;
 
     pixel_size = 0.0;
@@ -14,10 +10,6 @@ ElectronDose::ElectronDose( ) {
 
 ElectronDose::ElectronDose(float wanted_acceleration_voltage, float wanted_pixel_size) {
     acceleration_voltage = -1;
-
-    critical_dose_a = 0.0;
-    critical_dose_b = 0.0;
-    critical_dose_c = 0.0;
 
     voltage_scaling_factor = 0.0;
 
@@ -45,14 +37,10 @@ void ElectronDose::Init(float wanted_acceleration_voltage, float wanted_pixel_si
     }
 
     pixel_size = wanted_pixel_size;
-
-    critical_dose_a         = 0.24499;
-    critical_dose_b         = -1.6649;
-    critical_dose_c         = 2.8141;
-    reduced_critical_dose_b = critical_dose_b / 2.f;
 }
 
-void ElectronDose::CalculateDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish) {
+template <>
+void ElectronDose::CalculateDoseFilterAs1DArray(Image* ref_image, float* filter_array, float dose_start, float dose_finish, bool restore_power) {
 
     //	MyDebugAssertTrue(ref_image->logical_z_dimension == 1, "Reference Image is a 3D!");
 

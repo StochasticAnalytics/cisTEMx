@@ -135,8 +135,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     // Either do not delete the single precision, or add in a copy here so that each loop over defocus vals
     // have a copy to work with. Otherwise this will not exist on the second loop
-    d_input_image.ConvertToHalfPrecision(false);
-    d_padded_reference.ConvertToHalfPrecision(false);
+    d_input_image.CopyFP32toFP16buffer(false);
+    d_padded_reference.CopyFP32toFP16buffer(false);
 
     cudaErr(cudaMalloc((void**)&my_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
     cudaErr(cudaMalloc((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
@@ -201,12 +201,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // cuFFT multiplies by 1/root(N) forward and then 1/root(N) on the inverse. The input image is done on the cpu, and so has no scaling.
             // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
             d_padded_reference.ForwardFFT(false);
-
             //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
             d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
 
             //			d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_gpu, false);
-            //			d_padded_reference.ConvertToHalfPrecision(false);
+            //			d_padded_reference.CopyFP32toFP16buffer(false);
 
             if ( DO_HISTOGRAM ) {
                 if ( ! histogram.is_allocated_histogram ) {

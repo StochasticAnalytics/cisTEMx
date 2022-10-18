@@ -39,7 +39,7 @@ jobs:
       fail-fast: true
     runs-on: ${{ inputs.runs_on_os }}
     container: 
-      image: bhimesbhimes/cistem_build_env:v1.4.4
+      image: bhimesbhimes/cistem_build_env:v1.4.5
       options: --user root --rm --gpus all
     outputs:
       version: ${{ steps.configure.outputs.version }}

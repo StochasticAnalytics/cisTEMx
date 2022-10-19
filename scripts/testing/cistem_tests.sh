@@ -12,14 +12,14 @@ echo $(date) >> ~/.cistem/cistem_tests.log
 echo "////////////////////////////////////////////////////////////////////////////////" >> ~/.cistem/cistem_tests.log
 
 echo "Testing gpu device availability."
-/cisTEMx/src/gpu_devices >> ~/.cistem/cistem_tests.log
+/cisTEMx/bin/gpu_devices >> ~/.cistem/cistem_tests.log
 
 echo "Testing units."
-/cisTEMx/src/unit_test_runner  >> ~/.cistem/cistem_tests.log
+/cisTEMx/bin/unit_test_runner  >> ~/.cistem/cistem_tests.log
 
 echo "Testing methods."
-/cisTEMx/src/console_test  >> ~/.cistem/cistem_tests.log
+/cisTEMx/bin/console_test  >> ~/.cistem/cistem_tests.log
 
 echo "Testing algorithms."
-/cisTEMx/src/samples_functional_testing  >> ~/.cistem/cistem_tests.log
+/cisTEMx/bin/samples_functional_testing  >> ~/.cistem/cistem_tests.log
 

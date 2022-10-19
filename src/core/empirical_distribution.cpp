@@ -68,6 +68,10 @@ float EmpiricalDistribution::GetSampleVariance( ) {
     }
 }
 
+float EmpiricalDistribution::GetSampleStandardDeviation( ) {
+    return sqrt(GetSampleVariance( ));
+}
+
 float EmpiricalDistribution::GetUnbiasedEstimateOfPopulationVariance( ) {
     if ( number_of_samples > 0 ) {
         return GetSampleVariance( ) * float(number_of_samples) / float(number_of_samples - 1);

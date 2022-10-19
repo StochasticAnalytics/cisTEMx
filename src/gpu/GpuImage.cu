@@ -2208,16 +2208,21 @@ void GpuImage::MeanStdDev( ) {
     this->img_stdDev = float(npp_stdDev);
 }
 
+void GpuImage::ReplaceOutliersWithMean(float mean, float stdDev, float maximum_n_sigmas) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
+
+    Npp32f max = mean + maximum_n_sigmas * stdDev;
+    Npp32f min = mean - maximum_n_sigmas * stdDev;
+    nppErr(nppiThreshold_LTValGTVal_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, min, (Npp32f)mean, max, (Npp32f)mean, nppStream));
+}
+
 void GpuImage::ReplaceOutliersWithMean(float maximum_n_sigmas) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
     MeanStdDev( );
-    Npp32f max = img_mean + maximum_n_sigmas * img_stdDev;
-    Npp32f min = img_mean - maximum_n_sigmas * img_stdDev;
-    wxPrintf("min max %f, %f\n", min, max);
-    wxPrintf("mean std %f, %f\n", img_mean, img_stdDev);
-    nppErr(nppiThreshold_LTValGTVal_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, min, (Npp32f)img_mean, max, (Npp32f)img_mean, nppStream));
+    ReplaceOutliersWithMean(img_mean, img_stdDev, maximum_n_sigmas);
 }
 
 void GpuImage::MultiplyPixelWise(const float& other_array, const int other_array_size) {
@@ -3064,7 +3069,7 @@ void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool 
         }
 
         cudaErr(cudaMemcpyFromSymbol(&h_mipCCGStore, d_mipCCGAndStorePtr, sizeof(h_mipCCGStore)));
-//        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+        //        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_complexConjMulLoad, CUFFT_CB_LD_COMPLEX, (void**)&d_params));
         //		void** fake_params;real_values_16f
         cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
@@ -3159,6 +3164,18 @@ void GpuImage::SwapRealSpaceQuadrants( ) {
         object_is_centred_in_box = false;
     else
         object_is_centred_in_box = true;
+}
+
+__global__ void ZeroCentralPixelKernel(float2* complex_values_gpu) {
+    complex_values_gpu[0].x = 0.0f;
+    complex_values_gpu[0].y = 0.0f;
+}
+
+void GpuImage::ZeroCentralPixel( ) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
+    MyDebugAssertFalse(is_in_real_space, "Image must be in Fourier space");
+
+    ZeroCentralPixelKernel<<<1, 1, 0, cudaStreamPerThread>>>(complex_values_gpu);
 }
 
 void GpuImage::PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift) {
@@ -3492,14 +3509,8 @@ void GpuImage::ClipIntoReturnMask(GpuImage* other_image) {
 
 void GpuImage::QuickAndDirtyWriteSlices(std::string filename, int first_slice, int last_slice) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    Image buffer_img;
-    buffer_img.Allocate(dims.x, dims.y, dims.z, true);
+    Image buffer_img = CopyDeviceToNewHost(true, false, true);
 
-    buffer_img.is_in_real_space         = is_in_real_space;
-    buffer_img.object_is_centred_in_box = object_is_centred_in_box;
-    buffer_img.is_fft_centered_in_box   = is_fft_centered_in_box;
-    // Implicitly waiting on work to finish since copy is queued in the stream
-    cudaErr(cudaMemcpy((void*)buffer_img.real_values, (const void*)real_values_gpu, real_memory_allocated * sizeof(float), cudaMemcpyDeviceToHost));
     bool  OverWriteSlices = true;
     float pixelSize       = 0.0f;
 

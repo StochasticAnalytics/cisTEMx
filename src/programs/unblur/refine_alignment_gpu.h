@@ -168,10 +168,13 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
             correlation_map.BackwardFFTBatched(1);
 
-            // FIXME: shouldn't have to do this here
+            // // FIXME: shouldn't have to do this here
             correlation_map.SwapRealSpaceQuadrants( );
             correlation_map.is_in_real_space         = true;
             correlation_map.object_is_centred_in_box = true;
+
+            // correlation_map.QuickAndDirtyWriteSlice("/tmp/xcf.mrc", 1);
+            // exit(1);
 
             // if ( use_running_average )
             //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
@@ -208,7 +211,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             y_shifts_curve.AddPoint(image_counter, y_shifts[image_counter] + current_y_shifts[image_counter]);
 
 #ifdef PRINT_VERBOSE
-            wxPrintf("Before = %li : %f, %f\n", image_counter, x_shifts[image_counter] + current_x_shifts[image_counter], y_shifts[image_counter] + current_y_shifts[image_counter]);
+            wxPrintf("Before = %i : %f, %f\n", image_counter, x_shifts[image_counter] + current_x_shifts[image_counter], y_shifts[image_counter] + current_y_shifts[image_counter]);
 #endif
         }
         // in this case, weird things can happen (+1/-1 flips), we want to really smooth it. use a polynomial.  This should only affect the first round..
@@ -224,7 +227,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                     current_y_shifts[image_counter] = y_shifts_curve.polynomial_fit[image_counter] - y_shifts[image_counter];
 
 #ifdef PRINT_VERBOSE
-                    wxPrintf("After poly = %li : %f, %f\n", image_counter, x_shifts_curve.polynomial_fit[image_counter], y_shifts_curve.polynomial_fit[image_counter]);
+                    wxPrintf("After poly = %i : %f, %f\n", image_counter, x_shifts_curve.polynomial_fit[image_counter], y_shifts_curve.polynomial_fit[image_counter]);
 #endif
                 }
             }
@@ -242,7 +245,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                     current_y_shifts[image_counter] = y_shifts_curve.savitzky_golay_fit[image_counter] - y_shifts[image_counter];
 
 #ifdef PRINT_VERBOSE
-                    wxPrintf("After SG = %li : %f, %f\n", image_counter, x_shifts_curve.savitzky_golay_fit[image_counter], y_shifts_curve.savitzky_golay_fit[image_counter]);
+                    wxPrintf("After SG = %i : %f, %f\n", image_counter, x_shifts_curve.savitzky_golay_fit[image_counter], y_shifts_curve.savitzky_golay_fit[image_counter]);
 #endif
                 }
             }
@@ -280,7 +283,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
         if ( iteration_counter >= max_iterations || (iteration_counter > 0 && max_shift <= max_shift_convergence_threshold) ) {
             profile_timing_refinement_method.start("cleanup");
-            wxPrintf("returning, iteration = %li, max_shift = %f\n", iteration_counter, max_shift);
+            wxPrintf("returning, iteration = %i, max_shift = %f\n", iteration_counter, max_shift);
 
             profile_timing_refinement_method.lap("cleanup");
             // No need to apply the shifts unless it is our final iteration on the full stack, perhaps better yet we apply outside this method?
@@ -288,7 +291,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             return;
         }
         else {
-            wxPrintf("Not. returning, iteration = %li, max_shift = %f\n", iteration_counter, max_shift);
+            wxPrintf("Not. returning, iteration = %i, max_shift = %f\n", iteration_counter, max_shift);
         }
 
         // going to be doing another round so we need to make the new sum..

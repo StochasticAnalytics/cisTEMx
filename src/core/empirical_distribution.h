@@ -19,6 +19,7 @@ class EmpiricalDistribution {
     float GetSampleSum( );
     float GetSampleMean( );
     float GetSampleVariance( );
+    float GetSampleStandardDeviation( );
     float GetSampleSumOfSquares( );
     float GetUnbiasedEstimateOfPopulationVariance( );
 

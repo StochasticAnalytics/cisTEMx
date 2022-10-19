@@ -1007,14 +1007,11 @@ void Image::ZeroFloatOutside(float wanted_mask_radius, bool invert_mask) {
     AddConstant(-average);
 }
 
-// Pixels with values greater than maximum_n_sigmas above the mean or less than maximum_n_sigmas below the mean will be replaced with the mean
-void Image::ReplaceOutliersWithMean(float maximum_n_sigmas) {
-    MyDebugAssertTrue(is_in_real_space, "Image must be in real space");
+void Image::ReplaceOutliersWithMean(float mean, float stdDev, float maximum_n_sigmas) {
+    MyDebugAssertTrue(is_in_real_space == true, "Image must be in real space");
 
-    float sigma = sqrtf(ReturnVarianceOfRealValues( ));
-    float mean  = ReturnAverageOfRealValues( );
-    float max   = mean + maximum_n_sigmas * sigma;
-    float min   = mean - maximum_n_sigmas * sigma;
+    float max = mean + maximum_n_sigmas * stdDev;
+    float min = mean - maximum_n_sigmas * stdDev;
 
     for ( long address = 0; address < real_memory_allocated; address++ ) {
         if ( real_values[address] > max ) {
@@ -1024,6 +1021,16 @@ void Image::ReplaceOutliersWithMean(float maximum_n_sigmas) {
             real_values[address] = mean;
         }
     }
+}
+
+// Pixels with values greater than maximum_n_sigmas above the mean or less than maximum_n_sigmas below the mean will be replaced with the mean
+void Image::ReplaceOutliersWithMean(float maximum_n_sigmas) {
+    MyDebugAssertTrue(is_in_real_space, "Image must be in real space");
+
+    float sigma = sqrtf(ReturnVarianceOfRealValues( ));
+    float mean  = ReturnAverageOfRealValues( );
+
+    ReplaceOutliersWithMean(mean, sigma, maximum_n_sigmas);
 }
 
 float Image::ReturnVarianceOfRealValues(float wanted_mask_radius, float wanted_center_x, float wanted_center_y, float wanted_center_z, bool invert_mask) {

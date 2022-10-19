@@ -358,7 +358,7 @@ bool UnBlurApp::DoCalculation( ) {
     GpuImage              sum_image_no_dose_filter;
     // For now, we are doing some of the preprocessing on the cpu so we need this array
     // We want the default constructed valued as we read in the images
-    std::vector<Image> image_stack_(max_threads);
+    std::vector<Image> image_stack_(number_of_input_images);
 #else
     std::vector<Image> unbinned_image_stack; // We will allocate this later depending on if we are binning or not.
     // Unlike the GPU version, we wan the default constructed images here
@@ -460,6 +460,11 @@ bool UnBlurApp::DoCalculation( ) {
     // Reduce the memory footprint for cases where the input stack will be binned
     image_counter  = 0;
     int cpu_offset = 0;
+
+    Image estimate_normal_dist;
+    estimate_normal_dist.Allocate(input_file.ReturnXSize( ), input_file.ReturnYSize( ), true);
+    estimate_normal_dist.SetToConstant(0.0f);
+
     for ( preprocess_block_counter = 0; preprocess_block_counter < number_of_preprocess_blocks; preprocess_block_counter++ ) {
 #ifndef ENABLEGPU
         if ( preprocess_block_counter > 0 ) {
@@ -472,89 +477,56 @@ bool UnBlurApp::DoCalculation( ) {
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
             // Read from disk
             // image_stack[image_counter - 1].ReadSlice(&input_file, image_counter);
-            image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].ReadSlice(&input_file, position_in_stack);
+            image_stack_[(position_in_stack - 1)].ReadSlice(&input_file, position_in_stack);
         }
         profile_timing.lap("read in frames");
 
 #pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
-            int sub_stack_index = (position_in_stack - 1) % max_threads + cpu_offset;
             // Dark correction
             if ( ! movie_is_dark_corrected ) {
                 profile_timing.start("dark correct");
-                if ( ! image_stack_[sub_stack_index].HasSameDimensionsAs(&dark_image) ) {
+                if ( ! image_stack_[position_in_stack - 1].HasSameDimensionsAs(&dark_image) ) {
                     SendErrorAndCrash(wxString::Format("Error: location %li of input file (%s) does not have same dimensions as the dark image (%s)", position_in_stack, input_filename, dark_filename));
                     // wxSleep(10);
                     // exit(-1);
                 }
                 //if (image_counter == 0) SendInfo(wxString::Format("Info: multiplying %s by gain %s\n",input_filename,gain_filename.ToStdString()));
-                image_stack_[sub_stack_index].SubtractImage(&dark_image);
+                image_stack_[position_in_stack - 1].SubtractImage(&dark_image);
                 profile_timing.lap("dark correct");
             }
 
             // Gain correction
             if ( ! movie_is_gain_corrected ) {
                 profile_timing.start("gain correct");
-                if ( ! image_stack_[sub_stack_index].HasSameDimensionsAs(&gain_image) ) {
+                if ( ! image_stack_[position_in_stack - 1].HasSameDimensionsAs(&gain_image) ) {
                     SendErrorAndCrash(wxString::Format("Error: location %li of input file (%s) does not have same dimensions as the gain image (%s)", position_in_stack, input_filename, gain_filename));
                     // wxSleep(10);
                     // exit(-1);
                 }
                 //if (image_counter == 0) SendInfo(wxString::Format("Info: multiplying %s by gain %s\n",input_filename,gain_filename.ToStdString()));
-                image_stack_[sub_stack_index].MultiplyPixelWise(gain_image);
+                image_stack_[position_in_stack - 1].MultiplyPixelWise(gain_image);
                 profile_timing.lap("gain correct");
             }
 
-            profile_timing.start("replace outliers");
-            image_stack_[sub_stack_index].ReplaceOutliersWithMean(12);
-            profile_timing.lap("replace outliers");
+            // The value of twelve used here is artificially large because (I'm assuming) lower values don't work well for the Poisson Distribution we expet in a frame.
+            // I'm removing this here and using a sum of the frames, which should be more gaussian, to deterimine the distribution and then correct and FFT.
+            // BAH
+
+            // profile_timing.start("replace outliers");
+            // image_stack_[position_in_stack - 1].ReplaceOutliersWithMean(12);
+            // profile_timing.lap("replace outliers");
 
             if ( correct_mag_distortion == true ) {
                 profile_timing.start("correct mag distortion");
-                image_stack_[sub_stack_index].CorrectMagnificationDistortion(mag_distortion_angle, mag_distortion_major_scale, mag_distortion_minor_scale);
+                image_stack_[position_in_stack - 1].CorrectMagnificationDistortion(mag_distortion_angle, mag_distortion_major_scale, mag_distortion_minor_scale);
                 profile_timing.lap("correct mag distortion");
             }
 
-// This may not be worth the saved memory vs making outside?
-#ifdef ENABLEGPU
-            profile_timing.start("allocate GPU memory");
-            image_stack[position_in_stack - 1].Init(image_stack_[sub_stack_index]);
-            profile_timing.lap("allocate GPU memory");
-
-            profile_timing.start("copy to GPU");
-            image_stack[position_in_stack - 1].CopyHostToDevice( );
-            profile_timing.lap("copy to GPU");
-
-            profile_timing.start("forward FFT");
-            image_stack[position_in_stack - 1].ForwardFFT(true);
-            profile_timing.lap("forward FFT");
-            // TODO: zero central pixel
-            if ( output_binning_factor > 1.0001 ) {
-                profile_timing.start("resize");
-                constexpr bool zero_central_pixel = true;
-                image_stack[position_in_stack - 1].Resize(myroundint(image_stack[position_in_stack - 1].logical_x_dimension / output_binning_factor), myroundint(image_stack[position_in_stack - 1].logical_y_dimension / output_binning_factor), 1, zero_central_pixel);
-                profile_timing.lap("resize");
-            }
-
-            // profile_timing.start("swap quadrands");
-            // image_stack[position_in_stack - 1].SwapRealSpaceQuadrants( );
-            // profile_timing.lap("swap quadrands");
-            // // The swapping is done to center the output XCF, we don't want to trip any debug asserts, so override
-            // image_stack[position_in_stack - 1].object_is_centred_in_box = true;
-#else
-            // FT
-            profile_timing.start("forward FFT");
-            image_stack_[sub_stack_index].ForwardFFT(true);
-            image_stack_[sub_stack_index].ZeroCentralPixel( );
-            profile_timing.lap("forward FFT");
-
-            // Resize the FT (binning)
-            if ( output_binning_factor > 1.0001 ) {
-                profile_timing.start("resize");
-                image_stack_[sub_stack_index].Resize(myroundint(image_stack_[sub_stack_index].logical_x_dimension / output_binning_factor), myroundint(image_stack_[sub_stack_index].logical_y_dimension / output_binning_factor), 1);
-                profile_timing.lap("resize");
-            }
-#endif
+#pragma omp critical
+            {
+                estimate_normal_dist.AddImage(&image_stack_[position_in_stack - 1]);
+            } // end omp critical
 
             // Init shifts
             x_shifts[position_in_stack - 1] = 0.0;
@@ -572,6 +544,85 @@ bool UnBlurApp::DoCalculation( ) {
     input_file.CloseFile( );
 
     unblur_timing.lap("read frames");
+
+    estimate_normal_dist.MultiplyByConstant(1.f / number_of_input_images);
+    EmpiricalDistribution sum_image_distribution = estimate_normal_dist.ReturnDistributionOfRealValues( );
+    estimate_normal_dist.Deallocate( );
+    // Restore these counters for a second parallel process loop
+    first_frame_to_preprocess = 1;
+    last_frame_to_preprocess  = max_threads;
+    total_processed           = 0;
+
+    // Reduce the memory footprint for cases where the input stack will be binned
+    image_counter                   = 0;
+    constexpr float threshold_value = 12.0f;
+    for ( preprocess_block_counter = 0; preprocess_block_counter < number_of_preprocess_blocks; preprocess_block_counter++ ) {
+
+#pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
+        for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
+
+            profile_timing.start("replace outliers");
+            // Normalize based on our sum image distribution
+            image_stack_[position_in_stack - 1].ReplaceOutliersWithMean(sum_image_distribution.GetSampleMean( ), sum_image_distribution.GetSampleStandardDeviation( ), threshold_value);
+            profile_timing.lap("replace outliers");
+
+            // This may not be worth the saved memory vs making outside?
+#ifdef ENABLEGPU
+            profile_timing.start("allocate GPU memory");
+            image_stack[position_in_stack - 1].Init(image_stack_[position_in_stack - 1]);
+            profile_timing.lap("allocate GPU memory");
+
+            profile_timing.start("copy to GPU");
+            image_stack[position_in_stack - 1].CopyHostToDevice( );
+            profile_timing.lap("copy to GPU");
+
+            profile_timing.start("forward FFT");
+            image_stack[position_in_stack - 1].ForwardFFT(true);
+            profile_timing.lap("forward FFT");
+
+            if ( output_binning_factor > 1.0001f ) {
+                profile_timing.start("resize");
+                constexpr bool zero_central_pixel = true;
+                image_stack[position_in_stack - 1].Resize(myroundint(image_stack[position_in_stack - 1].logical_x_dimension / output_binning_factor), myroundint(image_stack[position_in_stack - 1].logical_y_dimension / output_binning_factor), 1, zero_central_pixel);
+                profile_timing.lap("resize");
+            }
+            else {
+                image_stack[position_in_stack - 1].ZeroCentralPixel( );
+            }
+
+            profile_timing.start("swap quadrants");
+            image_stack[position_in_stack - 1].SwapRealSpaceQuadrants( );
+            profile_timing.lap("swap quadrants");
+            // The swapping is done to center the output XCF, we don't want to trip any debug asserts, so override
+            image_stack[position_in_stack - 1].object_is_centred_in_box = true;
+#else
+
+            //FT
+            profile_timing.start("forward FFT");
+            image_stack[position_in_stack - 1].ForwardFFT(true);
+            image_stack[position_in_stack - 1].ZeroCentralPixel( );
+            profile_timing.lap("forward FFT");
+
+            // Resize the FT (binning)
+            if ( output_binning_factor > 1.0001 ) {
+                profile_timing.start("resize");
+                image_stack[position_in_stack - 1].Resize(myroundint(image_stack[position_in_stack - 1].logical_x_dimension / output_binning_factor), myroundint(image_stack[position_in_stack - 1].logical_y_dimension / output_binning_factor), 1);
+                profile_timing.lap("resize");
+            }
+#endif
+
+        } // end omp block
+
+        first_frame_to_preprocess += max_threads;
+        last_frame_to_preprocess += max_threads;
+
+        if ( first_frame_to_preprocess > number_of_input_images )
+            first_frame_to_preprocess = number_of_input_images;
+        if ( last_frame_to_preprocess > number_of_input_images )
+            last_frame_to_preprocess = number_of_input_images;
+    }
+
+    ////////////////////////////
     // if we are binning - choose a binning factor..
 
     pre_binning_factor = int(myround(5. / output_pixel_size));
@@ -616,7 +667,19 @@ bool UnBlurApp::DoCalculation( ) {
         profile_timing.start("make prebinned stack");
 #pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
         for ( image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
-            image_stack.at(image_counter).Allocate(unbinned_image_stack[image_counter].logical_x_dimension / pre_binning_factor, unbinned_image_stack[image_counter].logical_y_dimension / pre_binning_factor, 1, false);
+            // Would it make sense to also consider Fourier Factorization friendly sizes?
+            // Note: The binned pixel size will be slightly wrong if we add one below, but it should have minimal impact since
+            // the final refinement is done in unbinned space.
+            int binned_x = unbinned_image_stack[image_counter].logical_x_dimension / pre_binning_factor;
+            int binned_y = unbinned_image_stack[image_counter].logical_y_dimension / pre_binning_factor;
+            if ( IsOdd(binned_x) )
+                binned_x++;
+            if ( IsOdd(binned_y) )
+                binned_y++;
+
+            int binned_x_y = std::max(binned_x, binned_y);
+
+            image_stack.at(image_counter).Allocate(binned_x_y, binned_x_y, 1, false);
 // FIXME: add alias for ClipInto so it handles fourier space properly
 #ifdef ENABLEGPU
             unbinned_image_stack[image_counter].ClipIntoFourierSpace(&image_stack[image_counter], 0.f, true);

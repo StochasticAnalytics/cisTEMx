@@ -4,18 +4,23 @@ From: bhimesbhimes/cistem_build_env:base_image_v1.4.5
 
 %setup 
 
-mkdir -p ${SINGULARITY_ROOTFS}/.cistem_apptainer_cache
 mkdir -p ${SINGULARITY_ROOTFS}/cisTEMx
+mkdir -p ${SINGULARITY_ROOTFS}/cisTEMx/scripts
 
 %files
 
 # copy the cisTEMx folder
 /home/himesb/git/cisTEM/build/intel-gpu/src /cisTEMx
-
-/home/himesb/git/cisTEM/scripts/testing/cistem_tests.sh /cisTEMx
+# we'll use this to get information about the build environemnt, repo state and so on
+/home/himesb/git/cisTEM/build/intel-gpu/config.log /cisTEMx
+/home/himesb/git/cisTEM/scripts/testing/cistem_tests.sh /cisTEMx/scripts
+/home/himesb/git/cisTEM/scripts/testing/beta_gal_benchmark /cisTEMx/scripts
 
 
 %post -c /bin/bash
+
+mv /cisTEMx/src /cisTEMx/bin
+mv /cisTEMx/cistem_tests.sh /cisTEMx/bin
 
 # Clean out some items we don't need in production
 rm -rf /usr/local/cuda/nsight-systems-*
@@ -65,6 +70,32 @@ echo 'export CISTEM_REF_IMAGES=/cistem_reference_images' >> $APPTAINER_ENVIRONME
 
 # cd /home/cisTEMx
 # exec /bin/bash "$@"
+
+awk '/CISTEM_CURRENT_BRANCH/{print "This container built from branch: "$3}' /cisTEMx/config.log
+awk '/CISTEM_TIME_READABLE/{print  "on                              : "$3 $4"\""}' /cisTEMx/config.log
+awk '/CISTEM_VERSION_TEXT/{print   "corresponding version info      : "$3}' /cisTEMx/config.log
+if [ -z "$1" ]; then
+    echo "No arguments supplied"
+    echo "Usage: apptainer run --nv cisTEMx_<current_version>.sif [bgal|unit]"
+    exit 1
+fi
+
+case $1 in
+    bgal)
+        echo "Running beta galactosidase benchmark"
+        /cisTEMx/scripts/beta_gal_benchmark/run_benchmark.sh
+        ;;
+    unit)
+        echo "Running unit tests"
+        /cisTEMx/scripts/cistem_tests.sh
+        ;;
+    *)
+        echo "Unknown argument"
+        echo "Usage: apptainer run --nv cisTEMx_<current_version>.sif [bgal|unit]"
+        exit 1
+        ;;
+esac
+
 
 %startscript
 

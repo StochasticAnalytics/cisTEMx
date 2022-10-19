@@ -186,6 +186,7 @@ class GpuImage {
 
     void QuickAndDirtyWriteSlice(std::string filename, int first_slice) { QuickAndDirtyWriteSlices(filename, first_slice, first_slice); }; /**CPU_eq**/
 
+    void ZeroCentralPixel( ); /**CPU_eq**/
     void PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift); /**CPU_eq**/
     void MultiplyByConstant(float scale_factor); /**CPU_eq**/
     void SetToConstant(float val);
@@ -396,6 +397,7 @@ class GpuImage {
 
     void AddSquaredImage(GpuImage& other_image);
 
+    void ReplaceOutliersWithMean(float mean, float stdDev, float maximum_n_sigmas);
     void ReplaceOutliersWithMean(float maximum_n_sigmas);
 
     // Statitical Methods

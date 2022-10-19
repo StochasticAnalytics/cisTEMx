@@ -164,23 +164,26 @@ class Image {
         AddNoise(GAMMA, wanted_alpha_value, wanted_beta_value);
     }
 
-    long                  ZeroFloat(float wanted_mask_radius = 0.0, bool outsize = false);
-    long                  ZeroFloatAndNormalize(float wanted_sigma_value = 1.0, float wanted_mask_radius = 0.0, bool outside = false);
-    long                  Normalize(float wanted_sigma_value = 1.0, float wanted_mask_radius = 0.0, bool outside = false);
-    void                  NormalizeSumOfSquares( );
-    void                  ZeroFloatOutside(float wanted_mask_radius, bool invert_mask = false);
-    void                  ReplaceOutliersWithMean(float maximum_n_sigmas);
-    float                 ReturnVarianceOfRealValues(float wanted_mask_radius = 0.0, float wanted_center_x = 0.0, float wanted_center_y = 0.0, float wanted_center_z = 0.0, bool invert_mask = false);
     EmpiricalDistribution ReturnDistributionOfRealValues(float wanted_mask_radius = 0.0, bool outside = false, float wanted_center_x = 0.0, float wanted_center_y = 0.0, float wanted_center_z = 0.0);
-    void                  UpdateDistributionOfRealValues(EmpiricalDistribution* distribution_to_update, float wanted_mask_radius = 0.0, bool outside = false, float wanted_center_x = 0.0, float wanted_center_y = 0.0, float wanted_center_z = 0.0);
-    void                  ApplySqrtNFilter( );
-    void                  Whiten(float resolution_limit = 1.0, Curve* whitening_filter = NULL);
-    void                  OptimalFilterBySNRImage(Image& SNR_image, int include_reference_weighting = 1);
-    void                  MultiplyByWeightsCurve(Curve& weights, float scale_factor = 1.0);
-    void                  WeightBySSNR(Image& ctf_image, float molecular_mass_kDa, float pixel_size, Curve& SSNR, Image& projection_image, bool weight_particle_image, bool weight_projection_image);
-    void                  OptimalFilterSSNR(Curve& SSNR);
-    void                  OptimalFilterFSC(Curve& FSC);
-    void                  OptimalFilterWarp(CTF ctf, float pixel_size_in_angstroms, float ssnr_falloff_fudge_factor = 1.0, float ssnr_scale_fudge_factor = 1.0, float ssnr_falloff_frequency = 100.0, float high_pass_frequency = 200.0);
+
+    long ZeroFloat(float wanted_mask_radius = 0.0, bool outsize = false);
+    long ZeroFloatAndNormalize(float wanted_sigma_value = 1.0, float wanted_mask_radius = 0.0, bool outside = false);
+    long Normalize(float wanted_sigma_value = 1.0, float wanted_mask_radius = 0.0, bool outside = false);
+    void NormalizeSumOfSquares( );
+    void ZeroFloatOutside(float wanted_mask_radius, bool invert_mask = false);
+
+    void  ReplaceOutliersWithMean(float mean, float stdDev, float maximum_n_sigmas);
+    void  ReplaceOutliersWithMean(float maximum_n_sigmas);
+    float ReturnVarianceOfRealValues(float wanted_mask_radius = 0.0, float wanted_center_x = 0.0, float wanted_center_y = 0.0, float wanted_center_z = 0.0, bool invert_mask = false);
+    void  UpdateDistributionOfRealValues(EmpiricalDistribution* distribution_to_update, float wanted_mask_radius = 0.0, bool outside = false, float wanted_center_x = 0.0, float wanted_center_y = 0.0, float wanted_center_z = 0.0);
+    void  ApplySqrtNFilter( );
+    void  Whiten(float resolution_limit = 1.0, Curve* whitening_filter = NULL);
+    void  OptimalFilterBySNRImage(Image& SNR_image, int include_reference_weighting = 1);
+    void  MultiplyByWeightsCurve(Curve& weights, float scale_factor = 1.0);
+    void  WeightBySSNR(Image& ctf_image, float molecular_mass_kDa, float pixel_size, Curve& SSNR, Image& projection_image, bool weight_particle_image, bool weight_projection_image);
+    void  OptimalFilterSSNR(Curve& SSNR);
+    void  OptimalFilterFSC(Curve& FSC);
+    void  OptimalFilterWarp(CTF ctf, float pixel_size_in_angstroms, float ssnr_falloff_fudge_factor = 1.0, float ssnr_scale_fudge_factor = 1.0, float ssnr_falloff_frequency = 100.0, float high_pass_frequency = 200.0);
     //float Correct3D(float wanted_mask_radius = 0.0);
     float               CorrectSinc(float wanted_mask_radius = 0.0, float padding_factor = 1.0, bool force_background_value = false, float wanted_mask_value = 0.0);
     void                MirrorXFourier2D(Image& mirrored_image);

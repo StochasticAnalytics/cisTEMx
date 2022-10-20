@@ -689,11 +689,7 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
 
         case b_16f:
             if ( ! is_allocated_16f_buffer ) {
-#ifdef USE_ASYNC_MALLOC_FREE
                 cudaErr(cudaMallocAsync(&real_values_16f, size_of_half * real_memory_allocated, cudaStreamPerThread));
-#else
-                cudaErr(cudaMalloc(&real_values_16f, size_of_half * real_memory_allocated));
-#endif
                 complex_values_16f      = (void*)real_values_16f;
                 is_allocated_16f_buffer = true;
 
@@ -726,11 +722,8 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_ctf_16f:
             if ( ! is_allocated_ctf_16f_buffer ) {
                 MyDebugAssertTrue(n_elements > 0, "For allocating the ctf_16f buffer, you must specify the number of elements");
-#ifdef USE_ASYNC_MALLOC_FREE
                 cudaErr(cudaMallocAsync(&ctf_buffer_16f, size_of_half * n_elements, cudaStreamPerThread));
-#else
-                cudaErr(cudaMalloc(&ctf_buffer_16f, size_of_half * n_elements));
-#endif
+
                 ctf_complex_buffer_16f      = (void*)ctf_buffer_16f;
                 is_allocated_ctf_16f_buffer = true;
 
@@ -745,12 +738,8 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_sum:
             if ( ! is_allocated_sum_buffer ) {
                 int n_elem;
-                nppiSumGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiSumGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->sum_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->sum_buffer, n_elem));
-#endif
                 is_allocated_sum_buffer = true;
             }
             break;
@@ -758,12 +747,9 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_min:
             if ( ! is_allocated_min_buffer ) {
                 int n_elem;
-                nppiMinGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMinGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->min_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->min_buffer, n_elem));
-#endif
+
                 is_allocated_min_buffer = true;
             }
             break;
@@ -771,12 +757,9 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_minIDX:
             if ( ! is_allocated_minIDX_buffer ) {
                 int n_elem;
-                nppiMinIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMinIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->minIDX_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->minIDX_buffer, n_elem));
-#endif
+
                 is_allocated_minIDX_buffer = true;
             }
             break;
@@ -784,12 +767,9 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_max:
             if ( ! is_allocated_max_buffer ) {
                 int n_elem;
-                nppiMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->max_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->max_buffer, n_elem));
-#endif
+
                 is_allocated_max_buffer = true;
             }
             break;
@@ -797,12 +777,9 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_maxIDX:
             if ( ! is_allocated_maxIDX_buffer ) {
                 int n_elem;
-                nppiMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->maxIDX_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->maxIDX_buffer, n_elem));
-#endif
+
                 is_allocated_maxIDX_buffer = true;
             }
             break;
@@ -810,12 +787,9 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_minmax:
             if ( ! is_allocated_minmax_buffer ) {
                 int n_elem;
-                nppiMinMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMinMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->minmax_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->minmax_buffer, n_elem));
-#endif
+
                 is_allocated_minmax_buffer = true;
             }
             break;
@@ -823,12 +797,8 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_minmaxIDX:
             if ( ! is_allocated_minmaxIDX_buffer ) {
                 int n_elem;
-                nppiMinMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMinMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->minmaxIDX_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->minmaxIDX_buffer, n_elem));
-#endif
 
                 is_allocated_minmaxIDX_buffer = true;
             }
@@ -837,24 +807,19 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_mean:
             if ( ! is_allocated_mean_buffer ) {
                 int n_elem;
-                nppiMeanGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMeanGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->mean_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->mean_buffer, n_elem));
-#endif
+
                 is_allocated_mean_buffer = true;
             }
             break;
         case b_meanstddev:
             if ( ! is_allocated_meanstddev_buffer ) {
                 int n_elem;
-                nppiMeanStdDevGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiMeanStdDevGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
+                cudaErr(cudaStreamSynchronize(nppStream.hStream));
                 cudaErr(cudaMallocAsync(&this->meanstddev_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->meanstddev_buffer, n_elem));
-#endif
+
                 is_allocated_meanstddev_buffer = true;
             }
             break;
@@ -862,12 +827,9 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_countinrange:
             if ( ! is_allocated_countinrange_buffer ) {
                 int n_elem;
-                nppiCountInRangeGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiCountInRangeGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->countinrange_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->countinrange_buffer, n_elem));
-#endif
+
                 is_allocated_countinrange_buffer = true;
             }
             break;
@@ -875,12 +837,8 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_l2norm:
             if ( ! is_allocated_l2norm_buffer ) {
                 int n_elem;
-                nppiNormL2GetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiNormL2GetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->l2norm_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->l2norm_buffer, n_elem));
-#endif
 
                 is_allocated_l2norm_buffer = true;
             }
@@ -889,12 +847,9 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
         case b_dotproduct:
             if ( ! is_allocated_dotproduct_buffer ) {
                 int n_elem;
-                nppiDotProdGetBufferHostSize_32f64f_C1R_Ctx(npp_ROI, &n_elem, nppStream);
-#ifdef USE_ASYNC_MALLOC_FREE
+                nppErr(nppiDotProdGetBufferHostSize_32f64f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->dotproduct_buffer, n_elem, nppStream.hStream));
-#else
-                cudaErr(cudaMalloc(&this->dotproduct_buffer, n_elem));
-#endif
+
                 is_allocated_dotproduct_buffer = true;
             }
             break;
@@ -2183,10 +2138,7 @@ void GpuImage::Mean( ) {
     NppInit( );
     BufferInit(b_mean);
     // // wxPrintf("Pitch, roi: %d, %d, %d\n", pitch, npp_ROI.width, npp_ROI.height);
-    wxPrintf("Mean %f\n", npp_mean);
-    wxPrintf("Mean buffer %p\n", mean_buffer);
-    printVal("My vaalue at 0", 0);
-    printVal("My vaalue at end", -1);
+
     PrintNppStreamContext( );
 
     nppErr(nppiMean_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, mean_buffer, &npp_mean, nppStream));
@@ -2199,10 +2151,12 @@ void GpuImage::MeanStdDev( ) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
+    MyAssertTrue(false, "This function is currently broken, nppErr returns okay, but illegal mem access");
     NppInit( );
     BufferInit(b_meanstddev);
+
     nppErr(nppiMean_StdDev_32f_C1R_Ctx((const Npp32f*)real_values_gpu, pitch, npp_ROI, meanstddev_buffer, &npp_mean, &npp_stdDev, nppStream));
-    // cudaErr(cudaStreamSynchronize(nppStream.hStream));
+    cudaErr(cudaStreamSynchronize(nppStream.hStream));
 
     this->img_mean   = float(npp_mean);
     this->img_stdDev = float(npp_stdDev);
@@ -2696,9 +2650,8 @@ void GpuImage::CopyDeviceToHost(bool free_gpu_memory, bool unpin_host_memory) {
         Deallocate( );
     }
     // If we ran Deallocate, this the memory is already unpinned.
-    if ( unpin_host_memory && is_host_memory_pinned ) {
-        cudaErr(cudaHostUnregister(real_values));
-        is_host_memory_pinned = false;
+    if ( unpin_host_memory ) {
+        UnPinHostPointer(real_values);
     }
 }
 
@@ -2847,9 +2800,9 @@ void GpuImage::CopyVolumeDeviceToHost(bool free_gpu_memory, bool unpin_host_memo
         cudaFree(d_pitchedPtr.ptr);
 #endif
     } // FIXME what about the other structures
-    if ( unpin_host_memory && is_host_memory_pinned ) {
-        cudaHostUnregister(real_values);
-        is_host_memory_pinned = false;
+
+    if ( unpin_host_memory ) {
+        UnPinHostPointer(real_values);
     }
 }
 
@@ -3680,11 +3633,28 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     delete[] onembed;
 }
 
-void GpuImage::Deallocate( ) {
+void GpuImage::UnPinHostPointer(float* host_ptr) {
     if ( is_host_memory_pinned ) {
-        cudaErr(cudaHostUnregister(real_values));
+        // FIXME: if the cpu image is destroyed before the gpu image, this boolean may be true but result in an illegal memory access:
+        // I tried to work around a bit, by adding a "is pinned" bool in image.h as well as an associated GpuImage pointer, which could
+        // be used to call this method from the Image::Deallocate()
+        // and set bools appropriately. This somehow broke the code, where cpu memory was allocated in ReadSlices, but after
+        // exiting the method, was not allocated...truly a bit bizarre. For now, just use a exception handling.
+
+        cudaError_t err = cudaHostUnregister(host_ptr);
+
+        if ( err != cudaSuccess ) {
+            std::cerr << cudaGetErrorString(err) << " :-> ";
+            MyPrintWithDetails("WARNING! ");
+        }
         is_host_memory_pinned = false;
+        cudaGetLastError( );
     }
+}
+
+void GpuImage::Deallocate( ) {
+    UnPinHostPointer(real_values);
+
     if ( is_in_memory_gpu ) {
 #ifdef USE_ASYNC_MALLOC_FREE
         cudaErr(cudaFreeAsync(real_values_gpu, cudaStreamPerThread));

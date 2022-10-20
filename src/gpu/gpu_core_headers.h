@@ -41,7 +41,7 @@ const int MAX_GPU_COUNT = 32;
 
 // clang-format on
 template <typename T>
-void print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {
+void* print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {
 
     cudaPointerAttributes attr;
     cudaErr(cudaPointerGetAttributes(&attr, ptr));
@@ -49,6 +49,7 @@ void print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {
     if ( ptr_name ) {
         std::cerr << "Pointer " << ptr_name << std::endl;
     }
+    std::cerr << "Device: " << attr.device << std::endl;
     std::cerr << "Your pointer is for: ";
     switch ( attr.type ) {
         case 0:
@@ -70,7 +71,7 @@ void print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {
     std::cerr << "\n";
     std::cerr << "with possible device address () " << attr.devicePointer << std::endl;
     std::cerr << "with possible host address () " << attr.hostPointer << std::endl;
-    return;
+    return attr.hostPointer;
 }
 
 // Limits for specific kernels

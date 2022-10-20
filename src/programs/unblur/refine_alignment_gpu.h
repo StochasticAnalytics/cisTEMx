@@ -152,8 +152,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                 sum_of_images_minus_current.SubtractImage(&input_stack[image_counter]);
 
             sum_of_images_minus_current.ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
-            sum_of_images_minus_current.QuickAndDirtyWriteSlices("/tmp/gpu_sum_of_images.mrc", 1, 1);
-            exit(0);
+
             profile_timing_refinement_method.lap("prepare sum");
             // compute the cross correlation function and find the peak
             // TODO: just replace with batched backfft as in euler search gpu
@@ -161,26 +160,23 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             // Do not swap the conjugated image
             correlation_map.is_in_real_space = false;
             profile_timing_refinement_method.start("compute cross correlation");
-            if ( use_running_average )
+            if ( use_running_average ) {
                 // FIXME
+                MyAssertTrue(false, "running average is not setup yet.");
                 sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
+            }
             else
                 input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current, correlation_map, phase_multiplier);
 
-            correlation_map.BackwardFFTBatched(1);
-
             // // FIXME: shouldn't have to do this here
-            correlation_map.SwapRealSpaceQuadrants( );
-            correlation_map.is_in_real_space         = true;
-            correlation_map.object_is_centred_in_box = true;
+            correlation_map.is_in_real_space = false;
+            correlation_map.object_is_centred_in_box == false;
+            if ( correlation_map.object_is_centred_in_box == true ) {
+                correlation_map.object_is_centred_in_box = false;
+                correlation_map.SwapRealSpaceQuadrants( );
+            }
 
-            // correlation_map.QuickAndDirtyWriteSlice("/tmp/xcf.mrc", 1);
-            // exit(1);
-
-            // if ( use_running_average )
-            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
-            // else
-            //     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
+            correlation_map.BackwardFFTBatched(1);
 
             profile_timing_refinement_method.lap("compute cross correlation");
             profile_timing_refinement_method.start("find peak");
@@ -198,8 +194,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             profile_timing_refinement_method.lap("find peak");
             // update the shifts..
 
-            current_x_shifts[image_counter] = my_peak.x / (1 + phase_multiplier);
-            current_y_shifts[image_counter] = my_peak.y / (1 + phase_multiplier);
+            current_x_shifts[image_counter] = my_peak.x / float(1 + phase_multiplier);
+            current_y_shifts[image_counter] = my_peak.y / float(1 + phase_multiplier);
         }
 
         // smooth the shifts

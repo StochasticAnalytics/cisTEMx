@@ -130,8 +130,6 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
                 if ( mask_central_cross == true ) {
                     sum_of_images_minus_current.MaskCentralCross(width_of_vertical_line, width_of_horizontal_line);
                 }
-                sum_of_images_minus_current.QuickAndDirtyWriteSlices("/tmp/cpu_sum_of_images.mrc", 1, 1);
-                exit(0);
 
                 profile_timing_refinement_method.lap("prepare sum");
                 // compute the cross correlation function and find the peak
@@ -141,6 +139,7 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
                 else
                     sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&input_stack[image_counter]);
                 profile_timing_refinement_method.lap("compute cross correlation");
+
                 profile_timing_refinement_method.start("find peak");
                 my_peak = sum_of_images_minus_current.FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
 

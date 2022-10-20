@@ -71,6 +71,7 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
         current_x_shifts[image_counter] = 0;
         current_y_shifts[image_counter] = 0;
     }
+
     profile_timing_refinement_method.lap("prepare initial sum");
     // perform the main alignment loop until we reach a max shift less than wanted, or max iterations
     float wanted_inner_radius_for_peak_search;
@@ -125,9 +126,12 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
                     sum_of_images_minus_current.SubtractImage(&input_stack[image_counter]);
 
                 sum_of_images_minus_current.ApplyBFactor(unitless_bfactor);
+
                 if ( mask_central_cross == true ) {
                     sum_of_images_minus_current.MaskCentralCross(width_of_vertical_line, width_of_horizontal_line);
                 }
+                sum_of_images_minus_current.QuickAndDirtyWriteSlices("/tmp/cpu_sum_of_images.mrc", 1, 1);
+                exit(0);
 
                 profile_timing_refinement_method.lap("prepare sum");
                 // compute the cross correlation function and find the peak

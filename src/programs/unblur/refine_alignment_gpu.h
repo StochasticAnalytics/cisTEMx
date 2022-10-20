@@ -152,7 +152,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                 sum_of_images_minus_current.SubtractImage(&input_stack[image_counter]);
 
             sum_of_images_minus_current.ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
-
+            sum_of_images_minus_current.QuickAndDirtyWriteSlices("/tmp/gpu_sum_of_images.mrc", 1, 1);
+            exit(0);
             profile_timing_refinement_method.lap("prepare sum");
             // compute the cross correlation function and find the peak
             // TODO: just replace with batched backfft as in euler search gpu

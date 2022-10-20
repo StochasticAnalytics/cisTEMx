@@ -558,10 +558,7 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& reference_img, GpuIma
 
     // Override and loop over z in kernel allowing re-use of the image value if broadcast.
     gridDims.z = 1;
-    ReturnLaunchParameters(dims, false);
 
-    // Override and loop over z in kernel allowing re-use of the image value if broadcast.
-    gridDims.z = 1;
     precheck;
     if ( phase_multiplier > 0 ) {
         MultiplyPixelWiseComplexConjugateKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, reference_img.complex_values_gpu, result_image.complex_values_gpu, this->dims, phase_multiplier);
@@ -1287,7 +1284,7 @@ __global__ void ApplyBFactorKernel(cufftComplex* d_input,
 
     int address = x + y * pixel_pitch;
 
-    if ( x < horizontal_mask_size || y < vertical_mask_size || y >= NY - vertical_mask_size ) {
+    if ( x < horizontal_mask_size || y < vertical_mask_size || y >= NY - vertical_mask_size + 1 ) {
         // TODO: confirm this is correct
         // Mask the central cross
         d_input[address].x = 0.f;

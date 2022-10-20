@@ -121,6 +121,7 @@ class MyTestApp : public MyApp {
     void TestStarToBinaryFileConversion( );
     void TestElectronExposureFilter( );
 #ifdef ENABLEGPU
+    void TestGpuImageArithmeticFunctions( );
     void TestElectronExposureFilterGPU( );
     void TestGpuAddImageStack( );
     void TestCpuvsGpuReplaceOutliers( );
@@ -191,6 +192,7 @@ bool MyTestApp::DoCalculation( ) {
     TestStarToBinaryFileConversion( );
     TestElectronExposureFilter( );
 #ifdef ENABLEGPU
+    TestGpuImageArithmeticFunctions( );
     TestElectronExposureFilterGPU( );
     TestGpuAddImageStack( );
     TestCpuvsGpuReplaceOutliers( );
@@ -721,6 +723,85 @@ void MyTestApp::TestElectronExposureFilter( ) {
 }
 
 #ifdef ENABLEGPU
+
+void MyTestApp::TestGpuImageArithmeticFunctions( ) {
+
+    int   address;
+    Image test_image;
+    test_image.Allocate(618, 640, true);
+    GpuImage d_test_image;
+    d_test_image.Init(test_image);
+
+    BeginTest("GpuImage::SetToConstant");
+
+    d_test_image.SetToConstant(1.0f);
+    d_test_image.CopyDeviceToHostAndSynchronize(false, false);
+
+    address = 0;
+    for ( int j = 0; j < test_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < test_image.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(test_image.real_values[address], 1.0f) ) {
+                FailTest;
+            }
+            address++;
+        }
+        address += test_image.padding_jump_value;
+    }
+    EndTest( );
+
+    GpuImage other_image(d_test_image);
+
+    BeginTest("GpuImage::AddImage");
+    other_image.SetToConstant(2.0f);
+    d_test_image.AddImage(other_image);
+    d_test_image.CopyDeviceToHostAndSynchronize(false, false);
+    address = 0;
+    for ( int j = 0; j < test_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < test_image.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(test_image.real_values[address], 3.0f) ) {
+                wxPrintf("Failed for index: %i, values %f\n", address, test_image.real_values[address]);
+                FailTest;
+                exit(1);
+            }
+            address++;
+        }
+        address += test_image.padding_jump_value;
+    }
+    EndTest( );
+
+    BeginTest("GpuImage::SubtractImage");
+    other_image.SetToConstant(1.25f);
+    d_test_image.SubtractImage(other_image);
+    d_test_image.CopyDeviceToHostAndSynchronize(false, false);
+    address = 0;
+    for ( int j = 0; j < test_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < test_image.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(test_image.real_values[address], 3.0f - 1.25f) ) {
+                FailTest;
+            }
+            address++;
+        }
+        address += test_image.padding_jump_value;
+    }
+    EndTest( );
+
+    BeginTest("GpuImage::MultiplyImage");
+    other_image.SetToConstant(4.f);
+    d_test_image.MultiplyPixelWise(other_image);
+    d_test_image.CopyDeviceToHostAndSynchronize(false, false);
+    address = 0;
+    for ( int j = 0; j < test_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < test_image.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(test_image.real_values[address], 4.f * (3.0f - 1.25f)) ) {
+                FailTest;
+            }
+            address++;
+        }
+        address += test_image.padding_jump_value;
+    }
+    EndTest( );
+}
+
 void MyTestApp::TestElectronExposureFilterGPU( ) {
     // TODO: Depends on ZeroFloatArray, but this has no test.
     BeginTest("Test Electron Exposure Filter GPU");

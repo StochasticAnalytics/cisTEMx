@@ -508,6 +508,12 @@ bool UnBlurApp::DoCalculation( ) {
                 profile_timing.lap("gain correct");
             }
 
+            // image_stack_[sub_stack_index].QuickAndDirtyWriteSlices("/tmp/before_test.mrc", 1, 1, true);
+            // image_stack_[sub_stack_index].CosineRectangularMask(image_stack_[sub_stack_index].logical_x_dimension / 2 - 64,
+            //                                                     image_stack_[sub_stack_index].logical_y_dimension / 2 - 64, 1, 20, false, true,
+            //                                                     image_stack_[sub_stack_index].ReturnAverageOfRealValues( ));
+            // image_stack_[sub_stack_index].QuickAndDirtyWriteSlices("/tmp/after_test.mrc", 1, 1, true);
+
 #pragma omp critical
             {
                 // Only the first thread that gets here should do any work, hence the omp critical.

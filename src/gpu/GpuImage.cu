@@ -456,6 +456,8 @@ void GpuImage::PrintNppStreamContext( ) {
 
     wxPrintf("\n NPP ROI:\n");
 
+    wxPrintf("  npp_ROI: %d %d\n", npp_ROI_real_space.width, npp_ROI_real_space.height);
+
     wxPrintf("  npp_ROI_real_space: %d %d\n", npp_ROI_real_space.width, npp_ROI_real_space.height);
     wxPrintf("  npp_ROI_fourier_space: %d %d\n", npp_ROI_fourier_space.width, npp_ROI_fourier_space.height);
     wxPrintf("  GpuImage.pitch bytes/ elements %ld/ %ld\n", pitch, pitch / sizeof(float));
@@ -1889,7 +1891,7 @@ __global__ void FindPeakAtCenterFast2DKernel(const T* __restrict__ real_values,
 
     if ( threadIdx.x == 0 ) {
         device_peak[blockIdx.z].value                         = max_val;
-        device_peak[blockIdx.z].physical_address_within_image = my_max_idx;
+        device_peak[blockIdx.z].physical_address_within_image = my_max_idx - (pixel_pitch * 2);
         device_peak[blockIdx.z].z                             = int(blockIdx.z);
     }
     return;
@@ -2420,7 +2422,13 @@ void GpuImage::SubtractImage(GpuImage& other_image) {
     MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
 
     NppInit( );
-    nppErr(nppiSub_32f_C1IR_Ctx((const Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI, nppStream));
+    // FIXME: make is_in_real_space a private member such that npp_ROI is set correctly when this is flipped.
+    if ( is_in_real_space ) {
+        nppErr(nppiSub_32f_C1IR_Ctx((const Npp32f*)other_image.real_values_gpu, pitch, (Npp32f*)real_values_gpu, pitch, npp_ROI_real_space, nppStream));
+    }
+    else {
+        nppErr(nppiSub_32fc_C1IR_Ctx((const Npp32fc*)other_image.complex_values_gpu, pitch, (Npp32fc*)complex_values_gpu, pitch, npp_ROI_fourier_space, nppStream));
+    }
 }
 
 void GpuImage::AddSquaredImage(GpuImage& other_image) {

@@ -2166,6 +2166,7 @@ void GpuImage::ReplaceOutliersWithMean(float mean, float stdDev, float maximum_n
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space, "Not in real space");
 
+    NppInit( );
     Npp32f max = mean + maximum_n_sigmas * stdDev;
     Npp32f min = mean - maximum_n_sigmas * stdDev;
     nppErr(nppiThreshold_LTValGTVal_32f_C1IR_Ctx((Npp32f*)real_values_gpu, pitch, npp_ROI, min, (Npp32f)mean, max, (Npp32f)mean, nppStream));

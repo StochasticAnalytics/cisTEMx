@@ -900,33 +900,24 @@ void MyTestApp::TestCpuvsGpuReplaceOutliers( ) {
 
     // Currently getting an OOB memory access, not sure what is going on as it is an NPPI function.
     // FIXME:
-    const bool skip_for_now = true;
-    if ( skip_for_now ) {
-        BeginTest("GpuImage::ReplaceOutliersWithMean");
 
-        FailTestAllowed;
-        EndTestAllowedToFail( );
-    }
-    else {
-        // Now test the outlier replacement
-        BeginTest("GpuImage::ReplaceOutliersWithMean");
-        test_image.ReplaceOutliersWithMean(2.0f);
-        d_test_image.ReplaceOutliersWithMean(2.0f);
-
-        Image comparison    = d_test_image.CopyDeviceToNewHost(true, true, true);
-        int   pixel_counter = 0;
-        for ( int j = 0; j < comparison.logical_y_dimension; j++ ) {
-            for ( int i = 0; i < comparison.logical_x_dimension; i++ ) {
-                if ( ! FloatsAreAlmostTheSame(comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]) ) {
-                    wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]);
-                    FailTestAllowed;
-                }
-                pixel_counter++;
+    // Now test the outlier replacement
+    BeginTest("GpuImage::ReplaceOutliersWithMean");
+    test_image.ReplaceOutliersWithMean(mean, sigma, 1.0f);
+    d_test_image.ReplaceOutliersWithMean(mean, sigma, 1.0f);
+    Image comparison    = d_test_image.CopyDeviceToNewHost(true, true, true);
+    int   pixel_counter = 0;
+    for ( int j = 0; j < comparison.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < comparison.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]) ) {
+                wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]);
+                FailTestAllowed;
             }
-            pixel_counter += comparison.padding_jump_value;
+            pixel_counter++;
         }
-        EndTestAllowedToFail( );
+        pixel_counter += comparison.padding_jump_value;
     }
+    EndTest( );
 }
 #endif // #ifdef ENABLEGPU
 

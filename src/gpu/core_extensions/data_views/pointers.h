@@ -34,6 +34,7 @@ class DevicePointerArray {
             for ( int i = 0; i < _size; i++ ) {
                 ptr_array[i] = nullptr;
             }
+            _size = 0;
             cudaErr(cudaFree(ptr_array));
         }
 

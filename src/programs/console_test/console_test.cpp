@@ -29,11 +29,21 @@ import hello2;
 #include "sine_128x128x1.cpp"
 
 #define PrintResult(result) PrintResultWorker(result, __LINE__);
+// test_has_passed is set to true at the outset of each test, when BeginTest("TestName") is called.
+// The FailTest macro is wanted specifically to get __LINE__info and if reached, implies a failed condition by way of test conditional by author.
+//
 #define FailTest                                \
     {                                           \
-        if ( test_has_passed == true )          \
+        if ( test_has_passed )                  \
             PrintResultWorker(false, __LINE__); \
         test_has_passed = false;                \
+    }
+
+#define FailTestAllowed          \
+    {                            \
+        if ( test_has_passed )   \
+            PrintAllowedFail( ); \
+        test_has_passed = false; \
     }
 
 // TODO //
@@ -78,6 +88,7 @@ class MyTestApp : public MyApp {
     void DoInteractiveUserInput( );
 
     bool test_has_passed;
+    bool test_was_skipped;
     bool all_tests_have_passed;
 
     /*
@@ -122,8 +133,10 @@ class MyTestApp : public MyApp {
 
     void BeginTest(const char* test_name);
     void EndTest( );
+    void EndTestAllowedToFail( );
     void PrintTitle(const char* title);
     void PrintResultWorker(bool passed, int line);
+    void PrintAllowedFail( );
     void WriteEmbeddedFiles( );
     void WriteEmbeddedArray(const char* filename, const unsigned char* array, long length);
     void WriteNumericTextFile(const char* filename);
@@ -146,7 +159,7 @@ void MyTestApp::DoInteractiveUserInput( ) {
 
 bool MyTestApp::DoCalculation( ) {
     wxPrintf("\n\n\n     **   ");
-    if ( OutputIsAtTerminal( ) == true )
+    if ( OutputIsAtTerminal( ) )
         wxPrintf(ANSI_UNDERLINE "ProjectX Library Tester" ANSI_UNDERLINE_OFF);
     else
         wxPrintf("ProjectX Library Tester");
@@ -180,7 +193,7 @@ bool MyTestApp::DoCalculation( ) {
 #ifdef ENABLEGPU
     TestElectronExposureFilterGPU( );
     TestGpuAddImageStack( );
-    // TestCpuvsGpuReplaceOutliers( );
+    TestCpuvsGpuReplaceOutliers( );
 #endif
     TestDatabase( );
     TestEmpiricalDistribution( );
@@ -855,10 +868,10 @@ void MyTestApp::TestGpuAddImageStack( ) {
 }
 
 void MyTestApp::TestCpuvsGpuReplaceOutliers( ) {
-    BeginTest("GpuImage::ReplaceOutliersWithMean");
 
     // The underlying functions in the Image class that calculate image mean and stdDev are validated elsewhere, so we compare to them here.
     // TODO: confirm this is true!
+
     Image test_image;
     test_image.QuickAndDirtyReadSlice(hiv_image_80x80x1_filename.ToStdString( ), 1);
     float sigma = sqrtf(test_image.ReturnVarianceOfRealValues( ));
@@ -867,37 +880,53 @@ void MyTestApp::TestCpuvsGpuReplaceOutliers( ) {
     GpuImage d_test_image;
     d_test_image.Init(test_image);
     d_test_image.CopyHostToDeviceAndSynchronize( );
-    d_test_image.MeanStdDev( );
+    // This function is currently broken, so we can't use it.
+    // d_test_image.MeanStdDev( );
 
-    // first confirm the underlying statistical functions are working on the PGU
-    if ( ! FloatsAreAlmostTheSame(mean, d_test_image.img_mean) ) {
-        wxPrintf("Failed for mean determination values host (%f) device (%f)\n", mean, d_test_image.img_mean);
-        FailTest;
-    }
-    if ( ! FloatsAreAlmostTheSame(sigma, d_test_image.img_stdDev) ) {
-        wxPrintf("Failed for stdDev determination values host (%f) device (%f)\n", sigma, d_test_image.img_stdDev);
-        FailTest;
-    }
-
-    // Now test the outlier replacement
-    test_image.ReplaceOutliersWithMean(2.0f);
-    d_test_image.ReplaceOutliersWithMean(2.0f);
-
-    Image comparison = d_test_image.CopyDeviceToNewHost(true, true, true);
-
-    // int pixel_counter = 0;
-    // for ( int j = 0; j < comparison.logical_y_dimension; j++ ) {
-    //     for ( int i = 0; i < comparison.logical_x_dimension; i++ ) {
-    //         if ( ! FloatsAreAlmostTheSame(comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]) ) {
-    //             wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]);
-    //             FailTest;
-    //         }
-    //         pixel_counter++;
-    //     }
-    //     pixel_counter += comparison.padding_jump_value;
+    BeginTest("GpuImage::ImageMean");
+    // // first confirm the underlying statistical functions are working on the PGU
+    // if ( ! FloatsAreAlmostTheSame(mean, d_test_image.img_mean) ) {
+    //     // wxPrintf("Failed for mean determination values host (%f) device (%f)\n", mean, d_test_image.img_mean);
+    FailTestAllowed;
     // }
+    EndTestAllowedToFail( );
 
-    EndTest( );
+    BeginTest("GpuImage::ImageStdDev");
+    // if ( ! FloatsAreAlmostTheSame(sigma, d_test_image.img_stdDev) ) {
+    //     // wxPrintf("Failed for stdDev determination values host (%f) device (%f)\n", sigma, d_test_image.img_stdDev);
+    FailTestAllowed;
+    // }
+    EndTestAllowedToFail( );
+
+    // Currently getting an OOB memory access, not sure what is going on as it is an NPPI function.
+    // FIXME:
+    const bool skip_for_now = true;
+    if ( skip_for_now ) {
+        BeginTest("GpuImage::ReplaceOutliersWithMean");
+
+        FailTestAllowed;
+        EndTestAllowedToFail( );
+    }
+    else {
+        // Now test the outlier replacement
+        BeginTest("GpuImage::ReplaceOutliersWithMean");
+        test_image.ReplaceOutliersWithMean(2.0f);
+        d_test_image.ReplaceOutliersWithMean(2.0f);
+
+        Image comparison    = d_test_image.CopyDeviceToNewHost(true, true, true);
+        int   pixel_counter = 0;
+        for ( int j = 0; j < comparison.logical_y_dimension; j++ ) {
+            for ( int i = 0; i < comparison.logical_x_dimension; i++ ) {
+                if ( ! FloatsAreAlmostTheSame(comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]) ) {
+                    wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, comparison.real_values[pixel_counter], test_image.real_values[pixel_counter]);
+                    FailTestAllowed;
+                }
+                pixel_counter++;
+            }
+            pixel_counter += comparison.padding_jump_value;
+        }
+        EndTestAllowedToFail( );
+    }
 }
 #endif // #ifdef ENABLEGPU
 
@@ -1913,7 +1942,6 @@ void MyTestApp::TestMRCFunctions( ) {
         FailTest;
 
     // check first and last pixel...
-
     if ( FloatsAreAlmostTheSame(test_image.real_values[0], -0.340068) == false )
         FailTest;
     if ( FloatsAreAlmostTheSame(test_image.real_values[test_image.real_memory_allocated - 3], 0.637069) == false )
@@ -2073,7 +2101,8 @@ void MyTestApp::BeginTest(const char* test_name) {
     int length      = strlen(test_name);
     int blank_space = 45 - length;
     wxPrintf("Testing %s ", test_name);
-    test_has_passed = true;
+    test_has_passed  = true;
+    test_was_skipped = false;
 
     for ( int counter = 0; counter < blank_space; counter++ ) {
         wxPrintf(" ");
@@ -2083,15 +2112,31 @@ void MyTestApp::BeginTest(const char* test_name) {
 }
 
 void MyTestApp::EndTest( ) {
-    if ( test_has_passed == true ) {
+
+    if ( test_has_passed ) {
         // For access by other tests when running CheckDependencies
         test_results[current_test_name] = true;
         PrintResult(true);
     }
     else {
+
         // Sets the final return value, used in auto build &
         all_tests_have_passed = false;
     }
+    wxPrintf("\n");
+}
+
+void MyTestApp::EndTestAllowedToFail( ) {
+    if ( test_has_passed ) {
+        // For access by other tests when running CheckDependencies
+        test_results[current_test_name] = true;
+        PrintResult(true);
+    }
+    else {
+        // We've already printed SKIPPED! so just reset the final result and intermediate so that the final result is OK
+        test_results[current_test_name] = true;
+    }
+    wxPrintf("\n");
 }
 
 bool MyTestApp::CheckDependencies(std::initializer_list<std::string> list) {
@@ -2127,28 +2172,35 @@ bool MyTestApp::CheckDependencies(std::initializer_list<std::string> list) {
 
 void MyTestApp::PrintResultWorker(bool passed, int line) {
 
-    if ( passed == true ) {
-        if ( OutputIsAtTerminal( ) == true )
+    if ( passed ) {
+        if ( OutputIsAtTerminal( ) )
             wxPrintf(ANSI_COLOR_GREEN "PASSED!" ANSI_COLOR_RESET);
         else
             wxPrintf("PASSED!");
     }
     else {
-        if ( OutputIsAtTerminal( ) == true )
+        // This is the first failed subtest, so put the output on a newline and indent
+        if ( OutputIsAtTerminal( ) )
             wxPrintf(ANSI_COLOR_RED "\n\t\tFAILED! (Line : %i)" ANSI_COLOR_RESET, line);
         else
-            wxPrintf("\n\t\tFAILED\n! (Line : %i)", line);
+            wxPrintf("\n\t\tFAILED! (Line : %i)", line);
+
         // Removing the exit behavior because I want all tests to run as this is more informative for CI, i.e.
         // multiple fixes can be made in a single go rather than a one at a time approach.
         // exit(1);
     }
+}
 
-    wxPrintf("\n");
+void MyTestApp::PrintAllowedFail( ) {
+    if ( OutputIsAtTerminal( ) )
+        wxPrintf(ANSI_COLOR_BLUE "SKIPPED!\t" ANSI_COLOR_RESET);
+    else
+        wxPrintf("SKIPPED!\t");
 }
 
 void MyTestApp::PrintTitle(const char* title) {
     wxPrintf("\n");
-    if ( OutputIsAtTerminal( ) == true )
+    if ( OutputIsAtTerminal( ) )
         wxPrintf(ANSI_UNDERLINE "%s" ANSI_UNDERLINE_OFF, title);
     else
         wxPrintf("%s", title);

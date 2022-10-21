@@ -1271,8 +1271,8 @@ __global__ void ApplyBFactorKernel(cufftComplex* d_input,
                                    const int     pixel_pitch,
                                    const int     NY,
                                    const int     physical_index_of_first_negative_frequency_y,
-                                   const float   fourier_voxel_size_x,
-                                   const float   fourier_voxel_size_y,
+                                   const float   fourier_voxel_size_x_sq,
+                                   const float   fourier_voxel_size_y_sq,
                                    float         bfactor,
                                    const float   vertical_mask_size,
                                    const float   horizontal_mask_size) {
@@ -1295,8 +1295,8 @@ __global__ void ApplyBFactorKernel(cufftComplex* d_input,
     else {
         y = (y < physical_index_of_first_negative_frequency_y) ? y : y - NY;
 
-        float frequency_squared = (x * fourier_voxel_size_x) * (x * fourier_voxel_size_x) +
-                                  (y * fourier_voxel_size_y) * (y * fourier_voxel_size_y);
+        float frequency_squared = float(x * x) * fourier_voxel_size_x_sq +
+                                  float(y * y) * fourier_voxel_size_y_sq;
 
         ComplexScale((Complex*)&d_input[address], expf(-bfactor * frequency_squared));
     }
@@ -1312,8 +1312,8 @@ void GpuImage::ApplyBFactor(float bfactor, const float vertical_mask_size, const
                                                                               dims.w / 2,
                                                                               dims.y,
                                                                               physical_index_of_first_negative_frequency.y,
-                                                                              fourier_voxel_size.x,
-                                                                              fourier_voxel_size.y,
+                                                                              fourier_voxel_size.x * fourier_voxel_size.x,
+                                                                              fourier_voxel_size.y * fourier_voxel_size.y,
                                                                               bfactor * 0.25f,
                                                                               vertical_mask_size,
                                                                               horizontal_mask_size);

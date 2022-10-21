@@ -149,7 +149,9 @@ class GpuImage {
     ////////////////////////////////////////////////////////
 
     cudaEvent_t npp_calc_event;
+    cudaEvent_t block_host_event;
     bool        is_npp_calc_event_initialized;
+    bool        is_block_host_event_initialized;
     //	cublasHandle_t cublasHandle;
 
     cufftHandle cuda_plan_forward;
@@ -275,7 +277,9 @@ class GpuImage {
     void CopyVolumeDeviceToHost(bool free_gpu_memory = true, bool unpin_host_memory = true);
     // Synchronize the full stream.
     void Record( );
+    void RecordBlocking( );
     void Wait( );
+    void WaitBlocking( );
     void RecordAndWait( );
     // Maximum intensity projection
     void MipPixelWise(GpuImage& other_image);

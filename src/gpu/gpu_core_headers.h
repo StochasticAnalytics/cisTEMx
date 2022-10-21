@@ -39,6 +39,14 @@ const int MAX_GPU_COUNT = 32;
 #define precheck { cudaErr(cudaGetLastError()) }
 #endif
 
+//s
+// REVERTME
+#undef postcheck
+#undef precheck
+#define postcheck
+#define precheck
+#define mcheck { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaStreamSynchronize(cudaStreamPerThread); cudaErr(error); }
+
 // clang-format on
 template <typename T>
 void* print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {

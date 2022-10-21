@@ -239,9 +239,8 @@ void UnBlurApp::DoInteractiveUserInput( ) {
 // overide the do calculation method which will be what is actually run..
 
 bool UnBlurApp::DoCalculation( ) {
-    int    pre_binning_factor;
-    size_t image_counter;
-    int    pixel_counter;
+    int pre_binning_factor;
+    int pixel_counter;
 
     float unitless_bfactor;
 
@@ -351,6 +350,8 @@ bool UnBlurApp::DoCalculation( ) {
 
     long slice_byte_size;
 
+    std::vector<bool> first_iteration(max_threads, true);
+
 #ifdef ENABLEGPU
     std::vector<GpuImage> unbinned_image_stack; // We will allocate this later depending on if we are binning or not.
     std::vector<GpuImage> image_stack(number_of_input_images);
@@ -458,13 +459,15 @@ bool UnBlurApp::DoCalculation( ) {
     total_processed           = 0;
 
     // Reduce the memory footprint for cases where the input stack will be binned
-    image_counter  = 0;
+
     int cpu_offset = 0;
     // only used once and by thread zero
     bool adjust_image_mode = true;
     int  image_mode        = 0;
     for ( preprocess_block_counter = 0; preprocess_block_counter < number_of_preprocess_blocks; preprocess_block_counter++ ) {
+
 #ifndef ENABLEGPU
+        // We have a full size stack, so we need to increment by the thread block size
         if ( preprocess_block_counter > 0 ) {
             cpu_offset += max_threads;
         }
@@ -474,12 +477,18 @@ bool UnBlurApp::DoCalculation( ) {
         // TODO: After implementing the reduced precision, test whether it makes sense to have parallel i/o here.
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
             // Read from disk
-            // image_stack[image_counter - 1].ReadSlice(&input_file, image_counter);
+#ifdef ENABLEGPU
+            // Make sure that we are finished working on the last block before we go, otherwaise we'll have a race condition.
+            // Using the cudaEvents int he first 0->max_blocks-1 images
+            // if ( ! first_iteration[(position_in_stack - 1) % max_threads + cpu_offset] )
+            //     image_stack[(position_in_stack - 1) % max_threads + cpu_offset].WaitBlocking( );
+
+#endif
             image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].ReadSlice(&input_file, position_in_stack);
         }
         profile_timing.lap("read in frames");
 
-#pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
+#pragma omp parallel for default(shared) num_threads(max_threads)
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
             int sub_stack_index = (position_in_stack - 1) % max_threads + cpu_offset;
             // Dark correction
@@ -507,12 +516,6 @@ bool UnBlurApp::DoCalculation( ) {
                 image_stack_[sub_stack_index].MultiplyPixelWise(gain_image);
                 profile_timing.lap("gain correct");
             }
-
-            // image_stack_[sub_stack_index].QuickAndDirtyWriteSlices("/tmp/before_test.mrc", 1, 1, true);
-            // image_stack_[sub_stack_index].CosineRectangularMask(image_stack_[sub_stack_index].logical_x_dimension / 2 - 64,
-            //                                                     image_stack_[sub_stack_index].logical_y_dimension / 2 - 64, 1, 20, false, true,
-            //                                                     image_stack_[sub_stack_index].ReturnAverageOfRealValues( ));
-            // image_stack_[sub_stack_index].QuickAndDirtyWriteSlices("/tmp/after_test.mrc", 1, 1, true);
 
 #pragma omp critical
             {
@@ -589,7 +592,7 @@ bool UnBlurApp::DoCalculation( ) {
             profile_timing.lap("allocate GPU memory");
 
             profile_timing.start("copy to GPU");
-            image_stack[position_in_stack - 1].CopyHostToDevice( );
+            image_stack[position_in_stack - 1].CopyHostToDeviceAndSynchronize( );
             profile_timing.lap("copy to GPU");
 
             profile_timing.start("forward FFT");
@@ -606,6 +609,8 @@ bool UnBlurApp::DoCalculation( ) {
                 image_stack[position_in_stack - 1].ZeroCentralPixel( );
             }
 
+            first_iteration[sub_stack_index] = false;
+            // image_stack[sub_stack_index].RecordBlocking( );
             // profile_timing.start("swap quadrands");
             // image_stack[position_in_stack - 1].SwapRealSpaceQuadrants( );
             // profile_timing.lap("swap quadrands");
@@ -629,7 +634,7 @@ bool UnBlurApp::DoCalculation( ) {
             // Init shifts
             x_shifts[position_in_stack - 1] = 0.0;
             y_shifts[position_in_stack - 1] = 0.0;
-        } // end omp block
+        } // end omp for loop
 
         first_frame_to_preprocess += max_threads;
         last_frame_to_preprocess += max_threads;
@@ -685,8 +690,8 @@ bool UnBlurApp::DoCalculation( ) {
 
     if ( pre_binning_factor > 1 ) {
         profile_timing.start("make prebinned stack");
-#pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
-        for ( image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
+#pragma omp parallel for default(shared) num_threads(max_threads)
+        for ( int image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
             // Would it make sense to also consider Fourier Factorization friendly sizes?
             // Note: The binned pixel size will be slightly wrong if we add one below, but it should have minimal impact since
             // the final refinement is done in unbinned space.
@@ -731,8 +736,8 @@ bool UnBlurApp::DoCalculation( ) {
 
         // Adjust the shifts, then phase shift the original images
         profile_timing.start("apply shifts 1");
-#pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
-        for ( image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
+#pragma omp parallel for default(shared) num_threads(max_threads)
+        for ( int image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
             x_shifts[image_counter] *= pre_binning_factor;
             y_shifts[image_counter] *= pre_binning_factor;
 
@@ -770,7 +775,7 @@ bool UnBlurApp::DoCalculation( ) {
             sum_image_no_dose_filter.Allocate(image_stack[0].logical_x_dimension, image_stack[0].logical_y_dimension, false);
             sum_image_no_dose_filter.SetToConstant(0.0f);
 
-            for ( image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
+            for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
                 sum_image_no_dose_filter.AddImage(&image_stack[image_counter]);
             }
             profile_timing.lap("amplitude spectrum");
@@ -789,7 +794,7 @@ bool UnBlurApp::DoCalculation( ) {
 
         shared_ptr->start("write out frames");
         if ( saved_aligned_frames == true ) {
-            for ( image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
+            for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
                 image_stack[image_counter].QuickAndDirtyWriteSlice(aligned_frames_filename, image_counter + 1);
             }
         }
@@ -804,7 +809,7 @@ bool UnBlurApp::DoCalculation( ) {
         ZeroFloatArray(dose_filter_sum_of_squares, image_stack[0].real_memory_allocated / 2);
         profile_timing.lap("setup dose filter");
 
-#pragma omp parallel default(shared) num_threads(max_threads) shared(shared_ptr) private(image_counter, dose_filter, pixel_counter)
+#pragma omp parallel default(shared) num_threads(max_threads) shared(shared_ptr) private(dose_filter, pixel_counter)
         { // for omp
 
             shared_ptr->start("setup dose filter");
@@ -815,7 +820,7 @@ bool UnBlurApp::DoCalculation( ) {
             shared_ptr->lap("setup dose filter");
 
 #pragma omp for
-            for ( image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
+            for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
                 shared_ptr->start("calc dose filter");
                 my_electron_dose->CalculateDoseFilterAs1DArray(&image_stack[image_counter], dose_filter, (image_counter * exposure_per_frame) + pre_exposure_amount, ((image_counter + 1) * exposure_per_frame) + pre_exposure_amount);
                 shared_ptr->lap("calc dose filter");
@@ -847,7 +852,7 @@ bool UnBlurApp::DoCalculation( ) {
 
         } // end omp section
         profile_timing.start("final sum");
-        for ( image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
+        for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
             sum_image.AddImage(&image_stack[image_counter]);
 
             if ( saved_aligned_frames == true ) {
@@ -860,7 +865,7 @@ bool UnBlurApp::DoCalculation( ) {
     else // just add them
     {
         profile_timing.start("final sum");
-        for ( image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
+        for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
             sum_image.AddImage(&image_stack[image_counter]);
 
             if ( saved_aligned_frames == true ) {
@@ -1000,7 +1005,7 @@ bool UnBlurApp::DoCalculation( ) {
         NumericTextFile shifts_file(output_shift_text_file, OPEN_TO_WRITE, 2);
         shifts_file.WriteCommentLine("X/Y Shifts for file %s\n", input_filename.c_str( ));
 
-        for ( image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
+        for ( int image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
             temp_float[0] = x_shifts[image_counter] * output_pixel_size;
             temp_float[1] = y_shifts[image_counter] * output_pixel_size;
             shifts_file.WriteLine(temp_float);
@@ -1010,7 +1015,7 @@ bool UnBlurApp::DoCalculation( ) {
         }
     }
     else {
-        for ( image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
+        for ( int image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
             result_array[image_counter]                          = x_shifts[image_counter] * output_pixel_size;
             result_array[image_counter + number_of_input_images] = y_shifts[image_counter] * output_pixel_size;
         }

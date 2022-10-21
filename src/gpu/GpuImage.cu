@@ -2406,6 +2406,7 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
     postcheck;
 }
 
+//a
 template void GpuImage::AddImageStack<float>(std::vector<GpuImage>&, GpuImage&);
 template void GpuImage::AddImageStack<__half>(std::vector<GpuImage>&, GpuImage&);
 
@@ -3053,12 +3054,24 @@ template void GpuImage::BackwardFFTAfterComplexConjMul<__half2, __half2>(__half2
 template void GpuImage::BackwardFFTAfterComplexConjMul<cufftComplex, __half2>(cufftComplex* image_to_multiply, bool load_half_precision);
 
 void GpuImage::Record( ) {
+    MyDebugAssertTrue(is_npp_calc_event_initialized, "NPP event not initialized");
     cudaErr(cudaEventRecord(npp_calc_event, cudaStreamPerThread));
 }
 
+void GpuImage::RecordBlocking( ) {
+    MyDebugAssertTrue(is_block_host_event_initialized, "block host event not initialized");
+    cudaErr(cudaEventRecord(block_host_event, cudaStreamPerThread));
+}
+
 void GpuImage::Wait( ) {
+    MyDebugAssertTrue(is_npp_calc_event_initialized, "NPP event not initialized");
     cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, npp_calc_event, 0));
     //  cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+}
+
+void GpuImage::WaitBlocking( ) {
+    MyDebugAssertTrue(is_block_host_event_initialized, "block host event not initialized");
+    cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, block_host_event, 0));
 }
 
 void GpuImage::RecordAndWait( ) {
@@ -3684,6 +3697,11 @@ void GpuImage::Deallocate( ) {
         is_npp_calc_event_initialized = false;
     }
 
+    if ( is_block_host_event_initialized ) {
+        cudaErr(cudaEventDestroy(block_host_event));
+        is_block_host_event_initialized = false;
+    }
+
     // Separat method for all the buffer memory spaces, not sure it this makes sense
     BufferDestroy( );
 
@@ -3821,8 +3839,12 @@ void GpuImage::AllocateTmpVarsAndEvents( ) {
         is_in_memory_managed_tmp_vals = true;
     }
     if ( ! is_npp_calc_event_initialized ) {
-        cudaErr(cudaEventCreate(&npp_calc_event));
+        cudaErr(cudaEventCreateWithFlags(&npp_calc_event, cudaEventDisableTiming));
         is_npp_calc_event_initialized = true;
+    }
+    if ( ! is_block_host_event_initialized ) {
+        cudaErr(cudaEventCreateWithFlags(&block_host_event, cudaEventBlockingSync));
+        is_block_host_event_initialized = true;
     }
 }
 
@@ -3902,9 +3924,10 @@ void GpuImage::UpdateBoolsToDefault( ) {
     // This should only be called on a newly created image.
     MyDebugAssertFalse(is_meta_data_initialized, "GpuImage::UpdateBoolsToDefault() Should not be called on a non-initialized image");
 
-    is_meta_data_initialized      = false;
-    is_in_memory_managed_tmp_vals = false;
-    is_npp_calc_event_initialized = false;
+    is_meta_data_initialized        = false;
+    is_in_memory_managed_tmp_vals   = false;
+    is_npp_calc_event_initialized   = false;
+    is_block_host_event_initialized = false;
 
     is_in_memory                           = false;
     is_in_real_space                       = true;

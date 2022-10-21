@@ -490,10 +490,10 @@ __global__ void MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __re
                                                         cufftComplex* result_values,
                                                         int4          dims) {
     int x = physical_X( );
-    if ( x > dims.w / 2 )
+    if ( x >= dims.w / 2 )
         return;
     int y = physical_Y( );
-    if ( y > dims.y )
+    if ( y >= dims.y )
         return;
 
     int address = x + (dims.w / 2) * y;
@@ -4141,8 +4141,8 @@ __global__ void ClipIntoFourierSpaceKernel(cufftComplex* source_complex_values_g
                                  blockIdx.y * blockDim.y + threadIdx.y,
                                  blockIdx.z);
 
-    if ( index_coord.y > destination_dims.y ||
-         index_coord.z > destination_dims.z ||
+    if ( index_coord.y >= destination_dims.y ||
+         index_coord.z >= destination_dims.z ||
          index_coord.x >= destination_dims.w / 2 ) {
         return;
     }

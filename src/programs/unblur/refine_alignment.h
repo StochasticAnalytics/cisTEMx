@@ -30,8 +30,8 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
     if ( running_average_half_size < 1 )
         running_average_half_size = 1;
 
-    float* current_x_shifts = new float[number_of_images];
-    float* current_y_shifts = new float[number_of_images];
+    std::vector<float> current_x_shifts(number_of_images);
+    std::vector<float> current_y_shifts(number_of_images);
 
     float middle_image_x_shift;
     float middle_image_y_shift;
@@ -149,10 +149,18 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
                 current_x_shifts[image_counter] = my_peak.x;
                 current_y_shifts[image_counter] = my_peak.y;
             }
+
             profile_timing_refinement_method.start("deallocate sum minus");
             sum_of_images_minus_current.Deallocate( );
             profile_timing_refinement_method.lap("deallocate sum minus");
         } // end omp
+        if ( iteration_counter == 1 ) {
+            for ( int i = 0; i < number_of_images; i++ ) {
+                std::cerr << "Iteration counter has shifts : " << iteration_counter << " " << current_x_shifts[i] << " " << current_y_shifts[i] << std::endl;
+            }
+            exit(0);
+        }
+
         // smooth the shifts
         profile_timing_refinement_method.start("smooth shifts");
         x_shifts_curve.ClearData( );
@@ -235,8 +243,6 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
         if ( iteration_counter >= max_iterations || (iteration_counter > 0 && max_shift <= max_shift_convergence_threshold) ) {
             profile_timing_refinement_method.start("cleanup");
             wxPrintf("returning, iteration = %li, max_shift = %f\n", iteration_counter, max_shift);
-            delete[] current_x_shifts;
-            delete[] current_y_shifts;
 
             profile_timing_refinement_method.lap("cleanup");
             profile_timing_refinement_method.mark_entry_or_exit_point( );

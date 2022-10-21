@@ -240,9 +240,10 @@ class GpuImage {
     float ReturnSumOfSquares( );
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
-    void  UnPinHostPointer(float* pinnedPtr);
-    void  CopyFP32toFP16buffer(bool deallocate_single_precision = true);
-    void  CopyFP16buffertoFP32(bool deallocate_half_precision = true);
+
+    void UnPinHostPointer(float* pinnedPtr);
+    void CopyFP32toFP16buffer(bool deallocate_single_precision = true);
+    void CopyFP16buffertoFP32(bool deallocate_half_precision = true);
 
     void AllocateTmpVarsAndEvents( );
     bool Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);

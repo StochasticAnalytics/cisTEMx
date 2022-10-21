@@ -45,7 +45,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     if ( savitzy_golay_window_size < 5 )
         savitzy_golay_window_size = 5;
 
-    GpuImage sum_of_images(input_stack[0]);
+    GpuImage sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
     sum_of_images.SetToConstant(0.f);
 
     std::vector<GpuImage> sum_of_images_minus_current;
@@ -55,8 +55,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     correlation_map.reserve(max_threads);
 
     for ( int i = 0; i < max_threads; i++ ) {
-        sum_of_images_minus_current.emplace_back(input_stack[0]);
-        correlation_map.emplace_back(input_stack[0]);
+        sum_of_images_minus_current.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+        correlation_map.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
     }
 
     BatchedSearch batch;
@@ -145,7 +145,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                                                                        unitless_bfactor,                                                             \
                                                                        width_of_horizontal_line, width_of_vertical_line,                             \
                                                                        peak_map,                                                                     \
-                                                                       wanted_inner_radius_for_peak_search, outer_radius_for_peak_search)
+                                                                       wanted_inner_radius_for_peak_search, outer_radius_for_peak_search) schedule(static, 1)
 
         for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
 
@@ -194,11 +194,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             else
                 input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current[my_tidx], correlation_map[my_tidx], phase_multiplier);
 
-            // We don't allow odd images, so we don't have the extra logic checking on whether the image is
-            // already shifted or  not (it should not be anyway) found in Image::CalculateCrossCorrelationImageWith
-            // since the ifftshift is different than the fftshift for odd size images.
-            constexpr bool sync_stream = true; // See note in GpuImage::PhaseShift
-            correlation_map[my_tidx].SwapRealSpaceQuadrants(sync_stream);
+            correlation_map[my_tidx].SwapRealSpaceQuadrants( );
             correlation_map[my_tidx].BackwardFFTBatched(1);
 
             profile_timing_refinement_method.lap("compute cross correlation");

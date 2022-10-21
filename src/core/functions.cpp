@@ -502,6 +502,8 @@ int ReturnClosestFactorizedUpper(int wanted_int, int largest_factor, bool enforc
     if ( enforce_factor != 0 ) {
         enforce_even = true;
         increment    = enforce_factor;
+        // Start at the lowest possible factor
+        wanted_int = wanted_int + (enforce_factor - (wanted_int % enforce_factor));
     }
     else {
         increment = 2;
@@ -509,7 +511,7 @@ int ReturnClosestFactorizedUpper(int wanted_int, int largest_factor, bool enforc
 
     if ( enforce_even ) {
         temp_int = wanted_int;
-        if ( ! IsEven(temp_int) )
+        if ( IsOdd(temp_int) )
             temp_int++;
         for ( number = temp_int; number < 10000 * wanted_int; number += increment ) {
             remainder = number;

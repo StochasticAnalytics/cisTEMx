@@ -154,12 +154,12 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
             sum_of_images_minus_current.Deallocate( );
             profile_timing_refinement_method.lap("deallocate sum minus");
         } // end omp
-        if ( iteration_counter == 1 ) {
-            for ( int i = 0; i < number_of_images; i++ ) {
-                std::cerr << "Iteration counter has shifts : " << iteration_counter << " " << current_x_shifts[i] << " " << current_y_shifts[i] << std::endl;
-            }
-            exit(0);
-        }
+        // if ( iteration_counter == 1 ) {
+        //     for ( int i = 0; i < number_of_images; i++ ) {
+        //         std::cerr << "Iteration counter has shifts : " << iteration_counter << " " << current_x_shifts[i] << " " << current_y_shifts[i] << std::endl;
+        //     }
+        //     exit(0);
+        // }
 
         // smooth the shifts
         profile_timing_refinement_method.start("smooth shifts");
@@ -169,7 +169,6 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
         for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             x_shifts_curve.AddPoint(image_counter, x_shifts[image_counter] + current_x_shifts[image_counter]);
             y_shifts_curve.AddPoint(image_counter, y_shifts[image_counter] + current_y_shifts[image_counter]);
-
 #ifdef PRINT_VERBOSE
             wxPrintf("Before = %li : %f, %f\n", image_counter, x_shifts[image_counter] + current_x_shifts[image_counter], y_shifts[image_counter] + current_y_shifts[image_counter]);
 #endif
@@ -260,6 +259,7 @@ void unblur_refine_alignment(std::vector<Image>& input_stack,
             sum_of_images.AddImage(&input_stack[image_counter]);
         }
         profile_timing_refinement_method.lap("remake sum");
+        sum_of_images.QuickAndDirtyWriteSlice("/tmp/cpu_sum_of_images.mrc", 1);
     }
 
     profile_timing_refinement_method.mark_entry_or_exit_point( );

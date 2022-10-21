@@ -60,7 +60,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     batch.Init(sum_of_images, number_of_images, batch_size, test_mirror, max_pix_x, max_pix_x);
 
-    Image peak_map(max_pix_x, max_pix_x, 1, true);
+    int peak_map_size = ReturnClosestFactorizedUpper(max_pix_x, 13, true, 32);
+
+    Image peak_map(peak_map_size, peak_map_size, 1, true);
     peak_map.SetToConstant(3.f);
     cudaErr(cudaHostRegister(peak_map.real_values, sizeof(float) * peak_map.real_memory_allocated, cudaHostRegisterDefault));
 
@@ -192,6 +194,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             // For testing on the GPU this is just doing a copy which is of course a bit of a waste
             // my_peak = sum_of_images_minus_current.FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
             int address_offset = (correlation_map.dims.y / 2 - peak_map.logical_y_dimension / 2) * correlation_map.dims.w + (correlation_map.dims.x / 2 - peak_map.logical_x_dimension / 2);
+
             cudaErr(cudaMemcpy2DAsync(peak_map.real_values, (peak_map.logical_x_dimension + 2) * sizeof(float), &correlation_map.real_values_gpu[address_offset], correlation_map.dims.w * sizeof(float),
                                       (peak_map.logical_x_dimension + 2) * sizeof(float), peak_map.logical_y_dimension, cudaMemcpyDeviceToHost, cudaStreamPerThread));
 
@@ -208,12 +211,12 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             current_x_shifts[image_counter] = my_peak.x / float(1 + phase_multiplier);
             current_y_shifts[image_counter] = my_peak.y / float(1 + phase_multiplier);
         }
-        if ( iteration_counter == 1 ) {
-            for ( int i = 0; i < number_of_images; i++ ) {
-                std::cerr << "Iteration counter has shifts : " << iteration_counter << " " << current_x_shifts[i] << " " << current_y_shifts[i] << std::endl;
-            }
-            exit(0);
-        }
+        // if ( iteration_counter == 1 ) {
+        //     for ( int i = 0; i < number_of_images; i++ ) {
+        //         std::cerr << "Iteration counter has shifts : " << iteration_counter << " " << current_x_shifts[i] << " " << current_y_shifts[i] << std::endl;
+        //     }
+        //     exit(0);
+        // }
 
         // smooth the shifts
         profile_timing_refinement_method.start("smooth shifts");
@@ -225,7 +228,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             y_shifts_curve.AddPoint(image_counter, y_shifts[image_counter] + current_y_shifts[image_counter]);
 
 #ifdef PRINT_VERBOSE
-            wxPrintf("Before = %i : %f, %f\n", image_counter, x_shifts[image_counter] + current_x_shifts[image_counter], y_shifts[image_counter] + current_y_shifts[image_counter]);
+            wxPrintf("Before = %li : %f, %f\n", image_counter, x_shifts[image_counter] + current_x_shifts[image_counter], y_shifts[image_counter] + current_y_shifts[image_counter]);
 #endif
         }
         // in this case, weird things can happen (+1/-1 flips), we want to really smooth it. use a polynomial.  This should only affect the first round..
@@ -239,9 +242,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                 for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
                     current_x_shifts[image_counter] = x_shifts_curve.polynomial_fit[image_counter] - x_shifts[image_counter];
                     current_y_shifts[image_counter] = y_shifts_curve.polynomial_fit[image_counter] - y_shifts[image_counter];
-
 #ifdef PRINT_VERBOSE
-                    wxPrintf("After poly = %i : %f, %f\n", image_counter, x_shifts_curve.polynomial_fit[image_counter], y_shifts_curve.polynomial_fit[image_counter]);
+                    wxPrintf("After poly = %li : %f, %f\n", image_counter, x_shifts_curve.polynomial_fit[image_counter], y_shifts_curve.polynomial_fit[image_counter]);
 #endif
                 }
             }
@@ -259,7 +261,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                     current_y_shifts[image_counter] = y_shifts_curve.savitzky_golay_fit[image_counter] - y_shifts[image_counter];
 
 #ifdef PRINT_VERBOSE
-                    wxPrintf("After SG = %i : %f, %f\n", image_counter, x_shifts_curve.savitzky_golay_fit[image_counter], y_shifts_curve.savitzky_golay_fit[image_counter]);
+                    wxPrintf("After SG = %li : %f, %f\n", image_counter, x_shifts_curve.savitzky_golay_fit[image_counter], y_shifts_curve.savitzky_golay_fit[image_counter]);
 #endif
                 }
             }
@@ -312,10 +314,10 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         profile_timing_refinement_method.start("remake sum");
         sum_of_images.SetToConstant(0.0f);
 
-        for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
-            sum_of_images.AddImage(&input_stack[image_counter]);
-        }
+        sum_of_images.AddImageStack<float>(input_stack);
         profile_timing_refinement_method.lap("remake sum");
+        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+        sum_of_images.QuickAndDirtyWriteSlice("/tmp/gpu_sum_of_images.mrc", 1);
     }
 
     cudaErr(cudaHostUnregister(peak_map.real_values));

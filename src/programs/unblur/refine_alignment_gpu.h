@@ -19,12 +19,10 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     profile_timing_refinement_method.mark_entry_or_exit_point( );
 
-    long pixel_counter;
-    long image_counter;
-    int  running_average_counter;
-    int  start_frame_for_average;
-    int  end_frame_for_average;
-    int  iteration_counter;
+    int running_average_counter;
+    int start_frame_for_average;
+    int end_frame_for_average;
+    int iteration_counter;
 
     int number_of_middle_image    = number_of_images / 2;
     int running_average_half_size = (number_of_frames_for_running_average - 1) / 2;
@@ -41,7 +39,6 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     float max_shift;
     float total_shift;
-    int   phase_multiplier = 0;
 
     if ( IsOdd(savitzy_golay_window_size) == false )
         savitzy_golay_window_size++;
@@ -49,9 +46,18 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         savitzy_golay_window_size = 5;
 
     GpuImage sum_of_images(input_stack[0]);
-    GpuImage correlation_map(input_stack[0]);
-    GpuImage sum_of_images_minus_current(input_stack[0]);
     sum_of_images.SetToConstant(0.f);
+
+    std::vector<GpuImage> sum_of_images_minus_current;
+    std::vector<GpuImage> correlation_map;
+
+    sum_of_images_minus_current.reserve(max_threads);
+    correlation_map.reserve(max_threads);
+
+    for ( int i = 0; i < max_threads; i++ ) {
+        sum_of_images_minus_current.emplace_back(input_stack[0]);
+        correlation_map.emplace_back(input_stack[0]);
+    }
 
     BatchedSearch batch;
     int           batch_size  = 1;
@@ -62,12 +68,14 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     int peak_map_size = ReturnClosestFactorizedUpper(max_pix_x, 13, true, 32);
 
-    Image peak_map(peak_map_size, peak_map_size, 1, true);
-    peak_map.SetToConstant(3.f);
-    cudaErr(cudaHostRegister(peak_map.real_values, sizeof(float) * peak_map.real_memory_allocated, cudaHostRegisterDefault));
-
     std::vector<GpuImage> running_average_stack;
-    Peak                  my_peak;
+    std::vector<Image>    peak_map;
+    peak_map.reserve(max_threads);
+
+    for ( int i = 0; i < max_threads; i++ ) {
+        peak_map.emplace_back(peak_map_size, peak_map_size, 1, true);
+        cudaErr(cudaHostRegister(peak_map[i].real_values, sizeof(float) * peak_map[i].real_memory_allocated, cudaHostRegisterDefault));
+    }
 
     Curve x_shifts_curve;
     Curve y_shifts_curve;
@@ -76,7 +84,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     profile_timing_refinement_method.start("allocate running average");
     if ( use_running_average ) {
         running_average_stack.reserve(number_of_images);
-        for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+        for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             running_average_stack.emplace_back(input_stack[image_counter].dims.x, input_stack[image_counter].dims.y, 1, false);
         }
     }
@@ -106,7 +114,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         if ( number_of_frames_for_running_average > 1 ) {
             // TODO: fixme, overload for partial AddImageStack
             MyAssertTrue(false, "This code is not tested yet.  It is not used in the current version of the program.  It is here for future use.  Please contact the author if you need this feature.");
-            for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+            for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
                 start_frame_for_average = image_counter - running_average_half_size;
                 end_frame_for_average   = image_counter + running_average_half_size;
 
@@ -131,56 +139,67 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                 }
             }
         }
+#pragma omp parallel for default(none) num_threads(max_threads) shared(std::cerr, number_of_images, current_x_shifts, current_y_shifts,              \
+                                                                       profile_timing_refinement_method, sum_of_images_minus_current, sum_of_images, \
+                                                                       use_running_average, running_average_stack, input_stack, correlation_map,     \
+                                                                       unitless_bfactor,                                                             \
+                                                                       width_of_horizontal_line, width_of_vertical_line,                             \
+                                                                       peak_map,                                                                     \
+                                                                       wanted_inner_radius_for_peak_search, outer_radius_for_peak_search)
 
-        for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+        for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+
             float this_shift = sqrtf(powf(current_x_shifts[image_counter], 2) + powf(current_y_shifts[image_counter], 2));
+            int   my_tidx    = ReturnThreadNumberOfCurrentThread( );
+            Peak  my_peak;
+            int   phase_multiplier = 0;
 
-            if ( this_shift < 2.f ) {
-                phase_multiplier = 2;
-            }
-            else {
-                if ( this_shift < batch.max_pixel_radius_x( ) / 2.5f ) {
-                    phase_multiplier = 1;
-                }
-                else {
-                    phase_multiplier = 0;
-                }
-            }
+            // if ( this_shift < 2.f ) {
+            //     phase_multiplier = 2;
+            // }
+            // else {
+            //     if ( this_shift < batch.max_pixel_radius_x( ) / 2.5f ) {
+            //         phase_multiplier = 1;
+            //     }
+            //     else {
+            //         phase_multiplier = 0;
+            //     }
+            // }
 
-            phase_multiplier = std::min(phase_multiplier, iteration_counter);
-            phase_multiplier = 0;
+            // phase_multiplier = std::min(phase_multiplier, iteration_counter);
+            // phase_multiplier = 0;
             //phase_multiplier = (current_x_shifts[image_counter] < batch.max_pixel_radius_x( ) / 3.0f && current_y_shifts[image_counter] < batch.max_pixel_radius_y( ) / 3.0f && iteration_counter > 0) ? 1 : 0;
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
-            sum_of_images_minus_current.CopyDataFrom<float>(sum_of_images);
+            sum_of_images_minus_current[my_tidx].CopyDataFrom<float>(sum_of_images);
             if ( use_running_average )
-                sum_of_images_minus_current.SubtractImage(&running_average_stack[image_counter]);
+                sum_of_images_minus_current[my_tidx].SubtractImage(&running_average_stack[image_counter]);
             else
-                sum_of_images_minus_current.SubtractImage(&input_stack[image_counter]);
+                sum_of_images_minus_current[my_tidx].SubtractImage(&input_stack[image_counter]);
 
-            sum_of_images_minus_current.ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
+            sum_of_images_minus_current[my_tidx].ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
 
             profile_timing_refinement_method.lap("prepare sum");
             // compute the cross correlation function and find the peak
             // TODO: just replace with batched backfft as in euler search gpu
             // NOTE: the output XCF is stored in the fp16 buffer of the calling image
             // Do not swap the conjugated image
-            correlation_map.is_in_real_space = false;
+            correlation_map[my_tidx].is_in_real_space = false;
             profile_timing_refinement_method.start("compute cross correlation");
             if ( use_running_average ) {
                 // FIXME
                 MyAssertTrue(false, "running average is not setup yet.");
-                sum_of_images_minus_current.CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
+                sum_of_images_minus_current[my_tidx].CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
             }
             else
-                input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current, correlation_map, phase_multiplier);
+                input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current[my_tidx], correlation_map[my_tidx], phase_multiplier);
 
             // We don't allow odd images, so we don't have the extra logic checking on whether the image is
             // already shifted or  not (it should not be anyway) found in Image::CalculateCrossCorrelationImageWith
             // since the ifftshift is different than the fftshift for odd size images.
-            correlation_map.SwapRealSpaceQuadrants( );
-
-            correlation_map.BackwardFFTBatched(1);
+            constexpr bool sync_stream = true; // See note in GpuImage::PhaseShift
+            correlation_map[my_tidx].SwapRealSpaceQuadrants(sync_stream);
+            correlation_map[my_tidx].BackwardFFTBatched(1);
 
             profile_timing_refinement_method.lap("compute cross correlation");
             profile_timing_refinement_method.start("find peak");
@@ -192,38 +211,32 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             // exit(0);
 
             // For testing on the GPU this is just doing a copy which is of course a bit of a waste
-            // my_peak = sum_of_images_minus_current.FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
-            int address_offset = (correlation_map.dims.y / 2 - peak_map.logical_y_dimension / 2) * correlation_map.dims.w + (correlation_map.dims.x / 2 - peak_map.logical_x_dimension / 2);
+            // my_peak = sum_of_images_minus_current[my_tidx].FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
+            int address_offset = (correlation_map[my_tidx].dims.y / 2 - peak_map[my_tidx].logical_y_dimension / 2) * correlation_map[my_tidx].dims.w + (correlation_map[my_tidx].dims.x / 2 - peak_map[my_tidx].logical_x_dimension / 2);
 
-            cudaErr(cudaMemcpy2DAsync(peak_map.real_values, (peak_map.logical_x_dimension + 2) * sizeof(float), &correlation_map.real_values_gpu[address_offset], correlation_map.dims.w * sizeof(float),
-                                      (peak_map.logical_x_dimension + 2) * sizeof(float), peak_map.logical_y_dimension, cudaMemcpyDeviceToHost, cudaStreamPerThread));
+            cudaErr(cudaMemcpy2DAsync(peak_map[my_tidx].real_values, (peak_map[my_tidx].logical_x_dimension + 2) * sizeof(float), &correlation_map[my_tidx].real_values_gpu[address_offset], correlation_map[my_tidx].dims.w * sizeof(float),
+                                      (peak_map[my_tidx].logical_x_dimension + 2) * sizeof(float), peak_map[my_tidx].logical_y_dimension, cudaMemcpyDeviceToHost, cudaStreamPerThread));
 
             cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
             // correlation_map.QuickAndDirtyWriteSlice("/tmp/xcf" + std::to_string(phase_multiplier) + ".mrc", 1);
-            // peak_map.QuickAndDirtyWriteSlice("/tmp/peak" + std::to_string(phase_multiplier) + ".mrc", 1);
+            // peak_map[my_tidx].QuickAndDirtyWriteSlice("/tmp/peak" + std::to_string(phase_multiplier) + ".mrc", 1);
             // exit(0);
             // my_peak = correlation_map.FindPeakAtCenterFast2d(batch);
-            my_peak = peak_map.FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
+            my_peak = peak_map[my_tidx].FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
 
             profile_timing_refinement_method.lap("find peak");
             // update the shifts..
 
             current_x_shifts[image_counter] = my_peak.x / float(1 + phase_multiplier);
             current_y_shifts[image_counter] = my_peak.y / float(1 + phase_multiplier);
-        }
-        // if ( iteration_counter == 1 ) {
-        //     for ( int i = 0; i < number_of_images; i++ ) {
-        //         std::cerr << "Iteration counter has shifts : " << iteration_counter << " " << current_x_shifts[i] << " " << current_y_shifts[i] << std::endl;
-        //     }
-        //     exit(0);
-        // }
+        } // end of parallel for loop
 
         // smooth the shifts
         profile_timing_refinement_method.start("smooth shifts");
         x_shifts_curve.ClearData( );
         y_shifts_curve.ClearData( );
 
-        for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+        for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             x_shifts_curve.AddPoint(image_counter, x_shifts[image_counter] + current_x_shifts[image_counter]);
             y_shifts_curve.AddPoint(image_counter, y_shifts[image_counter] + current_y_shifts[image_counter]);
 
@@ -239,7 +252,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
                 // copy back
 
-                for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+                for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
                     current_x_shifts[image_counter] = x_shifts_curve.polynomial_fit[image_counter] - x_shifts[image_counter];
                     current_y_shifts[image_counter] = y_shifts_curve.polynomial_fit[image_counter] - y_shifts[image_counter];
 #ifdef PRINT_VERBOSE
@@ -256,7 +269,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
                 // copy them back..
 
-                for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+                for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
                     current_x_shifts[image_counter] = x_shifts_curve.savitzky_golay_fit[image_counter] - x_shifts[image_counter];
                     current_y_shifts[image_counter] = y_shifts_curve.savitzky_golay_fit[image_counter] - y_shifts[image_counter];
 
@@ -273,7 +286,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         middle_image_x_shift = current_x_shifts[number_of_middle_image];
         middle_image_y_shift = current_y_shifts[number_of_middle_image];
 
-        for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+        for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             current_x_shifts[image_counter] -= middle_image_x_shift;
             current_y_shifts[image_counter] -= middle_image_y_shift;
 
@@ -283,10 +296,10 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         }
 
 // TODO: I can't see any good reason to repeatedly apply these shifts rather than applying the full shift each time a sum is made.
-// it MUST accumulate errors
+// it MUST accumulate errors, write a kernel that does the shift and accumulates the sum at the same time.
 // actually shift the images, also add the subtracted shifts to the overall shifts
-#pragma omp parallel for default(shared) num_threads(max_threads) private(image_counter)
-        for ( image_counter = 0; image_counter < number_of_images; image_counter++ ) {
+#pragma omp parallel for default(shared) num_threads(max_threads)
+        for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             profile_timing_refinement_method.start("shift image");
             input_stack[image_counter].PhaseShift(current_x_shifts[image_counter], current_y_shifts[image_counter], 0.0);
 
@@ -320,7 +333,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
         sum_of_images.QuickAndDirtyWriteSlice("/tmp/gpu_sum_of_images.mrc", 1);
     }
 
-    cudaErr(cudaHostUnregister(peak_map.real_values));
+    for ( int i = 0; i < max_threads; i++ ) {
+        cudaErr(cudaHostUnregister(peak_map[i].real_values));
+    }
 
     profile_timing_refinement_method.mark_entry_or_exit_point( );
 }

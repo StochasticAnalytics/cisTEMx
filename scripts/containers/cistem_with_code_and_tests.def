@@ -25,8 +25,8 @@ mv /cisTEMx/cistem_tests.sh /cisTEMx/bin
 
 # TODO: move this to the base container once we confirm dynamic linking is working okay
 # Use the basename bit to ensure no rm -rf foibles with root dir in empyt string case
-ls /usr/local/cuda/targets/x86_64-linux/lib/libcu*_static.a | grep -v cufft_static.a | while read a; do rm -rf /usr/local/cuda/targets/x86_64-linux/lib/$(basename $a); done
-
+ls /usr/local/cuda/targets/x86_64-linux/lib/lib*_static.a | grep -v cufft_static.a | while read a; do rm -rf /usr/local/cuda/targets/x86_64-linux/lib/$(basename $a); done
+rm -f /usr/local/cuda/targets/x86_64-linux/lib/libcufft_static_nocallback.a
 # Clean out some items we don't need in production
 rm -rf /usr/local/cuda/nsight-systems-*
 rm -rf /usr/local/cuda/nsight-compute-*

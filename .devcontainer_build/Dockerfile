@@ -14,6 +14,11 @@ RUN pip3 install gdown && cd / && gdown https://drive.google.com/drive/folders/1
 #     rm -rf /var/lib/apt/lists/*  && \
 #     npm install -g pnpm
 
+# TODO: move this to the base container once we confirm dynamic linking is working okay
+# Use the basename bit to ensure no rm -rf foibles with root dir in empyt string case
+RUN ls /usr/local/cuda/targets/x86_64-linux/lib/lib*_static.a | grep -v cufft_static.a | while read a; do rm -rf /usr/local/cuda/targets/x86_64-linux/lib/$(basename $a); done
+RUN rm -f /usr/local/cuda/targets/x86_64-linux/lib/libcufft_static_nocallback.a
+
 
 # Install cutensor
 ARG CUTENSOR_VERSION=libcutensor-linux-x86_64-1.6.0.3-archive

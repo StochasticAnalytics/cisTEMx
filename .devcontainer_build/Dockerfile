@@ -21,8 +21,9 @@ ARG CUTENSOR_LIB=11
 RUN cd /tmp &&   wget https://developer.download.nvidia.com/compute/cutensor/redist/libcutensor/linux-x86_64/${CUTENSOR_VERSION}.tar.xz && \
     mkdir /opt/cuTensor && tar -xf ${CUTENSOR_VERSION}.tar.xz --strip 1 -C /opt/cuTensor && \
     cd /opt/cuTensor/lib && ln -s ${CUTENSOR_LIB} cistem_version && \
+    rm -rf 10.2 ${CUTENSORLIB}/libcuten*_static.a && \
     echo 'export CUTENSOR_ROOT=/opt/cuTensor' >> /home/cisTEMx/.bashrc && \ 
-    echo 'export LD_LIBRARY_PATH=${CUTENSOR_ROOT}/lib/${cistem_version}/:${LD_LIBRARY_PATH}' >> /home/cisTEMx/.bashrc 
+    echo 'export LD_LIBRARY_PATH=${CUTENSOR_ROOT}/lib/cistem_version/:${LD_LIBRARY_PATH}' >> /home/cisTEMx/.bashrc 
 
 
 

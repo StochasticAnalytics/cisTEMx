@@ -48,8 +48,9 @@ export CUTENSOR_LIB=11
 cd /tmp &&   wget https://developer.download.nvidia.com/compute/cutensor/redist/libcutensor/linux-x86_64/${CUTENSOR_VERSION}.tar.xz && \
     mkdir /opt/cuTensor && tar -xf ${CUTENSOR_VERSION}.tar.xz --strip 1 -C /opt/cuTensor && \
     cd /opt/cuTensor/lib && ln -s ${CUTENSOR_LIB} cistem_version && \
+    rm -rf 10.2 ${CUTENSORLIB}/libcuten*_static.a && \
     echo 'export CUTENSOR_ROOT=/opt/cuTensor'  >>$APPTAINER_ENVIRONMENT && \ 
-    echo 'export LD_LIBRARY_PATH=${CUTENSOR_ROOT}/lib/${cistem_version}/:${LD_LIBRARY_PATH}'  >>$APPTAINER_ENVIRONMENT
+    echo 'export LD_LIBRARY_PATH=${CUTENSOR_ROOT}/lib/cistem_version/:${LD_LIBRARY_PATH}'  >>$APPTAINER_ENVIRONMENT
 
 
 echo 'export MKLROOT=/opt/intel/oneapi/mkl/2021.4.0/' >>$APPTAINER_ENVIRONMENT

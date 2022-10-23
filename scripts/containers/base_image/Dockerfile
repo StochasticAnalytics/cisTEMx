@@ -103,8 +103,20 @@ RUN cd /tmp && wget https://download.pytorch.org/libtorch/cu113/libtorch-cxx11-a
     rm libtorch-cxx11-abi-shared-with-deps-1.11.0+cu113.zip && \
     mv libtorch /opt
 
+# Install cutensor
+ARG CUTENSOR_VERSION=libcutensor-linux-x86_64-1.6.0.3-archive
+ARG CUTENSOR_LIB=11
+RUN cd /tmp &&   wget https://developer.download.nvidia.com/compute/cutensor/redist/libcutensor/linux-x86_64/${CUTENSOR_VERSION}.tar.xz && \
+    mkdir /opt/cuTensor && tar -xf ${CUTENSOR_VERSION}.tar.xz --strip 1 -C /opt/cuTensor && \
+    cd /opt/cuTensor/lib && \
+    ls -d | grep -v ${CUTENSOR_VERSION} | grep -v "." | grep -v ".." | while read not_version; do rm -rf /opt/cuTensor/lib/${not_version} ; done && \
+    ln -s ${CUTENSOR_LIB} cistem_version && \
+    rm -f ${CUTENSOR_LIB}/libcuten*_static.a && \
+    echo 'export CUTENSOR_ROOT=/opt/cuTensor' >> /home/cisTEMx/.bashrc 
+
 # Include the lib path in LD_RUN_PATH so on linking, the correct path is known 
-ENV LD_RUN_PATH=/opt/libtorch/lib:${LD_RUN_PATH}
+
+ENV LD_RUN_PATH=/opt/cuTensor/lib/cistem_version:/usr/local/cuda/lib64:/opt/libtorch/lib:${LD_RUN_PATH}
 
 
 # Install cuda (when the web is live)
@@ -114,7 +126,12 @@ ARG DRIVER_VER=515.43.04
 RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
     sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit && \
     rm cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
-    cd /usr/local/cuda/targets/x86_64-linux/lib && rm libcuspars* libcusolver*
+    cd /usr/local/cuda/lib64 && rm libcuspars* libcusolver*
+
+# TODO: move this to the base container once we confirm dynamic linking is working okay
+# Use the basename bit to ensure no rm -rf foibles with root dir in empyt string case
+RUN ls /usr/local/cuda/lib64/lib*_static.a | grep -v cufft_static.a | while read a; do rm -rf /usr/local/cuda/lib64/$(basename $a); done && \
+    rm -rf /usr/local/cuda/lib64/libcufft_static_nocallback.a
 
 RUN echo 'alias lt="ls -lrth"' >> /home/cisTEMx/.bashrc && \
     echo 'alias dU="du -ch --max-depth=1 | sort -h"' >> /home/cisTEMx/.bashrc && \
@@ -134,9 +151,6 @@ RUN tf=`tempfile` && cp /usr/include/wx-3.1-unofficial/wx/longlong.h /usr/includ
     mv $tf /usr/include/wx-3.1-unofficial/wx/longlong.h && \
     chmod a+r /usr/include/wx-3.1-unofficial/wx/longlong.h
 
-# For the static and system installs, we don't need to worry about libs being found. For the dynamic install, we need to add the lib path to LD_LIBRARY_PATH
-# Include the lib path in LD_RUN_PATH so on linking, the correct path is known 
-# ENV LD_LIBRARY_PATH=/opt/WX/intel-dynamic/lib/:${LD_LIBRARY_PATH}
 
 
 

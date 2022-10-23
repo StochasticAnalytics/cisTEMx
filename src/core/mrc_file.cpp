@@ -1,4 +1,7 @@
 #include "core_headers.h"
+#include "../../include/ieee-754-half/half.hpp"
+
+using namespace half_float;
 
 MRCFile::MRCFile( ) {
     rewrite_header_on_close                         = false;
@@ -244,6 +247,18 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
             case 2:
                 my_file->read((char*)output_array, records_to_read * 4);
                 break;
+
+            // 2-byte real
+            case 12: {
+                half* temp_half_array = new half[records_to_read];
+                my_file->read((char*)temp_half_array, records_to_read * 2);
+
+                for ( long counter = 0; counter < records_to_read; counter++ ) {
+                    // float() operator overloaded in half_float namespace
+                    output_array[counter] = float(temp_half_array[counter]);
+                }
+                delete[] temp_half_array;
+            } break;
 
             // unsigned 2-byte integers
             case 6: {

@@ -49,6 +49,7 @@
 enum MRCDataTypes { MRCByte,
                     MRCInteger,
                     MRCFloat,
+                    MRCFloat16,
                     MRC4Bit };
 
 class MRCHeader {

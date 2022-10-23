@@ -9,7 +9,7 @@ expected_local_runtime=63
 expected_recon_runtime=30
 max_run_time=$(($expected_global_runtime + $expected_local_runtime + $expected_recon_runtime))
 
-data_dir=/cistem_reference_images/betagal_benchmark
+data_dir=/cisTEMx/cistem_reference_images/betagal_benchmark
 
 # Run as
 # apptainer run --nv current_runtime_version.sif bgal

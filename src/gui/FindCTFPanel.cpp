@@ -64,6 +64,13 @@ void MyFindCTFPanel::EnableMovieProcessingIfAppropriate( ) {
             ImageRadioButton->SetValue(true);
         }
     }
+
+    // We want to default to images now
+    MovieRadioButton->SetValue(false);
+    MovieRadioButton->Enable(false);
+    NoMovieFramesStaticText->Enable(false);
+    NoFramesToAverageSpinCtrl->Enable(false);
+    ImageRadioButton->SetValue(true);
 }
 
 void MyFindCTFPanel::OnInfoURL(wxTextUrlEvent& event) {
@@ -120,19 +127,20 @@ void MyFindCTFPanel::Reset( ) {
 }
 
 void MyFindCTFPanel::ResetDefaults( ) {
-    MovieRadioButton->SetValue(true);
+
+    MovieRadioButton->SetValue(false);
     SearchTiltNoRadio->SetValue(true);
     NoFramesToAverageSpinCtrl->SetValue(3);
-    BoxSizeSpinCtrl->SetValue(512);
+    BoxSizeSpinCtrl->SetValue(768);
     AmplitudeContrastNumericCtrl->ChangeValueFloat(0.07f);
     MinResNumericCtrl->ChangeValueFloat(30.0f);
-    MaxResNumericCtrl->ChangeValueFloat(5.0f);
-    LowDefocusNumericCtrl->ChangeValueFloat(5000.0f);
-    HighDefocusNumericCtrl->ChangeValueFloat(50000.0f);
-    DefocusStepNumericCtrl->ChangeValueFloat(100.0f);
+    MaxResNumericCtrl->ChangeValueFloat(2.8f);
+    LowDefocusNumericCtrl->ChangeValueFloat(500.0f);
+    HighDefocusNumericCtrl->ChangeValueFloat(25000.0f);
+    DefocusStepNumericCtrl->ChangeValueFloat(25.0f);
     LargeAstigmatismExpectedCheckBox->SetValue(false);
-    RestrainAstigmatismCheckBox->SetValue(false);
-    ToleratedAstigmatismNumericCtrl->ChangeValueFloat(500.0f);
+    RestrainAstigmatismCheckBox->SetValue(true);
+    ToleratedAstigmatismNumericCtrl->ChangeValueFloat(1000.0f);
     AdditionalPhaseShiftCheckBox->SetValue(false);
     MinPhaseShiftNumericCtrl->ChangeValueFloat(0.0f);
     MaxPhaseShiftNumericCtrl->ChangeValueFloat(180.0f);

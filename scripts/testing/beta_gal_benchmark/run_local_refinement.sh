@@ -63,7 +63,7 @@ no
 yes
 yes
 no
-12
+16
 EOF
 stop_time=$(date  | awk -F ":" '{print $2*60+$3}')
 

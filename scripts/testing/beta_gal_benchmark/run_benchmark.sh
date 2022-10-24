@@ -4,8 +4,8 @@
 expected_global_resolution=3.15
 expected_local_resolution=2.68
 
-expected_global_runtime=140
-expected_local_runtime=63
+expected_global_runtime=130
+expected_local_runtime=60
 expected_recon_runtime=30
 max_run_time=$(($expected_global_runtime + $expected_local_runtime + $expected_recon_runtime))
 
@@ -32,7 +32,7 @@ fi
 
 echo "Running beta-gal benchmark"
 echo -e "---------------------------------------------------\n"
-echo "Expected run time is ~ $((($max_run_time/60))) min $((($max_run_time%60))) sec"
+echo "Expected run time is ~ 4 minutes"
 echo -e "---------------------------------------------------\n"
 sleep 5
 

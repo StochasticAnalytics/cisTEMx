@@ -313,41 +313,85 @@ void RunProfileManager::AddDefaultLocalProfile( ) {
     wxString execution_command = wxStandardPaths::Get( ).GetExecutablePath( );
     execution_command          = execution_command.BeforeLast('/');
     execution_command += "/$command";
+    wxString gpu_execution_command = "unset CUDA_VISIBLE_DEVICES && export CUDA_VISIBLE_DEVICES=0 && " + execution_command;
 
+    // This is probably a bit ugly because we are using system calls, but the wxThread function doesn't give us info
+    // about the physical number of cores, which I want.
+    int      number_of_threads, number_of_cores;
+    float    tmp_float;
+    wxString cpu_file_name = "/tmp/cistem_cpu_info.txt";
+
+    std::system("lscpu -b -p=Core,Socket | grep -v '^#' | sort -u | wc -l > /tmp/cistem_cpu_info.txt"); // execute the UNIX command "ls -l >test.txt"
+    NumericTextFile my_file(cpu_file_name, OPEN_TO_READ);
+    my_file.ReadLine(&tmp_float);
+    number_of_cores = int(tmp_float);
+    my_file.Close( );
+
+    std::system("nproc > /tmp/cistem_cpu_info.txt"); // execute the UNIX command "ls -l >test.txt"
+    NumericTextFile my_file2(cpu_file_name, OPEN_TO_READ);
+    my_file2.ReadLine(&tmp_float);
+    number_of_threads = int(tmp_float);
+    my_file2.Close( );
+
+#ifdef SHOW_CISTEM_GPU_OPTIONS
     current_id_number++;
     run_profiles[number_of_run_profiles].id                     = current_id_number;
-    run_profiles[number_of_run_profiles].name                   = "Default Local";
+    run_profiles[number_of_run_profiles].name                   = "movie align GPU";
     run_profiles[number_of_run_profiles].number_of_run_commands = 0;
     run_profiles[number_of_run_profiles].manager_command        = execution_command;
     run_profiles[number_of_run_profiles].gui_address            = "";
     run_profiles[number_of_run_profiles].controller_address     = "";
 
-    int number_of_cores = wxThread::GetCPUCount( );
-    if ( number_of_cores == -1 )
-        number_of_cores = 1;
-    number_of_cores++;
+    run_profiles[number_of_run_profiles].AddCommand(gpu_execution_command, number_of_cores / 4, number_of_threads / (number_of_cores / 2), false, 0, 10);
+    number_of_run_profiles++;
 
+    current_id_number++;
+    run_profiles[number_of_run_profiles].id   = current_id_number;
+    run_profiles[number_of_run_profiles].name = "refine3d GPU ";
+    run_profiles[number_of_run_profiles]
+            .number_of_run_commands                         = 0;
+    run_profiles[number_of_run_profiles].manager_command    = execution_command;
+    run_profiles[number_of_run_profiles].gui_address        = "";
+    run_profiles[number_of_run_profiles].controller_address = "";
+
+    run_profiles[number_of_run_profiles].AddCommand(gpu_execution_command, 1, number_of_cores, false, 0, 10);
+    number_of_run_profiles++;
+#endif
+
+    current_id_number++;
+    run_profiles[number_of_run_profiles].id                     = current_id_number;
+    run_profiles[number_of_run_profiles].name                   = "Local cpu";
+    run_profiles[number_of_run_profiles].number_of_run_commands = 0;
+    run_profiles[number_of_run_profiles].manager_command        = execution_command;
+    run_profiles[number_of_run_profiles].gui_address            = "";
+    run_profiles[number_of_run_profiles].controller_address     = "";
+
+    // int number_of_cores = wxThread::GetCPUCount( );
+    // if ( number_of_cores == -1 )
+    //     number_of_cores = 1;
+    // number_of_cores++;
+
+    // previously set to number_of_cores + 1, but not sure why. I think it was to allow for the manager thread, but
+    // test without for now
     run_profiles[number_of_run_profiles].AddCommand(execution_command, number_of_cores, 1, false, 0, 10);
     number_of_run_profiles++;
 
-    bool make_recon = false;
+    constexpr bool make_recon = true;
     if ( make_recon ) {
         current_id_number++;
         run_profiles[number_of_run_profiles].id                     = current_id_number;
-        run_profiles[number_of_run_profiles].name                   = "Default Reconstruction";
+        run_profiles[number_of_run_profiles].name                   = "Reconstruction";
         run_profiles[number_of_run_profiles].number_of_run_commands = 0;
         run_profiles[number_of_run_profiles].manager_command        = execution_command;
         run_profiles[number_of_run_profiles].gui_address            = "";
         run_profiles[number_of_run_profiles].controller_address     = "";
 
-        int number_of_cores = wxThread::GetCPUCount( );
-        if ( number_of_cores == -1 )
-            number_of_cores = 1;
-        number_of_cores++;
-
-        run_profiles[number_of_run_profiles].AddCommand(execution_command, 1, (number_of_cores / 2), false, 0, 10);
+        run_profiles[number_of_run_profiles].AddCommand(execution_command, number_of_cores / 4, number_of_threads / (number_of_cores / 4), false, 0, 10);
         number_of_run_profiles++;
     }
+
+    // TODO: add a default GPU profile
+    // TODO: move the default cpu to the bottom.
 }
 
 RunProfile* RunProfileManager::ReturnLastProfilePointer( ) {

@@ -39,7 +39,8 @@
                 "_FILE_OFFSET_BITS=64",
                 "WXUSINGDLL",
                 "__WXGTK__",
-                "ENABLEGPU"
+                "ENABLEGPU",
+                "SHOW_CISTEM_GPU_OPTIONS"
             ],
             "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
             "cStandard": "c17",
@@ -64,7 +65,8 @@
                 "WXUSINGDLL",
                 "__WXGTK__",
                 "CISTEM_DEBUG",
-                "ENABLEGPU"
+                "ENABLEGPU",
+                "SHOW_CISTEM_GPU_OPTIONS"
             ],
             "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
             "cStandard": "c17",

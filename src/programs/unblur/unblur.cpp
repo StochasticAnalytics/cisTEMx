@@ -299,6 +299,11 @@ bool UnBlurApp::DoCalculation( ) {
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
 
+#if defined(ENABLEGPU) && ! defined(CISTEM_DEBUG)
+    // There is some race condition that doesn't always crash but makes for (sometimes) incorrect results.
+    MyAssertFalse(max_threads > 1, "The GPU version of unblur can (currently) only run with 1 thread.");
+#endif
+
     //my_current_job.PrintAllArguments();
     // StopWatch objects
     cistem_timer::StopWatch unblur_timing;
@@ -380,8 +385,8 @@ bool UnBlurApp::DoCalculation( ) {
     int output_y_size;
 
     if ( output_binning_factor > 1.0001 ) {
-        output_x_size = myroundint(float(input_file.ReturnXSize( )) / output_binning_factor);
-        output_y_size = myroundint(float(input_file.ReturnYSize( )) / output_binning_factor);
+        output_x_size = RoundAndMakeEven(float(input_file.ReturnXSize( )) / output_binning_factor);
+        output_y_size = RoundAndMakeEven(float(input_file.ReturnYSize( )) / output_binning_factor);
     }
     else {
         output_x_size = input_file.ReturnXSize( );
@@ -602,7 +607,7 @@ bool UnBlurApp::DoCalculation( ) {
             if ( output_binning_factor > 1.0001 ) {
                 profile_timing.start("resize");
                 constexpr bool zero_central_pixel = true;
-                image_stack[position_in_stack - 1].Resize(myroundint(image_stack[position_in_stack - 1].logical_x_dimension / output_binning_factor), myroundint(image_stack[position_in_stack - 1].logical_y_dimension / output_binning_factor), 1, zero_central_pixel);
+                image_stack[position_in_stack - 1].Resize(RoundAndMakeEven(image_stack[position_in_stack - 1].logical_x_dimension / output_binning_factor), RoundAndMakeEven(image_stack[position_in_stack - 1].logical_y_dimension / output_binning_factor), 1, zero_central_pixel);
                 profile_timing.lap("resize");
             }
             else {
@@ -626,7 +631,7 @@ bool UnBlurApp::DoCalculation( ) {
             // Resize the FT (binning)
             if ( output_binning_factor > 1.0001 ) {
                 profile_timing.start("resize");
-                image_stack_[sub_stack_index].Resize(myroundint(image_stack_[sub_stack_index].logical_x_dimension / output_binning_factor), myroundint(image_stack_[sub_stack_index].logical_y_dimension / output_binning_factor), 1);
+                image_stack_[sub_stack_index].Resize(RoundAndMakeEven(image_stack_[sub_stack_index].logical_x_dimension / output_binning_factor), RoundAndMakeEven(image_stack_[sub_stack_index].logical_y_dimension / output_binning_factor), 1);
                 profile_timing.lap("resize");
             }
 #endif
@@ -718,8 +723,7 @@ bool UnBlurApp::DoCalculation( ) {
         if ( termination_threshold_in_pixels < 1 && pre_binning_factor > 1 )
             termination_threshold_in_pixels = 1;
     }
-
-    unblur_timing.start("main refine");
+    -unblur_timing.start("main refine");
     profile_timing.start("main refine");
     unblur_refine_alignment(image_stack, number_of_input_images, max_iterations, unitless_bfactor, should_mask_central_cross, vertical_mask_size, horizontal_mask_size, min_shift_in_pixels, max_shift_in_pixels, termination_threshold_in_pixels, pixel_size, number_of_frames_for_running_average, myroundint(5.0f / exposure_per_frame), max_threads, x_shifts, y_shifts, profile_timing_refinement_method);
     unblur_timing.lap("main refine");

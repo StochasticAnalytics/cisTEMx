@@ -342,7 +342,12 @@ void RunProfileManager::AddDefaultLocalProfile( ) {
     run_profiles[number_of_run_profiles].gui_address            = "";
     run_profiles[number_of_run_profiles].controller_address     = "";
 
+// Currently there is a race condition in the multi-threaded GPU code, so we can't use more than one thread per GPU in production.
+#ifdef CISTEM_DEBUG
     run_profiles[number_of_run_profiles].AddCommand(gpu_execution_command, number_of_cores / 4, number_of_threads / (number_of_cores / 2), false, 0, 10);
+#else
+    run_profiles[number_of_run_profiles].AddCommand(gpu_execution_command, number_of_cores / 2, 1, false, 0, 10);
+#endif
     number_of_run_profiles++;
 
     current_id_number++;

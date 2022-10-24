@@ -40,6 +40,13 @@ inline bool IsEven(int number_to_check) {
         return false;
 }
 
+inline int MakeEven(int number_to_make_even) {
+    if ( IsEven(number_to_make_even) )
+        return number_to_make_even;
+    else
+        return number_to_make_even + 1;
+}
+
 // Function to check if x is power of 2
 inline bool is_power_of_two(int n) {
     if ( n == 0 )
@@ -123,6 +130,10 @@ inline int myroundint(float a) {
         return int(a + 0.5);
     else
         return int(a - 0.5);
+}
+
+inline int RoundAndMakeEven(float a) {
+    return MakeEven(myroundint(a));
 }
 
 inline bool IsOdd(int number) {

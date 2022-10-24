@@ -208,10 +208,13 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
             // For testing on the GPU this is just doing a copy which is of course a bit of a waste
             // my_peak = sum_of_images_minus_current[my_tidx].FindPeakWithParabolaFit(wanted_inner_radius_for_peak_search, outer_radius_for_peak_search);
-            int address_offset = (correlation_map[my_tidx].dims.y / 2 - peak_map[my_tidx].logical_y_dimension / 2) * correlation_map[my_tidx].dims.w + (correlation_map[my_tidx].dims.x / 2 - peak_map[my_tidx].logical_x_dimension / 2);
+            int address_offset = (correlation_map[my_tidx].dims.y / 2 - peak_map[my_tidx].logical_y_dimension / 2) * correlation_map[my_tidx].dims.w +
+                                 (correlation_map[my_tidx].dims.x / 2 - peak_map[my_tidx].logical_x_dimension / 2);
 
-            cudaErr(cudaMemcpy2DAsync(peak_map[my_tidx].real_values, (peak_map[my_tidx].logical_x_dimension + 2) * sizeof(float), &correlation_map[my_tidx].real_values_gpu[address_offset], correlation_map[my_tidx].dims.w * sizeof(float),
-                                      (peak_map[my_tidx].logical_x_dimension + 2) * sizeof(float), peak_map[my_tidx].logical_y_dimension, cudaMemcpyDeviceToHost, cudaStreamPerThread));
+            cudaErr(cudaMemcpy2DAsync(peak_map[my_tidx].real_values, (peak_map[my_tidx].logical_x_dimension + 2) * sizeof(float),
+                                      &correlation_map[my_tidx].real_values_gpu[address_offset], correlation_map[my_tidx].dims.w * sizeof(float),
+                                      (peak_map[my_tidx].logical_x_dimension + 2) * sizeof(float), peak_map[my_tidx].logical_y_dimension,
+                                      cudaMemcpyDeviceToHost, cudaStreamPerThread));
 
             cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
             // correlation_map.QuickAndDirtyWriteSlice("/tmp/xcf" + std::to_string(phase_multiplier) + ".mrc", 1);
@@ -325,8 +328,8 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
         sum_of_images.AddImageStack<float>(input_stack);
         profile_timing_refinement_method.lap("remake sum");
-        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-        sum_of_images.QuickAndDirtyWriteSlice("/tmp/gpu_sum_of_images.mrc", 1);
+        // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+        // sum_of_images.QuickAndDirtyWriteSlice("/tmp/gpu_sum_of_images.mrc", 1);
     }
 
     for ( int i = 0; i < max_threads; i++ ) {

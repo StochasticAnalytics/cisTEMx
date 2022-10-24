@@ -103,62 +103,71 @@ MyMovieImportDialog::MyMovieImportDialog(wxWindow* parent)
 }
 
 void MyMovieImportDialog::AddFilesClick(wxCommandEvent& event) {
-    wxFileDialog openFileDialog(this, _("Select movie files - basic wildcards are allowed"), "", "", "MRC, TIFF, or EER files (*.mrc;*.mrcs;*.tif;*.tiff;*.eer)|*.mrc;*.mrcs;*.tif;*.tiff;*.eer;*.MRC;*.MRCS;*.TIF;*.TIFF;*.EER", wxFD_OPEN | wxFD_MULTIPLE);
+    const wxString openFD_message = "Select movie files - basic wildcards are allowed";
+    wxFileDialog   openFileDialog(this, openFD_message, "", "",
+                                  "MRC, TIFF, or EER files (*.mrc;*.mrcs;*.tif;*.tiff;*.eer)|*.mrc;*.mrcs;*.tif;*.tiff;*.eer;*.MRC;*.MRCS;*.TIF;*.TIFF;*.EER",
+                                  wxFD_OPEN | wxFD_MULTIPLE);
 
     bool     at_least_one_eer_file = false;
     wxString current_extension;
 
     if ( openFileDialog.ShowModal( ) == wxID_OK ) {
+
         wxArrayString selected_paths;
         wxArrayString final_paths;
         openFileDialog.GetPaths(selected_paths);
 
-        PathListCtrl->Freeze( );
+        {
+            wxWindowUpdateLocker noUpdates(PathListCtrl);
 
-        for ( unsigned long counter = 0; counter < selected_paths.GetCount( ); counter++ ) {
-            // is this an actual filename, that exists - in which case add it.
+            for ( unsigned long counter = 0; counter < selected_paths.GetCount( ); counter++ ) {
+                // is this an actual filename, that exists - in which case add it.
 
-            if ( DoesFileExist(selected_paths.Item(counter)) == true )
-                final_paths.Add(selected_paths.Item(counter));
-            else {
-                // perhaps it is a wildcard..
-                int           wildcard_counter;
-                wxArrayString wildcard_files;
-                wxString      directory_string;
-                wxString      file_string;
+                if ( DoesFileExist(selected_paths.Item(counter)) == true )
+                    final_paths.Add(selected_paths.Item(counter));
+                else {
+                    // perhaps it is a wildcard..
+                    int           wildcard_counter;
+                    wxArrayString wildcard_files;
+                    wxString      directory_string;
+                    wxString      file_string;
 
-                SplitFileIntoDirectoryAndFile(selected_paths.Item(counter), directory_string, file_string);
-                wxDir::GetAllFiles(directory_string, &wildcard_files, file_string, wxDIR_FILES);
+                    SplitFileIntoDirectoryAndFile(selected_paths.Item(counter), directory_string, file_string);
+                    wxDir::GetAllFiles(directory_string, &wildcard_files, file_string, wxDIR_FILES);
 
-                for ( int wildcard_counter = 0; wildcard_counter < wildcard_files.GetCount( ); wildcard_counter++ ) {
-                    current_extension = wxFileName(wildcard_files.Item(wildcard_counter)).GetExt( );
-                    current_extension = current_extension.MakeLower( );
+                    for ( int wildcard_counter = 0; wildcard_counter < wildcard_files.GetCount( ); wildcard_counter++ ) {
+                        current_extension = wxFileName(wildcard_files.Item(wildcard_counter)).GetExt( );
+                        current_extension = current_extension.MakeLower( );
 
-                    if ( current_extension == "mrc" || current_extension == "mrcs" || current_extension == "tif" || current_extension == "eer" )
-                        final_paths.Add(wildcard_files.Item(wildcard_counter));
+                        if ( current_extension == "mrc" || current_extension == "mrcs" || current_extension == "tif" || current_extension == "tiff" || current_extension == "eer" )
+                            final_paths.Add(wildcard_files.Item(wildcard_counter));
+                    }
                 }
             }
-        }
 
-        final_paths.Sort( );
+            final_paths.Sort( );
 
-        for ( int file_counter = 0; file_counter < final_paths.GetCount( ); file_counter++ ) {
-            PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), final_paths.Item(file_counter), PathListCtrl->GetItemCount( ));
-            current_extension = wxFileName(final_paths.Item(file_counter)).GetExt( );
-            current_extension = current_extension.MakeLower( );
-            if ( current_extension == "eer" )
-                at_least_one_eer_file = true;
-        }
+            for ( int file_counter = 0; file_counter < final_paths.GetCount( ); file_counter++ ) {
+                PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), final_paths.Item(file_counter), PathListCtrl->GetItemCount( ));
+                current_extension = wxFileName(final_paths.Item(file_counter)).GetExt( );
+                current_extension = current_extension.MakeLower( );
+                if ( current_extension == "eer" ) {
+                    at_least_one_eer_file = true;
+                    break;
+                }
+            }
 
-        PathListCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE);
-        PathListCtrl->Thaw( );
+            PathListCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE);
+        } // Update PathListCtrl
 
         GainFilePicker->SetInitialDirectory(wxFileName(final_paths.Last( )).GetPath( ));
+
         DarkFilePicker->SetInitialDirectory(wxFileName(final_paths.Last( )).GetPath( ));
 
         CheckImportButtonStatus( );
 
         if ( at_least_one_eer_file ) {
+
             PixelSizeStaticText->SetLabel(wxT("Pixel Size (post EER sampling) (Å) :"));
             ExposurePerFrameStaticText->SetLabel(wxT("Exp. per frame (post EER avg.) (e¯/Å²) :"));
             EerNumberOfFramesStaticText->Enable( );
@@ -167,6 +176,7 @@ void MyMovieImportDialog::AddFilesClick(wxCommandEvent& event) {
             EerSuperResFactorChoice->Enable( );
         }
         else {
+
             PixelSizeStaticText->SetLabel(wxT("Pixel Size (Å) :"));
             ExposurePerFrameStaticText->SetLabel(wxT("Exposure per frame (e¯/Å²) :"));
             EerNumberOfFramesStaticText->Disable( );
@@ -174,6 +184,8 @@ void MyMovieImportDialog::AddFilesClick(wxCommandEvent& event) {
             EerSuperResFactorStaticText->Disable( );
             EerSuperResFactorChoice->Disable( );
         }
+    }
+    else {
     }
 }
 
@@ -201,20 +213,24 @@ void MyMovieImportDialog::AddDirectoryClick(wxCommandEvent& event) {
     wxString current_extension;
 
     if ( dlg.ShowModal( ) == wxID_OK ) {
+        // TODO these extensions should be in a allowed_extensions vector and then looped over
         wxDir::GetAllFiles(dlg.GetPath( ), &all_files, "*.mrc", wxDIR_FILES);
         wxDir::GetAllFiles(dlg.GetPath( ), &all_files, "*.mrcs", wxDIR_FILES);
         wxDir::GetAllFiles(dlg.GetPath( ), &all_files, "*.tif", wxDIR_FILES);
+        wxDir::GetAllFiles(dlg.GetPath( ), &all_files, "*.tiff", wxDIR_FILES);
+        wxDir::GetAllFiles(dlg.GetPath( ), &all_files, "*.eer", wxDIR_FILES);
 
         all_files.Sort( );
 
-        PathListCtrl->Freeze( );
+        {
+            wxWindowUpdateLocker noUpdates(PathListCtrl);
 
-        for ( unsigned long counter = 0; counter < all_files.GetCount( ); counter++ ) {
-            PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), all_files.Item(counter), PathListCtrl->GetItemCount( ));
-        }
+            for ( unsigned long counter = 0; counter < all_files.GetCount( ); counter++ ) {
+                PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), all_files.Item(counter), PathListCtrl->GetItemCount( ));
+            }
 
-        PathListCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE);
-        PathListCtrl->Thaw( );
+            PathListCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE);
+        } // update PathListCtrl
 
         GainFilePicker->SetInitialDirectory(dlg.GetPath( ));
         DarkFilePicker->SetInitialDirectory(dlg.GetPath( ));

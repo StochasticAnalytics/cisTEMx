@@ -43,6 +43,7 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     std::array<float, 6> temp_float;
     bool                 mirrored_match;
     Peak                 found_peak;
+    int                  found_z;
     AnglesAndShifts      angles;
     Image*               flipped_image  = new Image;
     Image*               padded_image   = new Image;
@@ -50,6 +51,13 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
     GpuImage*            rotation_cache = NULL;
 
     BatchedSearch batch;
+
+    // For the best peak in each stack, we'll trasfer the central bit to the host and to a parabola fit.
+    Image peak_map;
+    int   peak_map_size_x = ReturnClosestFactorizedUpper(max_pix_x, 13, true, 32);
+    int   peak_map_size_y = ReturnClosestFactorizedUpper(max_pix_y, 13, true);
+    peak_map.Allocate(peak_map_size_x, peak_map_size_y, true);
+    cudaErr(cudaHostRegister(peak_map.real_values, sizeof(float) * peak_map.real_memory_allocated, cudaHostRegisterDefault));
 
     timer.start("Initial Allocations");
     flipped_image->Allocate(particle.particle_image->logical_x_dimension, particle.particle_image->logical_y_dimension, false);
@@ -226,7 +234,18 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
 
             timer.start("Fine Peak Search");
             found_peak = gpu_correlation_map.FindPeakAtCenterFast2d(batch);
+            found_z    = myroundint(found_peak.z);
 
+            int address_offset = (gpu_correlation_map.dims.y / 2 - peak_map.logical_y_dimension / 2) * gpu_correlation_map.dims.w +
+                                 (gpu_correlation_map.dims.x / 2 - peak_map.logical_x_dimension / 2) +
+                                 gpu_correlation_map.dims.w * gpu_correlation_map.dims.y * found_z;
+
+            cudaErr(cudaMemcpy2DAsync(peak_map.real_values, (peak_map.logical_x_dimension + 2) * sizeof(float), &gpu_correlation_map.real_values_gpu[address_offset], gpu_correlation_map.dims.w * sizeof(float),
+                                      (peak_map.logical_x_dimension + 2) * sizeof(float), peak_map.logical_y_dimension, cudaMemcpyDeviceToHost, cudaStreamPerThread));
+
+            cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+
+            found_peak = peak_map.FindPeakWithParabolaFit( );
 #ifdef SYNC_TIMER
             timer.lap_sync("Fine Peak Search");
 #else
@@ -237,10 +256,10 @@ void EulerSearch::Run<GpuImage>(Particle& particle, Image& input_3d, GpuImage* p
             if ( found_peak.value > best_inplane_score ) {
 
                 best_inplane_score        = found_peak.value;
-                best_inplane_values.at(0) = 360.0 - batch.GetInPlaneAngle(myroundint(found_peak.z));
+                best_inplane_values.at(0) = 360.0 - batch.GetInPlaneAngle(found_z);
                 best_inplane_values.at(1) = found_peak.x;
                 best_inplane_values.at(2) = found_peak.y;
-                mirrored_match            = batch.GetMirroredOrNot(myroundint(found_peak.z));
+                mirrored_match            = batch.GetMirroredOrNot(found_z);
             }
         }
 

@@ -44,8 +44,8 @@ MyFindParticlesPanel::MyFindParticlesPanel(wxWindow* parent)
 
     ResetDefaults( );
 
-    GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyFindParticlesPanel::OnGroupComboBox, this);
-    ImageComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MyFindParticlesPanel::OnImageComboBox, this);
+    GroupComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyFindParticlesPanel::OnGroupComboBox, this);
+    ImageComboBox->AssetComboBox->Bind(wxEVT_CHOICE, &MyFindParticlesPanel::OnImageComboBox, this);
 
     ExclusionRadiusNumericCtrl->SetPrecision(0);
     TemplateRadiusNumericCtrl->SetPrecision(0);
@@ -374,22 +374,15 @@ void MyFindParticlesPanel::OnAutoPickRefreshCheckBox(wxCommandEvent& event) {
         LeftPanel->Layout( );
         RightPanel->Layout( );
 
-        // Do the pick
-        {
-            wxBusyCursor wait;
+        wxBusyCursor         wait;
+        wxWindowUpdateLocker noUpdates(PickingParametersPanel);
+        wxWindowUpdateLocker noUpdates2(ExpertOptionsPanel);
 
-            PickingParametersPanel->Freeze( );
-            ExpertOptionsPanel->Freeze( );
+        SetAllUserParametersForParticleFinder( );
 
-            SetAllUserParametersForParticleFinder( );
+        particle_finder.DoItAll( );
 
-            particle_finder.DoItAll( );
-
-            DrawResultsFromParticleFinder( );
-
-            PickingParametersPanel->Thaw( );
-            ExpertOptionsPanel->Thaw( );
-        }
+        DrawResultsFromParticleFinder( );
     }
     else {
         // Auto pick refresh is disabled

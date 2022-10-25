@@ -6,10 +6,10 @@
 #include <wx/panel.h>
 
 class
-        UnblurResultsPanel : public UnblurResultsPanelParent {
+        live_MovieAlignResultsPanel : public live_MovieAlignResultsPanelParent {
   public:
-    UnblurResultsPanel(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxTAB_TRAVERSAL, const wxString& name = wxPanelNameStr);
-    ~UnblurResultsPanel( );
+    live_MovieAlignResultsPanel(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxTAB_TRAVERSAL, const wxString& name = wxPanelNameStr);
+    ~live_MovieAlignResultsPanel( );
 
     void Clear( );
     void ClearGraph( );
@@ -30,7 +30,7 @@ class
     mpFXYVector* current_x_shift_vector_layer;
     mpFXYVector* current_y_shift_vector_layer;
 
-    const char* Type( ) const { return "UnblurResultsPanel"; };
+    const char* Type( ) const { return "live_MovieAlignResultsPanel"; };
 };
 
 #endif

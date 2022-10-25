@@ -399,7 +399,7 @@ wxString MyImageAssetPanel::ReturnItemText(long item, long column) const {
 
 void MyImageAssetPanel::ImportAssetClick(wxCommandEvent& event) {
 
-    MyImageImportDialog* import_dialog = new MyImageImportDialog(this);
+    ImportImageDialog* import_dialog = new ImportImageDialog(this);
     import_dialog->ShowModal( );
 }
 

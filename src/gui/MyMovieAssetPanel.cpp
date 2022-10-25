@@ -355,7 +355,7 @@ wxString MyMovieAssetPanel::ReturnItemText(long item, long column) const {
 
 void MyMovieAssetPanel::ImportAssetClick(wxCommandEvent& event) {
 
-    MyMovieImportDialog* import_dialog = new MyMovieImportDialog(this);
+    ImportMovieDialog* import_dialog = new ImportMovieDialog(this);
     import_dialog->ShowModal( );
 }
 

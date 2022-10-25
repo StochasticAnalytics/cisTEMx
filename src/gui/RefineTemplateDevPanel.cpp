@@ -938,7 +938,7 @@ void RefineTemplateDevPanel::ProcessAllJobsFinished( ) {
     MyDebugAssertTrue(my_job_tracker.total_number_of_finished_jobs == my_job_tracker.total_number_of_jobs, "In ProcessAllJobsFinished, but total_number_of_finished_jobs != total_number_of_jobs. Oops.");
 
     // Update the GUI with project timings
-    extern MyOverviewPanel* overview_panel;
+    extern OverviewPanel* overview_panel;
     overview_panel->SetProjectInfo( );
 
     WriteResultToDataBase( );

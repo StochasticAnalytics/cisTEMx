@@ -1788,7 +1788,7 @@ void AutoRefinementManager::ProcessJobResult(JobResult* result_to_process) {
 void AutoRefinementManager::ProcessAllJobsFinished( ) {
 
     // Update the GUI with project timings
-    extern MyOverviewPanel* overview_panel;
+    extern OverviewPanel* overview_panel;
     overview_panel->SetProjectInfo( );
 
     //

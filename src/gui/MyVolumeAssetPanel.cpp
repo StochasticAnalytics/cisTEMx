@@ -307,7 +307,7 @@ bool MyVolumeAssetPanel::IsFileAnAsset(wxFileName file_to_check) {
 }
 
 void MyVolumeAssetPanel::ImportAssetClick(wxCommandEvent& event) {
-    MyVolumeImportDialog* import_dialog = new MyVolumeImportDialog(this);
+    ImportVolumeDialog* import_dialog = new ImportVolumeDialog(this);
     import_dialog->ShowModal( );
     main_frame->DirtyVolumes( );
 }

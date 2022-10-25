@@ -56,7 +56,7 @@ extern RefineTemplateDevPanel* refine_template_dev_panel;
 extern WebViewPanel* web_view_panel;
 #endif
 
-extern MyOverviewPanel* overview_panel;
+extern OverviewPanel* overview_panel;
 
 MyMainFrame::MyMainFrame(wxWindow* parent)
     : MainFrame(parent) {

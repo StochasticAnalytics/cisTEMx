@@ -1523,9 +1523,9 @@ class AlignMoviesPanel : public JobPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class FindCTFPanel
+/// Class FitCTFPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class FindCTFPanel : public JobPanel
+class FitCTFPanelParent : public JobPanel
 {
 	private:
 
@@ -1607,9 +1607,9 @@ class FindCTFPanel : public JobPanel
 		ImageGroupPickerComboPanel* GroupComboBox;
 		ShowCTFResultsPanel* CTFResultsPanel;
 
-		FindCTFPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1200,731 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		FitCTFPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1200,731 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~FindCTFPanel();
+		~FitCTFPanelParent();
 
 };
 

@@ -11,7 +11,7 @@ ActionsPanelTm::ActionsPanelTm(wxWindow* parent, wxWindowID id, const wxPoint& p
 void ActionsPanelTm::OnActionsBookPageChanged(wxBookCtrlEvent& event) {
 
     extern MyAlignMoviesPanel*        align_movies_panel;
-    extern MyFindCTFPanel*            findctf_panel;
+    extern FitCTFPanel*               fitctf_panel;
     extern MatchTemplatePanel*        match_template_panel;
     extern MatchTemplateResultsPanel* match_template_results_panel;
     extern RefineTemplatePanel*       refine_template_panel;

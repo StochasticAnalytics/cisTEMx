@@ -10,7 +10,7 @@ MyActionsPanel::MyActionsPanel(wxWindow* parent, wxWindowID id, const wxPoint& p
 
 void MyActionsPanel::OnActionsBookPageChanged(wxBookCtrlEvent& event) {
     extern MyAlignMoviesPanel*   align_movies_panel;
-    extern MyFindCTFPanel*       findctf_panel;
+    extern FitCTFPanel*          fitctf_panel;
     extern MyFindParticlesPanel* findparticles_panel;
     extern MyRefine2DPanel*      classification_panel;
     extern AbInitio3DPanel*      ab_initio_3d_panel;
@@ -27,8 +27,8 @@ void MyActionsPanel::OnActionsBookPageChanged(wxBookCtrlEvent& event) {
         align_movies_panel->Refresh( );
     }
     else if ( event.GetSelection( ) == 1 ) {
-        findctf_panel->Layout( );
-        findctf_panel->Refresh( );
+        fitctf_panel->Layout( );
+        fitctf_panel->Refresh( );
     }
     else if ( event.GetSelection( ) == 2 ) {
         findparticles_panel->Layout( );

@@ -1,7 +1,7 @@
 #ifndef __FindCTFPanel__
 #define __FindCTFPanel__
 
-class MyFindCTFPanel : public FindCTFPanel {
+class FitCTFPanel : public FitCTFPanelParent {
     long my_job_id;
 
     int length_of_process_number;
@@ -16,7 +16,7 @@ class MyFindCTFPanel : public FindCTFPanel {
     AssetGroup active_group;
 
   public:
-    MyFindCTFPanel(wxWindow* parent);
+    FitCTFPanel(wxWindow* parent);
     JobResult* buffered_results;
 
     bool group_combo_is_dirty;
@@ -57,7 +57,7 @@ class MyFindCTFPanel : public FindCTFPanel {
     void Reset( );
     void ResetDefaults( );
 
-    const char* Type( ) const { return "FindCTFPanel"; };
+    const char* Type( ) const { return "FitCTFPanelParent"; };
 };
 
 #endif // __AlignMoviesPanel__

@@ -9,11 +9,11 @@ MyResultsPanel::MyResultsPanel(wxWindow* parent, wxWindowID id, const wxPoint& p
 // TODO: destructor
 
 void MyResultsPanel::OnResultsBookPageChanged(wxBookCtrlEvent& event) {
-    extern MyMovieAlignResultsPanel* movie_results_panel;
-    extern MyFindCTFResultsPanel*    ctf_results_panel;
-    extern post_PickingResultsPanel* picking_results_panel;
-    extern Refine2DResultsPanel*     refine2d_results_panel;
-    extern MyRefinementResultsPanel* refinement_results_panel;
+    extern post_MovieAlignResultsPanel* movie_results_panel;
+    extern MyFindCTFResultsPanel*       ctf_results_panel;
+    extern post_PickingResultsPanel*    picking_results_panel;
+    extern Refine2DResultsPanel*        refine2d_results_panel;
+    extern MyRefinementResultsPanel*    refinement_results_panel;
 
     // We we were editing the particle picking results, and we move away from Results, we may need to do some database stuff
     if ( event.GetOldSelection( ) == 2 )

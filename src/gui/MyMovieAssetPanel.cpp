@@ -1,8 +1,8 @@
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 
-extern MyImageAssetPanel*        image_asset_panel;
-extern MyMovieAlignResultsPanel* movie_results_panel;
+extern MyImageAssetPanel*           image_asset_panel;
+extern post_MovieAlignResultsPanel* movie_results_panel;
 
 MyMovieAssetPanel::MyMovieAssetPanel(wxWindow* parent)
     : MyAssetPanelParent(parent) {

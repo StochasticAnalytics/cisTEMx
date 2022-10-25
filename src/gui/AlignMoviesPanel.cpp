@@ -1,11 +1,11 @@
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 
-extern MyMovieAssetPanel*        movie_asset_panel;
-extern MyImageAssetPanel*        image_asset_panel;
-extern MyRunProfilesPanel*       run_profiles_panel;
-extern MyMovieAlignResultsPanel* movie_results_panel;
-extern MyMainFrame*              main_frame;
+extern MyMovieAssetPanel*           movie_asset_panel;
+extern MyImageAssetPanel*           image_asset_panel;
+extern MyRunProfilesPanel*          run_profiles_panel;
+extern post_MovieAlignResultsPanel* movie_results_panel;
+extern MyMainFrame*                 main_frame;
 
 MyAlignMoviesPanel::MyAlignMoviesPanel(wxWindow* parent)
     : AlignMoviesPanel(parent) {

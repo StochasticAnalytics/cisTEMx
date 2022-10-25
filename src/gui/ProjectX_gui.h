@@ -853,9 +853,9 @@ class post_PickingResultsPanelParent : public wxPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class MovieAlignResultsPanel
+/// Class post_MovieAlignResultsPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class MovieAlignResultsPanel : public wxPanel
+class post_MovieAlignResultsPanelParent : public wxPanel
 {
 	private:
 
@@ -935,14 +935,14 @@ class MovieAlignResultsPanel : public wxPanel
 
 	public:
 
-		MovieAlignResultsPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1165,564 ), long style = wxTAB_TRAVERSAL|wxWANTS_CHARS, const wxString& name = wxEmptyString );
+		post_MovieAlignResultsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1165,564 ), long style = wxTAB_TRAVERSAL|wxWANTS_CHARS, const wxString& name = wxEmptyString );
 
-		~MovieAlignResultsPanel();
+		~post_MovieAlignResultsPanelParent();
 
 		void m_splitter4OnIdle( wxIdleEvent& )
 		{
 			m_splitter4->SetSashPosition( 450 );
-			m_splitter4->Disconnect( wxEVT_IDLE, wxIdleEventHandler( MovieAlignResultsPanel::m_splitter4OnIdle ), NULL, this );
+			m_splitter4->Disconnect( wxEVT_IDLE, wxIdleEventHandler( post_MovieAlignResultsPanelParent::m_splitter4OnIdle ), NULL, this );
 		}
 
 };

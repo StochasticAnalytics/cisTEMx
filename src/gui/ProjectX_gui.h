@@ -33,7 +33,6 @@ class MyFSCPanel;
 class NoFocusBitmapButton;
 class NumericTextCtrl;
 class PickingBitmapPanel;
-class PickingResultsDisplayPanel;
 class PlotCurvePanel;
 class PlotFSCPanel;
 class ReferenceVolumesListControl;
@@ -47,6 +46,7 @@ class ShowCTFResultsPanel;
 class ShowTemplateMatchResultsPanel;
 class UnblurResultsPanel;
 class VolumeAssetPickerComboPanel;
+class live_PickingResultsPanel;
 
 #include "job_panel.h"
 #include <wx/gdicmn.h>
@@ -734,9 +734,9 @@ class Refine2DResultsPanelParent : public wxPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class PickingResultsDisplayPanelParent
+/// Class live_PickingResultsPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class PickingResultsDisplayPanelParent : public wxPanel
+class live_PickingResultsPanelParent : public wxPanel
 {
 	private:
 
@@ -773,9 +773,9 @@ class PickingResultsDisplayPanelParent : public wxPanel
 		wxButton* UndoButton;
 		wxButton* RedoButton;
 
-		PickingResultsDisplayPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1123,360 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		live_PickingResultsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1123,360 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~PickingResultsDisplayPanelParent();
+		~live_PickingResultsPanelParent();
 
 };
 
@@ -1048,7 +1048,7 @@ class PickingResultsPanel : public wxPanel
 
 
 	public:
-		PickingResultsDisplayPanel* ResultDisplayPanel;
+		live_PickingResultsPanel* ResultDisplayPanel;
 
 		PickingResultsPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1309,557 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
@@ -1398,7 +1398,7 @@ class FindParticlesPanel : public JobPanel
 	public:
 		ImageGroupPickerComboPanel* GroupComboBox;
 		ImagesPickerComboPanel* ImageComboBox;
-		PickingResultsDisplayPanel* PickingResultsPanel;
+		live_PickingResultsPanel* PickingResultsPanel;
 
 		FindParticlesPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1200,731 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 

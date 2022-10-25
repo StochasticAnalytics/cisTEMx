@@ -104,6 +104,7 @@ class MainFrame : public wxFrame
 		wxMenuBar* m_menubar1;
 		wxMenu* FileMenu;
 		wxMenu* WorkflowMenu;
+		wxMenuItem* WorkflowPharma;
 		wxMenuItem* WorkflowSingleParticle;
 		wxMenuItem* WorkflowTemplateMatching;
 		wxMenu* HelpMenu;
@@ -115,6 +116,7 @@ class MainFrame : public wxFrame
 		virtual void OnFileOpenProject( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnFileCloseProject( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnFileExit( wxCommandEvent& event ) { event.Skip(); }
+		virtual void OnPharmaWorkflow( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnSingleParticleWorkflow( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnTemplateMatchingWorkflow( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnHelpLaunch( wxCommandEvent& event ) { event.Skip(); }

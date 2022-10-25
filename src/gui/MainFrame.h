@@ -98,22 +98,35 @@ class MyMainFrame : public MainFrame, public SocketCommunicator {
 
     void SetSingleParticleWorkflow(bool triggered_by_gui_event = false);
     void SetTemplateMatchingWorkflow(bool triggered_by_gui_event = false);
+    void SetPharmaWorkflow(bool triggered_by_gui_event = false);
 
     void OnSingleParticleWorkflow(wxCommandEvent& event);
     void OnTemplateMatchingWorkflow(wxCommandEvent& event);
+    void OnPharmaWorkflow(wxCommandEvent& event);
 
     inline cistem::workflow::Enum ReturnCurrentWorkflow( ) { return current_workflow; };
 
     inline void ManuallyUpdateWorkflowMenuCheckBox( ) {
 
-        if ( current_workflow == cistem::workflow::single_particle ) {
-            WorkflowMenu->Check(WorkflowSingleParticle->GetId( ), true);
+        switch ( current_workflow ) {
+            case cistem::workflow::single_particle: {
+                WorkflowMenu->Check(WorkflowSingleParticle->GetId( ), true);
+                break;
+            }
+            case cistem::workflow::template_matching: {
+                WorkflowMenu->Check(WorkflowTemplateMatching->GetId( ), true);
+                break;
+            }
+            case cistem::workflow::pharma: {
+                WorkflowMenu->Check(WorkflowPharma->GetId( ), true);
+                break;
+            }
+            default: {
+                MyDebugAssertTrue(false, "Unknown workflow");
+                break;
+            }
         }
-
-        if ( current_workflow == cistem::workflow::template_matching ) {
-            WorkflowMenu->Check(WorkflowTemplateMatching->GetId( ), true);
-        }
-    }
+    };
 
     const char* Type( ) const { return "MainFrame"; };
 

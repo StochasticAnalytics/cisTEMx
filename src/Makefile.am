@@ -95,6 +95,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/AssetsPanel.h \
                  gui/ActionsPanelSpa.h \
                  gui/ActionsPanelTm.h \
+                 gui/ActionsPanelRx.h \
                  gui/SettingsPanel.h \
                  gui/post_PickingResultsPanel.h \
                  gui/MyParticlePositionExportDialog.h \
@@ -619,18 +620,19 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/MyAddRunCommandDialog.cpp                       \
                     gui/MyNewProjectWizard.cpp                          \
                     gui/MyNewRefinementPackageWizard.cpp                \
-                    gui/live_MovieAlignResultsPanel.cpp                          \
+                    gui/live_MovieAlignResultsPanel.cpp                 \
                     gui/ShowCTFResultsPanel.cpp                         \
-                    gui/live_PickingResultsPanel.cpp                  \
+                    gui/live_PickingResultsPanel.cpp                    \
                     gui/CTF1DPanel.cpp                                  \
-                    gui/FitCTFPanel.cpp                                \
+                    gui/FitCTFPanel.cpp                                 \
                     gui/FindParticlesPanel.cpp                          \
                     gui/MyVolumeAssetPanel.cpp                          \
-                    gui/ResultsPanel.cpp                              \
-                    gui/AssetsPanel.cpp                               \
+                    gui/ResultsPanel.cpp                                \
+                    gui/AssetsPanel.cpp                                 \
                     gui/ActionsPanelSpa.cpp                             \
                     gui/ActionsPanelTm.cpp                              \
-                    gui/SettingsPanel.cpp                             \
+                    gui/ActionsPanelRx.cpp                              \
+                    gui/SettingsPanel.cpp                               \
                     gui/MyParticlePositionExportDialog.cpp              \
                     gui/MyFrealignExportDialog.cpp                      \
                     gui/MyRelionExportDialog.cpp                        \

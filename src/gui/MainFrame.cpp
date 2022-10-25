@@ -22,6 +22,7 @@ extern MyRefinementPackageAssetPanel* refinement_package_asset_panel;
 
 extern ActionsPanelSpa* actions_panel_spa;
 extern ActionsPanelTm*  actions_panel_tm;
+extern ActionsPanelRx*  actions_panel_rx;
 
 extern MyAlignMoviesPanel*   align_movies_panel;
 extern FitCTFPanel*          fitctf_panel;
@@ -103,6 +104,9 @@ MyMainFrame::MyMainFrame(wxWindow* parent)
     // Set brother event handler, this is a nastly little hack so that the socket communicator can use the event handler, and it will work whether the "brother" is a console app or gui panel.
 
     brother_event_handler = this;
+
+    // FIXME: Default workflow, determined by settings from wxFrombuilder, override from database if re-opening
+    current_workflow = cistem::workflow::pharma;
 }
 
 MyMainFrame::~MyMainFrame( ) {
@@ -853,6 +857,8 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
 #ifdef PRINT_WORKFLOW_DEBUGGING_INFO
     std::cerr << "\n\nUpdating workflow" << std::endl;
     std::cerr << "Frame name " << frame_name << std::endl;
+    std::cerr << "Input frame type " << input_frame->Type( ) << std::endl;
+    std::cerr << "Output frame type " << output_frame->Type( ) << std::endl;
 #endif
     // Record the currently displayed page so we can maintain it.
     // These are the left columen, currently Overview, Assets, Actions, Results, Settings, <Experimental>
@@ -872,13 +878,19 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
 #ifdef PRINT_WORKFLOW_DEBUGGING_INFO
     std::cerr << "Displayed page idx " << displayed_page_idx << std::endl;
     std::cerr << "Current page idx " << current_page_idx << std::endl;
-    std::cerr << "Input frame type " << input_frame->Type( ) << std::endl;
-    std::cerr << "Output frame type " << output_frame->Type( ) << std::endl;
 #endif
+
+    // TODO: to avoid string comparisions, we should also have an enum for the frame types.
+    // if we wasnt the name, use that enum as a key to a map of the next frame type.
+
     // Set the parent to the output frame. These are the panels that are shared between the SPA and TM actions workflows
     // TODO: It would be nice to have a header that defines what panels belong to which workflows and use that rather than setting manually here.
+    // All panels share these
     align_movies_panel->Reparent(output_frame->ActionsBook);
     fitctf_panel->Reparent(output_frame->ActionsBook);
+    findparticles_panel->Reparent(output_frame->ActionsBook);
+    refine_3d_panel->Reparent(output_frame->ActionsBook);
+    classification_panel->Reparent(output_frame->ActionsBook);
     generate_3d_panel->Reparent(output_frame->ActionsBook);
     sharpen_3d_panel->Reparent(output_frame->ActionsBook);
 
@@ -901,30 +913,31 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
 
 void MyMainFrame::SetSingleParticleWorkflow(bool triggered_by_gui_event) {
 
-    // The idenitiy of the event (selecting worflow menu) defines the output panel.
-    if ( current_workflow != cistem::workflow::single_particle ) {
-        // With only two workflows, we don't need the switch, but
-        // switch ( current_workflow ) {
-        //     case cistem::workflow::template_matching: {
-
-        UpdateWorkflow(actions_panel_tm, actions_panel_spa, "Actions");
-        current_workflow = cistem::workflow::single_particle;
-        // If other panels, e.g. results is a likely next candidate, it should go here.
-        // TODO: if there are multiple panels to switch, we'll need to only do the update and set the icon for the LAST call in this sequence.
-        // break;
-        //     }
-        //     default: {
-        //         MyDebugAssertTrue(false, "Unknown workflow");
-        //         break;
-        //     }
-        // }
-
-        if ( current_project.is_open ) {
-            current_project.RecordCurrentWorkflowInDB(current_workflow);
+    switch ( current_workflow ) {
+        case cistem::workflow::template_matching: {
+            UpdateWorkflow(actions_panel_tm, actions_panel_spa, "Actions");
+            current_workflow = cistem::workflow::single_particle;
+            if ( current_project.is_open ) {
+                current_project.RecordCurrentWorkflowInDB(current_workflow);
+            }
+            if ( ! triggered_by_gui_event ) {
+                ManuallyUpdateWorkflowMenuCheckBox( );
+            }
+            break;
         }
-        // If not called from the GUI, we need to update the menu.
-        if ( ! triggered_by_gui_event ) {
-            ManuallyUpdateWorkflowMenuCheckBox( );
+        case cistem::workflow::pharma: {
+            UpdateWorkflow(actions_panel_rx, actions_panel_spa, "Actions");
+            current_workflow = cistem::workflow::single_particle;
+            if ( current_project.is_open ) {
+                current_project.RecordCurrentWorkflowInDB(current_workflow);
+            }
+            if ( ! triggered_by_gui_event ) {
+                ManuallyUpdateWorkflowMenuCheckBox( );
+            }
+            break;
+        }
+        default: {
+            break;
         }
     }
 }
@@ -935,20 +948,71 @@ void MyMainFrame::OnSingleParticleWorkflow(wxCommandEvent& event) {
 
 void MyMainFrame::SetTemplateMatchingWorkflow(bool triggered_by_gui_event) {
 
-    // The idenitiy of the event (selecting worflow menu) defines the output panel.
-    if ( current_workflow != cistem::workflow::template_matching ) {
-        UpdateWorkflow(actions_panel_spa, actions_panel_tm, "Actions");
-        current_workflow = cistem::workflow::template_matching;
-        if ( current_project.is_open ) {
-            current_project.RecordCurrentWorkflowInDB(current_workflow);
+    switch ( current_workflow ) {
+        case cistem::workflow::single_particle: {
+            UpdateWorkflow(actions_panel_spa, actions_panel_tm, "Actions");
+            current_workflow = cistem::workflow::template_matching;
+            if ( current_project.is_open ) {
+                current_project.RecordCurrentWorkflowInDB(current_workflow);
+            }
+            if ( ! triggered_by_gui_event ) {
+                ManuallyUpdateWorkflowMenuCheckBox( );
+            }
+            break;
         }
-        // If not called from the GUI, we need to update the menu.
-        if ( ! triggered_by_gui_event ) {
-            ManuallyUpdateWorkflowMenuCheckBox( );
+        case cistem::workflow::pharma: {
+            UpdateWorkflow(actions_panel_rx, actions_panel_tm, "Actions");
+            current_workflow = cistem::workflow::template_matching;
+            if ( current_project.is_open ) {
+                current_project.RecordCurrentWorkflowInDB(current_workflow);
+            }
+            if ( ! triggered_by_gui_event ) {
+                ManuallyUpdateWorkflowMenuCheckBox( );
+            }
+            break;
+        }
+        default: {
+            break;
         }
     }
 }
 
 void MyMainFrame::OnTemplateMatchingWorkflow(wxCommandEvent& event) {
     SetTemplateMatchingWorkflow(true);
+}
+
+void MyMainFrame::SetPharmaWorkflow(bool triggered_by_gui_event) {
+
+    // The idenitiy of the event (selecting worflow menu) defines the output panel.
+    switch ( current_workflow ) {
+        case cistem::workflow::single_particle: {
+            UpdateWorkflow(actions_panel_spa, actions_panel_rx, "Actions");
+            current_workflow = cistem::workflow::pharma;
+            if ( current_project.is_open ) {
+                current_project.RecordCurrentWorkflowInDB(current_workflow);
+            }
+            if ( ! triggered_by_gui_event ) {
+                ManuallyUpdateWorkflowMenuCheckBox( );
+            }
+            break;
+        }
+        case cistem::workflow::template_matching: {
+            UpdateWorkflow(actions_panel_tm, actions_panel_rx, "Actions");
+            current_workflow = cistem::workflow::pharma;
+            if ( current_project.is_open ) {
+                current_project.RecordCurrentWorkflowInDB(current_workflow);
+            }
+            if ( ! triggered_by_gui_event ) {
+                ManuallyUpdateWorkflowMenuCheckBox( );
+            }
+            break;
+        }
+        default: {
+            break;
+        }
+    }
+}
+
+void MyMainFrame::OnPharmaWorkflow(wxCommandEvent& event) {
+    SetPharmaWorkflow(true);
 }

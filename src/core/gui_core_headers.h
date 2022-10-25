@@ -89,6 +89,7 @@
 #include "../gui/ResultsPanel.h"
 #include "../gui/ActionsPanelSpa.h"
 #include "../gui/ActionsPanelTm.h"
+#include "../gui/ActionsPanelRx.h"
 #include "../gui/AssetsPanel.h"
 #include "../gui/SettingsPanel.h"
 #include "../gui/post_PickingResultsPanel.h"

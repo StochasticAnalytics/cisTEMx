@@ -30,6 +30,7 @@ Sharpen3DPanel*       sharpen_3d_panel;
 OverviewPanel*             overview_panel;
 ActionsPanelSpa*           actions_panel_spa;
 ActionsPanelTm*            actions_panel_tm;
+ActionsPanelRx*            actions_panel_rx;
 AssetsPanelParent*         assets_panel; // formerly AssetsPanel
 ResultsPanel*              results_panel;
 SettingsPanel*             settings_panel;
@@ -66,6 +67,7 @@ MyRunProfilesPanel* run_profiles_panel;
 wxImageList* MenuBookIconImages;
 wxImageList* ActionsSpaBookIconImages;
 wxImageList* ActionsTmBookIconImages;
+wxImageList* ActionsRxBookIconImages;
 wxImageList* AssetsBookIconImages;
 wxImageList* ResultsBookIconImages;
 wxImageList* SettingsBookIconImages;
@@ -112,6 +114,7 @@ bool MyGuiApp::OnInit( ) {
     wxImageList* MenuBookIconImages;
     wxImageList* ActionsSpaBookIconImages;
     wxImageList* ActionsTmBookIconImages;
+    wxImageList* ActionsRxBookIconImages;
     wxImageList* AssetsBookIconImages;
     wxImageList* SettingsBookIconImages;
 
@@ -132,6 +135,7 @@ bool MyGuiApp::OnInit( ) {
     overview_panel    = new OverviewPanel(main_frame->MenuBook, wxID_ANY);
     actions_panel_spa = new ActionsPanelSpa(main_frame->MenuBook, wxID_ANY);
     actions_panel_tm  = new ActionsPanelTm(main_frame->MenuBook, wxID_ANY);
+    actions_panel_rx  = new ActionsPanelRx(main_frame->MenuBook, wxID_ANY);
     assets_panel      = new AssetsPanel(main_frame->MenuBook, wxID_ANY);
     results_panel     = new ResultsPanel(main_frame->MenuBook, wxID_ANY);
     settings_panel    = new SettingsPanel(main_frame->MenuBook, wxID_ANY);
@@ -172,6 +176,10 @@ bool MyGuiApp::OnInit( ) {
     match_template_panel         = new MatchTemplatePanel(actions_panel_tm->ActionsBook);
     match_template_results_panel = new MatchTemplateResultsPanel(actions_panel_tm->ActionsBook);
     refine_template_panel        = new RefineTemplatePanel(actions_panel_tm->ActionsBook);
+
+    // actions_panel_spa is currently a complete superset of actions_panel_rx, so we can just
+    // reparent the panels from actions_panel_spa to actions_panel_rx
+
 #ifdef EXPERIMENTAL
     refine_template_dev_panel = new RefineTemplateDevPanel(experimental_panel->ExperimentalBook);
 #endif
@@ -185,6 +193,7 @@ bool MyGuiApp::OnInit( ) {
 
     MenuBookIconImages       = new wxImageList(80, 80);
     ActionsSpaBookIconImages = new wxImageList(48, 48);
+    ActionsRxBookIconImages  = new wxImageList(48, 48);
     ActionsTmBookIconImages  = new wxImageList(48, 48);
     AssetsBookIconImages     = new wxImageList(48, 48);
     ResultsBookIconImages    = new wxImageList(48, 48);
@@ -251,6 +260,17 @@ bool MyGuiApp::OnInit( ) {
     ActionsSpaBookIconImages->Add(generate3d_icon_bmp);
     ActionsSpaBookIconImages->Add(sharpen_map_icon_bmp);
 
+    ActionsRxBookIconImages->Add(movie_align_icon_bmp);
+    ActionsRxBookIconImages->Add(ctf_icon_bmp);
+    ActionsRxBookIconImages->Add(find_particles_icon_bmp);
+    ActionsRxBookIconImages->Add(classification_icon_bmp);
+    // ActionsRxBookIconImages->Add(ab_initio_3d_icon_bmp);
+    // ActionsRxBookIconImages->Add(refine3d_icon_bmp);
+    ActionsRxBookIconImages->Add(manual_refine3d_icon_bmp);
+    ActionsRxBookIconImages->Add(refine_ctf_icon_bmp);
+    ActionsRxBookIconImages->Add(generate3d_icon_bmp);
+    ActionsRxBookIconImages->Add(sharpen_map_icon_bmp);
+
     AssetsBookIconImages->Add(movie_icon_bmp);
     AssetsBookIconImages->Add(image_icon_bmp);
     AssetsBookIconImages->Add(particle_position_icon_bmp);
@@ -278,6 +298,7 @@ bool MyGuiApp::OnInit( ) {
     main_frame->MenuBook->AssignImageList(MenuBookIconImages);
     actions_panel_spa->ActionsBook->AssignImageList(ActionsSpaBookIconImages);
     actions_panel_tm->ActionsBook->AssignImageList(ActionsTmBookIconImages);
+    actions_panel_rx->ActionsBook->AssignImageList(ActionsRxBookIconImages);
     assets_panel->AssetsBook->AssignImageList(AssetsBookIconImages);
     results_panel->ResultsBook->AssignImageList(ResultsBookIconImages);
     settings_panel->SettingsBook->AssignImageList(SettingsBookIconImages);
@@ -293,8 +314,10 @@ bool MyGuiApp::OnInit( ) {
     main_frame->MenuBook->AddPage(assets_panel, "Assets", false, 1);
     main_frame->MenuBook->AddPage(actions_panel_tm, "Actions", false, 2);
     main_frame->MenuBook->RemovePage(2);
-
     main_frame->MenuBook->AddPage(actions_panel_spa, "Actions", false, 2);
+    main_frame->MenuBook->RemovePage(2);
+    main_frame->MenuBook->AddPage(actions_panel_rx, "Actions", false, 2);
+
     main_frame->MenuBook->AddPage(results_panel, "Results", false, 3);
     main_frame->MenuBook->AddPage(settings_panel, "Settings", false, 4);
 #ifdef EXPERIMENTAL
@@ -322,6 +345,17 @@ bool MyGuiApp::OnInit( ) {
     actions_panel_spa->ActionsBook->AddPage(refine_ctf_panel, "Refine CTF", false, 7);
     actions_panel_spa->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 8);
     actions_panel_spa->ActionsBook->AddPage(sharpen_3d_panel, "Sharpen 3D", false, 9);
+
+    actions_panel_rx->ActionsBook->AddPage(align_movies_panel, "Align Movies", true, 0);
+    actions_panel_rx->ActionsBook->AddPage(fitctf_panel, "Find CTF", false, 1);
+    actions_panel_rx->ActionsBook->AddPage(findparticles_panel, "Find Particles", false, 2);
+    actions_panel_rx->ActionsBook->AddPage(classification_panel, "2D Classify", false, 3);
+    // actions_panel_rx->ActionsBook->AddPage(ab_initio_3d_panel, "Ab-Initio 3D", false, 4);
+    // actions_panel_rx->ActionsBook->AddPage(auto_refine_3d_panel, "Auto Refine", false, 5);
+    actions_panel_rx->ActionsBook->AddPage(refine_3d_panel, "Manual Refine", false, 4);
+    actions_panel_rx->ActionsBook->AddPage(refine_ctf_panel, "Refine CTF", false, 5);
+    actions_panel_rx->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 6);
+    actions_panel_rx->ActionsBook->AddPage(sharpen_3d_panel, "Sharpen 3D", false, 7);
 
     actions_panel_tm->ActionsBook->AddPage(align_movies_panel, "Align Movies", true, 0);
     actions_panel_tm->ActionsBook->AddPage(fitctf_panel, "Find CTF", false, 1);
@@ -373,6 +407,10 @@ bool MyGuiApp::OnInit( ) {
     //delete AssetsBookIconImages;
     //delete SettingsBookIconImages;
 
+    // FIXME: The pharma workflow actions panels are blank on opening a new project
+    // Toggle here for a hack.
+    main_frame->SetSingleParticleWorkflow( );
+    main_frame->SetPharmaWorkflow( );
     main_frame->Show( );
 
     return true;

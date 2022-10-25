@@ -5,7 +5,7 @@ extern MyImageAssetPanel*           image_asset_panel;
 extern post_MovieAlignResultsPanel* movie_results_panel;
 
 MyMovieAssetPanel::MyMovieAssetPanel(wxWindow* parent)
-    : MyAssetPanelParent(parent) {
+    : AssetObjectPanel(parent) {
     Label0Title->SetLabel("Name : ");
     Label1Title->SetLabel("I.D. : ");
     Label2Title->SetLabel("No. Frames : ");

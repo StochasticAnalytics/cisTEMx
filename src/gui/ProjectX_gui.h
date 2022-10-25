@@ -1017,9 +1017,9 @@ class ResultsPanel : public wxPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class AssetsPanel
+/// Class AssetsPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class AssetsPanel : public wxPanel
+class AssetsPanelParent : public wxPanel
 {
 	private:
 
@@ -1033,9 +1033,9 @@ class AssetsPanel : public wxPanel
 	public:
 		wxListbook* AssetsBook;
 
-		AssetsPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		AssetsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~AssetsPanel();
+		~AssetsPanelParent();
 
 };
 
@@ -1271,9 +1271,9 @@ class ImageImportDialog : public wxDialog
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class AssetPanelParent
+/// Class AssetObjectPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class AssetPanelParent : public wxPanel
+class AssetObjectPanelParent : public wxPanel
 {
 	private:
 
@@ -1347,14 +1347,14 @@ class AssetPanelParent : public wxPanel
 		wxListCtrl* GroupListBox;
 		ContentsList* ContentsListBox;
 
-		AssetPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1094,668 ), long style = wxHSCROLL|wxTAB_TRAVERSAL|wxVSCROLL, const wxString& name = wxEmptyString );
+		AssetObjectPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1094,668 ), long style = wxHSCROLL|wxTAB_TRAVERSAL|wxVSCROLL, const wxString& name = wxEmptyString );
 
-		~AssetPanelParent();
+		~AssetObjectPanelParent();
 
 		void SplitterWindowOnIdle( wxIdleEvent& )
 		{
 			SplitterWindow->SetSashPosition( 405 );
-			SplitterWindow->Disconnect( wxEVT_IDLE, wxIdleEventHandler( AssetPanelParent::SplitterWindowOnIdle ), NULL, this );
+			SplitterWindow->Disconnect( wxEVT_IDLE, wxIdleEventHandler( AssetObjectPanelParent::SplitterWindowOnIdle ), NULL, this );
 		}
 
 };

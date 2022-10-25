@@ -7,7 +7,7 @@ extern MyRefine3DPanel*               refine_3d_panel;
 //extern MyImageAssetPanel *image_asset_panel;
 
 AtomicCoordinatesAssetPanel::AtomicCoordinatesAssetPanel(wxWindow* parent)
-    : MyAssetPanelParent(parent) {
+    : AssetObjectPanel(parent) {
     Label0Title->SetLabel("File Name : ");
     Label1Title->SetLabel("PDB I.D. : ");
     Label2Title->SetLabel("Asset I.D. : ");

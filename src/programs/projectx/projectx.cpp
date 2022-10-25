@@ -30,7 +30,7 @@ Sharpen3DPanel*       sharpen_3d_panel;
 MyOverviewPanel*           overview_panel;
 ActionsPanelSpa*           actions_panel_spa;
 ActionsPanelTm*            actions_panel_tm;
-AssetsPanel*               assets_panel;
+AssetsPanelParent*         assets_panel; // formerly AssetsPanel
 MyResultsPanel*            results_panel;
 SettingsPanel*             settings_panel;
 MatchTemplatePanel*        match_template_panel;
@@ -132,7 +132,7 @@ bool MyGuiApp::OnInit( ) {
     overview_panel    = new MyOverviewPanel(main_frame->MenuBook, wxID_ANY);
     actions_panel_spa = new ActionsPanelSpa(main_frame->MenuBook, wxID_ANY);
     actions_panel_tm  = new ActionsPanelTm(main_frame->MenuBook, wxID_ANY);
-    assets_panel      = new MyAssetsPanel(main_frame->MenuBook, wxID_ANY);
+    assets_panel      = new AssetsPanel(main_frame->MenuBook, wxID_ANY);
     results_panel     = new MyResultsPanel(main_frame->MenuBook, wxID_ANY);
     settings_panel    = new MySettingsPanel(main_frame->MenuBook, wxID_ANY);
 #ifdef EXPERIMENTAL

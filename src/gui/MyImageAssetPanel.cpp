@@ -8,7 +8,7 @@ extern post_PickingResultsPanel*      picking_results_panel;
 extern post_MovieAlignResultsPanel*   movie_results_panel;
 
 MyImageAssetPanel::MyImageAssetPanel(wxWindow* parent)
-    : MyAssetPanelParent(parent) {
+    : AssetObjectPanel(parent) {
     Label0Title->SetLabel("Name : ");
     Label1Title->SetLabel("I.D. : ");
     Label2Title->SetLabel("Parent Movie I.D. : ");

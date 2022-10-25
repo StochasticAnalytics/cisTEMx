@@ -4,7 +4,7 @@
 #include "ProjectX_gui.h"
 
 class MyRenameDialog : public RenameDialog {
-    friend class MyAssetPanelParent;
+    friend class AssetObjectPanel;
 
   public:
     wxArrayLong selected_assets_array_position;

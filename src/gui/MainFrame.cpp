@@ -10,7 +10,7 @@
 
 // #define PRINT_WORKFLOW_DEBUGGING_INFO
 
-extern MyAssetsPanel*                assets_panel;
+extern AssetsPanel*                  assets_panel;
 extern MyMovieAssetPanel*            movie_asset_panel;
 extern MyImageAssetPanel*            image_asset_panel;
 extern MyParticlePositionAssetPanel* particle_position_asset_panel;

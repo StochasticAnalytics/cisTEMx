@@ -1,6 +1,6 @@
 extern MyMainFrame* main_frame;
 
-class AssetPanel : public AssetPanelParent {
+class AssetPanel : public AssetObjectPanelParent {
 
     friend class GroupDropTarget;
     friend class RenameDialog;

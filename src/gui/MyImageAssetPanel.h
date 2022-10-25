@@ -1,6 +1,6 @@
 extern MyMovieAssetPanel* movie_asset_panel;
 
-class MyImageAssetPanel : public MyAssetPanelParent {
+class MyImageAssetPanel : public AssetObjectPanel {
 
   protected:
     void DirtyGroups( ) { main_frame->DirtyImageGroups( ); };

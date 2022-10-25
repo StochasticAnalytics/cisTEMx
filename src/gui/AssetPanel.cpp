@@ -5,7 +5,7 @@ extern MyMainFrame* main_frame;
 extern wxTreeItemId Tree_Root;
 
 AssetPanel::AssetPanel(wxWindow* parent)
-    : AssetPanelParent(parent) {
+    : AssetObjectPanelParent(parent) {
 
     all_groups_list  = new AssetGroupList;
     selected_group   = 0;

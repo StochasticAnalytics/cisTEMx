@@ -86,9 +86,12 @@ MainFrame::MainFrame( wxWindow* parent, wxWindowID id, const wxString& title, co
 	m_menubar1->Append( FileMenu, wxT("Project") );
 
 	WorkflowMenu = new wxMenu();
+	WorkflowPharma = new wxMenuItem( WorkflowMenu, wxID_ANY, wxString( wxT("Pharma") ) , wxEmptyString, wxITEM_RADIO );
+	WorkflowMenu->Append( WorkflowPharma );
+	WorkflowPharma->Check( true );
+
 	WorkflowSingleParticle = new wxMenuItem( WorkflowMenu, wxID_ANY, wxString( wxT("Single Particle ") ) , wxEmptyString, wxITEM_RADIO );
 	WorkflowMenu->Append( WorkflowSingleParticle );
-	WorkflowSingleParticle->Check( true );
 
 	WorkflowTemplateMatching = new wxMenuItem( WorkflowMenu, wxID_ANY, wxString( wxT("Template Matching") ) , wxEmptyString, wxITEM_RADIO );
 	WorkflowMenu->Append( WorkflowTemplateMatching );
@@ -120,6 +123,7 @@ MainFrame::MainFrame( wxWindow* parent, wxWindowID id, const wxString& title, co
 	FileMenu->Bind(wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( MainFrame::OnFileOpenProject ), this, FileOpenProject->GetId());
 	FileMenu->Bind(wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( MainFrame::OnFileCloseProject ), this, FileCloseProject->GetId());
 	FileMenu->Bind(wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( MainFrame::OnFileExit ), this, FileExit->GetId());
+	WorkflowMenu->Bind(wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( MainFrame::OnPharmaWorkflow ), this, WorkflowPharma->GetId());
 	WorkflowMenu->Bind(wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( MainFrame::OnSingleParticleWorkflow ), this, WorkflowSingleParticle->GetId());
 	WorkflowMenu->Bind(wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( MainFrame::OnTemplateMatchingWorkflow ), this, WorkflowTemplateMatching->GetId());
 	HelpMenu->Bind(wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( MainFrame::OnHelpLaunch ), this, OnlineHelpLaunch->GetId());

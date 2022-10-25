@@ -99,7 +99,7 @@ void PickingBitmapPanel::Clear( ) {
 }
 
 void PickingBitmapPanel::EmptyHistoryOfParticleCoordinates( ) {
-    extern MyPickingResultsPanel* picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
 
     for ( size_t counter = 0; counter < particle_coordinates_in_angstroms_history.GetCount( ); counter++ ) {
         particle_coordinates_in_angstroms_history.Item(counter).Empty( );
@@ -121,7 +121,7 @@ void PickingBitmapPanel::ResetHistory( ) {
 }
 
 void PickingBitmapPanel::SetParticleCoordinatesAndRadius(const ArrayOfParticlePositionAssets& array_of_assets, const float wanted_radius_in_angstroms) {
-    extern MyPickingResultsPanel* picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
 
     particle_coordinates_in_angstroms                       = array_of_assets;
     radius_of_circles_around_particles_in_angstroms         = wanted_radius_in_angstroms;
@@ -132,7 +132,7 @@ void PickingBitmapPanel::SetParticleCoordinatesAndRadius(const ArrayOfParticlePo
 }
 
 int PickingBitmapPanel::RemoveParticleCoordinatesWithinRectangleOrNearClickedPoint( ) {
-    extern MyPickingResultsPanel* picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
     Freeze( );
     SetCurrentAsLastStepInHistoryOfParticleCoordinates( );
     int number_of_removed_particles = 0;
@@ -184,7 +184,7 @@ bool PickingBitmapPanel::ParticleCoordinatesAreNearClickedPoint(const ParticlePo
 }
 
 void PickingBitmapPanel::SetCurrentAsLastStepInHistoryOfParticleCoordinates( ) {
-    extern MyPickingResultsPanel* picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
     if ( current_step_in_history < particle_coordinates_in_angstroms_history.GetCount( ) - 1 ) {
         particle_coordinates_in_angstroms_history.RemoveAt(current_step_in_history + 1, particle_coordinates_in_angstroms_history.GetCount( ) - current_step_in_history - 1);
     }
@@ -193,7 +193,7 @@ void PickingBitmapPanel::SetCurrentAsLastStepInHistoryOfParticleCoordinates( ) {
 }
 
 void PickingBitmapPanel::StepForwardInHistoryOfParticleCoordinates( ) {
-    extern MyPickingResultsPanel* picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
     current_step_in_history++;
     particle_coordinates_in_angstroms = particle_coordinates_in_angstroms_history.Item(current_step_in_history);
     if ( current_step_in_history == particle_coordinates_in_angstroms_history.GetCount( ) - 1 ) {
@@ -206,7 +206,7 @@ void PickingBitmapPanel::StepForwardInHistoryOfParticleCoordinates( ) {
 }
 
 void PickingBitmapPanel::StepBackwardInHistoryOfParticleCoordinates( ) {
-    extern MyPickingResultsPanel* picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
     MyDebugAssertTrue(current_step_in_history > 0, "Ooops, cannot step back in history when at step %i\n", current_step_in_history);
     current_step_in_history--;
     particle_coordinates_in_angstroms = particle_coordinates_in_angstroms_history.Item(current_step_in_history);
@@ -484,7 +484,7 @@ void PickingBitmapPanel::OnLeftDown(wxMouseEvent& event) {
  */
 
 void PickingBitmapPanel::OnLeftUp(wxMouseEvent& event) {
-    extern MyPickingResultsPanel* picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
 
     if ( should_show == true ) {
         if ( doing_shift_delete == true ) {

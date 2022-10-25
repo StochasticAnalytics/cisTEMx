@@ -1,7 +1,7 @@
-class MyPickingResultsPanel : public PickingResultsPanel {
+class post_PickingResultsPanel : public post_PickingResultsPanelParent {
   public:
-    MyPickingResultsPanel(wxWindow* parent);
-    ~MyPickingResultsPanel( );
+    post_PickingResultsPanel(wxWindow* parent);
+    ~post_PickingResultsPanel( );
 
     void OnProjectOpen( );
     void OnProjectClose( );
@@ -44,5 +44,5 @@ class MyPickingResultsPanel : public PickingResultsPanel {
 
     wxString current_fill_command;
 
-    const char* Type( ) const { return "MyPickingResultsPanel"; };
+    const char* Type( ) const { return "post_PickingResultsPanel"; };
 };

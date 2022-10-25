@@ -8,10 +8,10 @@ extern MyFindParticlesPanel*         findparticles_panel;
 
 static inline void OnHeaderClick( ) { return; }
 
-MyPickingResultsPanel::MyPickingResultsPanel(wxWindow* parent)
-    : PickingResultsPanel(parent) {
+post_PickingResultsPanel::post_PickingResultsPanel(wxWindow* parent)
+    : post_PickingResultsPanelParent(parent) {
 
-    Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, wxDataViewEventHandler(MyPickingResultsPanel::OnValueChanged), this);
+    Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, wxDataViewEventHandler(post_PickingResultsPanel::OnValueChanged), this);
 
     picking_job_ids        = NULL;
     number_of_picking_jobs = 0;
@@ -29,17 +29,17 @@ MyPickingResultsPanel::MyPickingResultsPanel(wxWindow* parent)
 
     FillGroupComboBox( );
 
-    Bind(wxEVT_CHAR_HOOK, &MyPickingResultsPanel::OnCharHook, this);
+    Bind(wxEVT_CHAR_HOOK, &post_PickingResultsPanel::OnCharHook, this);
     ResultDataView->my_parents_name        = "Picking Results";
     ResultDataView->OnHeaderClickInterrupt = &OnHeaderClick;
 }
 
-MyPickingResultsPanel::~MyPickingResultsPanel( ) {
+post_PickingResultsPanel::~post_PickingResultsPanel( ) {
     // The destrictor is called when the application is closed, so we need to make sure we've saved any manual edits to the database
     UpdateResultsFromBitmapPanel( );
 }
 
-void MyPickingResultsPanel::OnCharHook(wxKeyEvent& event) {
+void post_PickingResultsPanel::OnCharHook(wxKeyEvent& event) {
     if ( event.GetUnicodeKey( ) == 'N' ) {
         ResultDataView->NextEye( );
     }
@@ -50,20 +50,20 @@ void MyPickingResultsPanel::OnCharHook(wxKeyEvent& event) {
         event.Skip( );
 }
 
-void MyPickingResultsPanel::OnProjectOpen( ) {
+void post_PickingResultsPanel::OnProjectOpen( ) {
     FillBasedOnSelectCommand("SELECT DISTINCT PARENT_IMAGE_ASSET_ID FROM PARTICLE_PICKING_LIST");
 }
 
-void MyPickingResultsPanel::OnProjectClose( ) {
+void post_PickingResultsPanel::OnProjectClose( ) {
     UpdateResultsFromBitmapPanel( );
     Clear( );
 }
 
-void MyPickingResultsPanel::FillGroupComboBox( ) {
+void post_PickingResultsPanel::FillGroupComboBox( ) {
     GroupComboBox->FillWithImageGroups(false);
 }
 
-void MyPickingResultsPanel::OnUpdateUI(wxUpdateUIEvent& event) {
+void post_PickingResultsPanel::OnUpdateUI(wxUpdateUIEvent& event) {
     if ( ! main_frame->current_project.is_open ) {
         Enable(false);
     }
@@ -93,18 +93,18 @@ void MyPickingResultsPanel::OnUpdateUI(wxUpdateUIEvent& event) {
     }
 }
 
-void MyPickingResultsPanel::OnAllMoviesSelect(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnAllMoviesSelect(wxCommandEvent& event) {
     MyDebugAssertTrue(false, "to be written");
     FillBasedOnSelectCommand("SELECT DISTINCT IMAGE_ASSET_ID FROM ESTIMATED_CTF_PARAMETERS");
 }
 
-void MyPickingResultsPanel::OnByFilterSelect(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnByFilterSelect(wxCommandEvent& event) {
     if ( GetFilter( ) == wxID_CANCEL ) {
         AllImagesButton->SetValue(true);
     }
 }
 
-int MyPickingResultsPanel::GetFilter( ) {
+int post_PickingResultsPanel::GetFilter( ) {
     MyDebugAssertTrue(false, "to be written");
     /*
 	MyPickingFilterDialog *filter_dialog = new MyPickingFilterDialog(this);
@@ -128,7 +128,7 @@ int MyPickingResultsPanel::GetFilter( ) {
     return -1;
 }
 
-void MyPickingResultsPanel::FillBasedOnSelectCommand(wxString wanted_command) {
+void post_PickingResultsPanel::FillBasedOnSelectCommand(wxString wanted_command) {
     wxVector<wxVariant> data;
     wxVariant           temp_variant;
     long                asset_counter;
@@ -325,7 +325,7 @@ void MyPickingResultsPanel::FillBasedOnSelectCommand(wxString wanted_command) {
     Thaw( );
 }
 
-int MyPickingResultsPanel::ReturnRowFromAssetID(int asset_id, int start_location) {
+int post_PickingResultsPanel::ReturnRowFromAssetID(int asset_id, int start_location) {
     int counter;
 
     for ( counter = start_location; counter < number_of_assets; counter++ ) {
@@ -343,12 +343,12 @@ int MyPickingResultsPanel::ReturnRowFromAssetID(int asset_id, int start_location
     return -1;
 }
 
-void MyPickingResultsPanel::UpdateResultsFromBitmapPanel( ) {
+void post_PickingResultsPanel::UpdateResultsFromBitmapPanel( ) {
     UpdateResultsFromBitmapPanel(ResultDataView->ReturnEyeRow( ), ResultDataView->ReturnEyeColumn( ));
 }
 
 // Grab the set of coordinates from the bitmap panel and send them to the database (if the user changed them with the bitmap panel)
-void MyPickingResultsPanel::UpdateResultsFromBitmapPanel(const int row, const int column) {
+void post_PickingResultsPanel::UpdateResultsFromBitmapPanel(const int row, const int column) {
 
     // Work out whether the user changed anything in the Bitmap panel since we last saved
     if ( ResultDisplayPanel->PickingResultsImagePanel->UserHasEditedParticleCoordinates( ) ) {
@@ -407,7 +407,7 @@ void MyPickingResultsPanel::UpdateResultsFromBitmapPanel(const int row, const in
     }
 }
 
-void MyPickingResultsPanel::FillResultsPanelAndDetails(int row, int column) {
+void post_PickingResultsPanel::FillResultsPanelAndDetails(int row, int column) {
     bool should_continue;
 
     // get the correct result from the database..
@@ -536,14 +536,14 @@ void MyPickingResultsPanel::FillResultsPanelAndDetails(int row, int column) {
     RightPanel->Layout( );
 }
 
-bool MyPickingResultsPanel::CheckBoxIsChecked(const int row, const int column) {
+bool post_PickingResultsPanel::CheckBoxIsChecked(const int row, const int column) {
     wxVariant temp_variant;
     ResultDataView->GetValue(temp_variant, row, column);
     long value = temp_variant.GetLong( );
     return value == CHECKED_WITH_EYE || value == CHECKED;
 }
 
-void MyPickingResultsPanel::OnValueChanged(wxDataViewEvent& event) {
+void post_PickingResultsPanel::OnValueChanged(wxDataViewEvent& event) {
 
     if ( ! doing_panel_fill ) {
         wxDataViewItem current_item = event.GetItem( );
@@ -589,15 +589,15 @@ void MyPickingResultsPanel::OnValueChanged(wxDataViewEvent& event) {
     }
 }
 
-void MyPickingResultsPanel::OnNextButtonClick(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnNextButtonClick(wxCommandEvent& event) {
     ResultDataView->NextEye( );
 }
 
-void MyPickingResultsPanel::OnPreviousButtonClick(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnPreviousButtonClick(wxCommandEvent& event) {
     ResultDataView->PreviousEye( );
 }
 
-void MyPickingResultsPanel::Clear( ) {
+void post_PickingResultsPanel::Clear( ) {
     selected_row    = -1;
     selected_column = -1;
 
@@ -609,7 +609,7 @@ void MyPickingResultsPanel::Clear( ) {
     //PickingResultsImagePanel->Clear();
 }
 
-void MyPickingResultsPanel::OnJobDetailsToggle(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnJobDetailsToggle(wxCommandEvent& event) {
     Freeze( );
 
     if ( JobDetailsToggleButton->GetValue( ) == true ) {
@@ -623,14 +623,14 @@ void MyPickingResultsPanel::OnJobDetailsToggle(wxCommandEvent& event) {
     Thaw( );
 }
 
-void MyPickingResultsPanel::OnAddToGroupClick(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnAddToGroupClick(wxCommandEvent& event) {
     image_asset_panel->AddArrayItemToGroup(GroupComboBox->GetSelection( ) + 1, per_row_array_position[selected_row]);
 }
 
-void MyPickingResultsPanel::OnRemoveFromGroupClick(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnRemoveFromGroupClick(wxCommandEvent& event) {
     image_asset_panel->DeleteArrayItemFromGroup(GroupComboBox->GetSelection( ) + 1, per_row_array_position[selected_row]);
 }
 
-void MyPickingResultsPanel::OnDefineFilterClick(wxCommandEvent& event) {
+void post_PickingResultsPanel::OnDefineFilterClick(wxCommandEvent& event) {
     GetFilter( );
 }

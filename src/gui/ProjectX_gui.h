@@ -982,9 +982,9 @@ class MatchTemplateResultsPanelParent : public wxPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class PickingResultsPanel
+/// Class post_PickingResultsPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class PickingResultsPanel : public wxPanel
+class post_PickingResultsPanelParent : public wxPanel
 {
 	private:
 
@@ -1050,14 +1050,14 @@ class PickingResultsPanel : public wxPanel
 	public:
 		live_PickingResultsPanel* ResultDisplayPanel;
 
-		PickingResultsPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1309,557 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		post_PickingResultsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 1309,557 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~PickingResultsPanel();
+		~post_PickingResultsPanelParent();
 
 		void m_splitter4OnIdle( wxIdleEvent& )
 		{
 			m_splitter4->SetSashPosition( 450 );
-			m_splitter4->Disconnect( wxEVT_IDLE, wxIdleEventHandler( PickingResultsPanel::m_splitter4OnIdle ), NULL, this );
+			m_splitter4->Disconnect( wxEVT_IDLE, wxIdleEventHandler( post_PickingResultsPanelParent::m_splitter4OnIdle ), NULL, this );
 		}
 
 };

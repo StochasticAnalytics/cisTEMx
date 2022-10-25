@@ -7,7 +7,7 @@ extern MyRunProfilesPanel*           run_profiles_panel;
 extern MyMainFrame*                  main_frame;
 extern MyFindCTFResultsPanel*        ctf_results_panel;
 extern MyParticlePositionAssetPanel* particle_position_asset_panel;
-extern MyPickingResultsPanel*        picking_results_panel;
+extern post_PickingResultsPanel*     picking_results_panel;
 
 MyFindParticlesPanel::MyFindParticlesPanel(wxWindow* parent)
     : FindParticlesPanel(parent) {

@@ -11,7 +11,7 @@ MyResultsPanel::MyResultsPanel(wxWindow* parent, wxWindowID id, const wxPoint& p
 void MyResultsPanel::OnResultsBookPageChanged(wxBookCtrlEvent& event) {
     extern MyMovieAlignResultsPanel* movie_results_panel;
     extern MyFindCTFResultsPanel*    ctf_results_panel;
-    extern MyPickingResultsPanel*    picking_results_panel;
+    extern post_PickingResultsPanel* picking_results_panel;
     extern Refine2DResultsPanel*     refine2d_results_panel;
     extern MyRefinementResultsPanel* refinement_results_panel;
 

@@ -91,7 +91,7 @@
 #include "../gui/ActionsPanelTm.h"
 #include "../gui/MyAssetsPanel.h"
 #include "../gui/MySettingsPanel.h"
-#include "../gui/PickingResultsPanel.h"
+#include "../gui/post_PickingResultsPanel.h"
 #include "../gui/MyParticlePositionExportDialog.h"
 #include "../gui/MyFrealignExportDialog.h"
 #include "../gui/MyRelionExportDialog.h"

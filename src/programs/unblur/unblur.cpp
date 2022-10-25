@@ -13,7 +13,6 @@
 #ifdef CISTEM_PROFILING
 using namespace cistem_timer;
 #else
-#define PRINT_VERBOSE
 using namespace cistem_timer_noop;
 #endif
 

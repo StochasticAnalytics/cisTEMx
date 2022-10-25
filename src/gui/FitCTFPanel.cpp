@@ -7,8 +7,8 @@ extern MyRunProfilesPanel*    run_profiles_panel;
 extern MyMainFrame*           main_frame;
 extern MyFindCTFResultsPanel* ctf_results_panel;
 
-MyFindCTFPanel::MyFindCTFPanel(wxWindow* parent)
-    : FindCTFPanel(parent) {
+FitCTFPanel::FitCTFPanel(wxWindow* parent)
+    : FitCTFPanelParent(parent) {
     // Set variables
 
     buffered_results = NULL;
@@ -50,7 +50,7 @@ MyFindCTFPanel::MyFindCTFPanel(wxWindow* parent)
     time_of_last_result_update = time(NULL);
 }
 
-void MyFindCTFPanel::EnableMovieProcessingIfAppropriate( ) {
+void FitCTFPanel::EnableMovieProcessingIfAppropriate( ) {
     // Check whether all members of the group have movie parents. If not, make sure we only allow image processing
     MovieRadioButton->Enable(true);
     NoMovieFramesStaticText->Enable(true);
@@ -73,7 +73,7 @@ void MyFindCTFPanel::EnableMovieProcessingIfAppropriate( ) {
     ImageRadioButton->SetValue(true);
 }
 
-void MyFindCTFPanel::OnInfoURL(wxTextUrlEvent& event) {
+void FitCTFPanel::OnInfoURL(wxTextUrlEvent& event) {
     const wxMouseEvent& ev = event.GetMouseEvent( );
 
     // filter out mouse moves, too many of them
@@ -91,7 +91,7 @@ void MyFindCTFPanel::OnInfoURL(wxTextUrlEvent& event) {
     wxLaunchDefaultBrowser(my_style.GetURL( ));
 }
 
-void MyFindCTFPanel::Reset( ) {
+void FitCTFPanel::Reset( ) {
     ProgressBar->SetValue(0);
     TimeRemainingText->SetLabel("Time Remaining : ???h:??m:??s");
     CancelAlignmentButton->Show(true);
@@ -126,7 +126,7 @@ void MyFindCTFPanel::Reset( ) {
     Layout( );
 }
 
-void MyFindCTFPanel::ResetDefaults( ) {
+void FitCTFPanel::ResetDefaults( ) {
 
     MovieRadioButton->SetValue(false);
     SearchTiltNoRadio->SetValue(true);
@@ -147,7 +147,7 @@ void MyFindCTFPanel::ResetDefaults( ) {
     PhaseShiftStepNumericCtrl->ChangeValueFloat(10.0f);
 }
 
-void MyFindCTFPanel::SetInfo( ) {
+void FitCTFPanel::SetInfo( ) {
 #include "icons/ctffind_definitions.cpp"
 #include "icons/ctffind_diagnostic_image.cpp"
 #include "icons/ctffind_example_1dfit.cpp"
@@ -369,15 +369,15 @@ void MyFindCTFPanel::SetInfo( ) {
     InfoText->EndSuppressUndo( );
 }
 
-void MyFindCTFPanel::FillGroupComboBox( ) {
+void FitCTFPanel::FillGroupComboBox( ) {
     GroupComboBox->FillComboBox(true);
 }
 
-void MyFindCTFPanel::FillRunProfileComboBox( ) {
+void FitCTFPanel::FillRunProfileComboBox( ) {
     RunProfileComboBox->FillWithRunProfiles( );
 }
 
-void MyFindCTFPanel::OnUpdateUI(wxUpdateUIEvent& event) {
+void FitCTFPanel::OnUpdateUI(wxUpdateUIEvent& event) {
     // are there enough members in the selected group.
     if ( main_frame->current_project.is_open == false ) {
         RunProfileComboBox->Enable(false);
@@ -425,21 +425,21 @@ void MyFindCTFPanel::OnUpdateUI(wxUpdateUIEvent& event) {
     }
 }
 
-void MyFindCTFPanel::OnMovieRadioButton(wxCommandEvent& event) {
+void FitCTFPanel::OnMovieRadioButton(wxCommandEvent& event) {
     Freeze( );
     NoFramesToAverageSpinCtrl->Enable(true);
     NoMovieFramesStaticText->Enable(true);
     Thaw( );
 }
 
-void MyFindCTFPanel::OnImageRadioButton(wxCommandEvent& event) {
+void FitCTFPanel::OnImageRadioButton(wxCommandEvent& event) {
     Freeze( );
     NoFramesToAverageSpinCtrl->Enable(false);
     NoMovieFramesStaticText->Enable(false);
     Thaw( );
 }
 
-void MyFindCTFPanel::OnFindAdditionalPhaseCheckBox(wxCommandEvent& event) {
+void FitCTFPanel::OnFindAdditionalPhaseCheckBox(wxCommandEvent& event) {
     if ( AdditionalPhaseShiftCheckBox->IsChecked( ) == true ) {
         Freeze( );
         MaxPhaseShiftNumericCtrl->Enable(true);
@@ -462,7 +462,7 @@ void MyFindCTFPanel::OnFindAdditionalPhaseCheckBox(wxCommandEvent& event) {
     }
 }
 
-void MyFindCTFPanel::OnRestrainAstigmatismCheckBox(wxCommandEvent& event) {
+void FitCTFPanel::OnRestrainAstigmatismCheckBox(wxCommandEvent& event) {
     if ( RestrainAstigmatismCheckBox->IsChecked( ) == true ) {
         Freeze( );
         ToleratedAstigmatismNumericCtrl->Enable(true);
@@ -477,7 +477,7 @@ void MyFindCTFPanel::OnRestrainAstigmatismCheckBox(wxCommandEvent& event) {
     }
 }
 
-void MyFindCTFPanel::OnExpertOptionsToggle(wxCommandEvent& event) {
+void FitCTFPanel::OnExpertOptionsToggle(wxCommandEvent& event) {
 
     if ( ExpertToggleButton->GetValue( ) == true ) {
         ExpertPanel->Show(true);
@@ -489,7 +489,7 @@ void MyFindCTFPanel::OnExpertOptionsToggle(wxCommandEvent& event) {
     }
 }
 
-void MyFindCTFPanel::StartEstimationClick(wxCommandEvent& event) {
+void FitCTFPanel::StartEstimationClick(wxCommandEvent& event) {
 
     MyDebugAssertTrue(buffered_results == NULL, "Error: buffered results not null")
 
@@ -827,7 +827,7 @@ void MyFindCTFPanel::StartEstimationClick(wxCommandEvent& event) {
     ProgressBar->Pulse( );
 }
 
-void MyFindCTFPanel::FinishButtonClick(wxCommandEvent& event) {
+void FitCTFPanel::FinishButtonClick(wxCommandEvent& event) {
     ProgressBar->SetValue(0);
     TimeRemainingText->SetLabel("Time Remaining : ???h:??m:??s");
     CancelAlignmentButton->Show(true);
@@ -852,7 +852,7 @@ void MyFindCTFPanel::FinishButtonClick(wxCommandEvent& event) {
     CTFResultsPanel->CTF2DResultsPanel->Refresh( );
 }
 
-void MyFindCTFPanel::TerminateButtonClick(wxCommandEvent& event) {
+void FitCTFPanel::TerminateButtonClick(wxCommandEvent& event) {
     // kill the job, this will kill the socket to terminate downstream processes
     // - this will have to be improved when clever network failure is incorporated
 
@@ -884,7 +884,7 @@ void MyAlignMoviesPanel::Refresh()
 
 
 */
-void MyFindCTFPanel::WriteInfoText(wxString text_to_write) {
+void FitCTFPanel::WriteInfoText(wxString text_to_write) {
     output_textctrl->SetDefaultStyle(wxTextAttr(*wxBLACK));
     output_textctrl->AppendText(text_to_write);
 
@@ -892,7 +892,7 @@ void MyFindCTFPanel::WriteInfoText(wxString text_to_write) {
         output_textctrl->AppendText("\n");
 }
 
-void MyFindCTFPanel::WriteErrorText(wxString text_to_write) {
+void FitCTFPanel::WriteErrorText(wxString text_to_write) {
     output_textctrl->SetDefaultStyle(wxTextAttr(*wxRED));
     output_textctrl->AppendText(text_to_write);
 
@@ -900,25 +900,25 @@ void MyFindCTFPanel::WriteErrorText(wxString text_to_write) {
         output_textctrl->AppendText("\n");
 }
 
-void MyFindCTFPanel::OnSocketJobResultMsg(JobResult& received_result) {
+void FitCTFPanel::OnSocketJobResultMsg(JobResult& received_result) {
     if ( received_result.result_size > 0 ) {
         ProcessResult(&received_result);
     }
 }
 
-void MyFindCTFPanel::SetNumberConnectedText(wxString wanted_text) {
+void FitCTFPanel::SetNumberConnectedText(wxString wanted_text) {
     NumberConnectedText->SetLabel(wanted_text);
 }
 
-void MyFindCTFPanel::SetTimeRemainingText(wxString wanted_text) {
+void FitCTFPanel::SetTimeRemainingText(wxString wanted_text) {
     TimeRemainingText->SetLabel(wanted_text);
 }
 
-void MyFindCTFPanel::OnSocketAllJobsFinished( ) {
+void FitCTFPanel::OnSocketAllJobsFinished( ) {
     ProcessAllJobsFinished( );
 }
 
-void MyFindCTFPanel::ProcessResult(JobResult* result_to_process) // this will have to be overidden in the parent clas when i make it.
+void FitCTFPanel::ProcessResult(JobResult* result_to_process) // this will have to be overidden in the parent clas when i make it.
 {
 
     long     current_time = time(NULL);
@@ -952,7 +952,7 @@ void MyFindCTFPanel::ProcessResult(JobResult* result_to_process) // this will ha
     buffered_results[result_to_process->job_number] = result_to_process;
 }
 
-void MyFindCTFPanel::ProcessAllJobsFinished( ) {
+void FitCTFPanel::ProcessAllJobsFinished( ) {
     MyDebugAssertTrue(my_job_tracker.total_number_of_finished_jobs == my_job_tracker.total_number_of_jobs, "In ProcessAllJobsFinished, but total_number_of_finished_jobs != total_number_of_jobs. Oops.");
 
     // Update the GUI with project timings
@@ -982,7 +982,7 @@ void MyFindCTFPanel::ProcessAllJobsFinished( ) {
     ProgressPanel->Layout( );
 }
 
-void MyFindCTFPanel::WriteResultToDataBase( ) {
+void FitCTFPanel::WriteResultToDataBase( ) {
 
     long     counter;
     int      frame_counter;
@@ -1159,7 +1159,7 @@ void MyFindCTFPanel::WriteResultToDataBase( ) {
     ctf_results_panel->is_dirty = true;
 }
 
-void MyFindCTFPanel::UpdateProgressBar( ) {
+void FitCTFPanel::UpdateProgressBar( ) {
     ProgressBar->SetValue(my_job_tracker.ReturnPercentCompleted( ));
     TimeRemainingText->SetLabel(my_job_tracker.ReturnRemainingTime( ).Format("Time Remaining : %Hh:%Mm:%Ss"));
 }

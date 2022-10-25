@@ -17,7 +17,7 @@ IMPLEMENT_APP(MyGuiApp)
 MyMainFrame* main_frame;
 
 MyAlignMoviesPanel*   align_movies_panel;
-MyFindCTFPanel*       findctf_panel;
+FitCTFPanel*          fitctf_panel;
 MyFindParticlesPanel* findparticles_panel;
 MyRefine2DPanel*      classification_panel;
 AbInitio3DPanel*      ab_initio_3d_panel;
@@ -151,7 +151,7 @@ bool MyGuiApp::OnInit( ) {
 #endif
     refinement_package_asset_panel = new MyRefinementPackageAssetPanel(assets_panel->AssetsBook);
     align_movies_panel             = new MyAlignMoviesPanel(actions_panel_spa->ActionsBook);
-    findctf_panel                  = new MyFindCTFPanel(actions_panel_spa->ActionsBook);
+    fitctf_panel                  = new FitCTFPanel(actions_panel_spa->ActionsBook);
     findparticles_panel            = new MyFindParticlesPanel(actions_panel_spa->ActionsBook);
     classification_panel           = new MyRefine2DPanel(actions_panel_spa->ActionsBook);
     ab_initio_3d_panel             = new AbInitio3DPanel(actions_panel_spa->ActionsBook);
@@ -313,7 +313,7 @@ bool MyGuiApp::OnInit( ) {
 #endif
 
     actions_panel_spa->ActionsBook->AddPage(align_movies_panel, "Align Movies", true, 0);
-    actions_panel_spa->ActionsBook->AddPage(findctf_panel, "Find CTF", false, 1);
+    actions_panel_spa->ActionsBook->AddPage(fitctf_panel, "Find CTF", false, 1);
     actions_panel_spa->ActionsBook->AddPage(findparticles_panel, "Find Particles", false, 2);
     actions_panel_spa->ActionsBook->AddPage(classification_panel, "2D Classify", false, 3);
     actions_panel_spa->ActionsBook->AddPage(ab_initio_3d_panel, "Ab-Initio 3D", false, 4);
@@ -324,7 +324,7 @@ bool MyGuiApp::OnInit( ) {
     actions_panel_spa->ActionsBook->AddPage(sharpen_3d_panel, "Sharpen 3D", false, 9);
 
     actions_panel_tm->ActionsBook->AddPage(align_movies_panel, "Align Movies", true, 0);
-    actions_panel_tm->ActionsBook->AddPage(findctf_panel, "Find CTF", false, 1);
+    actions_panel_tm->ActionsBook->AddPage(fitctf_panel, "Find CTF", false, 1);
     actions_panel_tm->ActionsBook->AddPage(match_template_panel, "Match Templates", false, 2);
     actions_panel_tm->ActionsBook->AddPage(refine_template_panel, "Refine Template", false, 3);
     actions_panel_tm->ActionsBook->AddPage(match_template_results_panel, "MT Results", false, 2);

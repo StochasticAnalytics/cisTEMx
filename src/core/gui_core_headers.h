@@ -75,7 +75,7 @@
 #include "../gui/AlignMoviesPanel.h"
 #include "../gui/ShowCTFResultsPanel.h"
 #include "../gui/ShowTemplateMatchResultsPanel.h"
-#include "../gui/FindCTFPanel.h"
+#include "../gui/FitCTFPanel.h"
 #include "../gui/FindParticlesPanel.h"
 #include "../gui/post_MovieAlignResultsPanel.h"
 #include "../gui/MyFindCTFResultsPanel.h"

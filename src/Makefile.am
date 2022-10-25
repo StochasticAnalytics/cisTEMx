@@ -82,7 +82,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MyMovieFilterDialog.h \
                  gui/MyImageImportDialog.h \
                  gui/ShowCTFResultsPanel.h \
-                 gui/FindCTFPanel.h \
+                 gui/FitCTFPanel.h \
                  gui/FindParticlesPanel.h \
                  gui/post_MovieAlignResultsPanel.h \
                  gui/MyFindCTFResultsPanel.h \
@@ -623,7 +623,7 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/ShowCTFResultsPanel.cpp                         \
                     gui/live_PickingResultsPanel.cpp                  \
                     gui/CTF1DPanel.cpp                                  \
-                    gui/FindCTFPanel.cpp                                \
+                    gui/FitCTFPanel.cpp                                \
                     gui/FindParticlesPanel.cpp                          \
                     gui/MyVolumeAssetPanel.cpp                          \
                     gui/MyResultsPanel.cpp                              \

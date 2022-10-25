@@ -24,7 +24,7 @@ extern ActionsPanelSpa* actions_panel_spa;
 extern ActionsPanelTm*  actions_panel_tm;
 
 extern MyAlignMoviesPanel*   align_movies_panel;
-extern MyFindCTFPanel*       findctf_panel;
+extern FitCTFPanel*          fitctf_panel;
 extern MyFindParticlesPanel* findparticles_panel;
 extern MyRefine2DPanel*      classification_panel;
 extern MyRefine3DPanel*      refine_3d_panel;
@@ -223,7 +223,7 @@ void MyMainFrame::ResetAllPanels( ) {
     refinement_results_panel->Clear( );
 
     align_movies_panel->Reset( );
-    findctf_panel->Reset( );
+    fitctf_panel->Reset( );
     findparticles_panel->Reset( );
     classification_panel->Reset( );
     ab_initio_3d_panel->Reset( );
@@ -284,7 +284,7 @@ void MyMainFrame::DirtyMovieGroups( ) {
 
 void MyMainFrame::DirtyImageGroups( ) {
     image_asset_panel->is_dirty                 = true;
-    findctf_panel->group_combo_is_dirty         = true;
+    fitctf_panel->group_combo_is_dirty          = true;
     ctf_results_panel->group_combo_is_dirty     = true;
     findparticles_panel->group_combo_is_dirty   = true;
     picking_results_panel->group_combo_is_dirty = true;
@@ -330,7 +330,7 @@ void MyMainFrame::DirtyClassificationSelections( ) {
 void MyMainFrame::DirtyRunProfiles( ) {
     run_profiles_panel->is_dirty                 = true;
     align_movies_panel->run_profiles_are_dirty   = true;
-    findctf_panel->run_profiles_are_dirty        = true;
+    fitctf_panel->run_profiles_are_dirty         = true;
     findparticles_panel->run_profiles_are_dirty  = true;
     classification_panel->run_profiles_are_dirty = true;
     refine_3d_panel->run_profiles_are_dirty      = true;
@@ -878,7 +878,7 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
     // Set the parent to the output frame. These are the panels that are shared between the SPA and TM actions workflows
     // TODO: It would be nice to have a header that defines what panels belong to which workflows and use that rather than setting manually here.
     align_movies_panel->Reparent(output_frame->ActionsBook);
-    findctf_panel->Reparent(output_frame->ActionsBook);
+    fitctf_panel->Reparent(output_frame->ActionsBook);
     generate_3d_panel->Reparent(output_frame->ActionsBook);
     sharpen_3d_panel->Reparent(output_frame->ActionsBook);
 

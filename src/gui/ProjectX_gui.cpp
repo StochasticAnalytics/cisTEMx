@@ -3203,7 +3203,7 @@ ActionsPanelParent::~ActionsPanelParent()
 
 }
 
-SettingsPanel::SettingsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
+SettingsPanelParent::SettingsPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
 	wxBoxSizer* bSizer12;
 	bSizer12 = new wxBoxSizer( wxHORIZONTAL );
@@ -3229,17 +3229,17 @@ SettingsPanel::SettingsPanel( wxWindow* parent, wxWindowID id, const wxPoint& po
 	this->Layout();
 
 	// Connect Events
-	SettingsBook->Connect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( SettingsPanel::OnSettingsBookPageChanged ), NULL, this );
+	SettingsBook->Connect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( SettingsPanelParent::OnSettingsBookPageChanged ), NULL, this );
 }
 
-SettingsPanel::~SettingsPanel()
+SettingsPanelParent::~SettingsPanelParent()
 {
 	// Disconnect Events
-	SettingsBook->Disconnect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( SettingsPanel::OnSettingsBookPageChanged ), NULL, this );
+	SettingsBook->Disconnect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( SettingsPanelParent::OnSettingsBookPageChanged ), NULL, this );
 
 }
 
-ResultsPanel::ResultsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
+ResultsPanelParent::ResultsPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
 	wxBoxSizer* bSizer12;
 	bSizer12 = new wxBoxSizer( wxHORIZONTAL );
@@ -3265,13 +3265,13 @@ ResultsPanel::ResultsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos,
 	this->Layout();
 
 	// Connect Events
-	ResultsBook->Connect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( ResultsPanel::OnResultsBookPageChanged ), NULL, this );
+	ResultsBook->Connect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( ResultsPanelParent::OnResultsBookPageChanged ), NULL, this );
 }
 
-ResultsPanel::~ResultsPanel()
+ResultsPanelParent::~ResultsPanelParent()
 {
 	// Disconnect Events
-	ResultsBook->Disconnect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( ResultsPanel::OnResultsBookPageChanged ), NULL, this );
+	ResultsBook->Disconnect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( ResultsPanelParent::OnResultsBookPageChanged ), NULL, this );
 
 }
 

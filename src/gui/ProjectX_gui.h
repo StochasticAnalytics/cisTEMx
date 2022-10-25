@@ -971,9 +971,9 @@ class ActionsPanelParent : public wxPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class SettingsPanel
+/// Class SettingsPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class SettingsPanel : public wxPanel
+class SettingsPanelParent : public wxPanel
 {
 	private:
 
@@ -987,16 +987,16 @@ class SettingsPanel : public wxPanel
 	public:
 		wxListbook* SettingsBook;
 
-		SettingsPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		SettingsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~SettingsPanel();
+		~SettingsPanelParent();
 
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class ResultsPanel
+/// Class ResultsPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class ResultsPanel : public wxPanel
+class ResultsPanelParent : public wxPanel
 {
 	private:
 
@@ -1010,9 +1010,9 @@ class ResultsPanel : public wxPanel
 	public:
 		wxListbook* ResultsBook;
 
-		ResultsPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		ResultsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~ResultsPanel();
+		~ResultsPanelParent();
 
 };
 

@@ -91,11 +91,11 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MyAddRunCommandDialog.h \
                  gui/MyNewProjectWizard.h \
                  gui/MyNewRefinementPackageWizard.h \
-                 gui/MyResultsPanel.h \
+                 gui/ResultsPanel.h \
                  gui/AssetsPanel.h \
                  gui/ActionsPanelSpa.h \
                  gui/ActionsPanelTm.h \
-                 gui/MySettingsPanel.h \
+                 gui/SettingsPanel.h \
                  gui/post_PickingResultsPanel.h \
                  gui/MyParticlePositionExportDialog.h \
                  gui/MyFrealignExportDialog.h \
@@ -626,11 +626,11 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/FitCTFPanel.cpp                                \
                     gui/FindParticlesPanel.cpp                          \
                     gui/MyVolumeAssetPanel.cpp                          \
-                    gui/MyResultsPanel.cpp                              \
+                    gui/ResultsPanel.cpp                              \
                     gui/AssetsPanel.cpp                               \
                     gui/ActionsPanelSpa.cpp                             \
                     gui/ActionsPanelTm.cpp                              \
-                    gui/MySettingsPanel.cpp                             \
+                    gui/SettingsPanel.cpp                             \
                     gui/MyParticlePositionExportDialog.cpp              \
                     gui/MyFrealignExportDialog.cpp                      \
                     gui/MyRelionExportDialog.cpp                        \

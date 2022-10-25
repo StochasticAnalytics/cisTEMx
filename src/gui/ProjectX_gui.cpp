@@ -15,13 +15,13 @@
 #include "DisplayPanel.h"
 #include "DisplayRefinementResultsPanel.h"
 #include "MyFSCPanel.h"
-#include "PickingResultsDisplayPanel.h"
 #include "PlotCurvePanel.h"
 #include "PlotFSCPanel.h"
 #include "ResultsDataViewListCtrl.h"
 #include "ShowCTFResultsPanel.h"
 #include "ShowTemplateMatchResultsPanel.h"
 #include "UnblurResultsPanel.h"
+#include "live_PickingResultsPanel.h"
 #include "my_controls.h"
 
 #include "ProjectX_gui.h"
@@ -2665,7 +2665,7 @@ Refine2DResultsPanelParent::~Refine2DResultsPanelParent()
 
 }
 
-PickingResultsDisplayPanelParent::PickingResultsDisplayPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
+live_PickingResultsPanelParent::live_PickingResultsPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
 	wxBoxSizer* bSizer92;
 	bSizer92 = new wxBoxSizer( wxHORIZONTAL );
@@ -2779,29 +2779,29 @@ PickingResultsDisplayPanelParent::PickingResultsDisplayPanelParent( wxWindow* pa
 	this->Layout();
 
 	// Connect Events
-	CirclesAroundParticlesCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnCirclesAroundParticlesCheckBox ), NULL, this );
-	ScaleBarCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnScaleBarCheckBox ), NULL, this );
-	HighPassFilterCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnHighPassFilterCheckBox ), NULL, this );
-	LowPassFilterCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnLowPassFilterCheckBox ), NULL, this );
-	LowResFilterTextCtrl->Connect( wxEVT_KILL_FOCUS, wxFocusEventHandler( PickingResultsDisplayPanelParent::OnLowPassKillFocus ), NULL, this );
-	LowResFilterTextCtrl->Connect( wxEVT_COMMAND_TEXT_ENTER, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnLowPassEnter ), NULL, this );
-	WienerFilterCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnWienerFilterCheckBox ), NULL, this );
-	UndoButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnUndoButtonClick ), NULL, this );
-	RedoButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnRedoButtonClick ), NULL, this );
+	CirclesAroundParticlesCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnCirclesAroundParticlesCheckBox ), NULL, this );
+	ScaleBarCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnScaleBarCheckBox ), NULL, this );
+	HighPassFilterCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnHighPassFilterCheckBox ), NULL, this );
+	LowPassFilterCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnLowPassFilterCheckBox ), NULL, this );
+	LowResFilterTextCtrl->Connect( wxEVT_KILL_FOCUS, wxFocusEventHandler( live_PickingResultsPanelParent::OnLowPassKillFocus ), NULL, this );
+	LowResFilterTextCtrl->Connect( wxEVT_COMMAND_TEXT_ENTER, wxCommandEventHandler( live_PickingResultsPanelParent::OnLowPassEnter ), NULL, this );
+	WienerFilterCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnWienerFilterCheckBox ), NULL, this );
+	UndoButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnUndoButtonClick ), NULL, this );
+	RedoButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnRedoButtonClick ), NULL, this );
 }
 
-PickingResultsDisplayPanelParent::~PickingResultsDisplayPanelParent()
+live_PickingResultsPanelParent::~live_PickingResultsPanelParent()
 {
 	// Disconnect Events
-	CirclesAroundParticlesCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnCirclesAroundParticlesCheckBox ), NULL, this );
-	ScaleBarCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnScaleBarCheckBox ), NULL, this );
-	HighPassFilterCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnHighPassFilterCheckBox ), NULL, this );
-	LowPassFilterCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnLowPassFilterCheckBox ), NULL, this );
-	LowResFilterTextCtrl->Disconnect( wxEVT_KILL_FOCUS, wxFocusEventHandler( PickingResultsDisplayPanelParent::OnLowPassKillFocus ), NULL, this );
-	LowResFilterTextCtrl->Disconnect( wxEVT_COMMAND_TEXT_ENTER, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnLowPassEnter ), NULL, this );
-	WienerFilterCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnWienerFilterCheckBox ), NULL, this );
-	UndoButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnUndoButtonClick ), NULL, this );
-	RedoButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsDisplayPanelParent::OnRedoButtonClick ), NULL, this );
+	CirclesAroundParticlesCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnCirclesAroundParticlesCheckBox ), NULL, this );
+	ScaleBarCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnScaleBarCheckBox ), NULL, this );
+	HighPassFilterCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnHighPassFilterCheckBox ), NULL, this );
+	LowPassFilterCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnLowPassFilterCheckBox ), NULL, this );
+	LowResFilterTextCtrl->Disconnect( wxEVT_KILL_FOCUS, wxFocusEventHandler( live_PickingResultsPanelParent::OnLowPassKillFocus ), NULL, this );
+	LowResFilterTextCtrl->Disconnect( wxEVT_COMMAND_TEXT_ENTER, wxCommandEventHandler( live_PickingResultsPanelParent::OnLowPassEnter ), NULL, this );
+	WienerFilterCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnWienerFilterCheckBox ), NULL, this );
+	UndoButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnUndoButtonClick ), NULL, this );
+	RedoButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( live_PickingResultsPanelParent::OnRedoButtonClick ), NULL, this );
 
 }
 
@@ -3833,7 +3833,7 @@ PickingResultsPanel::PickingResultsPanel( wxWindow* parent, wxWindowID id, const
 
 	bSizer681->Add( gSizer5, 0, wxEXPAND, 5 );
 
-	ResultDisplayPanel = new PickingResultsDisplayPanel( RightPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	ResultDisplayPanel = new live_PickingResultsPanel( RightPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	bSizer681->Add( ResultDisplayPanel, 1, wxEXPAND | wxALL, 5 );
 
 	wxBoxSizer* bSizer69;
@@ -4744,7 +4744,7 @@ FindParticlesPanel::FindParticlesPanel( wxWindow* parent, wxWindowID id, const w
 	wxBoxSizer* bSizer215;
 	bSizer215 = new wxBoxSizer( wxVERTICAL );
 
-	PickingResultsPanel = new PickingResultsDisplayPanel( RightPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	PickingResultsPanel = new live_PickingResultsPanel( RightPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	PickingResultsPanel->Hide();
 
 	bSizer215->Add( PickingResultsPanel, 1, wxEXPAND | wxALL, 5 );

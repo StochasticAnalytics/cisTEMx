@@ -20,7 +20,7 @@
 #include "ResultsDataViewListCtrl.h"
 #include "ShowCTFResultsPanel.h"
 #include "ShowTemplateMatchResultsPanel.h"
-#include "UnblurResultsPanel.h"
+#include "live_MovieAlignResultsPanel.h"
 #include "live_PickingResultsPanel.h"
 #include "my_controls.h"
 
@@ -3107,7 +3107,7 @@ MovieAlignResultsPanel::MovieAlignResultsPanel( wxWindow* parent, wxWindowID id,
 
 	bSizer681->Add( gSizer5, 0, wxEXPAND, 5 );
 
-	ResultPanel = new UnblurResultsPanel( RightPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	ResultPanel = new live_MovieAlignResultsPanel( RightPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	bSizer681->Add( ResultPanel, 1, wxEXPAND | wxALL, 5 );
 
 	wxBoxSizer* bSizer69;
@@ -4923,7 +4923,7 @@ AlignMoviesPanel::AlignMoviesPanel( wxWindow* parent, wxWindowID id, const wxPoi
 	bSizer56->Fit( OutputTextPanel );
 	bSizer46->Add( OutputTextPanel, 20, wxEXPAND | wxALL, 5 );
 
-	GraphPanel = new UnblurResultsPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	GraphPanel = new live_MovieAlignResultsPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	GraphPanel->Hide();
 
 	bSizer46->Add( GraphPanel, 80, wxEXPAND | wxALL, 5 );
@@ -13685,20 +13685,20 @@ ErrorDialog::~ErrorDialog()
 
 }
 
-UnblurResultsPanelParent::UnblurResultsPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
+live_MovieAlignResultsPanelParent::live_MovieAlignResultsPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
 	MainSizer = new wxBoxSizer( wxHORIZONTAL );
 
 	m_splitter13 = new wxSplitterWindow( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_3D|wxSP_LIVE_UPDATE );
 	m_splitter13->SetSashGravity( 0.5 );
-	m_splitter13->Connect( wxEVT_IDLE, wxIdleEventHandler( UnblurResultsPanelParent::m_splitter13OnIdle ), NULL, this );
+	m_splitter13->Connect( wxEVT_IDLE, wxIdleEventHandler( live_MovieAlignResultsPanelParent::m_splitter13OnIdle ), NULL, this );
 
 	m_panel80 = new wxPanel( m_splitter13, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	SplitSizer = new wxBoxSizer( wxVERTICAL );
 
 	m_splitter14 = new wxSplitterWindow( m_panel80, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_3D|wxSP_LIVE_UPDATE );
 	m_splitter14->SetSashGravity( 0.5 );
-	m_splitter14->Connect( wxEVT_IDLE, wxIdleEventHandler( UnblurResultsPanelParent::m_splitter14OnIdle ), NULL, this );
+	m_splitter14->Connect( wxEVT_IDLE, wxIdleEventHandler( live_MovieAlignResultsPanelParent::m_splitter14OnIdle ), NULL, this );
 
 	m_panel82 = new wxPanel( m_splitter14, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer287;
@@ -13805,7 +13805,7 @@ UnblurResultsPanelParent::UnblurResultsPanelParent( wxWindow* parent, wxWindowID
 	this->Layout();
 }
 
-UnblurResultsPanelParent::~UnblurResultsPanelParent()
+live_MovieAlignResultsPanelParent::~live_MovieAlignResultsPanelParent()
 {
 }
 

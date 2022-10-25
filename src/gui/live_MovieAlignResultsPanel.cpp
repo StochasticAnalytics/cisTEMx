@@ -1,8 +1,8 @@
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 
-UnblurResultsPanel::UnblurResultsPanel(wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name)
-    : UnblurResultsPanelParent(parent, id, pos, size, style) {
+live_MovieAlignResultsPanel::live_MovieAlignResultsPanel(wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name)
+    : live_MovieAlignResultsPanelParent(parent, id, pos, size, style) {
     ImageDisplayPanel->Initialise(CAN_FFT | NO_NOTEBOOK | FIRST_LOCATION_ONLY | START_WITH_AUTO_CONTRAST | START_WITH_FOURIER_SCALING | DO_NOT_SHOW_STATUS_BAR);
 
     current_x_shift_vector_layer = new mpFXYVector(("X-Shift"));
@@ -68,7 +68,7 @@ UnblurResultsPanel::UnblurResultsPanel(wxWindow* parent, wxWindowID id, const wx
     //legend->Move(wxPoint(current_plot_window->GetScrX() / 2,5));
 }
 
-UnblurResultsPanel::~UnblurResultsPanel( ) {
+live_MovieAlignResultsPanel::~live_MovieAlignResultsPanel( ) {
     delete current_plot_window;
     //delete legend;
     //delete title;
@@ -78,7 +78,7 @@ UnblurResultsPanel::~UnblurResultsPanel( ) {
     //delete current_yaxis;
 }
 
-void UnblurResultsPanel::Clear( ) {
+void live_MovieAlignResultsPanel::Clear( ) {
     ClearGraph( );
     ImageDisplayPanel->Clear( );
     SpectraPanel->should_show = false;
@@ -86,7 +86,7 @@ void UnblurResultsPanel::Clear( ) {
     SpectraPanel->Refresh( );
 }
 
-void UnblurResultsPanel::ClearGraph( ) {
+void live_MovieAlignResultsPanel::ClearGraph( ) {
     current_plot_window->Freeze( );
 
     current_x_shift_vector_layer->Clear( );
@@ -105,7 +105,7 @@ void UnblurResultsPanel::ClearGraph( ) {
     current_plot_window->Thaw( );
 }
 
-void UnblurResultsPanel::Draw( ) {
+void live_MovieAlignResultsPanel::Draw( ) {
     current_plot_window->Freeze( );
     current_x_shift_vector_layer->SetData(current_accumulated_dose_data, current_x_movement_data);
     current_y_shift_vector_layer->SetData(current_accumulated_dose_data, current_y_movement_data);
@@ -129,7 +129,7 @@ void UnblurResultsPanel::Draw( ) {
     current_plot_window->Thaw( );
 }
 
-void UnblurResultsPanel::AddPoint(double dose, double x_movement, double y_movement) {
+void live_MovieAlignResultsPanel::AddPoint(double dose, double x_movement, double y_movement) {
     current_accumulated_dose_data.push_back(dose);
     current_x_movement_data.push_back(x_movement);
     current_y_movement_data.push_back(y_movement);

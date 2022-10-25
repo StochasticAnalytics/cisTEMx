@@ -72,7 +72,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/BitmapPanel.h \
                  gui/PickingBitmapPanel.h \
                  gui/my_controls.h \
-                 gui/UnblurResultsPanel.h \
+                 gui/live_MovieAlignResultsPanel.h \
                  gui/CTF1DPanel.h \
                  gui/MyAssetPanelParent.h \
                  gui/MyImageAssetPanel.h \
@@ -619,7 +619,7 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/MyAddRunCommandDialog.cpp                       \
                     gui/MyNewProjectWizard.cpp                          \
                     gui/MyNewRefinementPackageWizard.cpp                \
-                    gui/UnblurResultsPanel.cpp                          \
+                    gui/live_MovieAlignResultsPanel.cpp                          \
                     gui/ShowCTFResultsPanel.cpp                         \
                     gui/live_PickingResultsPanel.cpp                  \
                     gui/CTF1DPanel.cpp                                  \

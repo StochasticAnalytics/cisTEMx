@@ -59,7 +59,7 @@
 #include "gui_job_controller.h"
 #include "../gui/mathplot.h"
 #include "../gui/my_controls.h"
-#include "../gui/UnblurResultsPanel.h"
+#include "../gui/live_MovieAlignResultsPanel.h"
 #include "../gui/CTF1DPanel.h"
 #include "../gui/MainFrame.h"
 #include "../gui/ErrorDialog.h"

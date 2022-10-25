@@ -44,8 +44,8 @@ class RefinementPickerComboPanel;
 class ResultsDataViewListCtrl;
 class ShowCTFResultsPanel;
 class ShowTemplateMatchResultsPanel;
-class UnblurResultsPanel;
 class VolumeAssetPickerComboPanel;
+class live_MovieAlignResultsPanel;
 class live_PickingResultsPanel;
 
 #include "job_panel.h"
@@ -915,7 +915,7 @@ class MovieAlignResultsPanel : public wxPanel
 		wxStaticText* FirstFrameStaticText;
 		wxStaticText* m_staticText1053;
 		wxStaticText* LastFrameStaticText;
-		UnblurResultsPanel* ResultPanel;
+		live_MovieAlignResultsPanel* ResultPanel;
 		wxButton* DeleteFromGroupButton;
 		wxButton* AddToGroupButton;
 		MemoryComboBox* GroupComboBox;
@@ -1487,7 +1487,7 @@ class AlignMoviesPanel : public JobPanel
 		wxCheckBox* SaveScaledSumCheckbox;
 		wxPanel* OutputTextPanel;
 		wxTextCtrl* output_textctrl;
-		UnblurResultsPanel* GraphPanel;
+		live_MovieAlignResultsPanel* GraphPanel;
 		wxPanel* InfoPanel;
 		wxRichTextCtrl* InfoText;
 		wxStaticLine* m_staticline11;
@@ -3863,9 +3863,9 @@ class ErrorDialog : public wxDialog
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class UnblurResultsPanelParent
+/// Class live_MovieAlignResultsPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class UnblurResultsPanelParent : public wxPanel
+class live_MovieAlignResultsPanelParent : public wxPanel
 {
 	private:
 
@@ -3893,20 +3893,20 @@ class UnblurResultsPanelParent : public wxPanel
 		wxStaticText* FilenameStaticText;
 		DisplayPanel* ImageDisplayPanel;
 
-		UnblurResultsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 698,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		live_MovieAlignResultsPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 698,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~UnblurResultsPanelParent();
+		~live_MovieAlignResultsPanelParent();
 
 		void m_splitter13OnIdle( wxIdleEvent& )
 		{
 			m_splitter13->SetSashPosition( 542 );
-			m_splitter13->Disconnect( wxEVT_IDLE, wxIdleEventHandler( UnblurResultsPanelParent::m_splitter13OnIdle ), NULL, this );
+			m_splitter13->Disconnect( wxEVT_IDLE, wxIdleEventHandler( live_MovieAlignResultsPanelParent::m_splitter13OnIdle ), NULL, this );
 		}
 
 		void m_splitter14OnIdle( wxIdleEvent& )
 		{
 			m_splitter14->SetSashPosition( 0 );
-			m_splitter14->Disconnect( wxEVT_IDLE, wxIdleEventHandler( UnblurResultsPanelParent::m_splitter14OnIdle ), NULL, this );
+			m_splitter14->Disconnect( wxEVT_IDLE, wxIdleEventHandler( live_MovieAlignResultsPanelParent::m_splitter14OnIdle ), NULL, this );
 		}
 
 };

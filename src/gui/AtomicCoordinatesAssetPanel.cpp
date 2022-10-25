@@ -321,7 +321,7 @@ bool AtomicCoordinatesAssetPanel::IsFileAnAsset(wxFileName file_to_check) {
 }
 
 void AtomicCoordinatesAssetPanel::ImportAssetClick(wxCommandEvent& event) {
-    AtomicCoordinatesImportDialog* import_dialog = new AtomicCoordinatesImportDialog(this);
+    ImportAtomicCoordinatesDialog* import_dialog = new ImportAtomicCoordinatesDialog(this);
     import_dialog->ShowModal( );
     main_frame->DirtyAtomicCoordinates( );
 }

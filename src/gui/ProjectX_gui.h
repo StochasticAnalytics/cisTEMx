@@ -1063,9 +1063,9 @@ class ExperimentalPanel : public wxPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class OverviewPanel
+/// Class OverviewPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class OverviewPanel : public wxPanel
+class OverviewPanelParent : public wxPanel
 {
 	private:
 
@@ -1080,16 +1080,16 @@ class OverviewPanel : public wxPanel
 	public:
 		wxRichTextCtrl* InfoText;
 
-		OverviewPanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+		OverviewPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
 
-		~OverviewPanel();
+		~OverviewPanelParent();
 
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class VolumeImportDialog
+/// Class ImportVolumeDialogParent
 ///////////////////////////////////////////////////////////////////////////////
-class VolumeImportDialog : public wxDialog
+class ImportVolumeDialogParent : public wxDialog
 {
 	private:
 
@@ -1117,16 +1117,16 @@ class VolumeImportDialog : public wxDialog
 
 	public:
 
-		VolumeImportDialog( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import Images"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 484,539 ), long style = wxCLOSE_BOX );
+		ImportVolumeDialogParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import Images"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 484,539 ), long style = wxCLOSE_BOX );
 
-		~VolumeImportDialog();
+		~ImportVolumeDialogParent();
 
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class AtomicCoordinatesImportDialogParent
+/// Class ImportAtomicCoordinatesDialogParent
 ///////////////////////////////////////////////////////////////////////////////
-class AtomicCoordinatesImportDialogParent : public wxDialog
+class ImportAtomicCoordinatesDialogParent : public wxDialog
 {
 	private:
 
@@ -1150,16 +1150,16 @@ class AtomicCoordinatesImportDialogParent : public wxDialog
 
 	public:
 
-		AtomicCoordinatesImportDialogParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import PDBx/mmCIF"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 484,539 ), long style = wxCLOSE_BOX );
+		ImportAtomicCoordinatesDialogParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import PDBx/mmCIF"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 484,539 ), long style = wxCLOSE_BOX );
 
-		~AtomicCoordinatesImportDialogParent();
+		~ImportAtomicCoordinatesDialogParent();
 
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class MovieImportDialog
+/// Class ImportMovieDialogParent
 ///////////////////////////////////////////////////////////////////////////////
-class MovieImportDialog : public wxDialog
+class ImportMovieDialogParent : public wxDialog
 {
 	private:
 
@@ -1220,16 +1220,16 @@ class MovieImportDialog : public wxDialog
 
 	public:
 
-		MovieImportDialog( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import Movies"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( -1,-1 ), long style = wxCLOSE_BOX );
+		ImportMovieDialogParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import Movies"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( -1,-1 ), long style = wxCLOSE_BOX );
 
-		~MovieImportDialog();
+		~ImportMovieDialogParent();
 
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Class ImageImportDialog
+/// Class ImportImageDialogParent
 ///////////////////////////////////////////////////////////////////////////////
-class ImageImportDialog : public wxDialog
+class ImportImageDialogParent : public wxDialog
 {
 	private:
 
@@ -1264,9 +1264,9 @@ class ImageImportDialog : public wxDialog
 
 	public:
 
-		ImageImportDialog( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import Images"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 484,559 ), long style = wxCLOSE_BOX );
+		ImportImageDialogParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Import Images"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 484,559 ), long style = wxCLOSE_BOX );
 
-		~ImageImportDialog();
+		~ImportImageDialogParent();
 
 };
 

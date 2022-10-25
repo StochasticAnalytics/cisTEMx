@@ -2050,7 +2050,7 @@ void RefinementManager::ProcessJobResult(JobResult* result_to_process) {
 void RefinementManager::ProcessAllJobsFinished( ) {
 
     // Update the GUI with project timings
-    extern MyOverviewPanel* overview_panel;
+    extern OverviewPanel* overview_panel;
     overview_panel->SetProjectInfo( );
 
     if ( running_job_type == REFINEMENT ) {

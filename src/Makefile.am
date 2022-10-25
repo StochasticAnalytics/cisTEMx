@@ -78,9 +78,9 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MyImageAssetPanel.h \
                  gui/MyParticlePositionAssetPanel.h \
                  gui/MyVolumeAssetPanel.h \
-                 gui/MyVolumeImportDialog.h \
+                 gui/ImportVolumeDialog.h \
                  gui/MyMovieFilterDialog.h \
-                 gui/MyImageImportDialog.h \
+                 gui/ImportImageDialog.h \
                  gui/ShowCTFResultsPanel.h \
                  gui/FitCTFPanel.h \
                  gui/FindParticlesPanel.h \
@@ -117,12 +117,12 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MainFrame.h \
                  gui/mathplot.h \
                  gui/MyMovieAssetPanel.h \
-                 gui/MovieImportDialog.h \
+                 gui/ImportMovieDialog.h \
                  gui/MyRefine2DPanel.h \
                  gui/Refine2DResultsPanel.h \
                  gui/ClassificationPlotPanel.h \
                  gui/ClassumSelectionCopyFromDialog.h \
-                 gui/MyOverviewPanel.h \
+                 gui/OverviewPanel.h \
                  gui/DisplayPanel.h \
                  gui/ProjectX_gui.h \
                  gui/gui_globals.h \
@@ -221,7 +221,7 @@ if EXPERIMENTAL_AM
 noinst_HEADERS += 	gui/icons/experimental_icon.cpp \
                     gui/AtomicCoordinatesAssetPanel.h \
                     gui/AtomicCoordinatesChooserDialog.h \
-                    gui/AtomicCoordinatesImportDialog.h 
+                    gui/ImportAtomicCoordinatesDialog.h 
 
 endif      
 
@@ -606,9 +606,9 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/MyImageAssetPanel.cpp                           \
                     gui/MyParticlePositionAssetPanel.cpp                \
                     gui/MyVolumeChooserDialog.cpp                       \
-                    gui/MovieImportDialog.cpp                           \
-                    gui/MyImageImportDialog.cpp                         \
-                    gui/MyVolumeImportDialog.cpp                        \
+                    gui/ImportMovieDialog.cpp                           \
+                    gui/ImportImageDialog.cpp                         \
+                    gui/ImportVolumeDialog.cpp                        \
                     gui/ErrorDialog.cpp                                 \
                     gui/AlignMoviesPanel.cpp                            \
                     gui/MyRunProfilesPanel.cpp                          \
@@ -644,7 +644,7 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     core/particle_finder.cpp                            \
                     gui/DisplayPanel.cpp                                \
                     gui/ClassumSelectionCopyFromDialog.cpp              \
-                    gui/MyOverviewPanel.cpp                             \
+                    gui/OverviewPanel.cpp                             \
                     gui/AbInitio3DPanel.cpp                             \
                     gui/AssetPickerComboPanel.cpp                       \
                     gui/AutoRefine3dPanel.cpp                           \
@@ -669,7 +669,7 @@ cisTEM_SOURCES += gui/WebViewPanel.cpp
 endif
 
 if EXPERIMENTAL_AM
-cisTEM_SOURCES +=  gui/RefineTemplateDevPanel.cpp gui/MyExperimentalPanel.cpp gui/AtomicCoordinatesAssetPanel.cpp gui/AtomicCoordinatesChooserDialog.cpp gui/AtomicCoordinatesImportDialog.cpp
+cisTEM_SOURCES +=  gui/RefineTemplateDevPanel.cpp gui/MyExperimentalPanel.cpp gui/AtomicCoordinatesAssetPanel.cpp gui/AtomicCoordinatesChooserDialog.cpp gui/ImportAtomicCoordinatesDialog.cpp
 endif
 
 cisTEM_CXXFLAGS = $(WX_CPPFLAGS)

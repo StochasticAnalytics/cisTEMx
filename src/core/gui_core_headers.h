@@ -68,10 +68,10 @@
 #include "../gui/MyImageAssetPanel.h"
 #include "../gui/MyParticlePositionAssetPanel.h"
 #include "../gui/MyVolumeAssetPanel.h"
-#include "../gui/MovieImportDialog.h"
-#include "../gui/MyVolumeImportDialog.h"
+#include "../gui/ImportMovieDialog.h"
+#include "../gui/ImportVolumeDialog.h"
 #include "../gui/MyMovieFilterDialog.h"
-#include "../gui/MyImageImportDialog.h"
+#include "../gui/ImportImageDialog.h"
 #include "../gui/AlignMoviesPanel.h"
 #include "../gui/ShowCTFResultsPanel.h"
 #include "../gui/ShowTemplateMatchResultsPanel.h"
@@ -110,7 +110,7 @@
 #include "../gui/AbInitioPlotPanel.h"
 #include "../gui/Refine2DResultsPanel.h"
 #include "../gui/ClassumSelectionCopyFromDialog.h"
-#include "../gui/MyOverviewPanel.h"
+#include "../gui/OverviewPanel.h"
 #include "../gui/AbInitio3DPanel.h"
 #include "../gui/AssetPickerComboPanel.h"
 #include "../gui/AutoRefine3dPanel.h"
@@ -132,7 +132,7 @@
 // #include "../gui/WebViewPanel.h"
 #include "../gui/AtomicCoordinatesAssetPanel.h"
 #include "../gui/AtomicCoordinatesChooserDialog.h"
-#include "../gui/AtomicCoordinatesImportDialog.h"
+#include "../gui/ImportAtomicCoordinatesDialog.h"
 #endif
 // FIXME: These and all the panel integers should be in defines as enums, and should be in their own header
 // included at the top of core headers

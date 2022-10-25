@@ -27,7 +27,7 @@ RefineCTFPanel*       refine_ctf_panel;
 Generate3DPanel*      generate_3d_panel;
 Sharpen3DPanel*       sharpen_3d_panel;
 
-MyOverviewPanel*           overview_panel;
+OverviewPanel*             overview_panel;
 ActionsPanelSpa*           actions_panel_spa;
 ActionsPanelTm*            actions_panel_tm;
 AssetsPanelParent*         assets_panel; // formerly AssetsPanel
@@ -129,7 +129,7 @@ bool MyGuiApp::OnInit( ) {
     SetupDefaultColorBar( );
 
     // Left hand Panels
-    overview_panel    = new MyOverviewPanel(main_frame->MenuBook, wxID_ANY);
+    overview_panel    = new OverviewPanel(main_frame->MenuBook, wxID_ANY);
     actions_panel_spa = new ActionsPanelSpa(main_frame->MenuBook, wxID_ANY);
     actions_panel_tm  = new ActionsPanelTm(main_frame->MenuBook, wxID_ANY);
     assets_panel      = new AssetsPanel(main_frame->MenuBook, wxID_ANY);

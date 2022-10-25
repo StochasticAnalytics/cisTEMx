@@ -7,10 +7,10 @@
 #include "../gui/ProjectX_gui.h"
 
 class
-        PickingResultsDisplayPanel : public PickingResultsDisplayPanelParent {
+        live_PickingResultsPanel : public live_PickingResultsPanelParent {
   public:
-    PickingResultsDisplayPanel(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxTAB_TRAVERSAL);
-    ~PickingResultsDisplayPanel( );
+    live_PickingResultsPanel(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxTAB_TRAVERSAL);
+    ~live_PickingResultsPanel( );
 
     //void OnFitTypeRadioButton(wxCommandEvent& event);
     void Clear( );
@@ -32,7 +32,7 @@ class
     void SetImageAssetID(int image_asset_id);
     void SetDefocus(float defocus_in_angstroms);
 
-    const char* Type( ) const { return "PickingResultsDisplayPanel"; };
+    const char* Type( ) const { return "live_PickingResultsPanel"; };
 };
 
 #endif

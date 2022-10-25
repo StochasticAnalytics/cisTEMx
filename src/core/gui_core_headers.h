@@ -79,7 +79,7 @@
 #include "../gui/FindParticlesPanel.h"
 #include "../gui/MyMovieAlignResultsPanel.h"
 #include "../gui/MyFindCTFResultsPanel.h"
-#include "../gui/PickingResultsDisplayPanel.h"
+#include "../gui/live_PickingResultsPanel.h"
 #include "../gui/MyRunProfilesPanel.h"
 #include "../gui/MyAddRunCommandDialog.h"
 #include "../gui/MyNewProjectWizard.h"

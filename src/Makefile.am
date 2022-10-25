@@ -96,7 +96,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/ActionsPanelSpa.h \
                  gui/ActionsPanelTm.h \
                  gui/MySettingsPanel.h \
-                 gui/PickingResultsPanel.h \
+                 gui/post_PickingResultsPanel.h \
                  gui/MyParticlePositionExportDialog.h \
                  gui/MyFrealignExportDialog.h \
                  gui/MyRelionExportDialog.h \
@@ -615,7 +615,7 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/mathplot.cpp                                    \
                     gui/MyMovieAlignResultsPanel.cpp                    \
                     gui/MyFindCTFResultsPanel.cpp                       \
-                    gui/PickingResultsPanel.cpp                         \
+                    gui/post_PickingResultsPanel.cpp                         \
                     gui/MyAddRunCommandDialog.cpp                       \
                     gui/MyNewProjectWizard.cpp                          \
                     gui/MyNewRefinementPackageWizard.cpp                \

@@ -3599,7 +3599,7 @@ MatchTemplateResultsPanelParent::~MatchTemplateResultsPanelParent()
 
 }
 
-PickingResultsPanel::PickingResultsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
+post_PickingResultsPanelParent::post_PickingResultsPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
 	wxBoxSizer* bSizer63;
 	bSizer63 = new wxBoxSizer( wxVERTICAL );
@@ -3609,7 +3609,7 @@ PickingResultsPanel::PickingResultsPanel( wxWindow* parent, wxWindowID id, const
 
 	m_splitter4 = new wxSplitterWindow( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_3D|wxSP_LIVE_UPDATE );
 	m_splitter4->SetSashGravity( 0.5 );
-	m_splitter4->Connect( wxEVT_IDLE, wxIdleEventHandler( PickingResultsPanel::m_splitter4OnIdle ), NULL, this );
+	m_splitter4->Connect( wxEVT_IDLE, wxIdleEventHandler( post_PickingResultsPanelParent::m_splitter4OnIdle ), NULL, this );
 
 	m_panel13 = new wxPanel( m_splitter4, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer66;
@@ -3872,29 +3872,29 @@ PickingResultsPanel::PickingResultsPanel( wxWindow* parent, wxWindowID id, const
 	this->Layout();
 
 	// Connect Events
-	this->Connect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( PickingResultsPanel::OnUpdateUI ) );
-	AllImagesButton->Connect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PickingResultsPanel::OnAllMoviesSelect ), NULL, this );
-	ByFilterButton->Connect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PickingResultsPanel::OnByFilterSelect ), NULL, this );
-	FilterButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnDefineFilterClick ), NULL, this );
-	JobDetailsToggleButton->Connect( wxEVT_COMMAND_TOGGLEBUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnJobDetailsToggle ), NULL, this );
-	PreviousButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnPreviousButtonClick ), NULL, this );
-	NextButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnNextButtonClick ), NULL, this );
-	DeleteFromGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnRemoveFromGroupClick ), NULL, this );
-	AddToGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnAddToGroupClick ), NULL, this );
+	this->Connect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( post_PickingResultsPanelParent::OnUpdateUI ) );
+	AllImagesButton->Connect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( post_PickingResultsPanelParent::OnAllMoviesSelect ), NULL, this );
+	ByFilterButton->Connect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( post_PickingResultsPanelParent::OnByFilterSelect ), NULL, this );
+	FilterButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnDefineFilterClick ), NULL, this );
+	JobDetailsToggleButton->Connect( wxEVT_COMMAND_TOGGLEBUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnJobDetailsToggle ), NULL, this );
+	PreviousButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnPreviousButtonClick ), NULL, this );
+	NextButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnNextButtonClick ), NULL, this );
+	DeleteFromGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnRemoveFromGroupClick ), NULL, this );
+	AddToGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnAddToGroupClick ), NULL, this );
 }
 
-PickingResultsPanel::~PickingResultsPanel()
+post_PickingResultsPanelParent::~post_PickingResultsPanelParent()
 {
 	// Disconnect Events
-	this->Disconnect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( PickingResultsPanel::OnUpdateUI ) );
-	AllImagesButton->Disconnect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PickingResultsPanel::OnAllMoviesSelect ), NULL, this );
-	ByFilterButton->Disconnect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PickingResultsPanel::OnByFilterSelect ), NULL, this );
-	FilterButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnDefineFilterClick ), NULL, this );
-	JobDetailsToggleButton->Disconnect( wxEVT_COMMAND_TOGGLEBUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnJobDetailsToggle ), NULL, this );
-	PreviousButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnPreviousButtonClick ), NULL, this );
-	NextButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnNextButtonClick ), NULL, this );
-	DeleteFromGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnRemoveFromGroupClick ), NULL, this );
-	AddToGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PickingResultsPanel::OnAddToGroupClick ), NULL, this );
+	this->Disconnect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( post_PickingResultsPanelParent::OnUpdateUI ) );
+	AllImagesButton->Disconnect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( post_PickingResultsPanelParent::OnAllMoviesSelect ), NULL, this );
+	ByFilterButton->Disconnect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( post_PickingResultsPanelParent::OnByFilterSelect ), NULL, this );
+	FilterButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnDefineFilterClick ), NULL, this );
+	JobDetailsToggleButton->Disconnect( wxEVT_COMMAND_TOGGLEBUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnJobDetailsToggle ), NULL, this );
+	PreviousButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnPreviousButtonClick ), NULL, this );
+	NextButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnNextButtonClick ), NULL, this );
+	DeleteFromGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnRemoveFromGroupClick ), NULL, this );
+	AddToGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( post_PickingResultsPanelParent::OnAddToGroupClick ), NULL, this );
 
 }
 

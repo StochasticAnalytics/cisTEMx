@@ -57,7 +57,7 @@ MyRefinementPackageAssetPanel* refinement_package_asset_panel;
 
 MyMovieAlignResultsPanel* movie_results_panel;
 MyFindCTFResultsPanel*    ctf_results_panel;
-MyPickingResultsPanel*    picking_results_panel;
+post_PickingResultsPanel* picking_results_panel;
 Refine2DResultsPanel*     refine2d_results_panel;
 MyRefinementResultsPanel* refinement_results_panel;
 
@@ -163,7 +163,7 @@ bool MyGuiApp::OnInit( ) {
 
     movie_results_panel      = new MyMovieAlignResultsPanel(results_panel->ResultsBook);
     ctf_results_panel        = new MyFindCTFResultsPanel(results_panel->ResultsBook);
-    picking_results_panel    = new MyPickingResultsPanel(results_panel->ResultsBook);
+    picking_results_panel    = new post_PickingResultsPanel(results_panel->ResultsBook);
     refine2d_results_panel   = new Refine2DResultsPanel(results_panel->ResultsBook);
     refinement_results_panel = new MyRefinementResultsPanel(results_panel->ResultsBook);
 

@@ -40,7 +40,7 @@ extern MyRunProfilesPanel* run_profiles_panel;
 extern MyResultsPanel*            results_panel;
 extern MyMovieAlignResultsPanel*  movie_results_panel;
 extern MyFindCTFResultsPanel*     ctf_results_panel;
-extern MyPickingResultsPanel*     picking_results_panel;
+extern post_PickingResultsPanel*  picking_results_panel;
 extern MyRefinementResultsPanel*  refinement_results_panel;
 extern Refine2DResultsPanel*      refine2d_results_panel;
 extern MatchTemplatePanel*        match_template_panel;

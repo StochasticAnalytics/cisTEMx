@@ -4,7 +4,7 @@
 extern MyParticlePositionAssetPanel*  particle_position_asset_panel;
 extern MyRefinementPackageAssetPanel* refinement_package_asset_panel;
 extern MyFindCTFResultsPanel*         ctf_results_panel;
-extern MyPickingResultsPanel*         picking_results_panel;
+extern post_PickingResultsPanel*      picking_results_panel;
 extern MyMovieAlignResultsPanel*      movie_results_panel;
 
 MyImageAssetPanel::MyImageAssetPanel(wxWindow* parent)

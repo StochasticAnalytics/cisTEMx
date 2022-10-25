@@ -31,7 +31,7 @@ MyOverviewPanel*           overview_panel;
 ActionsPanelSpa*           actions_panel_spa;
 ActionsPanelTm*            actions_panel_tm;
 AssetsPanelParent*         assets_panel; // formerly AssetsPanel
-MyResultsPanel*            results_panel;
+ResultsPanel*              results_panel;
 SettingsPanel*             settings_panel;
 MatchTemplatePanel*        match_template_panel;
 MatchTemplateResultsPanel* match_template_results_panel;
@@ -133,8 +133,8 @@ bool MyGuiApp::OnInit( ) {
     actions_panel_spa = new ActionsPanelSpa(main_frame->MenuBook, wxID_ANY);
     actions_panel_tm  = new ActionsPanelTm(main_frame->MenuBook, wxID_ANY);
     assets_panel      = new AssetsPanel(main_frame->MenuBook, wxID_ANY);
-    results_panel     = new MyResultsPanel(main_frame->MenuBook, wxID_ANY);
-    settings_panel    = new MySettingsPanel(main_frame->MenuBook, wxID_ANY);
+    results_panel     = new ResultsPanel(main_frame->MenuBook, wxID_ANY);
+    settings_panel    = new SettingsPanel(main_frame->MenuBook, wxID_ANY);
 #ifdef EXPERIMENTAL
     experimental_panel = new MyExperimentalPanel(main_frame->MenuBook, wxID_ANY);
 #endif
@@ -151,7 +151,7 @@ bool MyGuiApp::OnInit( ) {
 #endif
     refinement_package_asset_panel = new MyRefinementPackageAssetPanel(assets_panel->AssetsBook);
     align_movies_panel             = new MyAlignMoviesPanel(actions_panel_spa->ActionsBook);
-    fitctf_panel                  = new FitCTFPanel(actions_panel_spa->ActionsBook);
+    fitctf_panel                   = new FitCTFPanel(actions_panel_spa->ActionsBook);
     findparticles_panel            = new MyFindParticlesPanel(actions_panel_spa->ActionsBook);
     classification_panel           = new MyRefine2DPanel(actions_panel_spa->ActionsBook);
     ab_initio_3d_panel             = new AbInitio3DPanel(actions_panel_spa->ActionsBook);

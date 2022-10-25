@@ -34,10 +34,10 @@ extern AbInitio3DPanel*      ab_initio_3d_panel;
 extern Generate3DPanel*      generate_3d_panel;
 extern Sharpen3DPanel*       sharpen_3d_panel;
 
-extern MySettingsPanel*    settings_panel;
+extern SettingsPanel*      settings_panel;
 extern MyRunProfilesPanel* run_profiles_panel;
 
-extern MyResultsPanel*              results_panel;
+extern ResultsPanel*                results_panel;
 extern post_MovieAlignResultsPanel* movie_results_panel;
 extern MyFindCTFResultsPanel*       ctf_results_panel;
 extern post_PickingResultsPanel*    picking_results_panel;

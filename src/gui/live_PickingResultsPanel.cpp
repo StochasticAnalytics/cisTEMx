@@ -1,8 +1,8 @@
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 
-PickingResultsDisplayPanel::PickingResultsDisplayPanel(wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style)
-    : PickingResultsDisplayPanelParent(parent, id, pos, size, style) {
+live_PickingResultsPanel::live_PickingResultsPanel(wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style)
+    : live_PickingResultsPanelParent(parent, id, pos, size, style) {
     //Bind(wxEVT_COMBOBOX, &ShowPickingResultsPanel::OnFitTypeRadioButton, this);
     //Bind(wxEVT_COMBOBOX, &ShowPickingResultsPanel::OnFitTypeRadioButton, this);
 
@@ -14,19 +14,19 @@ PickingResultsDisplayPanel::PickingResultsDisplayPanel(wxWindow* parent, wxWindo
     LowResFilterTextCtrl->SetPrecision(0);
 }
 
-PickingResultsDisplayPanel::~PickingResultsDisplayPanel( ) {
+live_PickingResultsPanel::~live_PickingResultsPanel( ) {
     //Unbind(wxEVT_COMBOBOX, &ShowCTFResultsPanel::OnFitTypeRadioButton, this);
     //Unbind(wxEVT_COMBOBOX, &ShowCTFResultsPanel::OnFitTypeRadioButton, this);
     PickingResultsImagePanel->UnsetToolTip( );
 }
 
-void PickingResultsDisplayPanel::Clear( ) {
+void live_PickingResultsPanel::Clear( ) {
     PickingResultsImagePanel->should_show = false;
     PickingResultsImagePanel->UnsetToolTip( );
     Refresh( );
 }
 
-void PickingResultsDisplayPanel::Draw(const wxString& image_filename, ArrayOfParticlePositionAssets& array_of_assets, const float particle_radius_in_angstroms, const float pixel_size_in_angstroms, CTF micrograph_ctf, int image_asset_id, float iciness) {
+void live_PickingResultsPanel::Draw(const wxString& image_filename, ArrayOfParticlePositionAssets& array_of_assets, const float particle_radius_in_angstroms, const float pixel_size_in_angstroms, CTF micrograph_ctf, int image_asset_id, float iciness) {
 
     // Don't do this - it deallocates the images
     //PickingResultsImagePanel->Clear();
@@ -45,7 +45,7 @@ void PickingResultsDisplayPanel::Draw(const wxString& image_filename, ArrayOfPar
     PickingResultsImagePanel->Refresh( );
 }
 
-void PickingResultsDisplayPanel::OnCirclesAroundParticlesCheckBox(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnCirclesAroundParticlesCheckBox(wxCommandEvent& event) {
     if ( CirclesAroundParticlesCheckBox->IsChecked( ) ) {
         if ( ! PickingResultsImagePanel->draw_circles_around_particles ) {
             PickingResultsImagePanel->draw_circles_around_particles = true;
@@ -60,7 +60,7 @@ void PickingResultsDisplayPanel::OnCirclesAroundParticlesCheckBox(wxCommandEvent
     }
 }
 
-void PickingResultsDisplayPanel::OnScaleBarCheckBox(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnScaleBarCheckBox(wxCommandEvent& event) {
     if ( ScaleBarCheckBox->IsChecked( ) ) {
         if ( ! PickingResultsImagePanel->draw_scale_bar ) {
             PickingResultsImagePanel->draw_scale_bar = true;
@@ -75,7 +75,7 @@ void PickingResultsDisplayPanel::OnScaleBarCheckBox(wxCommandEvent& event) {
     }
 }
 
-void PickingResultsDisplayPanel::OnLowPassEnter(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnLowPassEnter(wxCommandEvent& event) {
     if ( PickingResultsImagePanel->should_low_pass == true ) {
         PickingResultsImagePanel->low_res_filter_value = LowResFilterTextCtrl->ReturnValue( );
         PickingResultsImagePanel->UpdateImageInBitmap(true);
@@ -84,7 +84,7 @@ void PickingResultsDisplayPanel::OnLowPassEnter(wxCommandEvent& event) {
     event.Skip( );
 }
 
-void PickingResultsDisplayPanel::OnLowPassKillFocus(wxFocusEvent& event) {
+void live_PickingResultsPanel::OnLowPassKillFocus(wxFocusEvent& event) {
     if ( PickingResultsImagePanel->should_low_pass == true ) {
         PickingResultsImagePanel->low_res_filter_value = LowResFilterTextCtrl->ReturnValue( );
         PickingResultsImagePanel->UpdateImageInBitmap(true);
@@ -93,7 +93,7 @@ void PickingResultsDisplayPanel::OnLowPassKillFocus(wxFocusEvent& event) {
     event.Skip( );
 }
 
-void PickingResultsDisplayPanel::OnHighPassFilterCheckBox(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnHighPassFilterCheckBox(wxCommandEvent& event) {
     if ( HighPassFilterCheckBox->IsChecked( ) ) {
         if ( ! PickingResultsImagePanel->should_high_pass ) {
             PickingResultsImagePanel->should_high_pass = true;
@@ -110,7 +110,7 @@ void PickingResultsDisplayPanel::OnHighPassFilterCheckBox(wxCommandEvent& event)
     }
 }
 
-void PickingResultsDisplayPanel::OnWienerFilterCheckBox(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnWienerFilterCheckBox(wxCommandEvent& event) {
     if ( WienerFilterCheckBox->IsChecked( ) ) {
         if ( ! PickingResultsImagePanel->should_wiener_filter ) {
             PickingResultsImagePanel->should_wiener_filter = true;
@@ -127,7 +127,7 @@ void PickingResultsDisplayPanel::OnWienerFilterCheckBox(wxCommandEvent& event) {
     }
 }
 
-void PickingResultsDisplayPanel::OnLowPassFilterCheckBox(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnLowPassFilterCheckBox(wxCommandEvent& event) {
     if ( LowPassFilterCheckBox->IsChecked( ) ) {
         LowResFilterTextCtrl->Enable(true);
         LowAngstromStatic->Enable(true);
@@ -146,26 +146,26 @@ void PickingResultsDisplayPanel::OnLowPassFilterCheckBox(wxCommandEvent& event) 
     }
 }
 
-void PickingResultsDisplayPanel::OnUndoButtonClick(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnUndoButtonClick(wxCommandEvent& event) {
     PickingResultsImagePanel->StepBackwardInHistoryOfParticleCoordinates( );
 }
 
-void PickingResultsDisplayPanel::OnRedoButtonClick(wxCommandEvent& event) {
+void live_PickingResultsPanel::OnRedoButtonClick(wxCommandEvent& event) {
     PickingResultsImagePanel->StepForwardInHistoryOfParticleCoordinates( );
 }
 
-void PickingResultsDisplayPanel::SetNumberOfPickedCoordinates(int number_of_coordinates) {
+void live_PickingResultsPanel::SetNumberOfPickedCoordinates(int number_of_coordinates) {
     NumberOfPicksStaticText->SetLabel(wxString::Format(wxT("%i picked coordinates"), number_of_coordinates));
 }
 
-void PickingResultsDisplayPanel::SetImageAssetID(int image_asset_id) {
+void live_PickingResultsPanel::SetImageAssetID(int image_asset_id) {
     ImageIDStaticText->SetLabel(wxString::Format(wxT("Image ID: %i"), image_asset_id));
 }
 
-void PickingResultsDisplayPanel::SetIciness(float iciness) {
+void live_PickingResultsPanel::SetIciness(float iciness) {
     IcinessStaticText->SetLabel(wxString::Format(wxT("Iciness: %.2f"), iciness));
 }
 
-void PickingResultsDisplayPanel::SetDefocus(float defocus_in_angstroms) {
+void live_PickingResultsPanel::SetDefocus(float defocus_in_angstroms) {
     DefocusStaticText->SetLabel(wxString::Format(wxT("Defocus: %.2f μm"), defocus_in_angstroms / 10000.0));
 }

@@ -84,7 +84,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/ShowCTFResultsPanel.h \
                  gui/FindCTFPanel.h \
                  gui/FindParticlesPanel.h \
-                 gui/MyMovieAlignResultsPanel.h \
+                 gui/post_MovieAlignResultsPanel.h \
                  gui/MyFindCTFResultsPanel.h \
                  gui/live_PickingResultsPanel.h \
                  gui/MyRunProfilesPanel.h \
@@ -613,7 +613,7 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/AlignMoviesPanel.cpp                            \
                     gui/MyRunProfilesPanel.cpp                          \
                     gui/mathplot.cpp                                    \
-                    gui/MyMovieAlignResultsPanel.cpp                    \
+                    gui/post_MovieAlignResultsPanel.cpp                    \
                     gui/MyFindCTFResultsPanel.cpp                       \
                     gui/post_PickingResultsPanel.cpp                         \
                     gui/MyAddRunCommandDialog.cpp                       \

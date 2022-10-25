@@ -55,11 +55,11 @@ AtomicCoordinatesAssetPanel* atomic_coordinates_asset_panel;
 #endif
 MyRefinementPackageAssetPanel* refinement_package_asset_panel;
 
-MyMovieAlignResultsPanel* movie_results_panel;
-MyFindCTFResultsPanel*    ctf_results_panel;
-post_PickingResultsPanel* picking_results_panel;
-Refine2DResultsPanel*     refine2d_results_panel;
-MyRefinementResultsPanel* refinement_results_panel;
+post_MovieAlignResultsPanel* movie_results_panel;
+MyFindCTFResultsPanel*       ctf_results_panel;
+post_PickingResultsPanel*    picking_results_panel;
+Refine2DResultsPanel*        refine2d_results_panel;
+MyRefinementResultsPanel*    refinement_results_panel;
 
 MyRunProfilesPanel* run_profiles_panel;
 
@@ -161,7 +161,7 @@ bool MyGuiApp::OnInit( ) {
     generate_3d_panel              = new Generate3DPanel(actions_panel_spa->ActionsBook);
     sharpen_3d_panel               = new Sharpen3DPanel(actions_panel_spa->ActionsBook);
 
-    movie_results_panel      = new MyMovieAlignResultsPanel(results_panel->ResultsBook);
+    movie_results_panel      = new post_MovieAlignResultsPanel(results_panel->ResultsBook);
     ctf_results_panel        = new MyFindCTFResultsPanel(results_panel->ResultsBook);
     picking_results_panel    = new post_PickingResultsPanel(results_panel->ResultsBook);
     refine2d_results_panel   = new Refine2DResultsPanel(results_panel->ResultsBook);

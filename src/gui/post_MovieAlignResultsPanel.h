@@ -1,6 +1,6 @@
-class MyMovieAlignResultsPanel : public MovieAlignResultsPanel {
+class post_MovieAlignResultsPanel : public post_MovieAlignResultsPanelParent {
   public:
-    MyMovieAlignResultsPanel(wxWindow* parent);
+    post_MovieAlignResultsPanel(wxWindow* parent);
 
     void JunkMe(wxCommandEvent& event);
     void OnDefineFilterClick(wxCommandEvent& event);
@@ -43,5 +43,5 @@ class MyMovieAlignResultsPanel : public MovieAlignResultsPanel {
 
     wxString current_fill_command;
 
-    const char* Type( ) const { return "MyMovieAlignResultsPanel"; };
+    const char* Type( ) const { return "post_MovieAlignResultsPanel"; };
 };

@@ -37,15 +37,15 @@ extern Sharpen3DPanel*       sharpen_3d_panel;
 extern MySettingsPanel*    settings_panel;
 extern MyRunProfilesPanel* run_profiles_panel;
 
-extern MyResultsPanel*            results_panel;
-extern MyMovieAlignResultsPanel*  movie_results_panel;
-extern MyFindCTFResultsPanel*     ctf_results_panel;
-extern post_PickingResultsPanel*  picking_results_panel;
-extern MyRefinementResultsPanel*  refinement_results_panel;
-extern Refine2DResultsPanel*      refine2d_results_panel;
-extern MatchTemplatePanel*        match_template_panel;
-extern MatchTemplateResultsPanel* match_template_results_panel;
-extern RefineTemplatePanel*       refine_template_panel;
+extern MyResultsPanel*              results_panel;
+extern post_MovieAlignResultsPanel* movie_results_panel;
+extern MyFindCTFResultsPanel*       ctf_results_panel;
+extern post_PickingResultsPanel*    picking_results_panel;
+extern MyRefinementResultsPanel*    refinement_results_panel;
+extern Refine2DResultsPanel*        refine2d_results_panel;
+extern MatchTemplatePanel*          match_template_panel;
+extern MatchTemplateResultsPanel*   match_template_results_panel;
+extern RefineTemplatePanel*         refine_template_panel;
 
 #ifdef EXPERIMENTAL
 extern MyExperimentalPanel*    experimental_panel;

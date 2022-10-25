@@ -6,10 +6,10 @@ extern MyImageAssetPanel* image_asset_panel;
 
 static inline void OnHeaderClick( ) { return; }
 
-MyMovieAlignResultsPanel::MyMovieAlignResultsPanel(wxWindow* parent)
-    : MovieAlignResultsPanel(parent) {
+post_MovieAlignResultsPanel::post_MovieAlignResultsPanel(wxWindow* parent)
+    : post_MovieAlignResultsPanelParent(parent) {
 
-    Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, wxDataViewEventHandler(MyMovieAlignResultsPanel::OnValueChanged), this);
+    Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, wxDataViewEventHandler(post_MovieAlignResultsPanel::OnValueChanged), this);
 
     alignment_job_ids        = NULL;
     number_of_alignmnet_jobs = 0;
@@ -27,7 +27,7 @@ MyMovieAlignResultsPanel::MyMovieAlignResultsPanel(wxWindow* parent)
 
     FillGroupComboBox( );
 
-    Bind(wxEVT_CHAR_HOOK, &MyMovieAlignResultsPanel::OnCharHook, this);
+    Bind(wxEVT_CHAR_HOOK, &post_MovieAlignResultsPanel::OnCharHook, this);
 
     ResultPanel->SpectraPanel->use_auto_contrast = false;
 
@@ -35,7 +35,7 @@ MyMovieAlignResultsPanel::MyMovieAlignResultsPanel(wxWindow* parent)
     ResultDataView->OnHeaderClickInterrupt = &OnHeaderClick;
 }
 
-void MyMovieAlignResultsPanel::OnCharHook(wxKeyEvent& event) {
+void post_MovieAlignResultsPanel::OnCharHook(wxKeyEvent& event) {
     if ( event.GetUnicodeKey( ) == 'N' ) {
         ResultDataView->NextEye( );
     }
@@ -46,7 +46,7 @@ void MyMovieAlignResultsPanel::OnCharHook(wxKeyEvent& event) {
         event.Skip( );
 }
 
-void MyMovieAlignResultsPanel::OnValueChanged(wxDataViewEvent& event) {
+void post_MovieAlignResultsPanel::OnValueChanged(wxDataViewEvent& event) {
     if ( doing_panel_fill == false ) {
         wxDataViewItem current_item = event.GetItem( );
         int            row          = ResultDataView->ItemToRow(current_item);
@@ -111,7 +111,7 @@ void MyMovieAlignResultsPanel::OnValueChanged(wxDataViewEvent& event) {
     }
 }
 
-int MyMovieAlignResultsPanel::GetFilter( ) {
+int post_MovieAlignResultsPanel::GetFilter( ) {
     MyMovieFilterDialog* filter_dialog = new MyMovieFilterDialog(this);
 
     // set initial settings..
@@ -129,41 +129,41 @@ int MyMovieAlignResultsPanel::GetFilter( ) {
         return wxID_CANCEL;
 }
 
-void MyMovieAlignResultsPanel::FillGroupComboBox( ) {
+void post_MovieAlignResultsPanel::FillGroupComboBox( ) {
     GroupComboBox->FillWithMovieGroups(false);
 }
 
-void MyMovieAlignResultsPanel::OnAllMoviesSelect(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnAllMoviesSelect(wxCommandEvent& event) {
     FillBasedOnSelectCommand("SELECT DISTINCT MOVIE_ASSET_ID FROM MOVIE_ALIGNMENT_LIST");
 }
 
-void MyMovieAlignResultsPanel::OnByFilterSelect(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnByFilterSelect(wxCommandEvent& event) {
     if ( GetFilter( ) == wxID_CANCEL ) {
         AllMoviesButton->SetValue(true);
     }
 }
 
-void MyMovieAlignResultsPanel::OnDefineFilterClick(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnDefineFilterClick(wxCommandEvent& event) {
     GetFilter( );
 }
 
-void MyMovieAlignResultsPanel::OnNextButtonClick(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnNextButtonClick(wxCommandEvent& event) {
     ResultDataView->NextEye( );
 }
 
-void MyMovieAlignResultsPanel::OnPreviousButtonClick(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnPreviousButtonClick(wxCommandEvent& event) {
     ResultDataView->PreviousEye( );
 }
 
-void MyMovieAlignResultsPanel::OnAddToGroupClick(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnAddToGroupClick(wxCommandEvent& event) {
     movie_asset_panel->AddArrayItemToGroup(GroupComboBox->GetSelection( ) + 1, per_row_array_position[selected_row]);
 }
 
-void MyMovieAlignResultsPanel::OnRemoveFromGroupClick(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnRemoveFromGroupClick(wxCommandEvent& event) {
     movie_asset_panel->DeleteArrayItemFromGroup(GroupComboBox->GetSelection( ) + 1, per_row_array_position[selected_row]);
 }
 
-void MyMovieAlignResultsPanel::OnAddAllToGroupClick(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnAddAllToGroupClick(wxCommandEvent& event) {
     wxArrayLong items_to_add;
 
     for ( long counter = 0; counter < ResultDataView->GetItemCount( ); counter++ ) {
@@ -174,7 +174,7 @@ void MyMovieAlignResultsPanel::OnAddAllToGroupClick(wxCommandEvent& event) {
     progress_bar->Destroy( );
 }
 
-void MyMovieAlignResultsPanel::DrawCurveAndFillDetails(int row, int column) {
+void post_MovieAlignResultsPanel::DrawCurveAndFillDetails(int row, int column) {
     bool should_continue;
 
     // get the correct result from the database..
@@ -338,7 +338,7 @@ void MyMovieAlignResultsPanel::DrawCurveAndFillDetails(int row, int column) {
     RightPanel->Thaw( );
 }
 
-void MyMovieAlignResultsPanel::Clear( ) {
+void post_MovieAlignResultsPanel::Clear( ) {
     selected_row    = -1;
     selected_column = -1;
 
@@ -350,13 +350,13 @@ void MyMovieAlignResultsPanel::Clear( ) {
 }
 
 /*
-void MyMovieAlignResultsPanel::OnShowTypeRadioBoxChange(wxCommandEvent& event)
+void post_MovieAlignResultsPanel::OnShowTypeRadioBoxChange(wxCommandEvent& event)
 {
 	wxPrintf("Changed\n");
 
 }*/
 
-int MyMovieAlignResultsPanel::ReturnRowFromAssetID(int asset_id, int start_location) {
+int post_MovieAlignResultsPanel::ReturnRowFromAssetID(int asset_id, int start_location) {
     int counter;
 
     for ( counter = start_location; counter < number_of_assets; counter++ ) {
@@ -374,7 +374,7 @@ int MyMovieAlignResultsPanel::ReturnRowFromAssetID(int asset_id, int start_locat
     return -1;
 }
 
-void MyMovieAlignResultsPanel::OnUpdateUI(wxUpdateUIEvent& event) {
+void post_MovieAlignResultsPanel::OnUpdateUI(wxUpdateUIEvent& event) {
     if ( main_frame->current_project.is_open == false ) {
         Enable(false);
     }
@@ -411,7 +411,7 @@ void MyMovieAlignResultsPanel::OnUpdateUI(wxUpdateUIEvent& event) {
     }
 }
 
-void MyMovieAlignResultsPanel::FillBasedOnSelectCommand(wxString wanted_command) {
+void post_MovieAlignResultsPanel::FillBasedOnSelectCommand(wxString wanted_command) {
     wxVector<wxVariant> data;
     wxVariant           temp_variant;
     long                asset_counter;
@@ -576,7 +576,7 @@ void MyMovieAlignResultsPanel::FillBasedOnSelectCommand(wxString wanted_command)
     }
 }
 
-void MyMovieAlignResultsPanel::OnJobDetailsToggle(wxCommandEvent& event) {
+void post_MovieAlignResultsPanel::OnJobDetailsToggle(wxCommandEvent& event) {
     Freeze( );
 
     if ( JobDetailsToggleButton->GetValue( ) == true ) {

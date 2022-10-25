@@ -7,7 +7,7 @@ extern MyRefine3DPanel*               refine_3d_panel;
 //extern MyImageAssetPanel *image_asset_panel;
 
 MyVolumeAssetPanel::MyVolumeAssetPanel(wxWindow* parent)
-    : MyAssetPanelParent(parent) {
+    : AssetObjectPanel(parent) {
     Label0Title->SetLabel("Name : ");
     Label1Title->SetLabel("I.D. : ");
     Label2Title->SetLabel("Reconstruction Job I.D. : ");

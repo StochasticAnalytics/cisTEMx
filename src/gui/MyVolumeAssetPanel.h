@@ -1,4 +1,4 @@
-class MyVolumeAssetPanel : public MyAssetPanelParent {
+class MyVolumeAssetPanel : public AssetObjectPanel {
 
   protected:
     void DirtyGroups( ) { main_frame->DirtyParticlePositionGroups( ); };

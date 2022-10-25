@@ -1,4 +1,4 @@
-class AtomicCoordinatesAssetPanel : public MyAssetPanelParent {
+class AtomicCoordinatesAssetPanel : public AssetObjectPanel {
 
   protected:
     void DirtyGroups( ) { main_frame->DirtyParticlePositionGroups( ); };

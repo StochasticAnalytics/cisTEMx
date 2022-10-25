@@ -74,7 +74,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/my_controls.h \
                  gui/live_MovieAlignResultsPanel.h \
                  gui/CTF1DPanel.h \
-                 gui/MyAssetPanelParent.h \
+                 gui/AssetObjectPanel.h \
                  gui/MyImageAssetPanel.h \
                  gui/MyParticlePositionAssetPanel.h \
                  gui/MyVolumeAssetPanel.h \
@@ -92,7 +92,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MyNewProjectWizard.h \
                  gui/MyNewRefinementPackageWizard.h \
                  gui/MyResultsPanel.h \
-                 gui/MyAssetsPanel.h \
+                 gui/AssetsPanel.h \
                  gui/ActionsPanelSpa.h \
                  gui/ActionsPanelTm.h \
                  gui/MySettingsPanel.h \
@@ -601,7 +601,7 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/ResultsDataViewListCtrl.cpp                     \
                     gui/MyMovieFilterDialog.cpp                         \
                     gui/MainFrame.cpp                                   \
-                    gui/MyAssetPanelParent.cpp                          \
+                    gui/AssetObjectPanel.cpp                          \
                     gui/MyMovieAssetPanel.cpp                           \
                     gui/MyImageAssetPanel.cpp                           \
                     gui/MyParticlePositionAssetPanel.cpp                \
@@ -627,7 +627,7 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/FindParticlesPanel.cpp                          \
                     gui/MyVolumeAssetPanel.cpp                          \
                     gui/MyResultsPanel.cpp                              \
-                    gui/MyAssetsPanel.cpp                               \
+                    gui/AssetsPanel.cpp                               \
                     gui/ActionsPanelSpa.cpp                             \
                     gui/ActionsPanelTm.cpp                              \
                     gui/MySettingsPanel.cpp                             \

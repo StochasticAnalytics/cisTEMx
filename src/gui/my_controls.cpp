@@ -955,7 +955,7 @@ ContentsList::ContentsList(wxWindow* parent, wxWindowID id, const wxPoint& pos, 
 }
 
 wxString ContentsList::OnGetItemText(long item, long column) const {
-    MyAssetPanelParent* parent_panel = reinterpret_cast<MyAssetPanelParent*>(m_parent->GetParent( )->GetParent( )); // not very nice code!
+    AssetObjectPanel* parent_panel = reinterpret_cast<AssetObjectPanel*>(m_parent->GetParent( )->GetParent( )); // not very nice code!
     return parent_panel->ReturnItemText(item, column);
     //wxPrintf("Here!\n");
     //	return "Hi"	;

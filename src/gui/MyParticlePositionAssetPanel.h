@@ -1,4 +1,4 @@
-class MyParticlePositionAssetPanel : public MyAssetPanelParent {
+class MyParticlePositionAssetPanel : public AssetObjectPanel {
 
   protected:
     void DirtyGroups( ) { main_frame->DirtyParticlePositionGroups( ); };

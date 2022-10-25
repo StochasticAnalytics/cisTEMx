@@ -1,4 +1,4 @@
-class MyMovieAssetPanel : public MyAssetPanelParent {
+class MyMovieAssetPanel : public AssetObjectPanel {
 
   protected:
     void DirtyGroups( ) { main_frame->DirtyMovieGroups( ); };

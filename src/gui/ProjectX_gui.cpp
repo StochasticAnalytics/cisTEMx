@@ -3275,7 +3275,7 @@ ResultsPanel::~ResultsPanel()
 
 }
 
-AssetsPanel::AssetsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
+AssetsPanelParent::AssetsPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
 	wxBoxSizer* bSizer76;
 	bSizer76 = new wxBoxSizer( wxHORIZONTAL );
@@ -3301,13 +3301,13 @@ AssetsPanel::AssetsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, c
 	this->Layout();
 
 	// Connect Events
-	AssetsBook->Connect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( AssetsPanel::OnAssetsBookPageChanged ), NULL, this );
+	AssetsBook->Connect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( AssetsPanelParent::OnAssetsBookPageChanged ), NULL, this );
 }
 
-AssetsPanel::~AssetsPanel()
+AssetsPanelParent::~AssetsPanelParent()
 {
 	// Disconnect Events
-	AssetsBook->Disconnect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( AssetsPanel::OnAssetsBookPageChanged ), NULL, this );
+	AssetsBook->Disconnect( wxEVT_COMMAND_LISTBOOK_PAGE_CHANGED, wxListbookEventHandler( AssetsPanelParent::OnAssetsBookPageChanged ), NULL, this );
 
 }
 
@@ -4077,7 +4077,7 @@ ImageImportDialog::~ImageImportDialog()
 
 }
 
-AssetPanelParent::AssetPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
+AssetObjectPanelParent::AssetObjectPanelParent( wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style, const wxString& name ) : wxPanel( parent, id, pos, size, style, name )
 {
 	this->SetMinSize( wxSize( 680,400 ) );
 
@@ -4092,7 +4092,7 @@ AssetPanelParent::AssetPanelParent( wxWindow* parent, wxWindowID id, const wxPoi
 
 	SplitterWindow = new wxSplitterWindow( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_3D|wxSP_LIVE_UPDATE );
 	SplitterWindow->SetSashGravity( 0.2 );
-	SplitterWindow->Connect( wxEVT_IDLE, wxIdleEventHandler( AssetPanelParent::SplitterWindowOnIdle ), NULL, this );
+	SplitterWindow->Connect( wxEVT_IDLE, wxIdleEventHandler( AssetObjectPanelParent::SplitterWindowOnIdle ), NULL, this );
 
 	LeftPanel = new wxPanel( SplitterWindow, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer27;
@@ -4331,89 +4331,89 @@ AssetPanelParent::AssetPanelParent( wxWindow* parent, wxWindowID id, const wxPoi
 	this->Layout();
 
 	// Connect Events
-	this->Connect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( AssetPanelParent::OnUpdateUI ) );
-	GroupListBox->Connect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseCheckGroupsVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseCheckGroupsVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_COMMAND_LIST_BEGIN_LABEL_EDIT, wxListEventHandler( AssetPanelParent::OnBeginEdit ), NULL, this );
-	GroupListBox->Connect( wxEVT_COMMAND_LIST_END_LABEL_EDIT, wxListEventHandler( AssetPanelParent::OnEndEdit ), NULL, this );
-	GroupListBox->Connect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetPanelParent::OnGroupActivated ), NULL, this );
-	GroupListBox->Connect( wxEVT_COMMAND_LIST_ITEM_FOCUSED, wxListEventHandler( AssetPanelParent::OnGroupFocusChange ), NULL, this );
-	GroupListBox->Connect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_MOTION, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Connect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	AddGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::NewGroupClick ), NULL, this );
-	RenameGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RenameGroupClick ), NULL, this );
-	RemoveGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RemoveGroupClick ), NULL, this );
-	InvertGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::InvertGroupClick ), NULL, this );
-	NewFromParentButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::NewFromParentClick ), NULL, this );
-	ContentsListBox->Connect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseCheckContentsVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseCheckContentsVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_COMMAND_LIST_BEGIN_DRAG, wxListEventHandler( AssetPanelParent::OnBeginContentsDrag ), NULL, this );
-	ContentsListBox->Connect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetPanelParent::OnAssetActivated ), NULL, this );
-	ContentsListBox->Connect( wxEVT_COMMAND_LIST_ITEM_SELECTED, wxListEventHandler( AssetPanelParent::OnContentsSelected ), NULL, this );
-	ContentsListBox->Connect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_MOTION, wxMouseEventHandler( AssetPanelParent::OnMotion ), NULL, this );
-	ContentsListBox->Connect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Connect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ImportAsset->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::ImportAssetClick ), NULL, this );
-	RemoveSelectedAssetButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RemoveAssetClick ), NULL, this );
-	RemoveAllAssetsButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RemoveAllAssetsClick ), NULL, this );
-	RenameAssetButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RenameAssetClick ), NULL, this );
-	AddSelectedAssetButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::AddSelectedAssetClick ), NULL, this );
-	DisplayButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::OnDisplayButtonClick ), NULL, this );
+	this->Connect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( AssetObjectPanelParent::OnUpdateUI ) );
+	GroupListBox->Connect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckGroupsVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckGroupsVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_COMMAND_LIST_BEGIN_LABEL_EDIT, wxListEventHandler( AssetObjectPanelParent::OnBeginEdit ), NULL, this );
+	GroupListBox->Connect( wxEVT_COMMAND_LIST_END_LABEL_EDIT, wxListEventHandler( AssetObjectPanelParent::OnEndEdit ), NULL, this );
+	GroupListBox->Connect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetObjectPanelParent::OnGroupActivated ), NULL, this );
+	GroupListBox->Connect( wxEVT_COMMAND_LIST_ITEM_FOCUSED, wxListEventHandler( AssetObjectPanelParent::OnGroupFocusChange ), NULL, this );
+	GroupListBox->Connect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_MOTION, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Connect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	AddGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::NewGroupClick ), NULL, this );
+	RenameGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RenameGroupClick ), NULL, this );
+	RemoveGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RemoveGroupClick ), NULL, this );
+	InvertGroupButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::InvertGroupClick ), NULL, this );
+	NewFromParentButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::NewFromParentClick ), NULL, this );
+	ContentsListBox->Connect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckContentsVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckContentsVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_COMMAND_LIST_BEGIN_DRAG, wxListEventHandler( AssetObjectPanelParent::OnBeginContentsDrag ), NULL, this );
+	ContentsListBox->Connect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetObjectPanelParent::OnAssetActivated ), NULL, this );
+	ContentsListBox->Connect( wxEVT_COMMAND_LIST_ITEM_SELECTED, wxListEventHandler( AssetObjectPanelParent::OnContentsSelected ), NULL, this );
+	ContentsListBox->Connect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_MOTION, wxMouseEventHandler( AssetObjectPanelParent::OnMotion ), NULL, this );
+	ContentsListBox->Connect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Connect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ImportAsset->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::ImportAssetClick ), NULL, this );
+	RemoveSelectedAssetButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RemoveAssetClick ), NULL, this );
+	RemoveAllAssetsButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RemoveAllAssetsClick ), NULL, this );
+	RenameAssetButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RenameAssetClick ), NULL, this );
+	AddSelectedAssetButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::AddSelectedAssetClick ), NULL, this );
+	DisplayButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::OnDisplayButtonClick ), NULL, this );
 }
 
-AssetPanelParent::~AssetPanelParent()
+AssetObjectPanelParent::~AssetObjectPanelParent()
 {
 	// Disconnect Events
-	this->Disconnect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( AssetPanelParent::OnUpdateUI ) );
-	GroupListBox->Disconnect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseCheckGroupsVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseCheckGroupsVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_BEGIN_LABEL_EDIT, wxListEventHandler( AssetPanelParent::OnBeginEdit ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_END_LABEL_EDIT, wxListEventHandler( AssetPanelParent::OnEndEdit ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetPanelParent::OnGroupActivated ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_FOCUSED, wxListEventHandler( AssetPanelParent::OnGroupFocusChange ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_MOTION, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	GroupListBox->Disconnect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	AddGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::NewGroupClick ), NULL, this );
-	RenameGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RenameGroupClick ), NULL, this );
-	RemoveGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RemoveGroupClick ), NULL, this );
-	InvertGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::InvertGroupClick ), NULL, this );
-	NewFromParentButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::NewFromParentClick ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseCheckContentsVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseCheckContentsVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_COMMAND_LIST_BEGIN_DRAG, wxListEventHandler( AssetPanelParent::OnBeginContentsDrag ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetPanelParent::OnAssetActivated ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_SELECTED, wxListEventHandler( AssetPanelParent::OnContentsSelected ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_MOTION, wxMouseEventHandler( AssetPanelParent::OnMotion ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ContentsListBox->Disconnect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetPanelParent::MouseVeto ), NULL, this );
-	ImportAsset->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::ImportAssetClick ), NULL, this );
-	RemoveSelectedAssetButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RemoveAssetClick ), NULL, this );
-	RemoveAllAssetsButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RemoveAllAssetsClick ), NULL, this );
-	RenameAssetButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::RenameAssetClick ), NULL, this );
-	AddSelectedAssetButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::AddSelectedAssetClick ), NULL, this );
-	DisplayButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetPanelParent::OnDisplayButtonClick ), NULL, this );
+	this->Disconnect( wxEVT_UPDATE_UI, wxUpdateUIEventHandler( AssetObjectPanelParent::OnUpdateUI ) );
+	GroupListBox->Disconnect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckGroupsVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckGroupsVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_BEGIN_LABEL_EDIT, wxListEventHandler( AssetObjectPanelParent::OnBeginEdit ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_END_LABEL_EDIT, wxListEventHandler( AssetObjectPanelParent::OnEndEdit ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetObjectPanelParent::OnGroupActivated ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_FOCUSED, wxListEventHandler( AssetObjectPanelParent::OnGroupFocusChange ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_MOTION, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	GroupListBox->Disconnect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	AddGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::NewGroupClick ), NULL, this );
+	RenameGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RenameGroupClick ), NULL, this );
+	RemoveGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RemoveGroupClick ), NULL, this );
+	InvertGroupButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::InvertGroupClick ), NULL, this );
+	NewFromParentButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::NewFromParentClick ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_LEFT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckContentsVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_LEFT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseCheckContentsVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_LEFT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_COMMAND_LIST_BEGIN_DRAG, wxListEventHandler( AssetObjectPanelParent::OnBeginContentsDrag ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler( AssetObjectPanelParent::OnAssetActivated ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_COMMAND_LIST_ITEM_SELECTED, wxListEventHandler( AssetObjectPanelParent::OnContentsSelected ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_MIDDLE_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_MIDDLE_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_MIDDLE_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_MOTION, wxMouseEventHandler( AssetObjectPanelParent::OnMotion ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_RIGHT_DCLICK, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_RIGHT_DOWN, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ContentsListBox->Disconnect( wxEVT_RIGHT_UP, wxMouseEventHandler( AssetObjectPanelParent::MouseVeto ), NULL, this );
+	ImportAsset->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::ImportAssetClick ), NULL, this );
+	RemoveSelectedAssetButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RemoveAssetClick ), NULL, this );
+	RemoveAllAssetsButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RemoveAllAssetsClick ), NULL, this );
+	RenameAssetButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::RenameAssetClick ), NULL, this );
+	AddSelectedAssetButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::AddSelectedAssetClick ), NULL, this );
+	DisplayButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( AssetObjectPanelParent::OnDisplayButtonClick ), NULL, this );
 
 }
 

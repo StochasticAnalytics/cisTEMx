@@ -15,6 +15,7 @@ class ImportMovieDialog : public ImportMovieDialogParent {
     void OnTextKeyPress(wxKeyEvent& event);
     void CheckImportButtonStatus( );
     void TextChanged(wxCommandEvent& event);
+    void CheckForEERFiles(wxArrayString& filenames, wxString& current_extension, bool& at_least_one_eer_file);
 
     void OnMoviesAreGainCorrectedCheckBox(wxCommandEvent& event);
     void OnCorrectMagDistortionCheckBox(wxCommandEvent& event);

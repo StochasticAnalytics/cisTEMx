@@ -494,7 +494,8 @@ libgpucore_a_SOURCES  =      gpu/core_extensions/stop_watch_gpu.cu \
                              gpu/GpuImage.cu \
                              gpu/core_extensions/euler_search_gpu.cu \
                              gpu/core_extensions/electron_dose_gpu.cu \
-                             programs/refine3d/batched_search.cu 
+                             programs/refine3d/batched_search.cu \
+                             test/gpu/test_gpu_kernels.cu
 if ENABLE_FASTFFT_AM
     libgpucore_a_SOURCES += ext/FastFFT/src/FastFFT.cu
 endif
@@ -1128,7 +1129,9 @@ if EXPERIMENTAL_AM
     unit_test_runner_SOURCES  = test/unit_test_runner.cpp 
     unit_test_runner_SOURCES  += test/core/test_matrix.cpp 
 if WANT_CISTEM_GPU_AM
-    unit_test_runner_SOURCES  += test/gpu/core_extensions/data_views/test_pointers.cpp
+    unit_test_runner_SOURCES += test/gpu/test_gpu.cpp
+                                
+
     unit_test_runner_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     unit_test_runner_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     unit_test_runner_LDADD    =  libgpucore.a libcore.a $(WX_LIBS_BASE) $(CUDA_LIBS)

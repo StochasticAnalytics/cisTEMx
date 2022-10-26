@@ -147,15 +147,16 @@ void ImportMovieDialog::AddFilesClick(wxCommandEvent& event) {
 
             final_paths.Sort( );
 
-            for ( int file_counter = 0; file_counter < final_paths.GetCount( ); file_counter++ ) {
-                PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), final_paths.Item(file_counter), PathListCtrl->GetItemCount( ));
-                current_extension = wxFileName(final_paths.Item(file_counter)).GetExt( );
-                current_extension = current_extension.MakeLower( );
-                if ( current_extension == "eer" ) {
-                    at_least_one_eer_file = true;
-                    break;
-                }
-            }
+            // for ( int file_counter = 0; file_counter < final_paths.GetCount( ); file_counter++ ) {
+            //     PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), final_paths.Item(file_counter), PathListCtrl->GetItemCount( ));
+            //     current_extension = wxFileName(final_paths.Item(file_counter)).GetExt( );
+            //     current_extension = current_extension.MakeLower( );
+            //     if ( current_extension == "eer" ) {
+            //         at_least_one_eer_file = true;
+            //         break;
+            //     }
+            // }
+            CheckForEERFiles(final_paths, current_extension, at_least_one_eer_file);
 
             PathListCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE);
         } // Update PathListCtrl
@@ -228,6 +229,7 @@ void ImportMovieDialog::AddDirectoryClick(wxCommandEvent& event) {
             for ( unsigned long counter = 0; counter < all_files.GetCount( ); counter++ ) {
                 PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), all_files.Item(counter), PathListCtrl->GetItemCount( ));
             }
+            CheckForEERFiles(all_files, current_extension, at_least_one_eer_file);
 
             PathListCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE);
         } // update PathListCtrl
@@ -276,6 +278,18 @@ void ImportMovieDialog::OnTextKeyPress(wxKeyEvent& event) {
 
 void ImportMovieDialog::TextChanged(wxCommandEvent& event) {
     CheckImportButtonStatus( );
+}
+
+void ImportMovieDialog::CheckForEERFiles(wxArrayString& final_paths, wxString& current_extension, bool& at_least_one_eer_file) {
+    for ( int file_counter = 0; file_counter < final_paths.GetCount( ); file_counter++ ) {
+        PathListCtrl->InsertItem(PathListCtrl->GetItemCount( ), final_paths.Item(file_counter), PathListCtrl->GetItemCount( ));
+        current_extension = wxFileName(final_paths.Item(file_counter)).GetExt( );
+        current_extension = current_extension.MakeLower( );
+        if ( current_extension == "eer" ) {
+            at_least_one_eer_file = true;
+            break;
+        }
+    }
 }
 
 void ImportMovieDialog::CheckImportButtonStatus( ) {

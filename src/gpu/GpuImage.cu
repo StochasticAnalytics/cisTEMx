@@ -906,6 +906,16 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
     }
 }
 
+void GpuImage::FreeFFTPlan( ) {
+    if ( set_plan_type != cistem::fft_type::Enum::unset ) {
+        cufftErr(cufftDestroy(cuda_plan_inverse));
+        cufftErr(cufftDestroy(cuda_plan_forward));
+        set_plan_type             = cistem::fft_type::Enum::unset;
+        cufft_batch_size          = 1;
+        is_set_complexConjMulLoad = false;
+    }
+}
+
 void GpuImage::BufferDestroy( ) {
     if ( is_allocated_16f_buffer ) {
 #ifdef USE_ASYNC_MALLOC_FREE
@@ -3857,13 +3867,7 @@ void GpuImage::Deallocate( ) {
     // Separat method for all the buffer memory spaces, not sure it this makes sense
     BufferDestroy( );
 
-    if ( set_plan_type != cistem::fft_type::Enum::unset ) {
-        cufftErr(cufftDestroy(cuda_plan_inverse));
-        cufftErr(cufftDestroy(cuda_plan_forward));
-        set_plan_type             = cistem::fft_type::Enum::unset;
-        cufft_batch_size          = 1;
-        is_set_complexConjMulLoad = false;
-    }
+    FreeFFTPlan( );
 
     //  if (is_cublas_loaded)
     //  {
@@ -3954,7 +3958,8 @@ void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
     postcheck;
 
     if ( deallocate_single_precision ) {
-        cudaErr(cudaFree(real_values_gpu));
+        cudaErr(cudaFreeAsync(real_values_gpu, cudaStreamPerThread));
+        FreeFFTPlan( );
         is_in_memory_gpu = false;
     }
 }
@@ -3977,11 +3982,8 @@ void GpuImage::CopyFP16buffertoFP32(bool deallocate_half_precision) {
     postcheck;
 
     if ( deallocate_half_precision ) {
-#ifdef USE_ASYNC_MALLOC_FREE
         cudaErr(cudaFreeAsync(real_values_16f, cudaStreamPerThread));
-#else
-        cudaErr(cudaFree(real_values_16f));
-#endif
+        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         is_allocated_16f_buffer = false;
         real_values_16f         = nullptr;
         complex_values_16f      = nullptr;

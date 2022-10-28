@@ -630,6 +630,8 @@ bool UnBlurApp::DoCalculation( ) {
 
             constexpr bool deallocate_fp32 = true;
             image_stack[position_in_stack - 1].CopyFP32toFP16buffer(deallocate_fp32);
+            cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+            std::cerr << "Finished preprocessing frame " << position_in_stack << "in memory is : " << image_stack[position_in_stack - 1].is_in_memory_gpu << std::endl;
             first_iteration[sub_stack_index] = false;
             // image_stack[sub_stack_index].RecordBlocking( );
             // profile_timing.start("swap quadrands");

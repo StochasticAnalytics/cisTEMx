@@ -1,3 +1,4 @@
+template <typename = float>
 void unblur_refine_alignment(std::vector<Image>& input_stack,
                              int                 number_of_images,
                              int                 max_iterations,

@@ -627,6 +627,8 @@ bool UnBlurApp::DoCalculation( ) {
                 image_stack[position_in_stack - 1].ZeroCentralPixel( );
             }
 
+            constexpr bool deallocate_fp32 = true;
+            image_stack[position_in_stack - 1].CopyFP32toFP16buffer(deallocate_fp32);
             first_iteration[sub_stack_index] = false;
             // image_stack[sub_stack_index].RecordBlocking( );
             // profile_timing.start("swap quadrands");
@@ -722,7 +724,8 @@ bool UnBlurApp::DoCalculation( ) {
 
             // int binned_x_y = std::max(binned_x, binned_y);
             // image_stack.at(image_counter).Allocate(binned_x_y, binned_x_y, 1, false);
-            image_stack.at(image_counter).Allocate(binned_x, binned_y, 1, false);
+            constexpr bool allocate_fp16 = true;
+            image_stack.at(image_counter).Allocate(binned_x, binned_y, 1, false, allocate_fp16);
 // FIXME: add alias for ClipInto so it handles fourier space properly
 #ifdef ENABLEGPU
             unbinned_image_stack[image_counter].ClipIntoFourierSpace(&image_stack[image_counter], 0.f, true);
@@ -738,7 +741,11 @@ bool UnBlurApp::DoCalculation( ) {
     }
     unblur_timing.start("main refine");
     profile_timing.start("main refine");
+#ifdef ENABLEGPU
+    unblur_refine_alignment<__half>(image_stack, number_of_input_images, max_iterations, unitless_bfactor, should_mask_central_cross, vertical_mask_size, horizontal_mask_size, min_shift_in_pixels, max_shift_in_pixels, termination_threshold_in_pixels, pixel_size, number_of_frames_for_running_average, myroundint(5.0f / exposure_per_frame), max_threads, x_shifts, y_shifts, profile_timing_refinement_method);
+#else
     unblur_refine_alignment(image_stack, number_of_input_images, max_iterations, unitless_bfactor, should_mask_central_cross, vertical_mask_size, horizontal_mask_size, min_shift_in_pixels, max_shift_in_pixels, termination_threshold_in_pixels, pixel_size, number_of_frames_for_running_average, myroundint(5.0f / exposure_per_frame), max_threads, x_shifts, y_shifts, profile_timing_refinement_method);
+#end
     unblur_timing.lap("main refine");
     profile_timing.lap("main refine");
 

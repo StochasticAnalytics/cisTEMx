@@ -189,6 +189,7 @@ class GpuImage {
     void QuickAndDirtyWriteSlice(std::string filename, int first_slice) { QuickAndDirtyWriteSlices(filename, first_slice, first_slice); }; /**CPU_eq**/
 
     void ZeroCentralPixel( ); /**CPU_eq**/
+    template <typename StorageTypeBase = float>
     void PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift); /**CPU_eq**/
     void MultiplyByConstant(float scale_factor); /**CPU_eq**/
     void SetToConstant(float val);
@@ -203,6 +204,7 @@ class GpuImage {
     void MultiplyPixelWiseComplexConjugate(GpuImage& other_image, GpuImage& result_image) { MultiplyPixelWiseComplexConjugate(other_image, result_image, 0); };
 
     void SwapFourierSpaceQuadrants( );
+    template <typename StorageTypeBase = float>
     void SwapRealSpaceQuadrants( ); /**CPU_eq**/
     void ClipInto(GpuImage* other_image,
                   float     wanted_padding_value              = 0.f, /**CPU_eq**/
@@ -212,7 +214,7 @@ class GpuImage {
                   int       wanted_coordinate_of_box_center_y = 0,
                   int       wanted_coordinate_of_box_center_z = 0);
 
-    void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value, bool zero_central_pixel = false);
+    void ClipIntoFourierSpace(GpuImage* destination_image, float wanted_padding_value, bool zero_central_pixel = false, bool use_fp16 = false);
 
     void ClipIntoReturnMask(GpuImage* other_image);
 
@@ -248,9 +250,12 @@ class GpuImage {
     void CopyFP16buffertoFP32(bool deallocate_half_precision = true);
 
     void AllocateTmpVarsAndEvents( );
-    bool Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space);
+    // If we allocate the fp16 buffer, we will not allocate fp32, will leave it alone if the same size, and will remove it if different.
+    bool Allocate(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool should_be_in_real_space, bool allocate_fp16_buffer = false);
 
-    bool Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space) { return Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space); };
+    bool Allocate(int wanted_x_size, int wanted_y_size, bool should_be_in_real_space, bool allocate_fp16_buffer = false) {
+        return Allocate(wanted_x_size, wanted_y_size, 1, should_be_in_real_space, allocate_fp16_buffer);
+    };
 
     // Combines this and UpdatePhysicalAddressOfBoxCenter and SetLogicalDimensions
     void UpdateLoopingAndAddressing(int wanted_x_size, int wanted_y_size, int wanted_z_size);
@@ -289,7 +294,9 @@ class GpuImage {
                       float c_psi, float c_phi, float c_theta, float c_defocus, float c_pixel);
 
     // FIXME: These are added for the unblur refinement but are untested.
+    template <typename StorageTypeBase = float>
     void ApplyBFactor(float bfactor);
+    template <typename StorageTypeBase = float>
     void ApplyBFactor(float bfactor, float vertical_mask_size, float horizontal_mask_size); // Specialization for unblur refinement, merges MaskCentralCross()
     void Whiten(float resolution_limit = 1.f);
 
@@ -361,7 +368,7 @@ class GpuImage {
     };
 
     void CopyFrom(GpuImage* other_image);
-    template <typename StorageType>
+    template <typename StorageTypeBase>
     void CopyDataFrom(GpuImage& other_image);
     bool InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
@@ -392,14 +399,16 @@ class GpuImage {
 
     void AddImage(GpuImage* other_image) { AddImage(*other_image); }; // for compatibility with Image class
 
-    template <typename StorageType>
+    template <typename StorageTypeBase>
     void AddImageStack(std::vector<GpuImage>& input_stack);
-    template <typename StorageType>
+    template <typename StorageTypeBase>
     void AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& output_image);
 
+    template <typename StorageTypeBase = float>
     void SubtractImage(GpuImage& other_image);
 
-    void SubtractImage(GpuImage* other_image) { SubtractImage(*other_image); }; // for compatibility with Image class
+    template <typename StorageTypeBase = float>
+    void SubtractImage(GpuImage* other_image) { SubtractImage<StorageTypeBase>(*other_image); }; // for compatibility with Image class
 
     void AddSquaredImage(GpuImage& other_image);
 

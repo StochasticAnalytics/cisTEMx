@@ -1,4 +1,4 @@
-
+template <typename StorageType = float>
 void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                              int                    number_of_images,
                              int                    max_iterations,
@@ -54,9 +54,19 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     sum_of_images_minus_current.reserve(max_threads);
     correlation_map.reserve(max_threads);
 
+    constexpr bool use_fp16;
+    if constexpr ( std::is_same < StorageType, __half ) {
+        use_fp16 = true;
+    }
+    else {
+        use_fp16 = false;
+    }
+
     for ( int i = 0; i < max_threads; i++ ) {
-        sum_of_images_minus_current.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+        sum_of_images_minus_current.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false, use_fp16);
+        // We currently swap back to float prior to the BackwardFFT so allocate both buffers.
         correlation_map.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+        correlation_map.BufferInit(b_16f);
     }
 
     BatchedSearch batch;
@@ -85,7 +95,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     if ( use_running_average ) {
         running_average_stack.reserve(number_of_images);
         for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
-            running_average_stack.emplace_back(input_stack[image_counter].dims.x, input_stack[image_counter].dims.y, 1, false);
+            running_average_stack.emplace_back(input_stack[image_counter].dims.x, input_stack[image_counter].dims.y, 1, false, use_fp16);
         }
     }
 
@@ -95,9 +105,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     profile_timing_refinement_method.start("prepare initial sum");
 
     if ( use_running_average )
-        sum_of_images.AddImageStack<float>(running_average_stack);
+        sum_of_images.AddImageStack<StorageType>(running_average_stack);
     else
-        sum_of_images.AddImageStack<float>(input_stack);
+        sum_of_images.AddImageStack<StorageType>(input_stack);
 
     profile_timing_refinement_method.lap("prepare initial sum");
     // perform the main alignment loop until we reach a max shift less than wanted, or max iterations
@@ -171,11 +181,11 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             //phase_multiplier = (current_x_shifts[image_counter] < batch.max_pixel_radius_x( ) / 3.0f && current_y_shifts[image_counter] < batch.max_pixel_radius_y( ) / 3.0f && iteration_counter > 0) ? 1 : 0;
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
-            sum_of_images_minus_current[my_tidx].CopyDataFrom<float>(sum_of_images);
+            sum_of_images_minus_current[my_tidx].CopyDataFrom<StorageType>(sum_of_images);
             if ( use_running_average )
-                sum_of_images_minus_current[my_tidx].SubtractImage(&running_average_stack[image_counter]);
+                sum_of_images_minus_current[my_tidx].SubtractImage<StorageType>(&running_average_stack[image_counter]);
             else
-                sum_of_images_minus_current[my_tidx].SubtractImage(&input_stack[image_counter]);
+                sum_of_images_minus_current[my_tidx].SubtractImage<StorageType>(&input_stack[image_counter]);
 
             sum_of_images_minus_current[my_tidx].ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
 
@@ -195,6 +205,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                 input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current[my_tidx], correlation_map[my_tidx], phase_multiplier);
 
             correlation_map[my_tidx].SwapRealSpaceQuadrants( );
+
+            // Copy back to single precision buffer for backward FFT (fp16 buffer is untested in cuFFT)
+            correlation_map[my_tidx].CopyFP16buffertoFP32(false);
             correlation_map[my_tidx].BackwardFFTBatched(1);
 
             profile_timing_refinement_method.lap("compute cross correlation");

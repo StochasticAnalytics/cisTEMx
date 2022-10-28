@@ -631,7 +631,6 @@ bool UnBlurApp::DoCalculation( ) {
             constexpr bool deallocate_fp32 = true;
             image_stack[position_in_stack - 1].CopyFP32toFP16buffer(deallocate_fp32);
             cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-            std::cerr << "Finished preprocessing frame " << position_in_stack << "in memory is : " << image_stack[position_in_stack - 1].is_in_memory_gpu << std::endl;
             first_iteration[sub_stack_index] = false;
             // image_stack[sub_stack_index].RecordBlocking( );
             // profile_timing.start("swap quadrands");
@@ -830,9 +829,8 @@ bool UnBlurApp::DoCalculation( ) {
 
 #ifdef ENABLEGPU
         shared_ptr->start("calc dose filter");
-        // FIXME: restore power should be optional and needs a test in consoltest
-        bool temp_fixme_restore_power = true;
-        my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, __half2*>(image_stack, (__half2*)sum_image.complex_values_16f, pre_exposure_amount, exposure_per_frame, temp_fixme_restore_power);
+
+        my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, __half2*>(image_stack, (__half2*)sum_image.complex_values_16f, pre_exposure_amount, exposure_per_frame, should_dose_filter);
         shared_ptr->lap("calc dose filter");
 
         shared_ptr->start("write out frames");
@@ -907,11 +905,11 @@ bool UnBlurApp::DoCalculation( ) {
     }
     else // just add them
     {
-// FIXME: this should be AddImageStack for the GPU
-#ifdef ENABLEGPU
-        MyAssertTrue(false, "Shouldn't be here");
-#endif
+
         profile_timing.start("final sum");
+#ifdef ENABLEGPU
+        sum_image.AddImageStack<__half>(image_stack);
+#else
         for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
             sum_image.AddImage(&image_stack[image_counter]);
 
@@ -919,6 +917,7 @@ bool UnBlurApp::DoCalculation( ) {
                 image_stack[image_counter].QuickAndDirtyWriteSlice(aligned_frames_filename, image_counter + 1);
             }
         }
+#endif
         profile_timing.lap("final sum");
     }
 

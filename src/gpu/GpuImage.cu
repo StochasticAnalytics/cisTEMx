@@ -506,12 +506,13 @@ MultiplyPixelWiseComplexConjugateKernel(const StorageType* __restrict__ img_comp
     }
 }
 
+template <typename StorageType>
 __global__ void
-MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ img_complex_values,
-                                        const cufftComplex* __restrict__ ref_complex_values,
-                                        cufftComplex* result_values,
-                                        int4          dims,
-                                        const int     phase_multiplier) {
+MultiplyPixelWiseComplexConjugateKernel(const StorageType* __restrict__ img_complex_values,
+                                        const StorageType* __restrict__ ref_complex_values,
+                                        StorageType* result_values,
+                                        int4         dims,
+                                        const int    phase_multiplier) {
     int x = physical_X( );
     if ( x > dims.w / 2 )
         return;
@@ -524,25 +525,45 @@ MultiplyPixelWiseComplexConjugateKernel(const cufftComplex* __restrict__ img_com
 
     constexpr float epsilon = 1e-6f;
     // We have one referece image, and this is broadcasted to all images in the stack
-    const Complex ref_val = (Complex)ref_complex_values[address];
-    Complex       C;
-    Complex       phase_shift;
+    if constexpr ( std::is_same<StorageType, __half2>::value ) {
+        const Complex ref_val = (Complex)__half22float2(ref_complex_values[address]);
+        Complex       C;
+        Complex       phase_shift;
 
-    for ( int k = 0; k < dims.z; k++ ) {
-        // the result should be (ref * conj(ref * shift + noise)) = auto correlation of the reference and the phase shifted from the iamge
-        C = ComplexConjMul(ref_val, (Complex)img_complex_values[address]);
-        // remove the magnitude to get the phase shift (see saxton 1996)
-        __sincosf(float(phase_multiplier) * atan2f(C.y, C.x), &phase_shift.y, &phase_shift.x);
-        // float amplitude = ComplexModulus(C) + epsilon;
-        // ComplexScale(&C, 1.0f / amplitude);
-        result_values[address] = (cufftComplex)ComplexMul(C, phase_shift);
+        for ( int k = 0; k < dims.z; k++ ) {
+            // the result should be (ref * conj(ref * shift + noise)) = auto correlation of the reference and the phase shifted from the iamge
+            C = ComplexConjMul(ref_val, (Complex)__half22float2(img_complex_values[address]));
+            // remove the magnitude to get the phase shift (see saxton 1996)
+            __sincosf(float(phase_multiplier) * atan2f(C.y, C.x), &phase_shift.y, &phase_shift.x);
+            // float amplitude = ComplexModulus(C) + epsilon;
+            // ComplexScale(&C, 1.0f / amplitude);
+            result_values[address] = __float22half2_rn(ComplexMul(C, phase_shift));
 
-        address += stride;
+            address += stride;
+        }
+    }
+    else {
+
+        const Complex ref_val = (Complex)ref_complex_values[address];
+        Complex       C;
+        Complex       phase_shift;
+
+        for ( int k = 0; k < dims.z; k++ ) {
+            // the result should be (ref * conj(ref * shift + noise)) = auto correlation of the reference and the phase shifted from the iamge
+            C = ComplexConjMul(ref_val, (Complex)img_complex_values[address]);
+            // remove the magnitude to get the phase shift (see saxton 1996)
+            __sincosf(float(phase_multiplier) * atan2f(C.y, C.x), &phase_shift.y, &phase_shift.x);
+            // float amplitude = ComplexModulus(C) + epsilon;
+            // ComplexScale(&C, 1.0f / amplitude);
+            result_values[address] = (cufftComplex)ComplexMul(C, phase_shift);
+
+            address += stride;
+        }
     }
 }
 
 template <typename StorageTypeBase>
-void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier) {
+void GpuImage::MultiplyPixelWiseComplexConjugate<StorageTypeBase>(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier) {
     // FIXME when adding real space complex images
     MyDebugAssertFalse(is_in_real_space, "Image is in real space");
     MyDebugAssertFalse(reference_img.is_in_real_space, "Other image is in real space");
@@ -587,8 +608,8 @@ void GpuImage::MultiplyPixelWiseComplexConjugate(GpuImage& reference_img, GpuIma
     postcheck;
 }
 
-template GpuImage::MultiplyPixelWiseComplexConjugate<__half>(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier);
-template GpuImage::MultiplyPixelWiseComplexConjugate<float>(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier);
+template void GpuImage::MultiplyPixelWiseComplexConjugate<__half>(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier);
+template void GpuImage::MultiplyPixelWiseComplexConjugate<float>(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier);
 
 __global__ void
 ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values_gpu, int4 dims, int padding_jump_value, float* returnValue);
@@ -1281,7 +1302,7 @@ ApplyBFactorKernel(StorageType* d_input,
 }
 
 template <typename StorageTypeBase>
-void GpuImage::ApplyBFactor(float bfactor) {
+void GpuImage::ApplyBFactor<StorageTypeBase>(float bfactor) {
     MyDebugAssertFalse(is_in_real_space, "This function is only for Fourier space images.");
 
     precheck;
@@ -1304,8 +1325,8 @@ void GpuImage::ApplyBFactor(float bfactor) {
     postcheck;
 }
 
-template GpuImage::ApplyBFactor<float>(float bfactor);
-template GpuImage::ApplyBFactor<__half>(float bfactor);
+template void GpuImage::ApplyBFactor<float>(float bfactor);
+template void GpuImage::ApplyBFactor<__half>(float bfactor);
 
 template <typename StorageType>
 __global__ void
@@ -1345,7 +1366,7 @@ ApplyBFactorKernel(StorageType* d_input,
 }
 
 template <typename StorageTypeBase>
-void GpuImage::ApplyBFactor(float bfactor, const float vertical_mask_size, const float horizontal_mask_size) {
+void GpuImage::ApplyBFactor<StorageTypeBase>(float bfactor, const float vertical_mask_size, const float horizontal_mask_size) {
     MyDebugAssertFalse(is_in_real_space, "This function is only for Fourier space images.");
     MyDebugAssertTrue(dims.z == 1, "This function is only for 2D images.");
 
@@ -1377,8 +1398,8 @@ void GpuImage::ApplyBFactor(float bfactor, const float vertical_mask_size, const
     postcheck;
 }
 
-template GpuImage::ApplyBFactor<float>(float bfactor, const float vertical_mask_size, const float horizontal_mask_size);
-template GpuImage::ApplyBFactor<__half>(float bfactor, const float vertical_mask_size, const float horizontal_mask_size);
+template void GpuImage::ApplyBFactor<float>(float bfactor, const float vertical_mask_size, const float horizontal_mask_size);
+template void GpuImage::ApplyBFactor<__half>(float bfactor, const float vertical_mask_size, const float horizontal_mask_size);
 
 __global__ void
 RotationalAveragePSKernel(const __restrict__ cufftComplex* input_values,
@@ -3283,12 +3304,12 @@ PhaseShiftKernel(StorageType* d_input,
                                                 angles);
 
         int address      = d_ReturnFourier1DAddressFromPhysicalCoord(wanted_coords, physical_upper_bound_complex);
-        d_input[address] = ComplexMul(d_input[address], angles);
+        d_input[address] = ComplexMul<StorageType, float2>(d_input[address], angles);
     }
 }
 
 template <typename StorageTypeBase>
-void GpuImage::PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift) {
+void GpuImage::PhaseShift<StorageTypeBase>(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift) {
     if constexpr ( std::is_same<StorageTypeBase, __half>::value ) {
         MyDebugAssertTrue(is_allocated_16f_buffer, "Gpu memory not allocated");
         MyDebugAssertFalse(is_in_real_space, "Image is already in real space - PhaseShift with fp16 must already have FFTs");
@@ -3312,14 +3333,14 @@ void GpuImage::PhaseShift(float wanted_x_shift, float wanted_y_shift, float want
     precheck;
     if constexpr ( std::is_same<StorageTypeBase, __half>::value ) {
 
-        PhaseShiftKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_16f,
+        PhaseShiftKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>((__half2*)complex_values_16f,
                                                                                 dims, shifts,
                                                                                 physical_address_of_box_center,
                                                                                 physical_index_of_first_negative_frequency,
                                                                                 physical_upper_bound_complex);
     }
     else {
-        PhaseShiftKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu,
+        PhaseShiftKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>((float2*)complex_values_gpu,
                                                                                 dims, shifts,
                                                                                 physical_address_of_box_center,
                                                                                 physical_index_of_first_negative_frequency,
@@ -3332,8 +3353,8 @@ void GpuImage::PhaseShift(float wanted_x_shift, float wanted_y_shift, float want
         BackwardFFT( );
 }
 
-template GpuImage::PhaseShift<float>(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift);
-template GpuImage::PhaseShift<__half>(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift);
+template void GpuImage::PhaseShift<float>(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift);
+template void GpuImage::PhaseShift<__half>(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift);
 
 __device__ __forceinline__ float
 d_ReturnPhaseFromShift(float real_space_shift, float distance_from_origin, float dimension_size) {
@@ -4621,7 +4642,7 @@ void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_pa
 
     // TODO could easily template this, but plan to replace with a straight memcpy anyway
     if ( use_fp16 ) {
-        __half2 padding_value = __float2half2(wanted_padding_value);
+        __half2 padding_value = __float2half2_rn(wanted_padding_value);
         precheck;
         ClipIntoFourierSpaceKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_fp16,
                                                                                           destination_image->complex_values_fp16,

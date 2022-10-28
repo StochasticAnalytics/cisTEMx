@@ -51,8 +51,7 @@ bool MRCFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_fo
     //	MyDebugAssertFalse(my_file->is_open(), "File Already Open: %s",wanted_filename);
     CloseFile( );
 
-    do_nothing = (wanted_filename.compare("/dev/null") == 0);
-
+    do_nothing = StartsWithDevNull(wanted_filename);
     if ( do_nothing ) {
         filename = wanted_filename;
     }

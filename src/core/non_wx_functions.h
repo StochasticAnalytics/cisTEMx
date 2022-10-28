@@ -1,6 +1,7 @@
 #include <cmath>
 #include <complex>
 #include <iostream>
+#include <string>
 #include "../constants/constants.h"
 
 inline void ZeroBoolArray(bool* array_to_zero, int size_of_array) {
@@ -141,6 +142,22 @@ inline bool IsOdd(int number) {
         return false;
     else
         return true;
+}
+
+inline bool StartsWithDevNull(const std::string& wanted_filename) {
+    if ( wanted_filename.size( ) > 8 ) {
+        // It is long enough to point to /dev/null/...
+        constexpr const char* dev_null{"/dev/null"};
+        for ( int iChar = 0; iChar < 9; iChar++ ) {
+            if ( wanted_filename[iChar] != dev_null[iChar] ) {
+                return false;
+            }
+        }
+    }
+    else {
+        return false;
+    }
+    return true;
 }
 
 inline float ReturnPhaseFromShift(float real_space_shift, float distance_from_origin, float dimension_size) {

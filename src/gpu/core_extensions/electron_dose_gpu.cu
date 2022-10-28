@@ -84,8 +84,8 @@ ApplyDoseFilterKernel(StorageType** image_data,
 
         filter_coeff = ReturnDoseFilter(pre_exposure, ReturnCriticalDose(kx, voltage_scaling_factor));
         if constexpr ( std::is_same_v<StorageType, __half2> ) {
-            real_sum += __half2float(image_data[z][address].x) * filter_coeff;
-            imag_sum += __half2float(image_data[z][address].y) * filter_coeff;
+            real_sum += (__half2float(image_data[z][address].x) * filter_coeff);
+            imag_sum += (__half2float(image_data[z][address].y) * filter_coeff);
         }
         else {
             real_sum += image_data[z][address].x * filter_coeff;
@@ -100,7 +100,7 @@ ApplyDoseFilterKernel(StorageType** image_data,
     // #endif
 
     if ( address == 0 ) {
-        output_data[0] = StorageType{1.f, 1.f};
+        output_data[0] = StorageType{1.f, 0.f};
     }
     else {
         if constexpr ( std::is_same_v<StorageType, __half2> ) {
@@ -150,8 +150,8 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(StorageType** image_data,
         filter_coeff = ReturnDoseFilter(pre_exposure, ReturnCriticalDose(kx, voltage_scaling_factor));
         sum_of_squares += (filter_coeff * filter_coeff);
         if constexpr ( std::is_same_v<StorageType, __half2> ) {
-            real_sum += __half2float(image_data[z][address].x) * filter_coeff;
-            imag_sum += __half2float(image_data[z][address].y) * filter_coeff;
+            real_sum += (__half2float(image_data[z][address].x) * filter_coeff);
+            imag_sum += (__half2float(image_data[z][address].y) * filter_coeff);
         }
         else {
             real_sum += image_data[z][address].x * filter_coeff;
@@ -162,12 +162,15 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(StorageType** image_data,
     }
 
     // This should never be zero
+    real_sum /= sqrtf(sum_of_squares);
+    imag_sum /= sqrtf(sum_of_squares);
+
     if ( address == 0 ) {
-        output_data[0] = StorageType{1.f, 1.f};
+        output_data[0] = StorageType{1.f, 0.f};
     }
     else {
         if constexpr ( std::is_same_v<StorageType, __half2> ) {
-            output_data[address] = __floats2half2_rn(real_sum / sum_of_squares, imag_sum / sum_of_squares);
+            output_data[address] = __floats2half2_rn(real_sum, imag_sum);
         }
         else {
             output_data[address].x = real_sum;
@@ -237,7 +240,6 @@ void ElectronDose::CalculateDoseFilterAs1DArray(std::vector<GpuImage>& ref_image
 
     // Different than the CPU implementation, dose_start is assumed to be pre_exposure and dose per frame = dose_finish
     ref_image[0].ReturnLaunchParameters(ref_image[0].dims, false);
-
 #ifdef ELECTRON_DOSE_DEBUG_PRINT
     StealStdoutBackFromWX my_stdout("/tmp/gpulog_class.txt");
 #endif

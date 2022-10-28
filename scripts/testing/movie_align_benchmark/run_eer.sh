@@ -3,6 +3,7 @@
 data_dir=$1
 n_to_align=$2
 starting_idx=$3
+n_eer_frames_to_avg=$4
 
 file_name_list=($(ls ${data_dir}/*.eer))
 
@@ -16,14 +17,13 @@ spherical_aberration=2.7
 amplitude_contrast=0.07 
 output_binning=1
 
-n_eer_frames_to_avg=10
 exposure_per_frame=$(echo "" | awk -v n_eer_frames_to_avg=$n_eer_frames_to_avg '{print 0.075*n_eer_frames_to_avg}')
 
 for i in $( seq 0 $(($n_to_align-1)) ); do
     current_idx=$(( ($starting_idx+$i) % $n_to_align))
 
 echo "Process $starting_idx aligning ${file_name_list[$current_idx]}"
-apptainer exec -B /scratch --nv ~/software/cisTEMx_production_1.0.0.sif ~/git/cisTEM/build/intel-gpu-debug-profile/src/unblur_gpu << EOF
+apptainer exec -B /scratch --nv ~/software/cisTEMx_production_1.0.0.sif ~/git/cisTEM/build/intel-gpu/src/unblur_gpu << EOF
 ${file_name_list[$current_idx]}
 /dev/null
 /dev/null
@@ -39,7 +39,7 @@ yes
 1200
 1
 1
-0.5
+0.175
 10
 yes
 yes

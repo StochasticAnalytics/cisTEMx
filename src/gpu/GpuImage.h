@@ -481,6 +481,7 @@ class GpuImage {
     void NppInit( );
     void BufferInit(BufferType bt, int n_elements = 0);
     void BufferDestroy( );
+    void FreeFFTPlan( );
 
     // Real buffer = size real_values
     GpuImage* image_buffer;

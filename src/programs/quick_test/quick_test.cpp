@@ -33,9 +33,8 @@ void QuickTestApp::DoInteractiveUserInput( ) {
 
 bool QuickTestApp::DoCalculation( ) {
 
-    Image fp;
-    fp.QuickAndDirtyReadSlices("/home/himesb/for_auto_testing/bgal_stack.mrc", 1, 10);
-    fp.QuickAndDirtyWriteSlices("/home/himesb/for_auto_testing/bgal_stack_2.mrc", 1, 10);
+    MRCFile my_file;
+    my_file.OpenFile(input_starfile_filename.at(0).ToStdString( ), false);
 
     exit(0);
     RotationMatrix my_rotation_matrix;

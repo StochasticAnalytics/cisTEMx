@@ -74,7 +74,7 @@ void EerFile::CloseFile( ) {
 
 void EerFile::PrintInfo( ) {
     wxPrintf("Filename  : %s\n", filename.GetFullName( ));
-    wxPrintf("Dimensions: %i %i %i\n", ReturnXSize( ) * super_res_factor, ReturnYSize( ) * super_res_factor, ReturnZSize( ));
+    wxPrintf("Dimensions: %i %i %i\n", ReturnXSize( ), ReturnYSize( ), ReturnZSize( ));
     wxPrintf("Number of EER frames: %i\n", number_of_eer_frames);
     wxPrintf("Super resolution factor: %i\n", super_res_factor);
     wxPrintf("Bits per RLE: %i\n", bits_per_rle);

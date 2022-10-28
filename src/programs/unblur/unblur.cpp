@@ -356,6 +356,7 @@ bool UnBlurApp::DoCalculation( ) {
 
     std::vector<bool> first_iteration(max_threads, true);
 
+    profile_timing.start("Image vector setup");
 #ifdef ENABLEGPU
     std::vector<GpuImage> unbinned_image_stack; // We will allocate this later depending on if we are binning or not.
     std::vector<GpuImage> image_stack(number_of_input_images);
@@ -378,6 +379,7 @@ bool UnBlurApp::DoCalculation( ) {
     Image gain_image;
     Image dark_image;
 
+    profile_timing.lap("Image vector setup");
     // output sizes..
 
     int output_x_size;
@@ -388,8 +390,8 @@ bool UnBlurApp::DoCalculation( ) {
         output_y_size = RoundAndMakeEven(float(input_file.ReturnYSize( )) / output_binning_factor);
     }
     else {
-        output_x_size = input_file.ReturnXSize( );
-        output_y_size = input_file.ReturnYSize( );
+        output_x_size = RoundAndMakeEven(input_file.ReturnXSize( ));
+        output_y_size = RoundAndMakeEven(input_file.ReturnYSize( ));
     }
 
     // work out the output pixel size..
@@ -440,7 +442,7 @@ bool UnBlurApp::DoCalculation( ) {
 		exit(-1);
 	}
 	*/
-
+    profile_timing.start("allocate dose filter");
     // Read in dark/gain reference
     if ( ! movie_is_gain_corrected ) {
         gain_image.ReadSlice(&gain_file, 1);
@@ -448,7 +450,7 @@ bool UnBlurApp::DoCalculation( ) {
     if ( ! movie_is_dark_corrected ) {
         dark_image.ReadSlice(&dark_file, 1);
     }
-
+    profile_timing.lap("allocate dose filter");
     // Read in, gain-correct, FFT and resample all the images..
 
     unblur_timing.start("read frames");
@@ -466,8 +468,9 @@ bool UnBlurApp::DoCalculation( ) {
 
     int cpu_offset = 0;
     // only used once and by thread zero
-    bool adjust_image_mode = true;
-    int  image_mode        = 0;
+    bool  adjust_image_mode   = true;
+    int   wanted_image_mode   = 0;
+    float measured_image_mode = 0.f;
     for ( preprocess_block_counter = 0; preprocess_block_counter < number_of_preprocess_blocks; preprocess_block_counter++ ) {
 
 #ifndef ENABLEGPU
@@ -476,8 +479,8 @@ bool UnBlurApp::DoCalculation( ) {
             cpu_offset += max_threads;
         }
 #endif
-
         profile_timing.start("read in frames");
+
         // TODO: After implementing the reduced precision, test whether it makes sense to have parallel i/o here.
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
             // Read from disk
@@ -526,6 +529,9 @@ bool UnBlurApp::DoCalculation( ) {
                 // Only the first thread that gets here should do any work, hence the omp critical.
                 // After that the shared bool should have everyone else fall through
                 if ( adjust_image_mode ) {
+                    profile_timing.start("calc image mode", false);
+
+                    // We don't know which thread will get here first,so turn off threadsafe (which checks for thread==0) in the StopWatch timer
                     // with no coincidence loss, aperture loss, or energy filtering.
                     float                 upper_bound_on_lambda = (exposure_per_frame * original_pixel_size * original_pixel_size);
                     float                 deviation_from_one;
@@ -533,51 +539,59 @@ bool UnBlurApp::DoCalculation( ) {
                     Curve                 local_sigma_histogram;
 
                     // The mode should then be bounded by this
-                    image_mode = int(floorf(upper_bound_on_lambda));
+                    wanted_image_mode = int(floorf(upper_bound_on_lambda));
 
-                    if ( image_mode > 0 ) {
+                    if ( wanted_image_mode > 0 ) {
                         Image buffer;
                         buffer.CopyFrom(&image_stack_[sub_stack_index]);
                         buffer.ComputeHistogramOfRealValuesCurve(&local_sigma_histogram);
-                        buffer.AddConstant(-local_sigma_histogram.ReturnMode( ) + image_mode);
+                        measured_image_mode = local_sigma_histogram.ReturnMode( );
+                        buffer.AddConstant(-measured_image_mode + wanted_image_mode);
                         buffer.SetMinimumAndMaximumValues(0.f, std::numeric_limits<float>::max( ));
                         my_dist = buffer.ReturnDistributionOfRealValues( );
 
                         deviation_from_one = fabsf(1.f - (my_dist.GetSampleMean( ) / my_dist.GetSampleVariance( )));
 
-                        image_mode--;
-                        while ( image_mode > -1 ) {
+                        wanted_image_mode--;
+                        while ( wanted_image_mode > -1 ) {
                             // We'll use the ratio of the mean/variance as a score for how well we are doing
                             buffer.CopyFrom(&image_stack_[sub_stack_index]);
                             buffer.ComputeHistogramOfRealValuesCurve(&local_sigma_histogram);
-                            buffer.AddConstant(-local_sigma_histogram.ReturnMode( ) + image_mode);
+                            buffer.AddConstant(-local_sigma_histogram.ReturnMode( ) + wanted_image_mode);
                             buffer.SetMinimumAndMaximumValues(0.f, std::numeric_limits<float>::max( ));
 
                             my_dist = buffer.ReturnDistributionOfRealValues( );
                             if ( fabsf(1.f - (my_dist.GetSampleMean( ) / my_dist.GetSampleVariance( )) < deviation_from_one) ) {
-                                deviation_from_one = fabsf(1.f - (my_dist.GetSampleMean( ) / my_dist.GetSampleVariance( )));
-                                image_mode--;
+                                deviation_from_one  = fabsf(1.f - (my_dist.GetSampleMean( ) / my_dist.GetSampleVariance( )));
+                                measured_image_mode = local_sigma_histogram.ReturnMode( );
+                                wanted_image_mode--;
                             }
                             else {
 
                                 break;
                             }
                         }
-                        image_mode++;
+                        wanted_image_mode++;
                     }
                     // else: this is the lowest value for a poisson distribution and we have our answer
 
                     adjust_image_mode = false;
+                    // We don't know which thread will get here first,so turn off threadsafe (which checks for thread==0) in the StopWatch timer
+                    profile_timing.lap("calc image mode", false);
                 }
+
             } // end omp critical on best image mode
 
             // std::cerr << "exposure_per_frame" << exposure_per_frame << std::endl;
             // std::cerr << "pixel size " << original_pixel_size << std::endl;
+            profile_timing.start("adjust image mode");
+            // Calculating the histogram is pretty expensive, so we'll assume that the measured mode is likely
+            // to be consistant across frames (as the underlying assumption is that the deviation from Poisson statistics
+            // we wish to correct is inherently from ++systematic++ errors, not ++random++ errors)
 
-            Curve local_sigma_histogram;
-            image_stack_[sub_stack_index].ComputeHistogramOfRealValuesCurve(&local_sigma_histogram);
-            image_stack_[sub_stack_index].AddConstant(-local_sigma_histogram.ReturnMode( ) + image_mode);
+            image_stack_[sub_stack_index].AddConstant(-measured_image_mode + wanted_image_mode);
             image_stack_[sub_stack_index].SetMinimumAndMaximumValues(0.f, std::numeric_limits<float>::max( ));
+            profile_timing.lap("adjust image mode");
 
             profile_timing.start("replace outliers");
             image_stack_[sub_stack_index].ReplaceOutliersWithMean(8);
@@ -732,10 +746,11 @@ bool UnBlurApp::DoCalculation( ) {
     unblur_timing.start("final refine");
     if ( pre_binning_factor > 1 ) {
         // we don't need the binned images anymore..
-
+        profile_timing.start("free binned stack");
         image_stack.clear( );
         image_stack = std::move(unbinned_image_stack);
         pixel_size  = output_pixel_size;
+        profile_timing.lap("free binned stack");
 
         // Adjust the shifts, then phase shift the original images
         profile_timing.start("apply shifts 1");

@@ -54,19 +54,16 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     sum_of_images_minus_current.reserve(max_threads);
     correlation_map.reserve(max_threads);
 
-    constexpr bool use_fp16;
-    if constexpr ( std::is_same < StorageType, __half ) {
+    bool use_fp16 = false;
+    if constexpr ( std::is_same<StorageType, __half>::value ) {
         use_fp16 = true;
-    }
-    else {
-        use_fp16 = false;
     }
 
     for ( int i = 0; i < max_threads; i++ ) {
         sum_of_images_minus_current.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false, use_fp16);
         // We currently swap back to float prior to the BackwardFFT so allocate both buffers.
         correlation_map.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
-        correlation_map.BufferInit(b_16f);
+        correlation_map[i].BufferInit(GpuImage::BufferType::b_16f);
     }
 
     BatchedSearch batch;

@@ -785,7 +785,31 @@ void MyTestApp::TestGpuImageArithmeticFunctions( ) {
     }
     EndTest( );
 
+    BeginTest("GpuImage::SubtractImageFp16");
+    test_image.SetToConstant(2.0f);
+    d_test_image.CopyHostToDeviceAndSynchronize( );
+    other_image.SetToConstant(1.25f);
+    other_image.CopyFP32toFP16buffer(false);
+    d_test_image.CopyFP32toFP16buffer(false);
+    d_test_image.SubtractImage<__half>(other_image);
+    d_test_image.CopyFP16buffertoFP32(false);
+    d_test_image.CopyDeviceToHostAndSynchronize(false, false);
+    address = 0;
+    for ( int j = 0; j < test_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < test_image.logical_x_dimension; i++ ) {
+            if ( ! HalfFloatsAreAlmostTheSame(test_image.real_values[address], 0.75f) ) {
+                std::cerr << "Failed for index: " << address << ", values " << test_image.real_values[address] << std::endl;
+                FailTest;
+            }
+            address++;
+        }
+        address += test_image.padding_jump_value;
+    }
+    EndTest( );
+
     BeginTest("GpuImage::MultiplyImage");
+    test_image.SetToConstant(3.0f - 1.25f);
+    d_test_image.CopyHostToDeviceAndSynchronize( );
     other_image.SetToConstant(4.f);
     d_test_image.MultiplyPixelWise(other_image);
     d_test_image.CopyDeviceToHostAndSynchronize(false, false);
@@ -804,7 +828,6 @@ void MyTestApp::TestGpuImageArithmeticFunctions( ) {
 
 void MyTestApp::TestElectronExposureFilterGPU( ) {
     // TODO: Depends on ZeroFloatArray, but this has no test.
-    BeginTest("Test Electron Exposure Filter GPU");
 
     /*
   Test exposure filter for a simple square image size, over all voltages and three pixel sizes.
@@ -848,6 +871,7 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
     d_filtered_output.Init(filtered_output, true, true);
 
     // So no filters are actually calculated as in the cpu test
+    BeginTest("Test Electron Exposure Filter GPU");
 
     ground_truth_counter = 0;
     for ( auto& acceleration_voltage : accelerating_voltage_vector ) {
@@ -876,10 +900,60 @@ void MyTestApp::TestElectronExposureFilterGPU( ) {
                 for ( auto& indx : indx_even ) {
                     if ( ! FloatsAreAlmostTheSame(filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]) ) {
                         wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
-                                 acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[ground_truth_counter]);
+                                 acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]);
 
                         FailTest;
                     }
+
+                    // wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
+                    //          acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]);
+                    per_image_gt_counter++;
+                }
+            }
+            ground_truth_counter += indx_even.size( );
+
+            delete my_electron_dose;
+        }
+    }
+    EndTest( );
+
+    BeginTest("Test Electron Exposure Filter GPU fp16");
+
+    ground_truth_counter = 0;
+    for ( auto& acceleration_voltage : accelerating_voltage_vector ) {
+        for ( auto& pixel_size : pixel_size_vector ) {
+            my_electron_dose = new ElectronDose(acceleration_voltage, pixel_size);
+
+            // We can get the filter values if we supply an input image that has a value of 1.0
+            for ( int i = 0; i < n_images; i++ ) {
+                d_test_image_small_even[i].SetToConstant(1.0f);
+                d_test_image_small_even[i].CopyFP32toFP16buffer(false);
+            }
+            d_filtered_output.SetToConstant(3.0f);
+            d_filtered_output.CopyFP32toFP16buffer(false);
+            // Note: two differences to the cpu call a) we need to specifically NOT restore the noise power, and we pass the total exposure
+            // as pre_exposure, and 0 as the exposure per frame, this way all three images should have the same dose filter applied.
+            float pre_exposure       = 30.f;
+            float exposure_per_frame = 0.f;
+
+            my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, __half2*>(d_test_image_small_even, (__half2*)d_filtered_output.complex_values_16f, pre_exposure, exposure_per_frame, false);
+
+            for ( int i = 0; i < n_images; i++ ) {
+                int per_image_gt_counter = ground_truth_counter;
+                // Copy back to the host for comparison
+                static constexpr bool free_gpu_mem   = false;
+                static constexpr bool unpin_host_mem = false;
+                d_filtered_output.CopyFP16buffertoFP32(false);
+                d_filtered_output.CopyDeviceToHostAndSynchronize(free_gpu_mem, unpin_host_mem);
+
+                for ( auto& indx : indx_even ) {
+                    if ( ! HalfFloatsAreAlmostTheSame(filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]) ) {
+                        wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
+                                 acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]);
+
+                        FailTest;
+                    }
+
                     // wxPrintf("Failed for image %i/%i kv,pix,ev: %3.f %3.3f, values %f %f\n", i, n_images,
                     //          acceleration_voltage, pixel_size, filtered_output.real_values[indx * 2], ground_truth_even[per_image_gt_counter]);
                     per_image_gt_counter++;
@@ -923,6 +997,8 @@ void MyTestApp::TestGpuAddImageStack( ) {
     for ( int i = 0; i < n_images; i++ ) {
         d_test_image[i].Init(image_stack[i]);
         d_test_image[i].CopyHostToDevice(false);
+        // Make a copy of the starting image in fp16 for a second test
+        d_test_image[i].CopyFP32toFP16buffer(false);
     }
 
     MyDebugAssertTrue(d_test_image.size( ) == n_images, "d_test_image.size() != n_images");
@@ -931,6 +1007,27 @@ void MyTestApp::TestGpuAddImageStack( ) {
     d_sum_image.Init(sum_image);
     d_sum_image.CopyHostToDeviceAndSynchronize( );
     d_sum_image.AddImageStack<float>(d_test_image);
+    d_sum_image.CopyDeviceToHostAndSynchronize(false, false);
+
+    pixel_counter = 0;
+    for ( int j = 0; j < sum_image.logical_y_dimension; j++ ) {
+        for ( int i = 0; i < sum_image.logical_x_dimension; i++ ) {
+            if ( ! FloatsAreAlmostTheSame(sum_image.real_values[pixel_counter], ground_truth.real_values[pixel_counter]) ) {
+                wxPrintf("Failed for pixel %i,%i : values %f %f\n", i, j, sum_image.real_values[pixel_counter], ground_truth.real_values[pixel_counter]);
+                FailTest;
+            }
+            pixel_counter++;
+        }
+        pixel_counter += sum_image.padding_jump_value;
+    }
+
+    EndTest( );
+
+    BeginTest("Test Gpu::AddImageStack fp16");
+    d_sum_image.CopyHostToDevice( );
+    d_sum_image.CopyFP32toFP16buffer(false);
+    d_sum_image.AddImageStack<__half>(d_test_image);
+    d_sum_image.CopyFP16buffertoFP32(true);
     d_sum_image.CopyDeviceToHostAndSynchronize(false, false);
 
     pixel_counter = 0;

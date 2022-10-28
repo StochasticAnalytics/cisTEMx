@@ -235,11 +235,11 @@ GpuImage::GpuImage( ) {
     SetupInitialValues( );
 }
 
-GpuImage::GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool is_in_real_space, bool do_fft_planning) {
+GpuImage::GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size, bool is_in_real_space, bool allocate_fp16_buffer) {
     is_meta_data_initialized = false;
     SetupInitialValues( );
     // do_fft_planning is not used in the GPU code path, but is present in the cpu
-    Allocate(wanted_x_size, wanted_y_size, wanted_z_size, is_in_real_space);
+    Allocate(wanted_x_size, wanted_y_size, wanted_z_size, is_in_real_space, allocate_fp16_buffer);
 }
 
 GpuImage::GpuImage(Image& cpu_image) {
@@ -368,7 +368,6 @@ template <typename StorageTypeBase>
 void GpuImage::CopyDataFrom(GpuImage& other_image) {
     MyDebugAssertTrue(dims.x == other_image.dims.x && dims.y == other_image.dims.y && dims.z == other_image.dims.z, "Dimensions do not match");
     MyDebugAssertTrue(real_memory_allocated == other_image.real_memory_allocated, "Memory allocated does not match");
-
     if constexpr ( std::is_same<StorageTypeBase, float>::value ) {
         MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
         MyDebugAssertTrue(other_image.is_in_memory_gpu, "Other image Memory not allocated");
@@ -471,16 +470,26 @@ bool GpuImage::HasSameDimensionsAs(Image* other_image) {
         return false;
 }
 
-bool GpuImage::HasSameDimensionsAs(GpuImage& other_image) {
+template <typename StorageBaseType>
+bool GpuImage::HasSameDimensionsAs<StorageBaseType>(GpuImage& other_image) {
     // Functions that call this method also assume these asserts are being called here, so do not remove.
-    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-    MyDebugAssertTrue(other_image.is_in_memory_gpu, "Other image Memory not allocated");
+    if constexpr ( std::is_same<StorageBaseType, __half>::value ) {
+        MyDebugAssertTrue(is_allocated_16f_buffer, "Memory not allocated");
+        MyDebugAssertTrue(other_image.is_allocated_16f_buffer, "Other image Memory not allocated");
+    }
+    else {
+        MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+        MyDebugAssertTrue(other_image.is_in_memory, "Other image Memory not allocated");
+    }
 
     if ( dims.x == other_image.dims.x && dims.y == other_image.dims.y && dims.z == other_image.dims.z )
         return true;
     else
         return false;
 }
+
+template bool GpuImage::HasSameDimensionsAs<float>(GpuImage& other_image);
+template bool GpuImage::HasSameDimensionsAs<__half>(GpuImage& other_image);
 
 template <typename StorageType>
 __global__ void
@@ -2454,7 +2463,7 @@ template void GpuImage::AddImageStack<__half>(std::vector<GpuImage>& input_stack
 */
 template <typename StorageTypeBase>
 void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& output_image) {
-    MyDebugAssertTrue(input_stack[0].HasSameDimensionsAs(output_image), "Images have different dimensions");
+    MyDebugAssertTrue(input_stack[0].HasSameDimensionsAs<StorageTypeBase>(output_image), "Images have different dimensions");
 
     // Maybe check all the images in the stack?
     MyDebugAssertTrue(input_stack[0].is_in_real_space == output_image.is_in_real_space, "Images not in the same space");
@@ -2511,7 +2520,7 @@ void GpuImage::AddImage(GpuImage& other_image) {
 template <typename StorageTypeBase>
 void GpuImage::SubtractImage(GpuImage& other_image) {
     // Add the real_values_gpu into a double array
-    MyDebugAssertTrue(HasSameDimensionsAs(&other_image), "Images have different dimensions");
+    MyDebugAssertTrue(HasSameDimensionsAs<StorageTypeBase>(&other_image), "Images have different dimensions");
 
     NppInit( );
 
@@ -2589,24 +2598,34 @@ void GpuImage::Conj( ) {
     nppErr(nppiMulC_32fc_C1IR_Ctx((Npp32fc)scale_factor, (Npp32fc*)complex_values_gpu, pitch, npp_ROI, nppStream));
 }
 
-void GpuImage::Zeros( ) {
+template <typename StorageTypeBase>
+void GpuImage::Zeros<StorageTypeBase>( ) {
 
     MyDebugAssertFalse(real_memory_allocated == 0, "Host meta data has not been copied");
 
-    if ( ! is_in_memory_gpu ) {
-#ifdef USE_ASYNC_MALLOC_FREE
-        cudaErr(cudaMallocAsync(&real_values_gpu, real_memory_allocated * sizeof(float), cudaStreamPerThread));
-#else
-        cudaErr(cudaMalloc(&real_values_gpu, real_memory_allocated * sizeof(float)));
-#endif
-        complex_values_gpu = (cufftComplex*)real_values_gpu;
-        is_in_memory_gpu   = true;
+    if constexpr ( std::is_same<StorageTypeBase, __half>::value ) {
+        BufferInit(b_16f);
+        cudaErr(cudaMemsetAsync(real_values_16f, 0, real_memory_allocated * sizeof(__half), cudaStreamPerThread));
     }
 
-    precheck;
-    cudaErr(cudaMemsetAsync(real_values_gpu, 0, real_memory_allocated * sizeof(float), cudaStreamPerThread));
-    postcheck;
+    else {
+
+        if ( ! is_in_memory_gpu ) {
+#ifdef USE_ASYNC_MALLOC_FREE
+            cudaErr(cudaMallocAsync(&real_values_gpu, real_memory_allocated * sizeof(float), cudaStreamPerThread));
+#else
+            cudaErr(cudaMalloc(&real_values_gpu, real_memory_allocated * sizeof(float)));
+#endif
+            complex_values_gpu = (cufftComplex*)real_values_gpu;
+            is_in_memory_gpu   = true;
+        }
+
+        cudaErr(cudaMemsetAsync(real_values_gpu, 0, real_memory_allocated * sizeof(float), cudaStreamPerThread));
+    }
 }
+
+template void GpuImage::Zeros<float>( );
+template void GpuImage::Zeros<__half>( );
 
 void GpuImage::CopyHostToDevice(bool should_block_until_complete) {
 
@@ -3943,9 +3962,9 @@ void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
 void GpuImage::CopyFP16buffertoFP32(bool deallocate_half_precision) {
     // FIXME when adding real space complex images.
     // FIXME should probably be called COPYorConvert
-    MyDebugAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
     MyDebugAssertTrue(is_allocated_16f_buffer, "fp16 buffer is not allocated is in not on the GPU!");
-
+    if ( ! is_in_memory_gpu )
+        Allocate(dims.x, dims.y, dims.z, is_in_real_space, false);
     precheck;
     if ( is_in_real_space ) {
         ReturnLaunchParameters(dims, true);

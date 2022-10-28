@@ -43,18 +43,19 @@ ReturnCummulativeDoseFilter(float dose_at_start_of_exposure, float dose_at_end_o
     return 2.0f * critical_dose * (exp((-0.5 * dose_at_start_of_exposure) / critical_dose) - exp((-0.5 * dose_at_end_of_exosure) / critical_dose)) / dose_at_end_of_exosure;
 };
 
+template <typename StorageType>
 __global__ void
-ApplyDoseFilterKernel(float2**    image_data,
-                      float       pre_exposure,
-                      const float dose_per_frame,
-                      float2*     output_data,
-                      const float voltage_scaling_factor,
-                      const float fourier_voxel_size_x,
-                      const float fourier_voxel_size_y,
-                      const int   pixel_pitch,
-                      const int   NY,
-                      const int   NZ,
-                      const int   physical_index_of_first_negative_frequency_y) {
+ApplyDoseFilterKernel(StorageType** image_data,
+                      float         pre_exposure,
+                      const float   dose_per_frame,
+                      StorageType*  output_data,
+                      const float   voltage_scaling_factor,
+                      const float   fourier_voxel_size_x,
+                      const float   fourier_voxel_size_y,
+                      const int     pixel_pitch,
+                      const int     NY,
+                      const int     NZ,
+                      const int     physical_index_of_first_negative_frequency_y) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= pixel_pitch )
@@ -82,8 +83,15 @@ ApplyDoseFilterKernel(float2**    image_data,
 #endif
 
         filter_coeff = ReturnDoseFilter(pre_exposure, ReturnCriticalDose(kx, voltage_scaling_factor));
-        real_sum += image_data[z][address].x * filter_coeff;
-        imag_sum += image_data[z][address].y * filter_coeff;
+        if constexpr ( std::is_same_v<StorageType, __half2> ) {
+            real_sum += __half2float(image_data[z][address].x) * filter_coeff;
+            imag_sum += __half2float(image_data[z][address].y) * filter_coeff;
+        }
+        else {
+            real_sum += image_data[z][address].x * filter_coeff;
+            imag_sum += image_data[z][address].y * filter_coeff;
+        }
+
         pre_exposure += dose_per_frame;
     }
 
@@ -92,26 +100,31 @@ ApplyDoseFilterKernel(float2**    image_data,
     // #endif
 
     if ( address == 0 ) {
-        output_data[0].x = 1.0f;
-        output_data[0].y = 0.0f;
+        output_data[0] = StorageType{1.f, 1.f};
     }
     else {
-        output_data[address].x = real_sum;
-        output_data[address].y = imag_sum;
+        if constexpr ( std::is_same_v<StorageType, __half2> ) {
+            output_data[address] = __floats2half2_rn(real_sum, imag_sum);
+        }
+        else {
+            output_data[address].x = real_sum;
+            output_data[address].y = imag_sum;
+        }
     }
-};
+}
 
-__global__ void ApplyDoseFilterAndRestorePowerKernel(float2**    image_data,
-                                                     float       pre_exposure,
-                                                     const float dose_per_frame,
-                                                     float2*     output_data,
-                                                     const float voltage_scaling_factor,
-                                                     const float fourier_voxel_size_x,
-                                                     const float fourier_voxel_size_y,
-                                                     const int   pixel_pitch,
-                                                     const int   NY,
-                                                     const int   NZ,
-                                                     const int   physical_index_of_first_negative_frequency_y) {
+template <typename StorageType>
+__global__ void ApplyDoseFilterAndRestorePowerKernel(StorageType** image_data,
+                                                     float         pre_exposure,
+                                                     const float   dose_per_frame,
+                                                     StorageType*  output_data,
+                                                     const float   voltage_scaling_factor,
+                                                     const float   fourier_voxel_size_x,
+                                                     const float   fourier_voxel_size_y,
+                                                     const int     pixel_pitch,
+                                                     const int     NY,
+                                                     const int     NZ,
+                                                     const int     physical_index_of_first_negative_frequency_y) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= pixel_pitch )
@@ -136,23 +149,88 @@ __global__ void ApplyDoseFilterAndRestorePowerKernel(float2**    image_data,
     for ( int z = 0; z < NZ; z++ ) {
         filter_coeff = ReturnDoseFilter(pre_exposure, ReturnCriticalDose(kx, voltage_scaling_factor));
         sum_of_squares += (filter_coeff * filter_coeff);
-        real_sum += image_data[z][address].x * filter_coeff;
-        imag_sum += image_data[z][address].y * filter_coeff;
+        if constexpr ( std::is_same_v<StorageType, __half2> ) {
+            real_sum += __half2float(image_data[z][address].x) * filter_coeff;
+            imag_sum += __half2float(image_data[z][address].y) * filter_coeff;
+        }
+        else {
+            real_sum += image_data[z][address].x * filter_coeff;
+            imag_sum += image_data[z][address].y * filter_coeff;
+        }
+
         pre_exposure += dose_per_frame;
     }
 
     // This should never be zero
-    sum_of_squares = sqrtf(sum_of_squares);
-
     if ( address == 0 ) {
-        output_data[0].x = 1.0f;
-        output_data[0].y = 0.0f;
+        output_data[0] = StorageType{1.f, 1.f};
     }
     else {
-        output_data[address].x = real_sum / sum_of_squares;
-        output_data[address].y = imag_sum / sum_of_squares;
+        if constexpr ( std::is_same_v<StorageType, __half2> ) {
+            output_data[address] = __floats2half2_rn(real_sum / sum_of_squares, imag_sum / sum_of_squares);
+        }
+        else {
+            output_data[address].x = real_sum;
+            output_data[address].y = imag_sum;
+        }
     }
 };
+
+template <>
+void ElectronDose::CalculateDoseFilterAs1DArray(std::vector<GpuImage>& ref_image, __half2* output_data, float pre_exposure, float exposure_per_frame, bool restore_power) {
+
+    // Different than the CPU implementation, dose_start is assumed to be pre_exposure and dose per frame = dose_finish
+    ref_image[0].ReturnLaunchParameters(ref_image[0].dims, false);
+
+#ifdef ELECTRON_DOSE_DEBUG_PRINT
+    StealStdoutBackFromWX my_stdout("/tmp/gpulog_class.txt");
+#endif
+
+    ref_image[0].ptr_array_16fc.resize(ref_image.size( ));
+    for ( int iPtr = 0; iPtr < ref_image.size( ); iPtr++ ) {
+        ref_image[0].ptr_array_16fc.SetPointer((__half2*)ref_image[iPtr].complex_values_16f, iPtr);
+    }
+
+    if ( restore_power ) {
+        precheck
+                ApplyDoseFilterAndRestorePowerKernel<<<ref_image[0].gridDims, ref_image[0].threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image[0].ptr_array_16fc.ptr_array,
+                                                                                                                                      pre_exposure,
+                                                                                                                                      exposure_per_frame,
+                                                                                                                                      output_data,
+                                                                                                                                      voltage_scaling_factor,
+                                                                                                                                      ref_image[0].fourier_voxel_size.x / pixel_size,
+                                                                                                                                      ref_image[0].fourier_voxel_size.y / pixel_size,
+                                                                                                                                      ref_image[0].dims.w / 2,
+                                                                                                                                      ref_image[0].dims.y,
+                                                                                                                                      ref_image.size( ),
+                                                                                                                                      ref_image[0].physical_index_of_first_negative_frequency.y);
+        postcheck
+    }
+    else {
+        precheck
+                ApplyDoseFilterKernel<<<ref_image[0].gridDims, ref_image[0].threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image[0].ptr_array_16fc.ptr_array,
+                                                                                                                       pre_exposure,
+                                                                                                                       exposure_per_frame,
+                                                                                                                       output_data,
+                                                                                                                       voltage_scaling_factor,
+                                                                                                                       ref_image[0].fourier_voxel_size.x / pixel_size,
+                                                                                                                       ref_image[0].fourier_voxel_size.y / pixel_size,
+                                                                                                                       ref_image[0].dims.w / 2,
+                                                                                                                       ref_image[0].dims.y,
+                                                                                                                       ref_image.size( ),
+                                                                                                                       ref_image[0].physical_index_of_first_negative_frequency.y);
+#ifdef ELECTRON_DOSE_DEBUG_PRINT
+        cudaDeviceSynchronize( );
+        cudaDeviceReset( );
+        my_stdout.FlushCapturedStdout( );
+        exit(0);
+#endif
+
+        postcheck
+    }
+
+    //	MyDebugAssertTrue(ref_image->logical_z_dimension == 1, "Reference Image is a 3D!");
+}
 
 template <>
 void ElectronDose::CalculateDoseFilterAs1DArray(std::vector<GpuImage>& ref_image, float2* output_data, float pre_exposure, float exposure_per_frame, bool restore_power) {
@@ -163,10 +241,12 @@ void ElectronDose::CalculateDoseFilterAs1DArray(std::vector<GpuImage>& ref_image
 #ifdef ELECTRON_DOSE_DEBUG_PRINT
     StealStdoutBackFromWX my_stdout("/tmp/gpulog_class.txt");
 #endif
+
     ref_image[0].ptr_array_32fc.resize(ref_image.size( ));
     for ( int iPtr = 0; iPtr < ref_image.size( ); iPtr++ ) {
         ref_image[0].ptr_array_32fc.SetPointer((float2*)ref_image[iPtr].complex_values_gpu, iPtr);
     }
+
     if ( restore_power ) {
         precheck
                 ApplyDoseFilterAndRestorePowerKernel<<<ref_image[0].gridDims, ref_image[0].threadsPerBlock, 0, cudaStreamPerThread>>>(ref_image[0].ptr_array_32fc.ptr_array,
@@ -202,7 +282,7 @@ void ElectronDose::CalculateDoseFilterAs1DArray(std::vector<GpuImage>& ref_image
         exit(0);
 #endif
 
-        postcheck
+        postcheck;
     }
 
     //	MyDebugAssertTrue(ref_image->logical_z_dimension == 1, "Reference Image is a 3D!");

@@ -1,7 +1,6 @@
 #include <cistem_config.h>
 
 #ifdef ENABLEGPU
-#warning "GPU enabled in refine3d"
 #include "../../gpu/gpu_core_headers.h"
 #include "../../gpu/GpuImage.h"
 #else
@@ -22,6 +21,8 @@ using namespace cistem_timer_noop;
 #else
 #include "refine_alignment.h"
 #endif
+
+constexpr bool allocate_fp16 = true;
 
 class
         UnBlurApp : public MyApp {
@@ -724,11 +725,10 @@ bool UnBlurApp::DoCalculation( ) {
 
             // int binned_x_y = std::max(binned_x, binned_y);
             // image_stack.at(image_counter).Allocate(binned_x_y, binned_x_y, 1, false);
-            constexpr bool allocate_fp16 = true;
             image_stack.at(image_counter).Allocate(binned_x, binned_y, 1, false, allocate_fp16);
 // FIXME: add alias for ClipInto so it handles fourier space properly
 #ifdef ENABLEGPU
-            unbinned_image_stack[image_counter].ClipIntoFourierSpace(&image_stack[image_counter], 0.f, true);
+            unbinned_image_stack[image_counter].ClipIntoFourierSpace(&image_stack[image_counter], 0.f, true, allocate_fp16);
 #else
             unbinned_image_stack[image_counter].ClipInto(&image_stack[image_counter]);
 #endif
@@ -766,7 +766,11 @@ bool UnBlurApp::DoCalculation( ) {
             x_shifts[image_counter] *= pre_binning_factor;
             y_shifts[image_counter] *= pre_binning_factor;
 
+#ifdef ENABLEGPU
+            image_stack[image_counter].PhaseShift<__half>(x_shifts[image_counter], y_shifts[image_counter], 0.0);
+#else
             image_stack[image_counter].PhaseShift(x_shifts[image_counter], y_shifts[image_counter], 0.0);
+#endif
         }
         profile_timing.lap("apply shifts 1");
 
@@ -783,16 +787,28 @@ bool UnBlurApp::DoCalculation( ) {
         // do the refinement..
         //SendInfo(wxString::Format("Doing final unbinned alignment on %s\n",input_filename));
         profile_timing.start("final refine");
+#ifdef ENABLEGPU
+        unblur_refine_alignment<__half>(image_stack, number_of_input_images, max_iterations, unitless_bfactor, should_mask_central_cross, vertical_mask_size, horizontal_mask_size, 0., max_shift_in_pixels, termination_threshold_in_pixels, output_pixel_size, number_of_frames_for_running_average, myroundint(5.0f / exposure_per_frame), max_threads, x_shifts, y_shifts, profile_timing_refinement_method);
+#else
         unblur_refine_alignment(image_stack, number_of_input_images, max_iterations, unitless_bfactor, should_mask_central_cross, vertical_mask_size, horizontal_mask_size, 0., max_shift_in_pixels, termination_threshold_in_pixels, output_pixel_size, number_of_frames_for_running_average, myroundint(5.0f / exposure_per_frame), max_threads, x_shifts, y_shifts, profile_timing_refinement_method);
+#endif
         profile_timing.lap("final refine");
         // if allocated delete the binned stack, and swap the unbinned to image_stack - so that no matter what is happening we can just use image_stack
     }
     unblur_timing.lap("final refine");
 
-    // we should be finished with alignment, now we just need to make the final sum..
-
+// we should be finished with alignment, now we just need to make the final sum..
+// The actual sum is accumulated in fp32 either way
+#ifdef ENABLEGPU
+    sum_image.Allocate(image_stack[0].logical_x_dimension, image_stack[0].logical_y_dimension, false, allocate_fp16);
+    if ( allocate_fp16 )
+        sum_image.Zeros<__half>( );
+    else
+        sum_image.Zeros( );
+#else
     sum_image.Allocate(image_stack[0].logical_x_dimension, image_stack[0].logical_y_dimension, false);
     sum_image.SetToConstant(0.0f);
+#endif
 
     if ( should_dose_filter == true ) {
         if ( write_out_amplitude_spectrum == true ) {
@@ -814,7 +830,7 @@ bool UnBlurApp::DoCalculation( ) {
         shared_ptr->start("calc dose filter");
         // FIXME: restore power should be optional and needs a test in consoltest
         bool temp_fixme_restore_power = true;
-        my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, float2*>(image_stack, sum_image.complex_values_gpu, pre_exposure_amount, exposure_per_frame, temp_fixme_restore_power);
+        my_electron_dose->CalculateDoseFilterAs1DArray<std::vector<GpuImage>&, __half2*>(image_stack, (__half2*)sum_image.complex_values_16f, pre_exposure_amount, exposure_per_frame, temp_fixme_restore_power);
         shared_ptr->lap("calc dose filter");
 
         shared_ptr->start("write out frames");
@@ -889,6 +905,10 @@ bool UnBlurApp::DoCalculation( ) {
     }
     else // just add them
     {
+// FIXME: this should be AddImageStack for the GPU
+#ifdef ENABLEGPU
+        MyAssertTrue(false, "Shouldn't be here");
+#endif
         profile_timing.start("final sum");
         for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
             sum_image.AddImage(&image_stack[image_counter]);
@@ -903,7 +923,9 @@ bool UnBlurApp::DoCalculation( ) {
 #ifdef ENABLEGPU
     // FIXME: do I need the new here?
     Image* output_sum = new Image[1];
-    *output_sum       = sum_image.CopyDeviceToNewHost(true, true, true);
+    if ( allocate_fp16 )
+        sum_image.CopyFP16buffertoFP32(true);
+    *output_sum = sum_image.CopyDeviceToNewHost(true, true, true);
 #else
     Image* output_sum = &sum_image;
     // if we are restoring the power - do it here..

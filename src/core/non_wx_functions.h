@@ -183,6 +183,10 @@ inline bool FloatsAreAlmostTheSame(float a, float b) {
     return (fabs(a - b) < 0.0001);
 }
 
+inline bool HalfFloatsAreAlmostTheSame(float a, float b) {
+    return (fabs(a - b) < 0.001);
+}
+
 template <typename T>
 bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_failed = true, T epsilon = 0.0001) {
 

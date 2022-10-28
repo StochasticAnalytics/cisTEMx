@@ -19,7 +19,7 @@ class GpuImage {
 
   public:
     GpuImage( );
-    GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size = 1, bool is_in_real_space = true, bool do_fft_planning = true);
+    GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size = 1, bool is_in_real_space = true, bool allocate_fp16_buffer = false);
     GpuImage(const GpuImage& other_gpu_image); // copy constructor
     GpuImage(Image& cpu_image);
     ~GpuImage( );
@@ -61,9 +61,10 @@ class GpuImage {
 
     // These arrays can be used to pass pointers for an image stack into a kernel. Initialize each type empty and explicitly
     // since the GpuImage class itself is not tempalted. TODO: use tempalte parameters when re-writing
-    DevicePointerArray<__half> ptr_array_16f;
-    DevicePointerArray<float>  ptr_array_32f;
-    DevicePointerArray<float2> ptr_array_32fc;
+    DevicePointerArray<__half>  ptr_array_16f;
+    DevicePointerArray<__half2> ptr_array_16fc;
+    DevicePointerArray<float>   ptr_array_32f;
+    DevicePointerArray<float2>  ptr_array_32fc;
 
     float*               real_values; // !<  Real array to hold values for REAL images.
     std::complex<float>* complex_values; // !<  Complex array to hold values for COMP images.
@@ -375,11 +376,15 @@ class GpuImage {
     bool InitializeBasedOnCpuImage(Image& cpu_image, bool pin_host_memory, bool allocate_real_values);
     void UpdateCpuFlags( );
     void printVal(std::string msg, int idx);
+
+    template <typename StorageBaseType = float>
     bool HasSameDimensionsAs(GpuImage& other_image);
 
-    bool HasSameDimensionsAs(GpuImage* other_image) { return HasSameDimensionsAs(*other_image); };
+    template <typename StorageBaseType = float>
+    bool HasSameDimensionsAs(GpuImage* other_image) { return HasSameDimensionsAs<StorageBaseType>(*other_image); };
 
     bool HasSameDimensionsAs(Image* other_image);
+    template <typename StorageTypeBase = float>
     void Zeros( );
 
     void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);

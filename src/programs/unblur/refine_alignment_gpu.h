@@ -1,4 +1,4 @@
-template <typename StorageType = float>
+template <typename StorageBaseType = float>
 void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                              int                    number_of_images,
                              int                    max_iterations,
@@ -45,9 +45,6 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     if ( savitzy_golay_window_size < 5 )
         savitzy_golay_window_size = 5;
 
-    GpuImage sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
-    sum_of_images.SetToConstant(0.f);
-
     std::vector<GpuImage> sum_of_images_minus_current;
     std::vector<GpuImage> correlation_map;
 
@@ -55,14 +52,18 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
     correlation_map.reserve(max_threads);
 
     bool use_fp16 = false;
-    if constexpr ( std::is_same<StorageType, __half>::value ) {
+    if constexpr ( std::is_same<StorageBaseType, __half>::value ) {
         use_fp16 = true;
     }
 
+    GpuImage sum_of_images(input_stack[0].dims.x, input_stack[0].dims.y, 1, false, use_fp16);
+    sum_of_images.Zeros<StorageBaseType>( );
+
     for ( int i = 0; i < max_threads; i++ ) {
         sum_of_images_minus_current.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false, use_fp16);
+
         // We currently swap back to float prior to the BackwardFFT so allocate both buffers.
-        correlation_map.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false);
+        correlation_map.emplace_back(input_stack[0].dims.x, input_stack[0].dims.y, 1, false, false);
         correlation_map[i].BufferInit(GpuImage::BufferType::b_16f);
     }
 
@@ -100,11 +101,12 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     // prepare the initial sum
     profile_timing_refinement_method.start("prepare initial sum");
-
+    std::cerr << "Sum of image stack: " << sum_of_images.is_allocated_16f_buffer << std::endl;
+    std::cerr << "Input stack buffer is " << input_stack[0].is_allocated_16f_buffer << std::endl;
     if ( use_running_average )
-        sum_of_images.AddImageStack<StorageType>(running_average_stack);
+        sum_of_images.AddImageStack<StorageBaseType>(running_average_stack);
     else
-        sum_of_images.AddImageStack<StorageType>(input_stack);
+        sum_of_images.AddImageStack<StorageBaseType>(input_stack);
 
     profile_timing_refinement_method.lap("prepare initial sum");
     // perform the main alignment loop until we reach a max shift less than wanted, or max iterations
@@ -178,13 +180,13 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
             //phase_multiplier = (current_x_shifts[image_counter] < batch.max_pixel_radius_x( ) / 3.0f && current_y_shifts[image_counter] < batch.max_pixel_radius_y( ) / 3.0f && iteration_counter > 0) ? 1 : 0;
             // prepare the sum reference by subtracting out the current image, applying a bfactor and masking central cross
             profile_timing_refinement_method.start("prepare sum");
-            sum_of_images_minus_current[my_tidx].CopyDataFrom<StorageType>(sum_of_images);
+            sum_of_images_minus_current[my_tidx].CopyDataFrom<StorageBaseType>(sum_of_images);
             if ( use_running_average )
-                sum_of_images_minus_current[my_tidx].SubtractImage<StorageType>(&running_average_stack[image_counter]);
+                sum_of_images_minus_current[my_tidx].SubtractImage<StorageBaseType>(&running_average_stack[image_counter]);
             else
-                sum_of_images_minus_current[my_tidx].SubtractImage<StorageType>(&input_stack[image_counter]);
+                sum_of_images_minus_current[my_tidx].SubtractImage<StorageBaseType>(&input_stack[image_counter]);
 
-            sum_of_images_minus_current[my_tidx].ApplyBFactor(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
+            sum_of_images_minus_current[my_tidx].ApplyBFactor<StorageBaseType>(unitless_bfactor, width_of_vertical_line, width_of_horizontal_line);
 
             profile_timing_refinement_method.lap("prepare sum");
             // compute the cross correlation function and find the peak
@@ -199,9 +201,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                 sum_of_images_minus_current[my_tidx].CalculateCrossCorrelationImageWith(&running_average_stack[image_counter]);
             }
             else
-                input_stack[image_counter].MultiplyPixelWiseComplexConjugate(sum_of_images_minus_current[my_tidx], correlation_map[my_tidx], phase_multiplier);
+                input_stack[image_counter].MultiplyPixelWiseComplexConjugate<StorageBaseType>(sum_of_images_minus_current[my_tidx], correlation_map[my_tidx], phase_multiplier);
 
-            correlation_map[my_tidx].SwapRealSpaceQuadrants( );
+            correlation_map[my_tidx].SwapRealSpaceQuadrants<StorageBaseType>( );
 
             // Copy back to single precision buffer for backward FFT (fp16 buffer is untested in cuFFT)
             correlation_map[my_tidx].CopyFP16buffertoFP32(false);
@@ -310,7 +312,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 #pragma omp parallel for default(shared) num_threads(max_threads)
         for ( int image_counter = 0; image_counter < number_of_images; image_counter++ ) {
             profile_timing_refinement_method.start("shift image");
-            input_stack[image_counter].PhaseShift(current_x_shifts[image_counter], current_y_shifts[image_counter], 0.0);
+            input_stack[image_counter].PhaseShift<StorageBaseType>(current_x_shifts[image_counter], current_y_shifts[image_counter], 0.0);
 
             x_shifts[image_counter] += current_x_shifts[image_counter];
             y_shifts[image_counter] += current_y_shifts[image_counter];
@@ -334,9 +336,9 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
         // going to be doing another round so we need to make the new sum..
         profile_timing_refinement_method.start("remake sum");
-        sum_of_images.SetToConstant(0.0f);
+        sum_of_images.Zeros<StorageBaseType>( );
 
-        sum_of_images.AddImageStack<float>(input_stack);
+        sum_of_images.AddImageStack<StorageBaseType>(input_stack);
         profile_timing_refinement_method.lap("remake sum");
         // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         // sum_of_images.QuickAndDirtyWriteSlice("/tmp/gpu_sum_of_images.mrc", 1);

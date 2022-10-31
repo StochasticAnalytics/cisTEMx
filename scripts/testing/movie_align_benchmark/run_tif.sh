@@ -4,7 +4,7 @@ data_dir=$1
 n_to_align=$2
 starting_idx=$3
 
-file_name_list=($(ls ${data_dir}/*.tif))
+file_name_list=($(ls ${data_dir}/Foil*.tif))
 
 # TODO movie these to a param file
 pixel_size=0.3948
@@ -12,6 +12,8 @@ voltage=300
 spherical_aberration=2.7
 amplitude_contrast=0.07 
 output_binning=1
+alignment_threshold=$(echo "" | awk -v pixel_size=$pixel_size '{print 0.33*pixel_size}')
+
 
 n_eer_frames_to_avg=15
 eer_super_res_factor=1
@@ -37,7 +39,7 @@ yes
 1200
 1
 1
-0.175
+$alignment_threshold
 10
 yes
 yes

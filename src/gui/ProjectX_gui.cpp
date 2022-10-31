@@ -14221,7 +14221,7 @@ AboutDialog::AboutDialog( wxWindow* parent, wxWindowID id, const wxString& title
 	m_staticline130 = new wxStaticLine( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
 	bSizer445->Add( m_staticline130, 0, wxEXPAND | wxALL, 5 );
 
-	VersionStaticText = new wxStaticText( this, wxID_ANY, wxT("cisTEM version 1.0beta-RC1"), wxDefaultPosition, wxDefaultSize, 0 );
+	VersionStaticText = new wxStaticText( this, wxID_ANY, wxT("cistemRx version 1.0beta-RC1"), wxDefaultPosition, wxDefaultSize, 0 );
 	VersionStaticText->Wrap( -1 );
 	bSizer445->Add( VersionStaticText, 0, wxALIGN_CENTER_HORIZONTAL|wxALL, 5 );
 
@@ -14242,13 +14242,29 @@ AboutDialog::AboutDialog( wxWindow* parent, wxWindowID id, const wxString& title
 	m_staticText605->Wrap( -1 );
 	fgSizer30->Add( m_staticText605, 0, wxALIGN_RIGHT|wxALL, 5 );
 
+	m_staticText6081 = new wxStaticText( this, wxID_ANY, wxT("Benjamin Himes"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText6081->Wrap( -1 );
+	fgSizer30->Add( m_staticText6081, 0, wxALL, 5 );
+
+	m_staticText6093 = new wxStaticText( this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText6093->Wrap( -1 );
+	fgSizer30->Add( m_staticText6093, 0, wxALL, 5 );
+
+	m_staticText6094 = new wxStaticText( this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText6094->Wrap( -1 );
+	fgSizer30->Add( m_staticText6094, 0, wxALL, 5 );
+
+	m_staticText6051 = new wxStaticText( this, wxID_ANY, wxT("Orig. Devs :"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText6051->Wrap( -1 );
+	fgSizer30->Add( m_staticText6051, 0, wxALL, 5 );
+
 	m_staticText606 = new wxStaticText( this, wxID_ANY, wxT("Tim Grant"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText606->Wrap( -1 );
 	fgSizer30->Add( m_staticText606, 0, wxALL, 5 );
 
-	m_staticText607 = new wxStaticText( this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
-	m_staticText607->Wrap( -1 );
-	fgSizer30->Add( m_staticText607, 0, wxALL, 5 );
+	m_staticText6092 = new wxStaticText( this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText6092->Wrap( -1 );
+	fgSizer30->Add( m_staticText6092, 0, wxALL, 5 );
 
 	m_staticText608 = new wxStaticText( this, wxID_ANY, wxT("Alexis Rohou"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText608->Wrap( -1 );
@@ -14258,9 +14274,9 @@ AboutDialog::AboutDialog( wxWindow* parent, wxWindowID id, const wxString& title
 	m_staticText609->Wrap( -1 );
 	fgSizer30->Add( m_staticText609, 0, wxALL, 5 );
 
-	m_staticText610 = new wxStaticText( this, wxID_ANY, wxT("Nikolaus Grigorieff"), wxDefaultPosition, wxDefaultSize, 0 );
-	m_staticText610->Wrap( -1 );
-	fgSizer30->Add( m_staticText610, 0, wxALL, 5 );
+	m_staticText6101 = new wxStaticText( this, wxID_ANY, wxT("Nikolaus Grigorieff"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText6101->Wrap( -1 );
+	fgSizer30->Add( m_staticText6101, 0, wxALL, 5 );
 
 	m_staticText613 = new wxStaticText( this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText613->Wrap( -1 );
@@ -14270,7 +14286,7 @@ AboutDialog::AboutDialog( wxWindow* parent, wxWindowID id, const wxString& title
 	m_staticText614->Wrap( -1 );
 	fgSizer30->Add( m_staticText614, 0, wxALL, 5 );
 
-	m_staticText615 = new wxStaticText( this, wxID_ANY, wxT("Web Page :"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText615 = new wxStaticText( this, wxID_ANY, wxT("Based on :"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText615->Wrap( -1 );
 	fgSizer30->Add( m_staticText615, 0, wxALIGN_CENTER_VERTICAL|wxALIGN_RIGHT|wxALL, 5 );
 
@@ -14296,7 +14312,6 @@ AboutDialog::AboutDialog( wxWindow* parent, wxWindowID id, const wxString& title
 
 	this->SetSizer( bSizer445 );
 	this->Layout();
-	bSizer445->Fit( this );
 
 	this->Centre( wxBOTH );
 }

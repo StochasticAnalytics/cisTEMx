@@ -3,28 +3,23 @@
 data_dir=$1
 n_to_align=$2
 starting_idx=$3
-n_eer_frames_to_avg=$4
+number_of_frames=$4
 
-file_name_list=($(ls ${data_dir}/*.eer))
+file_name_list=($(ls ${data_dir}/HM70*.tif))
 
 # TODO movie these to a param file
-# pixel_size=0.197
-pixel_size=0.3948
-eer_super_res_factor=1
-
+pixel_size=1.065
 voltage=300
 spherical_aberration=2.7
 amplitude_contrast=0.07 
 output_binning=1
 alignment_threshold=$(echo "" | awk -v pixel_size=$pixel_size '{print 0.33*pixel_size}')
-
-exposure_per_frame=$(echo "" | awk -v n_eer_frames_to_avg=$n_eer_frames_to_avg '{print 0.075*n_eer_frames_to_avg}')
+exposure_per_frame=0.92
 
 for i in $( seq 0 $(($n_to_align-1)) ); do
     current_idx=$(( ($starting_idx+$i) % $n_to_align))
 
-echo "Process $starting_idx aligning ${file_name_list[$current_idx]}"
-apptainer exec -B /scratch --nv ~/software/cisTEMx_production_1.0.0.sif ~/git/cisTEM/build/intel-gpu/src/unblur_gpu << EOF
+apptainer exec -B /scratch --nv ~/software/cisTEMx_production_1.0.0.sif ~/git/cisTEM/build/intel-gpu/src/unblur_gpu << EOF 2>&1 > /dev/null
 ${file_name_list[$current_idx]}
 /dev/null
 /dev/null
@@ -46,18 +41,17 @@ yes
 yes
 yes
 1
-0
+$number_of_frames
 1
 no
-$n_eer_frames_to_avg
-$eer_super_res_factor
 no
 1
 EOF
 
-# # Drop everything for this file from cache
+# Drop everything for this file from cache
 # echo "Dropping cache for ${file_name_list[$current_idx]}"
 # free -m
 dd of=${file_name_list[$current_idx]} oflag=nocache,sync conv=notrunc,fsync count=0
 # free -m
+
 done

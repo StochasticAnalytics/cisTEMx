@@ -1,8 +1,9 @@
 #!/bin/bash
 
 stored_data_dir=/cisTEMx/cistem_reference_images/movie_align_benchmark
-data_dir=/tmp/cistem_referecnce_images/movie_align_benchmark
-cp -r $stored_data_dir $data_dir
+data_dir=/tmp/cistem_reference_images/movie_align_benchmark
+mkdir -p /tmp/cistem_reference_images /tmp/cistem_reference_images/movie_align_benchmark
+cp -r $stored_data_dir/* $data_dir
 #dd of=your_file oflag=nocache conv=notrunc,fdatasync count=0
 n_movies=4
 if [[ $1 ]] ; then

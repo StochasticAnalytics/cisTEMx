@@ -395,6 +395,22 @@ void AutoRefine3DPanel::SetDefaults( ) {
 }
 
 void AutoRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
+
+    switch ( main_frame->GetCurrentWorkflow( ) ) {
+        case cistem::workflow::single_particle: {
+            std::cout << "OnUpdateUI<cistem::workflow::spa>" << std::endl;
+            break;
+        }
+        case cistem::workflow::pharma: {
+            std::cout << "OnUpdateUI<cistem::workflow::pharma>" << std::endl;
+
+            break;
+        }
+        default: {
+            // do nothing
+            break;
+        }
+    }
     // are there enough members in the selected group.
     if ( main_frame->current_project.is_open == false ) {
         ReferenceSelectPanel->Enable(false);

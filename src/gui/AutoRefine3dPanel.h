@@ -126,6 +126,7 @@ class AutoRefine3DPanel : public AutoRefine3DPanelParent {
 
   protected:
     // Handlers for Refine3DPanel events.
+
     void OnUpdateUI(wxUpdateUIEvent& event);
     void OnExpertOptionsToggle(wxCommandEvent& event);
     void OnInfoURL(wxTextUrlEvent& event);

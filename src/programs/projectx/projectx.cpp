@@ -351,11 +351,11 @@ bool MyGuiApp::OnInit( ) {
     actions_panel_rx->ActionsBook->AddPage(findparticles_panel, "Find Particles", false, 2);
     actions_panel_rx->ActionsBook->AddPage(classification_panel, "2D Classify", false, 3);
     // actions_panel_rx->ActionsBook->AddPage(ab_initio_3d_panel, "Ab-Initio 3D", false, 4);
-    // actions_panel_rx->ActionsBook->AddPage(auto_refine_3d_panel, "Auto Refine", false, 5);
-    actions_panel_rx->ActionsBook->AddPage(refine_3d_panel, "Manual Refine", false, 4);
-    actions_panel_rx->ActionsBook->AddPage(refine_ctf_panel, "Refine CTF", false, 5);
-    actions_panel_rx->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 6);
-    actions_panel_rx->ActionsBook->AddPage(sharpen_3d_panel, "Sharpen 3D", false, 7);
+    actions_panel_rx->ActionsBook->AddPage(auto_refine_3d_panel, "Auto Refine", false, 4);
+    actions_panel_rx->ActionsBook->AddPage(refine_3d_panel, "Manual Refine", false, 5);
+    actions_panel_rx->ActionsBook->AddPage(refine_ctf_panel, "Refine CTF", false, 6);
+    actions_panel_rx->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 7);
+    actions_panel_rx->ActionsBook->AddPage(sharpen_3d_panel, "Sharpen 3D", false, 8);
 
     actions_panel_tm->ActionsBook->AddPage(align_movies_panel, "Align Movies", true, 0);
     actions_panel_tm->ActionsBook->AddPage(fitctf_panel, "Find CTF", false, 1);

@@ -104,7 +104,7 @@ class MyMainFrame : public MainFrame, public SocketCommunicator {
     void OnTemplateMatchingWorkflow(wxCommandEvent& event);
     void OnPharmaWorkflow(wxCommandEvent& event);
 
-    inline cistem::workflow::Enum ReturnCurrentWorkflow( ) { return current_workflow; };
+    inline cistem::workflow::Enum GetCurrentWorkflow( ) { return current_workflow; };
 
     inline void ManuallyUpdateWorkflowMenuCheckBox( ) {
 

@@ -890,6 +890,7 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
     align_movies_panel->Reparent(output_frame->ActionsBook);
     fitctf_panel->Reparent(output_frame->ActionsBook);
     findparticles_panel->Reparent(output_frame->ActionsBook);
+    auto_refine_3d_panel->Reparent(output_frame->ActionsBook);
     refine_3d_panel->Reparent(output_frame->ActionsBook);
     refine_ctf_panel->Reparent(output_frame->ActionsBook);
     classification_panel->Reparent(output_frame->ActionsBook);

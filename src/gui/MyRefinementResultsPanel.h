@@ -29,6 +29,7 @@ class MyRefinementResultsPanel : public RefinementResultsPanel {
 
     void UpdateCachedRefinement( );
     void UpdateBufferedFullRefinement( );
+    void UpdateDisplayedResults( );
 
     void WriteJobInfo(int wanted_class);
     void ClearJobInfo( );

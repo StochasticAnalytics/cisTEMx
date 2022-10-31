@@ -15,9 +15,9 @@ void ActionsPanelRx::OnActionsBookPageChanged(wxBookCtrlEvent& event) {
     extern MyFindParticlesPanel* findparticles_panel;
     extern MyRefine2DPanel*      classification_panel;
     // extern AbInitio3DPanel*      ab_initio_3d_panel;
-    // extern AutoRefine3DPanel*    auto_refine_3d_panel;
-    extern MyRefine3DPanel* refine_3d_panel;
-    extern RefineCTFPanel*  refine_ctf_panel;
-    extern Generate3DPanel* generate_3d_panel;
-    extern Sharpen3DPanel*  sharpen_3d_panel;
+    extern AutoRefine3DPanel* auto_refine_3d_panel;
+    extern MyRefine3DPanel*   refine_3d_panel;
+    extern RefineCTFPanel*    refine_ctf_panel;
+    extern Generate3DPanel*   generate_3d_panel;
+    extern Sharpen3DPanel*    sharpen_3d_panel;
 }

@@ -4113,11 +4113,15 @@ class AboutDialog : public wxDialog
 		wxStaticLine* m_staticline130;
 		wxStaticText* m_staticText611;
 		wxStaticText* m_staticText605;
+		wxStaticText* m_staticText6081;
+		wxStaticText* m_staticText6093;
+		wxStaticText* m_staticText6094;
+		wxStaticText* m_staticText6051;
 		wxStaticText* m_staticText606;
-		wxStaticText* m_staticText607;
+		wxStaticText* m_staticText6092;
 		wxStaticText* m_staticText608;
 		wxStaticText* m_staticText609;
-		wxStaticText* m_staticText610;
+		wxStaticText* m_staticText6101;
 		wxStaticText* m_staticText613;
 		wxStaticText* m_staticText614;
 		wxStaticText* m_staticText615;
@@ -4132,7 +4136,7 @@ class AboutDialog : public wxDialog
 		wxStaticText* VersionStaticText;
 		wxStaticText* BuildDateText;
 
-		AboutDialog( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("About cisTEM"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxDEFAULT_DIALOG_STYLE );
+		AboutDialog( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("About cistemRx"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 387,529 ), long style = wxDEFAULT_DIALOG_STYLE );
 
 		~AboutDialog();
 

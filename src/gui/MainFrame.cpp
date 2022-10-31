@@ -389,10 +389,11 @@ void MyMainFrame::OnHelpLaunch(wxCommandEvent& event) {
 }
 
 void MyMainFrame::OnAboutLaunch(wxCommandEvent& event) {
-#include "icons/cisTEM_beta_logo_300.cpp"
+// #include "icons/cisTEM_beta_logo_300.cpp"
+#include "icons/quick_logo_300.cpp"
 
     wxLogNull* suppress_png_warnings = new wxLogNull;
-    wxBitmap   logo_bmp              = wxBITMAP_PNG_FROM_DATA(cisTEM_beta_logo_300);
+    wxBitmap   logo_bmp              = wxBITMAP_PNG_FROM_DATA(quick_logo_300);
     delete suppress_png_warnings;
 
     AboutDialog about_dialog(this);

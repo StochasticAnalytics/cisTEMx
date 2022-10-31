@@ -101,8 +101,7 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     // prepare the initial sum
     profile_timing_refinement_method.start("prepare initial sum");
-    std::cerr << "Sum of image stack: " << sum_of_images.is_allocated_16f_buffer << std::endl;
-    std::cerr << "Input stack buffer is " << input_stack[0].is_allocated_16f_buffer << std::endl;
+
     if ( use_running_average )
         sum_of_images.AddImageStack<StorageBaseType>(running_average_stack);
     else

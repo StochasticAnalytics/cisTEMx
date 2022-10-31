@@ -23,7 +23,7 @@ for i in $( seq 0 $(($n_to_align-1)) ); do
     current_idx=$(( ($starting_idx+$i) % $n_to_align))
 
 echo "Process $starting_idx aligning ${file_name_list[$current_idx]}"
-apptainer exec -B /scratch --nv ~/software/cisTEMx_production_1.0.0.sif ~/git/cisTEM/build/intel-gpu/src/unblur_gpu << EOF
+/cisTEMx/bin/unblur_gpu << EOF 
 ${file_name_list[$current_idx]}
 /dev/null
 /dev/null
@@ -52,10 +52,12 @@ no
 1
 EOF
 
+wait
+
 # Drop everything for this file from cache
 # echo "Dropping cache for ${file_name_list[$current_idx]}"
 # free -m
-dd of=${file_name_list[$current_idx]} oflag=nocache,sync conv=notrunc,fsync count=0
+dd of=${file_name_list[$current_idx]} oflag=nocache,sync conv=notrunc,fsync,nocreat count=0 status=none
 # free -m
 
 done

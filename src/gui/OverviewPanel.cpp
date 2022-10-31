@@ -10,13 +10,15 @@ OverviewPanel::OverviewPanel(wxWindow* parent, wxWindowID id, const wxPoint& pos
 
 void OverviewPanel::SetProjectInfo( ) {
 //#include "icons/cisTEM_logo_800.cpp"
-#include "icons/cisTEM_beta_logo_800.cpp"
-
+// #include "icons/cisTEM_beta_logo_800.cpp"
+#include "icons/quick_logo_700.cpp"
     InfoText->Clear( );
     InfoText->EndAllStyles( );
 
     wxLogNull* suppress_png_warnings = new wxLogNull;
-    wxBitmap   logo_bmp              = wxBITMAP_PNG_FROM_DATA(cisTEM_beta_logo_800);
+    // wxBitmap   logo_bmp              = wxBITMAP_PNG_FROM_DATA(cisTEM_beta_logo_800);
+    wxBitmap logo_bmp = wxBITMAP_PNG_FROM_DATA(quick_logo_700);
+
     delete suppress_png_warnings;
 
     InfoText->GetCaret( )->Hide( );
@@ -66,13 +68,16 @@ void OverviewPanel::SetProjectInfo( ) {
 
 void OverviewPanel::SetWelcomeInfo( ) {
 //#include "icons/cisTEM_logo_800.cpp"
-#include "icons/cisTEM_beta_logo_800.cpp"
+// #include "icons/cisTEM_beta_logo_800.cpp"
+#include "icons/quick_logo_700.cpp"
 
     InfoText->Clear( );
     InfoText->EndAllStyles( );
 
     wxLogNull* suppress_png_warnings = new wxLogNull;
-    wxBitmap   logo_bmp              = wxBITMAP_PNG_FROM_DATA(cisTEM_beta_logo_800);
+    // wxBitmap   logo_bmp              = wxBITMAP_PNG_FROM_DATA(cisTEM_beta_logo_800);
+    wxBitmap logo_bmp = wxBITMAP_PNG_FROM_DATA(quick_logo_700);
+
     delete suppress_png_warnings;
 
     InfoText->GetCaret( )->Hide( );

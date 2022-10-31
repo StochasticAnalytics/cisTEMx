@@ -62,20 +62,28 @@ void MyRefinementResultsPanel::FillRefinementPackageComboBox(void) {
 void MyRefinementResultsPanel::FillInputParametersComboBox(void) {
     if ( RefinementPackageComboBox->GetSelection( ) >= 0 ) {
         InputParametersComboBox->FillComboBox(RefinementPackageComboBox->GetSelection( ));
+        UpdateDisplayedResults( );
+    }
+}
 
-        UpdateCachedRefinement( );
-        FSCPlotPanel->AddRefinement(currently_displayed_refinement);
-        DrawOrthViews( ); // I hope this will cause  redraw of the angles also..
-        if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
-            FillAngles(OrthPanel->my_notebook->GetSelection( ));
-        if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
-            WriteJobInfo(OrthPanel->my_notebook->GetSelection( ));
+void MyRefinementResultsPanel::UpdateDisplayedResults( ) {
+
+    UpdateCachedRefinement( );
+    FSCPlotPanel->AddRefinement(currently_displayed_refinement);
+    DrawOrthViews( ); // I hope this will cause  redraw of the angles also..
+    if ( OrthPanel->my_notebook->GetSelection( ) >= 0 ) {
+        FillAngles(OrthPanel->my_notebook->GetSelection( ));
+    }
+    if ( OrthPanel->my_notebook->GetSelection( ) >= 0 ) {
+        WriteJobInfo(OrthPanel->my_notebook->GetSelection( ));
     }
 }
 
 void MyRefinementResultsPanel::UpdateCachedRefinement( ) {
     // wxPrintf("refinement package selection = %i, parameter selcetion = %i\n", refinement_results_panel->RefinementPackageComboBox->GetSelection( ), refinement_results_panel->InputParametersComboBox->GetSelection( ));
-    if ( currently_displayed_refinement == NULL || refinement_package_asset_panel->all_refinement_packages[refinement_results_panel->RefinementPackageComboBox->GetSelection( )].refinement_ids[refinement_results_panel->InputParametersComboBox->GetSelection( )] != currently_displayed_refinement->refinement_id ) {
+    if ( currently_displayed_refinement == NULL ||
+         refinement_package_asset_panel->all_refinement_packages[refinement_results_panel->RefinementPackageComboBox->GetSelection( )].refinement_ids[refinement_results_panel->InputParametersComboBox->GetSelection( )] !=
+                 currently_displayed_refinement->refinement_id ) {
         //wxProgressDialog progress_dialog("Please wait", "Retrieving refinement result from database...", 0, this);
 
         if ( currently_displayed_refinement != NULL )
@@ -161,15 +169,7 @@ void MyRefinementResultsPanel::OnRefinementPackageComboBox(wxCommandEvent& event
 void MyRefinementResultsPanel::OnInputParametersComboBox(wxCommandEvent& event) {
     // wxPrintf("Changed to input parameters %i\n", InputParametersComboBox->GetSelection( ));
     if ( RefinementPackageComboBox->GetSelection( ) >= 0 ) {
-        UpdateCachedRefinement( );
-        FSCPlotPanel->AddRefinement(currently_displayed_refinement);
-        DrawOrthViews( ); // Should redraw angles also
-        // if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
-        //     FillAngles(OrthPanel->my_notebook->GetSelection( ));
-        // if ( OrthPanel->my_notebook->GetSelection( ) >= 0 )
-        //     WriteJobInfo(OrthPanel->my_notebook->GetSelection( ));
-
-        //AngularPlotPanel->Clear();
+        UpdateDisplayedResults( );
     }
 }
 
@@ -340,6 +340,7 @@ void MyRefinementResultsPanel::PopupParametersClick(wxCommandEvent& event) {
 }
 
 void MyRefinementResultsPanel::WriteJobInfo(int wanted_class) {
+
     RefinementIDStaticText->SetLabel(wxString::Format("%li", currently_displayed_refinement->refinement_id));
     DateOfRunStaticText->SetLabel(currently_displayed_refinement->datetime_of_run.FormatISODate( ));
     TimeOfRunStaticText->SetLabel(currently_displayed_refinement->datetime_of_run.FormatISOTime( ));

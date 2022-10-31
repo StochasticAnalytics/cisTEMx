@@ -814,12 +814,27 @@ bool UnBlurApp::DoCalculation( ) {
     if ( should_dose_filter == true ) {
         if ( write_out_amplitude_spectrum == true ) {
             profile_timing.start("amplitude spectrum");
+#ifdef ENABLEGPU
+            sum_image_no_dose_filter.Allocate(image_stack[0].logical_x_dimension, image_stack[0].logical_y_dimension, false, allocate_fp16);
+            if ( allocate_fp16 ) {
+                sum_image_no_dose_filter.Zeros<__half>( );
+                sum_image_no_dose_filter.AddImageStack<__half>(image_stack);
+                sum_image_no_dose_filter.CopyFP16buffertoFP32( );
+                
+            }
+            else {
+                sum_image_no_dose_filter.Zeros( );
+                sum_image_no_dose_filter.AddImageStack<float>(image_stack);
+            }
+
+#else
             sum_image_no_dose_filter.Allocate(image_stack[0].logical_x_dimension, image_stack[0].logical_y_dimension, false);
             sum_image_no_dose_filter.SetToConstant(0.0f);
-
             for ( int image_counter = first_frame - 1; image_counter < last_frame; image_counter++ ) {
                 sum_image_no_dose_filter.AddImage(&image_stack[image_counter]);
             }
+#endif
+
             profile_timing.lap("amplitude spectrum");
         }
 
@@ -903,6 +918,7 @@ bool UnBlurApp::DoCalculation( ) {
         profile_timing.lap("final sum");
 #endif
     }
+
     else // just add them
     {
 

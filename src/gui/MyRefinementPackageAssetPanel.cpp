@@ -1,10 +1,11 @@
 #include "../core/gui_core_headers.h"
 
-extern MyVolumeAssetPanel* volume_asset_panel;
-extern MyRefine2DPanel*    classification_panel;
-extern AbInitio3DPanel*    ab_initio_3d_panel;
-extern AutoRefine3DPanel*  auto_refine_3d_panel;
-extern MyRefine3DPanel*    refine_3d_panel;
+extern MyVolumeAssetPanel*   volume_asset_panel;
+extern MyRefine2DPanel*      classification_panel;
+extern AbInitio3DPanel*      ab_initio_3d_panel;
+extern AutoRefine3DPanelSpa* auto_refine_3d_panel_spa;
+extern AutoRefine3DPanelRx*  auto_refine_3d_panel_rx;
+extern MyRefine3DPanel*      refine_3d_panel;
 
 MyRefinementPackageAssetPanel::MyRefinementPackageAssetPanel(wxWindow* parent)
     : RefinementPackageAssetPanel(parent) {
@@ -82,7 +83,7 @@ void MyRefinementPackageAssetPanel::OnDeleteClick(wxCommandEvent& event) {
     if ( selected_refinement_package >= 0 ) {
         // check if there is a running job which uses refinement packages, if there is refuse to delete the refinement package.
 
-        if ( classification_panel->running_job == true || ab_initio_3d_panel->running_job == true || auto_refine_3d_panel->running_job == true || refine_3d_panel->running_job == true ) {
+        if ( classification_panel->running_job || ab_initio_3d_panel->running_job || auto_refine_3d_panel_spa->running_job || auto_refine_3d_panel_rx->running_job || refine_3d_panel->running_job ) {
 
             wxMessageDialog error_dialog(this, "Sorry! - You cannot delete refinement packages when any of the following are running (jobs are not marked finished until you press the finish button) :-\n\n2D Classification\nAb-Inito 3D\nAuto Refine\nManual Refine\n\nThis is to stop the database getting messed up. Sorry again!", "There are jobs running", wxICON_ERROR);
             error_dialog.ShowModal( );
@@ -272,10 +273,10 @@ void MyRefinementPackageAssetPanel::ReDrawActiveReferences( ) {
 }
 
 void MyRefinementPackageAssetPanel::OnUpdateUI(wxUpdateUIEvent& event) {
-    if ( main_frame->current_project.is_open == true ) {
+    if ( main_frame->current_project.is_open ) {
         Enable(true);
 
-        if ( is_dirty == true ) {
+        if ( is_dirty ) {
             FillRefinementPackages( );
             is_dirty = false;
         }

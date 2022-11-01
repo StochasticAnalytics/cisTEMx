@@ -106,7 +106,9 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MyVolumeChooserDialog.h \
                  gui/MyRefine3DPanel.h \
                  gui/Generate3DPanel.h \
-                 gui/AutoRefine3dPanel.h \
+                 gui/AutoRefine3dPanelSpa.h \
+                 gui/AutoRefine3dPanelRx.h \
+                 gui/AutoRefine3dManager.h \
                  gui/DisplayRefinementResultsPanel.h \
                  gui/PopupTextDialog.h \
                  gui/PlotFSCPanel.h \
@@ -650,7 +652,9 @@ cisTEM_SOURCES  =   programs/projectx/projectx.cpp                      \
                     gui/OverviewPanel.cpp                             \
                     gui/AbInitio3DPanel.cpp                             \
                     gui/AssetPickerComboPanel.cpp                       \
-                    gui/AutoRefine3dPanel.cpp                           \
+                    gui/AutoRefine3dPanelSpa.cpp                           \
+                    gui/AutoRefine3dPanelRx.cpp                            \
+                    gui/AutoRefine3dManager.cpp                            \
                     gui/DisplayRefinementResultsPanel.cpp               \
                     gui/ImportRefinementPackageWizard.cpp               \
                     gui/PopupTextDialog.cpp                             \

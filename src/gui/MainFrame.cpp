@@ -30,7 +30,8 @@ extern MyFindParticlesPanel* findparticles_panel;
 extern MyRefine2DPanel*      classification_panel;
 extern MyRefine3DPanel*      refine_3d_panel;
 extern RefineCTFPanel*       refine_ctf_panel;
-extern AutoRefine3DPanel*    auto_refine_3d_panel;
+extern AutoRefine3DPanelSpa* auto_refine_3d_panel_spa;
+extern AutoRefine3DPanelRx*  auto_refine_3d_panel_rx;
 extern AbInitio3DPanel*      ab_initio_3d_panel;
 extern Generate3DPanel*      generate_3d_panel;
 extern Sharpen3DPanel*       sharpen_3d_panel;
@@ -231,7 +232,8 @@ void MyMainFrame::ResetAllPanels( ) {
     findparticles_panel->Reset( );
     classification_panel->Reset( );
     ab_initio_3d_panel->Reset( );
-    auto_refine_3d_panel->Reset( );
+    auto_refine_3d_panel_spa->Reset( );
+    auto_refine_3d_panel_rx->Reset( );
     refine_3d_panel->Reset( );
     refine_ctf_panel->Reset( );
     generate_3d_panel->Reset( );
@@ -259,11 +261,12 @@ void MyMainFrame::DirtyEverything( ) {
 }
 
 void MyMainFrame::DirtyVolumes( ) {
-    volume_asset_panel->is_dirty            = true;
-    refine_3d_panel->volumes_are_dirty      = true;
-    auto_refine_3d_panel->volumes_are_dirty = true;
-    sharpen_3d_panel->volumes_are_dirty     = true;
-    refine_ctf_panel->volumes_are_dirty     = true;
+    volume_asset_panel->is_dirty                = true;
+    refine_3d_panel->volumes_are_dirty          = true;
+    auto_refine_3d_panel_spa->volumes_are_dirty = true;
+    auto_refine_3d_panel_rx->volumes_are_dirty  = true;
+    sharpen_3d_panel->volumes_are_dirty         = true;
+    refine_ctf_panel->volumes_are_dirty         = true;
 
 #ifdef EXPERIMENTAL
     match_template_panel->volumes_are_dirty         = true;
@@ -304,15 +307,16 @@ void MyMainFrame::DirtyParticlePositionGroups( ) {
 }
 
 void MyMainFrame::DirtyRefinementPackages( ) {
-    refinement_package_asset_panel->is_dirty                  = true;
-    classification_panel->refinement_package_combo_is_dirty   = true;
-    refine_3d_panel->refinement_package_combo_is_dirty        = true;
-    refine_ctf_panel->refinement_package_combo_is_dirty       = true;
-    auto_refine_3d_panel->refinement_package_combo_is_dirty   = true;
-    refinement_results_panel->refinement_package_is_dirty     = true;
-    refine2d_results_panel->refinement_package_combo_is_dirty = true;
-    ab_initio_3d_panel->refinement_package_combo_is_dirty     = true;
-    generate_3d_panel->refinement_package_combo_is_dirty      = true;
+    refinement_package_asset_panel->is_dirty                    = true;
+    classification_panel->refinement_package_combo_is_dirty     = true;
+    refine_3d_panel->refinement_package_combo_is_dirty          = true;
+    refine_ctf_panel->refinement_package_combo_is_dirty         = true;
+    auto_refine_3d_panel_spa->refinement_package_combo_is_dirty = true;
+    auto_refine_3d_panel_rx->refinement_package_combo_is_dirty  = true;
+    refinement_results_panel->refinement_package_is_dirty       = true;
+    refine2d_results_panel->refinement_package_combo_is_dirty   = true;
+    ab_initio_3d_panel->refinement_package_combo_is_dirty       = true;
+    generate_3d_panel->refinement_package_combo_is_dirty        = true;
 }
 
 void MyMainFrame::DirtyRefinements( ) {
@@ -332,16 +336,17 @@ void MyMainFrame::DirtyClassificationSelections( ) {
 }
 
 void MyMainFrame::DirtyRunProfiles( ) {
-    run_profiles_panel->is_dirty                 = true;
-    align_movies_panel->run_profiles_are_dirty   = true;
-    fitctf_panel->run_profiles_are_dirty         = true;
-    findparticles_panel->run_profiles_are_dirty  = true;
-    classification_panel->run_profiles_are_dirty = true;
-    refine_3d_panel->run_profiles_are_dirty      = true;
-    refine_ctf_panel->run_profiles_are_dirty     = true;
-    auto_refine_3d_panel->run_profiles_are_dirty = true;
-    ab_initio_3d_panel->run_profiles_are_dirty   = true;
-    generate_3d_panel->run_profiles_are_dirty    = true;
+    run_profiles_panel->is_dirty                     = true;
+    align_movies_panel->run_profiles_are_dirty       = true;
+    fitctf_panel->run_profiles_are_dirty             = true;
+    findparticles_panel->run_profiles_are_dirty      = true;
+    classification_panel->run_profiles_are_dirty     = true;
+    refine_3d_panel->run_profiles_are_dirty          = true;
+    refine_ctf_panel->run_profiles_are_dirty         = true;
+    auto_refine_3d_panel_spa->run_profiles_are_dirty = true;
+    auto_refine_3d_panel_rx->run_profiles_are_dirty  = true;
+    ab_initio_3d_panel->run_profiles_are_dirty       = true;
+    generate_3d_panel->run_profiles_are_dirty        = true;
 #ifdef EXPERIMENTAL
     match_template_panel->run_profiles_are_dirty  = true;
     refine_template_panel->run_profiles_are_dirty = true;
@@ -890,7 +895,8 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
     align_movies_panel->Reparent(output_frame->ActionsBook);
     fitctf_panel->Reparent(output_frame->ActionsBook);
     findparticles_panel->Reparent(output_frame->ActionsBook);
-    auto_refine_3d_panel->Reparent(output_frame->ActionsBook);
+    auto_refine_3d_panel_spa->Reparent(output_frame->ActionsBook);
+    auto_refine_3d_panel_rx->Reparent(output_frame->ActionsBook);
     refine_3d_panel->Reparent(output_frame->ActionsBook);
     refine_ctf_panel->Reparent(output_frame->ActionsBook);
     classification_panel->Reparent(output_frame->ActionsBook);
@@ -926,6 +932,7 @@ void MyMainFrame::SetSingleParticleWorkflow(bool triggered_by_gui_event) {
             if ( ! triggered_by_gui_event ) {
                 ManuallyUpdateWorkflowMenuCheckBox( );
             }
+
             break;
         }
         case cistem::workflow::pharma: {
@@ -937,6 +944,7 @@ void MyMainFrame::SetSingleParticleWorkflow(bool triggered_by_gui_event) {
             if ( ! triggered_by_gui_event ) {
                 ManuallyUpdateWorkflowMenuCheckBox( );
             }
+
             break;
         }
         default: {
@@ -997,6 +1005,7 @@ void MyMainFrame::SetPharmaWorkflow(bool triggered_by_gui_event) {
             if ( ! triggered_by_gui_event ) {
                 ManuallyUpdateWorkflowMenuCheckBox( );
             }
+
             break;
         }
         case cistem::workflow::template_matching: {
@@ -1008,6 +1017,7 @@ void MyMainFrame::SetPharmaWorkflow(bool triggered_by_gui_event) {
             if ( ! triggered_by_gui_event ) {
                 ManuallyUpdateWorkflowMenuCheckBox( );
             }
+
             break;
         }
         default: {

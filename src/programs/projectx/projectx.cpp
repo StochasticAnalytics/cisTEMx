@@ -21,7 +21,8 @@ FitCTFPanel*          fitctf_panel;
 MyFindParticlesPanel* findparticles_panel;
 MyRefine2DPanel*      classification_panel;
 AbInitio3DPanel*      ab_initio_3d_panel;
-AutoRefine3DPanel*    auto_refine_3d_panel;
+AutoRefine3DPanelSpa* auto_refine_3d_panel_spa;
+AutoRefine3DPanelRx*  auto_refine_3d_panel_rx;
 MyRefine3DPanel*      refine_3d_panel;
 RefineCTFPanel*       refine_ctf_panel;
 Generate3DPanel*      generate_3d_panel;
@@ -159,7 +160,7 @@ bool MyGuiApp::OnInit( ) {
     findparticles_panel            = new MyFindParticlesPanel(actions_panel_spa->ActionsBook);
     classification_panel           = new MyRefine2DPanel(actions_panel_spa->ActionsBook);
     ab_initio_3d_panel             = new AbInitio3DPanel(actions_panel_spa->ActionsBook);
-    auto_refine_3d_panel           = new AutoRefine3DPanel(actions_panel_spa->ActionsBook);
+    auto_refine_3d_panel_spa       = new AutoRefine3DPanelSpa(actions_panel_spa->ActionsBook);
     refine_3d_panel                = new MyRefine3DPanel(actions_panel_spa->ActionsBook);
     refine_ctf_panel               = new RefineCTFPanel(actions_panel_spa->ActionsBook);
     generate_3d_panel              = new Generate3DPanel(actions_panel_spa->ActionsBook);
@@ -179,6 +180,7 @@ bool MyGuiApp::OnInit( ) {
 
     // actions_panel_spa is currently a complete superset of actions_panel_rx, so we can just
     // reparent the panels from actions_panel_spa to actions_panel_rx
+    auto_refine_3d_panel_rx = new AutoRefine3DPanelRx(actions_panel_rx->ActionsBook);
 
 #ifdef EXPERIMENTAL
     refine_template_dev_panel = new RefineTemplateDevPanel(experimental_panel->ExperimentalBook);
@@ -340,7 +342,7 @@ bool MyGuiApp::OnInit( ) {
     actions_panel_spa->ActionsBook->AddPage(findparticles_panel, "Find Particles", false, 2);
     actions_panel_spa->ActionsBook->AddPage(classification_panel, "2D Classify", false, 3);
     actions_panel_spa->ActionsBook->AddPage(ab_initio_3d_panel, "Ab-Initio 3D", false, 4);
-    actions_panel_spa->ActionsBook->AddPage(auto_refine_3d_panel, "Auto Refine", false, 5);
+    actions_panel_spa->ActionsBook->AddPage(auto_refine_3d_panel_spa, "Auto Refine", false, 5);
     actions_panel_spa->ActionsBook->AddPage(refine_3d_panel, "Manual Refine", false, 6);
     actions_panel_spa->ActionsBook->AddPage(refine_ctf_panel, "Refine CTF", false, 7);
     actions_panel_spa->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 8);
@@ -351,7 +353,7 @@ bool MyGuiApp::OnInit( ) {
     actions_panel_rx->ActionsBook->AddPage(findparticles_panel, "Find Particles", false, 2);
     actions_panel_rx->ActionsBook->AddPage(classification_panel, "2D Classify", false, 3);
     // actions_panel_rx->ActionsBook->AddPage(ab_initio_3d_panel, "Ab-Initio 3D", false, 4);
-    actions_panel_rx->ActionsBook->AddPage(auto_refine_3d_panel, "Auto Refine", false, 4);
+    actions_panel_rx->ActionsBook->AddPage(auto_refine_3d_panel_rx, "Auto Refine", false, 4);
     actions_panel_rx->ActionsBook->AddPage(refine_3d_panel, "Manual Refine", false, 5);
     actions_panel_rx->ActionsBook->AddPage(refine_ctf_panel, "Refine CTF", false, 6);
     actions_panel_rx->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 7);

@@ -17,20 +17,4 @@ void ActionsPanelTm::OnActionsBookPageChanged(wxBookCtrlEvent& event) {
     extern RefineTemplatePanel*       refine_template_panel;
     extern Generate3DPanel*           generate_3d_panel;
     extern Sharpen3DPanel*            sharpen_3d_panel;
-
-#ifdef __WXOSX__
-    // Necessary for MacOS to refresh the panels
-    if ( event.GetSelection( ) == 0 ) {
-        match_template_panel->Layout( );
-        match_template_panel->Refresh( );
-    }
-    else if ( event.GetSelection( ) == 1 ) {
-        match_template_results_panel->Layout( );
-        match_template_results_panel->Refresh( );
-    }
-    else if ( event.GetSelection( ) == 2 ) {
-        refine_template_panel->Layout( );
-        refine_template_panel->Refresh( );
-    }
-#endif
 }

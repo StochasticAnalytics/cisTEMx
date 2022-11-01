@@ -154,12 +154,8 @@ void AutoRefine3DPanelRx::SetInfo( ) {
     InfoText->EndAlignment( );
 
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_LEFT);
-    if ( main_frame->GetCurrentWorkflow( ) == cistem::workflow::single_particle ) {
-        InfoText->WriteText(wxT("This panel allows users use a. priori information to rapidly option structural information of a related complex."));
-    }
-    else {
-        InfoText->WriteText(wxT("Use a priori knowldege to get somewhere fast."));
-    }
+    InfoText->WriteText(wxT("This panel allows users use a. priori information to rapidly option structural information of a related complex."));
+
     InfoText->Newline( );
     InfoText->Newline( );
     InfoText->EndAlignment( );

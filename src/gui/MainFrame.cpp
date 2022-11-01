@@ -8,7 +8,7 @@
 #define SERVER_ID 100
 #define SOCKET_ID 101
 
-// #define PRINT_WORKFLOW_DEBUGGING_INFO
+#define PRINT_WORKFLOW_DEBUGGING_INFO
 
 extern AssetsPanel*                  assets_panel;
 extern MyMovieAssetPanel*            movie_asset_panel;
@@ -895,8 +895,7 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
     align_movies_panel->Reparent(output_frame->ActionsBook);
     fitctf_panel->Reparent(output_frame->ActionsBook);
     findparticles_panel->Reparent(output_frame->ActionsBook);
-    auto_refine_3d_panel_spa->Reparent(output_frame->ActionsBook);
-    auto_refine_3d_panel_rx->Reparent(output_frame->ActionsBook);
+
     refine_3d_panel->Reparent(output_frame->ActionsBook);
     refine_ctf_panel->Reparent(output_frame->ActionsBook);
     classification_panel->Reparent(output_frame->ActionsBook);
@@ -915,6 +914,19 @@ void MyMainFrame::UpdateWorkflow(FrameTypeFrom* input_frame, FrameTypeTo* output
     // Sets the selection to the page that was previously displayed.
     // Also generates page chaninge events. Which could be avoided by using MenuBook->ChangeSelection(displayed_page_idx);
     MenuBook->SetSelection(displayed_page_idx);
+
+    // This is a bit brittle and depends on the page order in projectx.cpp
+    if ( output_frame->Type( ) == "ActionsPanelSpa" ) {
+        output_frame->ActionsBook->SetSelection(5);
+    }
+    else {
+        if ( output_frame->Type( ) == "ActionsPanelRx" ) {
+            output_frame->ActionsBook->SetSelection(4);
+        }
+        else {
+            // DO nothing
+        }
+    }
 
     Layout( );
     Refresh( );

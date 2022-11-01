@@ -24,6 +24,11 @@ MRCFile::MRCFile(std::string filename, bool overwrite, bool wait_for_file_to_exi
     OpenFile(filename, overwrite, wait_for_file_to_exist);
 }
 
+void MRCFile::SetOutputToFP16( ) {
+    MyDebugAssertTrue(my_file->is_open( ), "File not open!");
+    my_header.SetMode(12);
+}
+
 MRCFile::~MRCFile( ) {
     if ( my_file != NULL ) {
         CloseFile( );
@@ -431,6 +436,18 @@ void MRCFile::WriteSlicesToDisk(int start_slice, int end_slice, float* input_arr
             case 2:
                 my_file->write((char*)input_array, records_to_read * 4);
                 break;
+
+            case 12: {
+                half* temp_half_array = new half[records_to_read];
+
+                for ( long counter = 0; counter < records_to_read; counter++ ) {
+                    temp_half_array[counter] = half(input_array[counter]);
+                }
+                my_file->write((char*)temp_half_array, records_to_read * 2);
+
+                delete[] temp_half_array;
+                break;
+            }
 
             default: {
                 MyPrintfRed("Error: mode %i MRC files not currently supported\n", my_header.Mode( ));

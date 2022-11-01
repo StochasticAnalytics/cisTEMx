@@ -333,6 +333,13 @@ AC_ARG_ENABLE(smooth-mip, AS_HELP_STRING([--smooth-mip],[Smooth avg/stdDev CCGs 
   fi
   ]) 
 
+AC_ARG_ENABLE(fp16-particlestacks, AS_HELP_STRING([--enable-fp16-particlestacks],[Save particle stacks in reduced precision. Use with caution  [default=no]]),[
+  if test "$enableval" = yes; then
+    AC_DEFINE([USE_FP16_PARTICLE_STACKS], [], [Save particle stacks in reduced precision])
+  	AC_MSG_NOTICE([Compiling with reduced precision particle stacks])	
+  fi
+  ]) 
+
 
   
 

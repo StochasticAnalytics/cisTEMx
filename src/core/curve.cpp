@@ -416,6 +416,20 @@ void Curve::Logarithm( ) {
     }
 }
 
+// Replace Y values with their natural logarthm base e
+void Curve::Ln( ) {
+#ifdef CISTEM_DEBUG
+    for ( int counter = 0; counter < number_of_points; counter++ ) {
+        if ( data_y[counter] < 0.0 )
+            MyDebugAssertTrue(false, "This routine assumes all Y values are positive, but value %i is %f\n", counter, data_y[counter]);
+    }
+#endif
+
+    for ( int counter = 0; counter < number_of_points; counter++ ) {
+        data_y[counter] = std::log(data_y[counter]);
+    }
+}
+
 void Curve::SquareRoot( ) {
 #ifdef CISTEM_DEBUG
     for ( int counter = 0; counter < number_of_points; counter++ ) {
@@ -509,6 +523,15 @@ void Curve::WriteToFile(wxString output_file, wxString header_line) {
 
 void Curve::WriteToFile(wxString output_file) {
     WriteToFile(output_file, "C            X              Y");
+}
+
+void Curve::WriteToFileForGuinier(wxString output_filename) {
+    Curve temp_curve(*this);
+    temp_curve.Ln( );
+    for ( int i = 0; i < number_of_points; i++ ) {
+        temp_curve.data_x[i] = powf(temp_curve.data_x[i], 2.0f);
+    }
+    temp_curve.WriteToFile(output_filename);
 }
 
 void Curve::CopyDataFromArrays(double* x_series, double* y_series, int wanted_number_of_points) {

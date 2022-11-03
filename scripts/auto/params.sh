@@ -30,6 +30,20 @@ sim_linear_scaling_of_pdb_bfactors=1.0
 sim_base_bfactor=15.0
 sim_total_exposure=$total_exposure
 
+# CTF fitting parameters
+ctf_box_size=768
+ctf_diagnostic_box_size=$(( $ctf_box_size / 2 ))
+ctf_min_res=30
+ctf_max_res=2.8
+ctf_min_defocus=500
+ctf_max_defocus=25000
+ctf_defocus_step=25
+ctf_tolerated_astigmatism=1000
+ctf_restrain_astigmatism=yes
+ctf_exhaustive_search=no
+ctf_find_extra_phase_shift=no
+ctf_find_tilt=no
+ctf_max_threads=1 # maybe set this based on find_tilt?
 
 # Movie align parameters
 movie_min_shift=2.0

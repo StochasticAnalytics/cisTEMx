@@ -8,10 +8,11 @@ source params.sh
 mkdir -p $output_dir
 mkdir -p $output_dir/images
 mkdir -p $output_dir/volumes
+mkdir -p $output_dir/global_search
 
 # ls $movie_dir/* | parallel --bar --progress -j${max_movies_per_gpu} ./auto_movie_align.sh {}
 
-./auto_sim_ref.sh
+# ./auto_sim_ref.sh
 
 
 

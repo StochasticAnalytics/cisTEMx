@@ -68,7 +68,7 @@ class ScatteringPotential {
     void SetBfactorScaling(float wanted_bfactor_scaling) { _bfactor_scaling = wanted_bfactor_scaling; };
 
     inline float GetCompleteBfactor(float pdb_bfactor) {
-        return 0.25f * (_minimum_bfactor_applied_to_all_atoms + pdb_bfactor * _bfactor_scaling);
+        return (pdb_bfactor * _bfactor_scaling + _minimum_bfactor_applied_to_all_atoms);
     }
 
     int GetNeighborhoodSize( );

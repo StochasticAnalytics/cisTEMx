@@ -33,6 +33,33 @@ void QuickTestApp::DoInteractiveUserInput( ) {
 
 bool QuickTestApp::DoCalculation( ) {
 
+    Image vol;
+    float bfactor;
+    vol.QuickAndDirtyReadSlices("no_bfactor.mrc", 1, 192);
+    bfactor = vol.CalculateBFactor(1.0f);
+    std::cerr << "bfactor = " << bfactor << std::endl;
+
+    vol.QuickAndDirtyReadSlices("no_bfactor.mrc", 1, 192);
+    vol.ForwardFFT( );
+    vol.ApplyBFactor(100.f);
+    bfactor = vol.CalculateBFactor(1.0f);
+    std::cerr << "bfactor = " << bfactor << std::endl;
+
+    vol.QuickAndDirtyReadSlices("no_bfactor.mrc", 1, 192);
+    vol.ForwardFFT( );
+    vol.ApplyBFactor(500.f);
+    bfactor = vol.CalculateBFactor(1.0f);
+    std::cerr << "bfactor = " << bfactor << std::endl;
+
+    vol.QuickAndDirtyReadSlices("bfactor_100.mrc", 1, 192);
+    bfactor = vol.CalculateBFactor(1.0f);
+    std::cerr << "bfactor 100 = " << bfactor << std::endl;
+
+    vol.QuickAndDirtyReadSlices("bfactor_500.mrc", 1, 192);
+    bfactor = vol.CalculateBFactor(1.0f);
+    std::cerr << "bfactor 500 = " << bfactor << std::endl;
+
+    exit(1);
     MRCFile my_file;
     my_file.OpenFile(input_starfile_filename.at(0).ToStdString( ), false);
 

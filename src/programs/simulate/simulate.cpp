@@ -15,7 +15,7 @@ using namespace cistem_timer;
 const float DISTANCE_INIT = 100000.0f; // Set the distance slab to a large value
 // I would have thought this should be 1/4, however, when calculating a 3D and then plotting ln(F) vs freq^-2, it is clear that the relative difference
 // requires this factor to be 1/2. This is somewhat bothersome and ideally would have an explanation.
-const float BfactorFactor = 1.0f;
+const float BfactorFactor = 0.5f;
 const int   N_WATER_TERMS = 40;
 
 const float WATER_BFACTOR_PER_ELECTRON_PER_SQANG = 34.0f;
@@ -143,7 +143,7 @@ class SimulateApp : public MyApp {
     int                bin3d                   = 0; // in addition to binning for 3d (set on input) if wanted_output_size > 0, and it is 2d, this keeps the PDB constructor from thinking it is a 3d,
 
     float  dose_per_frame            = 1;
-    float  dose_rate                 = 3.0; // e/physical pixel/s this should be set by the user. Changes the illumination aperature and DQE curve
+    float  dose_rate                 = 8.0; // e/physical pixel/s this should be set by the user. Changes the illumination aperature and DQE curve
     float  number_of_frames          = 1;
     double total_waters_incorporated = 0;
     float  average_at_cutoff[N_WATER_TERMS]; // This assumes a fixed 1/2 angstrom sampling of the hydration shell curve
@@ -156,7 +156,7 @@ class SimulateApp : public MyApp {
 
     bool ONLY_SAVE_SUMS          = true;
     bool DO_NOT_RANDOMIZE_ANGLES = false;
-    int  MODIFY_ONLY_SIGNAL      = 0;
+    int  MODIFY_ONLY_SIGNAL      = 1;
 
     // To add error to the global alignment
     float tilt_axis           = 0; // degrees from Y-axis FIXME thickness calc, water padding, a few others are only valid for 0* tilt axis.
@@ -278,7 +278,7 @@ class SimulateApp : public MyApp {
 
     float wgt                      = 0.0f;
     float bf                       = 0.0f;
-    bool  water_shell_only         = false;
+    bool  water_shell_only         = true;
     bool  is_alpha_fold_prediction = false;
     ///////////
     /////////////////////////////////////////
@@ -355,7 +355,7 @@ void SimulateApp::AddCommandLineOptions( ) {
 
     command_line_parser.AddOption("", "wgt", "Maximum number of neighboring noise particles when simulating an image stack. Default is 0", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddOption("", "bf", "Maximum number of neighboring noise particles when simulating an image stack. Default is 0", wxCMD_LINE_VAL_DOUBLE);
-    command_line_parser.AddLongSwitch("water-shell-only", "when adding constant background, taper off 4 Ang into the water");
+    command_line_parser.AddLongSwitch("disable-water-shell-only", "normally when adding constant background to a 3d, taper off 4 Ang into the water");
     command_line_parser.AddLongSwitch("is-alpha-fold-prediction", "Is this a alpha-fold prediction? If so, convert the confidence score stored in the bfactor column to a bfactor. default is no");
 
     //    command_line_parser.AddOption("j","","Desired number of threads. Overrides interactive user input. Is overriden by env var OMP_NUM_THREADS",wxCMD_LINE_VAL_NUMBER);
@@ -473,8 +473,8 @@ void SimulateApp::DoInteractiveUserInput( ) {
     if ( command_line_parser.Found("bf", &temp_double) ) {
         bf = (float)temp_double;
     }
-    if ( command_line_parser.Found("water-shell-only") )
-        water_shell_only = true;
+    if ( command_line_parser.Found("disable-water-shell-only") )
+        water_shell_only = false;
     if ( command_line_parser.Found("is-alpha-fold-prediction") )
         is_alpha_fold_prediction = true;
 
@@ -513,7 +513,7 @@ void SimulateApp::DoInteractiveUserInput( ) {
 
     wanted_pixel_size = my_input->GetFloatFromUser("Output pixel size (Angstroms)", "Output size for the final projections", "1.0", 0.01, MAX_PIXEL_SIZE);
     bFactor_scaling   = my_input->GetFloatFromUser("Linear scaling of per atom bFactor", "0 off, 1 use as is", "0", 0, 10000);
-    min_bFactor       = my_input->GetFloatFromUser("Per atom (xtal) bFactor added to all atoms", "accounts for all quote[unavoidable] experimental error", "30.0", 0.0f, 10000);
+    min_bFactor       = my_input->GetFloatFromUser("Per atom (xtal) bFactor added to all atoms", "accounts for all quote[unavoidable] experimental error", "15.0", 0.0f, 10000);
 
     if ( do3d ) {
         bool found_the_best_binning = false;
@@ -1217,6 +1217,10 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
             // FIXME method for defining the size (in pixels) needed for incorporating the atoms density. The formulat used below is based on including the strongest likely scatterer (Phosphorous) given the bfactor.
             // FIXME
+
+            sp.SetBfactorScaling(this->bFactor_scaling);
+            sp.SetMinimumBfactorAppliedToAllAtoms(this->min_bFactor);
+
             float BF;
             if ( DO_PHASE_PLATE ) {
                 BF = PHASE_PLATE_BFACTOR;
@@ -1567,11 +1571,9 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                 timer.lap("Allocate 3d slabs");
 
-                sp.SetBfactorScaling(this->bFactor_scaling);
-                sp.SetMinimumBfactorAppliedToAllAtoms(this->min_bFactor);
-
                 timer.start("Calc Atoms");
                 if ( ! DO_PHASE_PLATE ) {
+                    std::cerr << "Size of neighbor list " << size_neighborhood << std::endl;
                     sp.calc_scattering_potential(&current_specimen, coords, &scattering_slab, &inelastic_slab, &distance_slab,
                                                  rotated_oZ, slabIDX_start, slabIDX_end, iSlab, size_neighborhood, number_of_threads,
                                                  non_water_inelastic_scaling, DO_BEAM_TILT_FULL, beam_tilt_z_X_component, beam_tilt_z_Y_component);

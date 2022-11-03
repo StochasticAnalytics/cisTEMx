@@ -340,5 +340,6 @@ int ScatteringPotential::GetNeighborhoodSize( ) {
 
 int ScatteringPotential::GetNeighborhoodSize(float wanted_bfactor) {
     MyDebugAssertTrue(_pixel_size > 0, "Pixel size is not set");
+
     return 1 + myroundint((0.4f * sqrtf(0.6f * wanted_bfactor) + 0.2f) / _pixel_size);
 }

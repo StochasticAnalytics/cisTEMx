@@ -1,8 +1,8 @@
 #!/bin/bash
 
-output_dir=test_1
+output_dir=test_2
 
-bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif ${HOME}/git/cisTEM/build/intel-gpu/src"
+bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif ${HOME}/git/cisTEM/build/intel-gpu-debug-profile/src"
 pdb_file=7a4m_assembly_no_C_T.pdb
 
 movie_dir=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/movies
@@ -29,6 +29,8 @@ sim_max_threads=4
 sim_linear_scaling_of_pdb_bfactors=1.0
 sim_base_bfactor=15.0
 sim_total_exposure=$total_exposure
+# should be returned from the call to simulate or otherwise set based on PDB info
+sim_particle_mass=460
 
 # CTF fitting parameters
 ctf_box_size=768
@@ -58,10 +60,24 @@ movie_save_aligned_frames=no
 movie_correct_mag_distortion=no
 movie_max_threads=1
 
+global_phase_shift=0.0
+global_out_of_plane_angle=2.5
+global_in_plane_angle=1.5
+global_high_resolution_limit=$(echo "print($output_pixel_size*2)" | python3)
+global_padding_value=1.0
+global_mask_radius=0.0
+global_symmetry="O"
+global_max_threads=3
+# TODO, this should be tied to particle size
+global_min_peak_radius=40.0
+
 # Run with the input model
 global_resolution=7.5
 local_resolution_1=5.0
-ctf_resolution=3.0
+local_resolution_2=2.8 # TODO should be based on target res and nyquist, this is just for CTF with other params frozen
+local_resolution_3=3.5
+local_defocus_range_angstroms=500
+local_defocus_step_angstroms=10
 
 # Run with the reconstruction from the first search
 final_resolution=3.5
@@ -70,11 +86,15 @@ final_resolution=3.5
 gpu_for_movies=0
 max_movies_per_gpu=3
 
-gpu_for_global=1
-max_images_per_gpu=6
+gpu_for_global=0
+max_images_per_gpu=3
 
-gpu_for_local=2
-max_stacks_per_gpu=6
+gpu_for_local=0
+max_stacks_per_gpu=3
+local_max_threads=8
+
+# lock files for coordination 
+
 
 
 

@@ -141,7 +141,7 @@ class ProjectionComparisonObjects {
     void  PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search);
 
     // In the ctf refinement loop, we want to keep a clean copy of the particle image and just copy it back each loop
-    void GetCleanCopyOfParticleImage(const bool is_for_global_search);
+    void SetCleanCopyOfParticleImage(const bool is_for_global_search);
 
     void DeallocateCleanCopyOfParticleImage( );
 

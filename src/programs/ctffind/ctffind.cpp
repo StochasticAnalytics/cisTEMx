@@ -1782,14 +1782,17 @@ bool CtffindApp::DoCalculation( ) {
         average_spectrum->is_in_real_space = true;
 
         if ( amplitude_spectrum_input || filtered_amplitude_spectrum_input ) {
+            profile_timing.start("Read spectrum");
             current_power_spectrum->ReadSlice(&input_file, current_micrograph_number);
             current_power_spectrum->ForwardFFT( );
             average_spectrum->Allocate(box_size, box_size, 1, false);
             current_power_spectrum->ClipInto(average_spectrum);
             average_spectrum->BackwardFFT( );
             average_spectrum_masked->CopyFrom(average_spectrum);
+            profile_timing.lap("Read spectrum");
         }
         else {
+            // FIXME: I think this could be outside of the loop which would eliminate all the memory allocation/deallocation in the ctor.
             CTFTilt tilt_scorer(input_file, 5.0f, 10.0f, minimum_defocus, maximum_defocus, pixel_size_of_input_image, acceleration_voltage, spherical_aberration, amplitude_contrast, 0.0f);
 
             for ( current_first_frame_within_average = 1; current_first_frame_within_average <= number_of_movie_frames; current_first_frame_within_average += number_of_frames_to_average ) {

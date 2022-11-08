@@ -145,7 +145,7 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
     return 0.0f;
 }
 
-void ProjectionComparisonObjects::GetCleanCopyOfParticleImage(const bool is_for_global_search) {
+void ProjectionComparisonObjects::SetCleanCopyOfParticleImage(const bool is_for_global_search) {
     return;
 }
 
@@ -159,13 +159,14 @@ void ProjectionComparisonObjects::DeallocateCleanCopyOfParticleImage( ) {
 
 #else
 
-void ProjectionComparisonObjects::GetCleanCopyOfParticleImage(const bool is_for_global_search) {
-
+void ProjectionComparisonObjects::SetCleanCopyOfParticleImage(const bool is_for_global_search) {
+#ifndef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
     GpuImage* tmp_ptr = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
 
     MyDebugAssertTrue(tmp_ptr->is_in_memory_gpu, "Image is not in GPU memory");
 
     clean_copy = *tmp_ptr;
+#endif
 }
 
 void ProjectionComparisonObjects::DeallocateCleanCopyOfParticleImage( ) {
@@ -349,7 +350,6 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
 
     current_projection->ExtractSliceShiftAndCtf(current_density_map, &gpu_ctf_image, particle->alignment_parameters, reference_volume->pixel_size, particle->pixel_size / particle->filter_radius_high, true,
                                                 swap_quadrants, apply_shifts, apply_ctf, absolute_ctf);
-
 
 #ifdef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
     current_projection->CopyDeviceToHostAndSynchronize(false, false);

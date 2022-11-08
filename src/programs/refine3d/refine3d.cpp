@@ -1335,7 +1335,7 @@ bool Refine3DApp::DoCalculation( ) {
 
                 // FIXME: NAMING Binned image isn't really binned, but it is being used to keep a clean copy of the image
                 binned_image.CopyFrom(refine_particle_.particle_image);
-                comparison_object.GetCleanCopyOfParticleImage(false);
+                comparison_object.SetCleanCopyOfParticleImage(false);
                 refine_particle_.InitCTF(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
                 best_score = -std::numeric_limits<float>::max( );
 
@@ -1712,42 +1712,14 @@ bool Refine3DApp::DoCalculation( ) {
                     timer.lap("local refinement local");
                     //				my_time_out = wxDateTime::UNow(); wxPrintf("local refinement done: ms taken = %li\n", my_time_out.Subtract(my_time_in).GetMilliseconds());
                 }
-                //			log_diff = input_parameters[15] - output_parameters[15];
-                //			wxPrintf("in = %g out = %g log_diff = %g ratio = %g\n", input_parameters[15], output_parameters[15], log_diff, 1.0 / (1.0 + exp(log_diff)));
-                //			if (log_diff > log_range) log_diff = log_range;
-                //			if (log_diff < - log_range) log_diff = - log_range;
-                // If log_diff >= 0, exp(log_diff) will never be smaller than the random number and the new parameters will be kept.
-                // If log_diff < 0 (new parameters give worse likelihood), new parameters will only be kept if random number smaller than exp(log_diff).
-                //			if ((global_random_number_generator.GetUniformRandom() + 1.0) / 2.0 >= 1.0 / (1.0 + exp(log_diff))) for (i = 0; i < refine_particle_.number_of_parameters; i++) {output_parameters[i] = input_parameters[i];}
-                //			else output_parameters[16] = output_parameters[15] - input_parameters[15];
+
                 output_parameters.score_change = output_parameters.score - input_parameters.score;
                 //			wxPrintf("in, out, diff = %g %g %g\n", input_parameters.score, output_parameters.score, output_parameters.score_change);
                 if ( output_parameters.score_change < 0.0f )
                     output_parameters = input_parameters;
             }
-            //		else
-            //		{
-            ////			input_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
-            ////			output_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
-            //			output_parameters.score = input_parameters.score;
-            //			output_parameters.score_change = 0.0f;
-            //		}
-            // refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
 
             refine_particle_.SetParameters(output_parameters);
-            // refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
-
-            //		refine_particle_.SetAlignmentParameters(output_parameters.phi, output_parameters.theta, output_parameters.psi, 0.0, 0.0);
-            //		unbinned_image.ClipInto(refine_particle_.particle_image);
-            //		refine_particle_.particle_image->MultiplyByConstant(binning_factor_refine);
-            //		refine_particle_.particle_image->QuickAndDirtyWriteSlice("part3.mrc", 1);
-            //		refine_particle_.PhaseFlipImage();
-            //		refine_particle_.BeamTiltMultiplyImage();
-            //		refine_particle_.CalculateProjection(projection_image_, input_3d_);
-            //		projection_image_.ClipInto(&unbinned_image);
-            //		unbinned_image.BackwardFFT();
-            //		unbinned_image.ClipInto(&final_image);
-            //		logp = refine_particle_.ReturnLogLikelihood(input_image_, final_image, pixel_size, classification_resolution_limit, alpha, sigma);
 
             timer.start("return log likelihood");
             if ( (refine_particle_.number_of_search_dimensions > 0) && (do_global_search_ || do_local_refinement_) ) {

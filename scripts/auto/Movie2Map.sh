@@ -10,9 +10,14 @@ mkdir -p $output_dir/images
 mkdir -p $output_dir/volumes
 mkdir -p $output_dir/global_search
 
-# ls $movie_dir/* | parallel --bar --progress -j${max_movies_per_gpu} ./auto_movie_align.sh {}
-
 # ./auto_sim_ref.sh
+
+# When each movie is completed, it will record that it is ready to be processed.
+ls $movie_dir/* | parallel --bar --progress -j${max_movies_per_gpu} ./auto_movie_align.sh {}
+
+# ls $movie_dir/* | while read a; do  ./auto_movie_align.sh $a ; exit 0 ; done
+
+
 
 
 

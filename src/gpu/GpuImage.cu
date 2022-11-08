@@ -474,12 +474,12 @@ template <typename StorageBaseType>
 bool GpuImage::HasSameDimensionsAs<StorageBaseType>(GpuImage& other_image) {
     // Functions that call this method also assume these asserts are being called here, so do not remove.
     if constexpr ( std::is_same<StorageBaseType, __half>::value ) {
-        MyDebugAssertTrue(is_allocated_16f_buffer, "Memory not allocated");
-        MyDebugAssertTrue(other_image.is_allocated_16f_buffer, "Other image Memory not allocated");
+        MyDebugAssertTrue(is_allocated_16f_buffer, "FP16 Memory not allocated");
+        MyDebugAssertTrue(other_image.is_allocated_16f_buffer, "Other image FP16 Memory not allocated");
     }
     else {
-        MyDebugAssertTrue(is_in_memory, "Memory not allocated");
-        MyDebugAssertTrue(other_image.is_in_memory, "Other image Memory not allocated");
+        MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+        MyDebugAssertTrue(other_image.is_in_memory_gpu, "Other image Memory not allocated");
     }
 
     if ( dims.x == other_image.dims.x && dims.y == other_image.dims.y && dims.z == other_image.dims.z )

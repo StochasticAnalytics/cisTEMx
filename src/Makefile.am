@@ -268,7 +268,8 @@ bin_PROGRAMS =  cisTEM_job_control \
                 match_template \
                 refine_template \
                 make_template_result \
-                prepare_stack_matchtemplate
+                prepare_stack_matchtemplate \ 
+                prepare_stack_global_search
 
 
 
@@ -277,7 +278,7 @@ bin_PROGRAMS += console_test unit_test_runner samples_functional_testing
 
 ########################################################
 # Optional programs listed at the
-########################################################
+#######################################################
 if ENABLE_APPLYCTF_AM
 bin_PROGRAMS += applyctf
 endif
@@ -1106,6 +1107,11 @@ prepare_stack_matchtemplate_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_matchtemplate_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_matchtemplate_LDADD    = libcore.a $(WX_LIBS_BASE)
 
+
+prepare_stack_global_search_SOURCES  = programs/prepare_stack_global_search/prepare_stack_global_search.cpp
+prepare_stack_global_search_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+prepare_stack_global_search_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+prepare_stack_global_search_LDADD    = libcore.a $(WX_LIBS_BASE)
 
 make_template_result_SOURCES  = programs/make_template_result/make_template_result.cpp
 make_template_result_CXXFLAGS = $(WX_CPPFLAGS_BASE)

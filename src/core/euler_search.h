@@ -58,6 +58,8 @@ class EulerSearch {
     // Methods
     void Init(float wanted_resolution_limit, ParameterMap& wanted_parameter_map, int wanted_parameters_to_keep);
     void InitGrid(wxString wanted_symmetry_symbol, float angular_step_size, float wanted_phi_start, float wanted_theta_start, float wanted_psi_max, float wanted_psi_step, float wanted_psi_start, float wanted_resolution_limit, ParameterMap& parameter_map, int wanted_parameters_to_keep);
+    void InitLocalGrid(wxString wanted_symmetry_symbol, float angular_step_size, float wanted_phi_start, float wanted_theta_start, float wanted_psi_max, float wanted_psi_step, float wanted_psi_start, float wanted_resolution_limit, ParameterMap& parameter_map, int wanted_parameters_to_keep);
+
     void InitRandom(wxString wanted_symmetry_symbol, float wanted_psi_step, int wanted_number_of_search_positions, float wanted_resolution_limit, ParameterMap& wanted_parameter_map, int wanted_parameters_to_keep);
 
     // batch_size is ignored in the CPU code path and used to accelerate the inner loop over in-plane angles for the GPU search
@@ -70,6 +72,7 @@ class EulerSearch {
 #else
     void                         CalculateGridSearchPositions(bool random_start_angle = true);
 #endif
+    void CalculateLocalGridSearchPositions( );
 
     // TODO: make this use the newer GetRandomEulerAngles() which evenly sample the euler sphere
     void CalculateRandomSearchPositions( );

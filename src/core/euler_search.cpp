@@ -154,6 +154,42 @@ void EulerSearch::InitGrid(wxString wanted_symmetry_symbol, float wanted_angular
     Allocate2DFloatArray(list_of_best_parameters, best_parameters_to_keep + 1, 6);
 }
 
+// Search only locally around a given set of parameters
+void EulerSearch::InitLocalGrid(wxString      wanted_symmetry_symbol,
+                                float         wanted_angular_step_size,
+                                float         wanted_phi_start,
+                                float         wanted_theta_start,
+                                float         wanted_psi_max,
+                                float         wanted_psi_step,
+                                float         wanted_psi_start,
+                                float         wanted_resolution_limit,
+                                ParameterMap& wanted_parameter_map,
+                                int           wanted_parameters_to_keep) {
+    if ( number_of_search_positions == 0 )
+        Init(wanted_resolution_limit, wanted_parameter_map, wanted_parameters_to_keep);
+
+    angular_step_size = wanted_angular_step_size;
+    phi_start         = wanted_phi_start;
+    theta_start       = wanted_theta_start;
+    psi_max           = wanted_psi_max;
+    psi_step          = wanted_psi_step;
+    psi_start         = wanted_psi_start;
+    symmetry_symbol   = wanted_symmetry_symbol;
+
+    // Since we aren't doing a full grid, restricting the symmetry limits is not necessary
+    // SetSymmetryLimits( );
+    CalculateLocalGridSearchPositions( );
+
+    if ( list_of_best_parameters != NULL )
+        Deallocate2DFloatArray(list_of_best_parameters, best_parameters_to_keep + 1);
+
+    if ( number_of_search_positions < best_parameters_to_keep ) {
+        best_parameters_to_keep = number_of_search_positions;
+    }
+
+    Allocate2DFloatArray(list_of_best_parameters, best_parameters_to_keep + 1, 6);
+}
+
 // This method has not been tested
 void EulerSearch::InitRandom(wxString wanted_symmetry_symbol, float wanted_psi_step, int wanted_number_of_search_positions, float wanted_resolution_limit, ParameterMap& wanted_parameter_map, int wanted_parameters_to_keep) {
     int i;
@@ -196,8 +232,6 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
     //	phi_max = 360.0;
     theta_max_local = theta_max;
 
-    if ( ! parameter_map.phi )
-        phi_start_local = phi_start;
     if ( parameter_map.phi ) {
         //		theta_max_local = 90.0;
         // make sure that theta_step produces an integer number of steps
@@ -208,19 +242,13 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
             theta_start_local = 0.0f;
     }
     else {
+        phi_start_local   = phi_start;
         theta_start_local = theta_start;
         theta_max_local   = theta_start;
     }
 
     if ( list_of_search_parameters != NULL )
         Deallocate2DFloatArray(list_of_search_parameters, number_of_search_positions);
-    //	{
-    //		for (i = 0; i < 2; ++i)
-    //		{
-    //			delete [] list_of_search_parameters[i];						// delete inner arrays of floats
-    //		}
-    //		delete [] list_of_search_parameters;							// delete array of pointers to float arrays
-    //	}
 
     number_of_search_positions = 0;
     for ( theta = theta_start_local; theta < theta_max_local + theta_step / 2.0; theta += theta_step ) {
@@ -269,6 +297,76 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
         }
         for ( phi = 0.0; phi < phi_max; phi += phi_step ) {
             list_of_search_parameters[number_of_search_positions][0] = phi + phi_start_local;
+            list_of_search_parameters[number_of_search_positions][1] = theta;
+            number_of_search_positions++;
+        }
+    }
+
+    if ( ! parameter_map.psi ) {
+        test_mirror = false;
+    }
+    //	wxPrintf("\nNumber of global search views = %i\n", number_of_search_positions);
+}
+
+void EulerSearch::CalculateLocalGridSearchPositions( ) {
+    int   i;
+    float phi_step   = 360.0;
+    float theta_step = 360.0;
+    float phi;
+    float theta;
+    float theta_max_local;
+    float theta_start_local;
+    float phi_start_local;
+
+#ifdef CISTEM_DETERMINISTIC_OUTCOME
+    random_start_angle = false;
+#endif
+
+    //	phi_max = 360.0;
+    theta_max_local = theta_max;
+
+    phi_start_local   = phi_start;
+    theta_start_local = theta_start;
+    theta_max_local   = theta_start;
+
+    if ( list_of_search_parameters != NULL )
+        Deallocate2DFloatArray(list_of_search_parameters, number_of_search_positions);
+
+    number_of_search_positions = 5;
+
+    Allocate2DFloatArray(list_of_search_parameters, number_of_search_positions, 2);
+
+    number_of_search_positions  = 0;
+    float negative_theta_offset = 0.f;
+
+    list_of_search_parameters[number_of_search_positions][0] = phi_start_local;
+    list_of_search_parameters[number_of_search_positions][1] = theta_start_local;
+    number_of_search_positions++;
+
+    for ( int i_theta = -1; i_theta < 2; i_theta += 2 ) {
+        theta = theta_start_local + i_theta * angular_step_size;
+        if ( theta < 0.0 ) {
+            theta                 = fabsf(theta);
+            negative_theta_offset = 180.0f;
+        }
+        else if ( theta > 180.0 ) {
+            theta -= 180.0;
+            negative_theta_offset = 180.0;
+        }
+        else {
+            negative_theta_offset = 0.0;
+        }
+
+        if ( theta == 0.0 || theta == 180.0 ) {
+            phi_step = 0.f;
+        }
+        else {
+            // angular sampling was adapted from Spider subroutine VOEA (Paul Penczek)
+            phi_step = fabsf(angular_step_size / sinf(deg_2_rad(theta)));
+        }
+
+        for ( int i_phi = -1; i_phi < 2; i_phi += 2 ) {
+            list_of_search_parameters[number_of_search_positions][0] = i_phi * phi_step + phi_start_local + negative_theta_offset;
             list_of_search_parameters[number_of_search_positions][1] = theta;
             number_of_search_positions++;
         }

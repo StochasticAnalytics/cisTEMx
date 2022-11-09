@@ -1073,7 +1073,7 @@ bool Refine3DApp::DoCalculation( ) {
 
     current_projection = 0;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(timer, parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                                                   \
+#pragma omp parallel num_threads(max_threads) default(none) shared(std::cerr, timer, parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                                        \
                                                                    first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, ctf_refinement, defocus_search_range, defocus_step, normalize_input_3d,                                                                                                                       \
                                                                    refine_statistics, pixel_size, my_progress, outer_mask_radius, mask_falloff, high_resolution_limit, molecular_mass_kDa, percent_used, output_shifts_file, do_local_refinement,                                                                                                                    \
                                                                    binning_factor_refine, low_resolution_limit, input_statistics, output_star_file, current_projection, do_global_search_and_local_refinement, signed_CC_limit, defocus_bias,                                                                                                                        \
@@ -1481,6 +1481,15 @@ bool Refine3DApp::DoCalculation( ) {
                     //				search_particle_.CenterInCorner();
                     //				search_particle_.WeightBySSNR(search_reference_3d_.statistics.part_SSNR);
 
+                    std::cerr << "Input angles are " << input_parameters.phi << " " << input_parameters.theta << " " << input_parameters.psi << std::endl;
+                    std::cerr << "Angular step " << angular_step << std::endl;
+                    euler_search_.InitLocalGrid(my_symmetry, angular_step, input_parameters.phi, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_.pixel_size / high_resolution_limit_search, search_particle_.parameter_map, best_parameters_to_keep);
+                    for ( int il = 0; il < 5; il++ ) {
+                        std::cerr << "for position " << il << " " << euler_search_.list_of_search_parameters[il][0] << " " << euler_search_.list_of_search_parameters[il][1] << std::endl;
+                    }
+
+                    exit(1);
+
                     if ( search_particle_.parameter_map.phi && ! search_particle_.parameter_map.theta ) {
                         euler_search_.InitGrid(my_symmetry, angular_step, 0.0, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_.pixel_size / high_resolution_limit_search, search_particle_.parameter_map, best_parameters_to_keep);
                         if ( euler_search_.best_parameters_to_keep != best_parameters_to_keep )
@@ -1502,6 +1511,7 @@ bool Refine3DApp::DoCalculation( ) {
                         batch_size_optimizer.update_batch_size( );
                     }
                     else if ( search_particle_.parameter_map.phi && search_particle_.parameter_map.theta ) {
+                        // FIXME: Why is there not InitGrid call for this block?
                         if ( ! search_particle_.parameter_map.psi )
                             euler_search_.psi_start = 360.0 - input_parameters.phi;
                         if ( euler_search_.best_parameters_to_keep != best_parameters_to_keep )
@@ -1720,7 +1730,6 @@ bool Refine3DApp::DoCalculation( ) {
             }
 
             refine_particle_.SetParameters(output_parameters);
-
             timer.start("return log likelihood");
             if ( (refine_particle_.number_of_search_dimensions > 0) && (do_global_search_ || do_local_refinement_) ) {
 

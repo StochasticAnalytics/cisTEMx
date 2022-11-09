@@ -8,7 +8,7 @@
 #define SERVER_ID 100
 #define SOCKET_ID 101
 
-#define PRINT_WORKFLOW_DEBUGGING_INFO
+// #define PRINT_WORKFLOW_DEBUGGING_INFO
 
 extern AssetsPanel*                  assets_panel;
 extern MyMovieAssetPanel*            movie_asset_panel;

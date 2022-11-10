@@ -207,11 +207,12 @@ inline float kDa_to_Angstrom3(float kilo_daltons) {
     return kilo_daltons * 1000.0 / 0.81;
 }
 
-inline float ConvertProjectionXYToThetaInDegrees(float x, float y) // assumes that max x,y is 1
-{
+// assumes that max x,y is 1
+inline float ConvertProjectionXYToThetaInDegrees(float x, float y) {
     return rad_2_deg(asin(sqrtf(powf(x, 2) + powf(y, 2))));
 }
 
+// FIXME: This must assume a given period, -pi pi probably? Should it be clamped?
 inline float ConvertXYToPhiInDegrees(float x, float y) {
     if ( x == 0 && y == 0 )
         return 0;

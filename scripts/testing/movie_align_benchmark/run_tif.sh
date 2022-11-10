@@ -1,8 +1,9 @@
 #!/bin/bash
 
 data_dir=$1
-n_to_align=$2
-starting_idx=$3
+n_threads=$2
+n_to_align=$3
+starting_idx=$4
 
 file_name_list=($(ls ${data_dir}/Foil*.tif))
 
@@ -49,7 +50,7 @@ yes
 1
 no
 no
-1
+$n_threads
 EOF
 
 wait

@@ -1,9 +1,10 @@
 #!/bin/bash
 
 data_dir=$1
-n_to_align=$2
-starting_idx=$3
-number_of_frames=$4
+n_threads=$2
+n_to_align=$3
+starting_idx=$4
+number_of_frames=$5
 
 file_name_list=($(ls ${data_dir}/HM70*.tif))
 
@@ -45,7 +46,7 @@ $number_of_frames
 1
 no
 no
-1
+$n_threads
 EOF
 
 wait

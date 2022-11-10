@@ -1,5 +1,7 @@
 #!/bin/bash
 
+trap 'rm -rf /tmp/cistem_reference_images; exit' INT TERM EXIT ERR
+
 stored_data_dir=/cisTEMx/cistem_reference_images/movie_align_benchmark
 data_dir=/tmp/cistem_reference_images/movie_align_benchmark
 mkdir -p /tmp/cistem_reference_images /tmp/cistem_reference_images/movie_align_benchmark
@@ -11,14 +13,21 @@ if [[ $1 ]] ; then
 else
     n_procs=3 # Number of movies to align at once, these will be reduced for the k3 tests
 fi
+
+if [[ $2 ]] ; then
+    n_threads=$2
+else
+    n_threads=1
+fi
+
 if [[ $n_movies -gt 4 || $n_movies -lt 1 ]] ; then
     echo "1-4 Movies.  Exiting."
     exit 1
 fi
 
 run_eer=1
-run_tif=1
-run_k3=1
+run_tif=0
+run_k3=0
 
 results_file=$(mktemp)
 
@@ -28,14 +37,14 @@ results_file=$(mktemp)
 
 if [[ $run_eer -eq 1 ]] ; then 
 
-echo "Running the EER benchmark for 48 frames using ${n_procs} processes"
+echo "Running the EER benchmark for 48 frames using ${n_procs} processes w/ ${n_threads} threads"
 
 temp_run_file=$(mktemp)
 echo "#!/bin/bash" > $temp_run_file
 chmod a+x $temp_run_file
 
 for iProc in $( seq 0 $(($n_procs-1)) ); do
-    echo "/cisTEMx/scripts/movie_align_benchmark/run_eer.sh $data_dir ${n_movies} ${iProc} 15" >> $temp_run_file
+    echo "/cisTEMx/scripts/movie_align_benchmark/run_eer.sh $data_dir ${n_threads} ${n_movies} ${iProc} 15" >> $temp_run_file
 done
 
 start_time=$(date  | awk -F ":" '{print $2*60+$3}')
@@ -53,14 +62,14 @@ echo "48-frame eer Movies per hour = $(echo "" | awk -v Start=${start_time} -v S
 ##############################################
 ######################## Run the eer benchmark for finner temporal sampling conditions (72 frames)
 
-echo "Running the EER benchmark for 72 frames using ${n_procs} processes"
+echo "Running the EER benchmark for 72 frames using ${n_procs} processes w/ ${n_threads} processes"
 
 temp_run_file=$(mktemp)
 echo "#!/bin/bash" > $temp_run_file
 chmod a+x $temp_run_file
 
 for iProc in $( seq 0 $(($n_procs-1)) ); do
-    echo "/cisTEMx/scripts/movie_align_benchmark/run_eer.sh $data_dir ${n_movies} ${iProc} 10" >> $temp_run_file
+    echo "/cisTEMx/scripts/movie_align_benchmark/run_eer.sh $data_dir ${n_threads} ${n_movies} ${iProc} 10" >> $temp_run_file
 done
 
 start_time=$(date  | awk -F ":" '{print $2*60+$3}')
@@ -80,14 +89,14 @@ fi
 ######################## Run the tif benchmark
 if [[ $run_tif -eq 1 ]] ; then
 
-echo "Running the TIF benchmark using ${n_procs} processes"
+echo "Running the TIF benchmark using ${n_procs} processes w/ ${n_threads} processes"
 
 temp_run_file=$(mktemp)
 echo "#!/bin/bash" > $temp_run_file
 chmod a+x $temp_run_file
 
 for iProc in $( seq 0 $(($n_procs-1)) ); do
-    echo "/cisTEMx/scripts/movie_align_benchmark/run_tif.sh $data_dir ${n_movies} ${iProc}" >> $temp_run_file
+    echo "/cisTEMx/scripts/movie_align_benchmark/run_tif.sh $data_dir ${n_threads} ${n_movies} ${iProc}" >> $temp_run_file
 done
 
 start_time=$(date  | awk -F ":" '{print $2*60+$3}')
@@ -110,13 +119,13 @@ if [[ $run_k3 -eq 1 ]] ; then
 
     for n_frames in 48 70; do
         iProc=$(($iProc-1))
-        echo "Running the K3 benchmark for ${n_frames} frames using ${n_procs} processes"
+        echo "Running the K3 benchmark for ${n_frames} frames using ${n_procs} processes w/ ${n_threads} processes"
         temp_run_file=$(mktemp)
         echo "#!/bin/bash" > $temp_run_file
         chmod a+x $temp_run_file
 
         for iProc in $( seq 0 $(($n_procs-1)) ); do
-            echo "/cisTEMx/scripts/movie_align_benchmark/run_k3.sh $data_dir ${n_movies} ${iProc} $n_frames" >> $temp_run_file
+            echo "/cisTEMx/scripts/movie_align_benchmark/run_k3.sh $data_dir ${n_threads} ${n_movies} ${iProc} $n_frames" >> $temp_run_file
         done
 
         start_time=$(date  | awk -F ":" '{print $2*60+$3}')

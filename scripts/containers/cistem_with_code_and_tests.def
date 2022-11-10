@@ -10,13 +10,14 @@ mkdir -p ${SINGULARITY_ROOTFS}/cisTEMx/scripts
 %files
 
 # copy the cisTEMx folder
-/home/himesb/git/cisTEM/build/intel-gpu/src /cisTEMx
+/home/himesb/git/cisTEM/build/intel-gpu-profile/src /cisTEMx
 # we'll use this to get information about the build environemnt, repo state and so on
 /home/himesb/git/cisTEM/build/intel-gpu/config.log /cisTEMx
 /home/himesb/git/cisTEM/scripts/testing/cistem_tests.sh /cisTEMx/scripts
-/home/himesb/git/cisTEM/scripts/testing/beta_gal_benchmark /cisTEMx/scripts
-/home/himesb/git/cisTEM/scripts/testing/movie_align_benchmark /cisTEMx/scripts
-/sa_shared/cistem_reference_images /cisTEMx
+/home/himesb/git/cisTEM/scripts/testing/* /cisTEMx/scripts
+# /home/himesb/git/cisTEM/scripts/testing/beta_gal_benchmark /cisTEMx/scripts
+# /home/himesb/git/cisTEM/scripts/testing/movie_align_benchmark /cisTEMx/scripts
+# /sa_shared/cistem_reference_images /cisTEMx
 
 
 %post -c /bin/bash
@@ -32,10 +33,10 @@ rm -rf /usr/local/cuda/nsight-compute-*
 
 
 # Get reference images for testing and debugging
-# pip3 install gdown && cd /cisTEMx && gdown https://drive.google.com/drive/folders/1PO9tBU7lKqKUuSb8qdEPvlEk7xeektXv?usp --folder
+pip3 install gdown && cd /cisTEMx && gdown https://drive.google.com/drive/folders/1PO9tBU7lKqKUuSb8qdEPvlEk7xeektXv?usp --folder
 
 # Google is limiting downloads, so have a local copy
-chmod a+x /cisTEMx/* 
+chmod -R a+x /cisTEMx/* 
 
 
 
@@ -73,6 +74,10 @@ echo ""
 if [ -z "$1" ]; then
     echo "No arguments supplied"
     echo "Usage: apptainer run --nv cisTEMx_<current_version>.sif [help|test|program name]"
+    echo ""
+    echo "  help: print this message"   
+    echo "  test: run a test as listed below. You can get help on a specific test by running with  help test_name"
+    echo "  program name: run a program in the container. You can get help on a specific program by running with  help program_name"
     exit 1
 fi
 
@@ -80,6 +85,10 @@ if [ ! -z "$2" ]; then
     if [ ! $1 = "test" ] ; then
     echo "No arguments supplied"
     echo "Usage: apptainer run --nv cisTEMx_<current_version>.sif test [test name]"
+    echo ""
+    echo "  help: print this message"   
+    echo "  test: run a test as listed below. You can get help on a specific test by running with  help test_name"
+    echo "  program name: run a program in the container. You can get help on a specific program by running with  help program_name"
     exit 1
     fi
 fi
@@ -105,6 +114,7 @@ if [ $1 = "help" ] ; then
     echo  "\t bgal: run the beta-galactosidase benchmark for 3d refinement"
     echo  "\t movies: run the movie alignment benchmark"
     echo  "\t unit: run tests to ensure the correct operation of underlying cistem libraries"
+    echo  "\t intel_amd: run tests to ensure optimal code path is not blocked on AMD by Intel libraries"
     echo  "\t all: run all tests"
 
     exit 0
@@ -113,15 +123,21 @@ fi
 case $1 in
     test)
         case $2 in 
-            movie)
+            movies)
                 if [ -z "$3" ]; then
-                    echo "Using default number of threads: 3"
-                    n_threads=3
+                    echo "Using default number of processes: 3"
+                    n_processes=3
                 else
-                    n_threads=$3
+                    n_processes=$3
+                fi
+                if [ -z "$4" ]; then
+                    echo "Using default number of threads: 1"
+                    n_threads=1
+                else
+                    n_threads=$4
                 fi
                 echo "Running movie alignment benchmark"
-                /bin/bash /cisTEMx/scripts/movie_align_benchmark/run_benchmark.sh $n_threads
+                /bin/bash /cisTEMx/scripts/movie_align_benchmark/run_benchmark.sh $n_processes $n_threads
                 ;;
             bgal)
                 echo "Running beta galactosidase benchmark"
@@ -130,6 +146,28 @@ case $1 in
             unit)
                 echo "Running unit tests"
                 /bin/bash /cisTEMx/scripts/cistem_tests.sh
+                ;;
+            intel_amd)
+                if [ -z "$3" ]; then
+                    echo "Using the default image size: 512"
+                    image_size=512
+                else
+                    image_size=$3
+                fi
+                if [ -z "$4" ]; then
+                    echo "Using the default number of images: 1,000,000"
+                    n_images=1000000
+                else
+                    n_images=$4
+                fi                
+                if [ -z "$5" ]; then
+                    echo "Using default number of threads: 8"
+                    n_threads=8
+                else
+                    n_threads=$5
+                fi
+                echo "Running intel and amd tests"
+                /bin/bash /cisTEMx/scripts/mkl_benchmark/run_benchmark.sh $image_size $n_images $n_threads
                 ;;
             *)
                 echo "Unknown argument"

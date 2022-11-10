@@ -1,3 +1,5 @@
+#define CISTEM_UNBLUR_REFINE_ALIGNMENT_DISABLE_MULTITHREADING
+
 template <typename StorageBaseType = float>
 void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                              int                    number_of_images,
@@ -18,6 +20,10 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
                              StopWatch&             profile_timing_refinement_method) {
 
     profile_timing_refinement_method.mark_entry_or_exit_point( );
+
+#ifdef CISTEM_UNBLUR_REFINE_ALIGNMENT_DISABLE_MULTITHREADING
+    max_threads = 1;
+#endif
 
     int running_average_counter;
     int start_frame_for_average;
@@ -349,3 +355,5 @@ void unblur_refine_alignment(std::vector<GpuImage>& input_stack,
 
     profile_timing_refinement_method.mark_entry_or_exit_point( );
 }
+
+#undef CISTEM_UNBLUR_REFINE_ALIGNMENT_DISABLE_MULTITHREADING

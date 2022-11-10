@@ -299,11 +299,6 @@ bool UnBlurApp::DoCalculation( ) {
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
 
-#if defined(ENABLEGPU) && ! defined(CISTEM_DEBUG)
-    // There is some race condition that doesn't always crash but makes for (sometimes) incorrect results.
-    MyAssertFalse(max_threads > 1, "The GPU version of unblur can (currently) only run with 1 thread.");
-#endif
-
     //my_current_job.PrintAllArguments();
     // StopWatch objects
     cistem_timer::StopWatch unblur_timing;
@@ -480,24 +475,22 @@ bool UnBlurApp::DoCalculation( ) {
             cpu_offset += max_threads;
         }
 #endif
-        profile_timing.start("read in frames");
+        // profile_timing.start("read in frames");
 
-        // TODO: After implementing the reduced precision, test whether it makes sense to have parallel i/o here.
-        for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
-            // Read from disk
-#ifdef ENABLEGPU
-            // Make sure that we are finished working on the last block before we go, otherwaise we'll have a race condition.
-            // Using the cudaEvents int he first 0->max_blocks-1 images
-            // if ( ! first_iteration[(position_in_stack - 1) % max_threads + cpu_offset] )
-            //     image_stack[(position_in_stack - 1) % max_threads + cpu_offset].WaitBlocking( );
-
-#endif
-            image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].ReadSlice(&input_file, position_in_stack);
-        }
-        profile_timing.lap("read in frames");
+        // // TODO: After implementing the reduced precision, test whether it makes sense to have parallel i/o here.
+        // for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
+        //     image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].ReadSlice(&input_file, position_in_stack);
+        // }
+        // profile_timing.lap("read in frames");
 
 #pragma omp parallel for default(shared) num_threads(max_threads)
         for ( int position_in_stack = first_frame_to_preprocess; position_in_stack <= last_frame_to_preprocess; position_in_stack++ ) {
+
+            profile_timing.start("read in frames");
+
+            image_stack_[(position_in_stack - 1) % max_threads + cpu_offset].ReadSlice(&input_file, position_in_stack);
+
+            profile_timing.lap("read in frames");
             int sub_stack_index = (position_in_stack - 1) % max_threads + cpu_offset;
             // Dark correction
             if ( ! movie_is_dark_corrected ) {
@@ -820,7 +813,6 @@ bool UnBlurApp::DoCalculation( ) {
                 sum_image_no_dose_filter.Zeros<__half>( );
                 sum_image_no_dose_filter.AddImageStack<__half>(image_stack);
                 sum_image_no_dose_filter.CopyFP16buffertoFP32( );
-                
             }
             else {
                 sum_image_no_dose_filter.Zeros( );

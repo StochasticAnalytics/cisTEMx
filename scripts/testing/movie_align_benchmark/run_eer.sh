@@ -1,9 +1,10 @@
 #!/bin/bash
 
 data_dir=$1
-n_to_align=$2
-starting_idx=$3
-n_eer_frames_to_avg=$4
+n_threads=$2
+n_to_align=$3
+starting_idx=$4
+n_eer_frames_to_avg=$5
 
 file_name_list=($(ls ${data_dir}/*.eer))
 
@@ -52,7 +53,7 @@ no
 $n_eer_frames_to_avg
 $eer_super_res_factor
 no
-1
+$n_threads
 EOF
 
 wait

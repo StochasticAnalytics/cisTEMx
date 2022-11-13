@@ -4,9 +4,6 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                // Find these with wx-config --cxxflags so that intellisense works
-                // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
-                // "/usr/include/wx-3.1-unofficial",
                 "/opt/WX/intel-dynamic/include/wx-3.0/",
                 "/usr/local/cuda/include",
                 "/opt/cuTensor/include"
@@ -28,9 +25,6 @@
             "name": "GPU Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                // Find these with wx-config --cxxflags so that intellisense works
-                // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
-                // "/usr/include/wx-3.1-unofficial",
                 "/opt/WX/intel-dynamic/include/wx-3.0/",
                 "/usr/local/cuda/include",
                 "/opt/cuTensor/include"
@@ -53,10 +47,8 @@
             "name": "GPU debug Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                // Find these with wx-config --cxxflags so that intellisense works
-                // "/usr/lib/x86_64-linux-gnu/wx/include/gtk3-unicode-3.1-unofficial",
-                // "/usr/include/wx-3.1-unofficial",
-                "/opt/WX/intel-dynamic/include/wx-3.0/",
+                "/opt/libtorch/include",
+                "/opt/libtorch/include/torch/csrc/api/include",
                 "/usr/local/cuda/include",
                 "/opt/cuTensor/include"
             ],

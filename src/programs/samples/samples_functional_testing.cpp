@@ -24,6 +24,7 @@ extern bool samples_tests_have_all_passed{true};
 #include "4_ffts/simple_cufft.h"
 #include "5_batched_ops/batched_correlation.h"
 #include "6_simulation/simple_3d.h"
+#include "7_pytorch/torch_vs_pytorch.h"
 
 // Test data
 #include "../console_test/hiv_image_80x80x1.cpp"
@@ -39,28 +40,35 @@ bool SamplesTestingApp::DoCalculation( ) {
     // We want all tests to run so all_passed = all_passed && testname won't work
     bool passed;
 
+    constexpr bool do_thesee = false; // FIXME: REVERT
     SamplesPrintTestStartMessage("Starting samples testing", true);
 
-    // DiskIOImageRunner(hiv_images_80x80x10_filename, temp_directory);
-    Simple3dSimulationRunner(hiv_image_80x80x1_filename, temp_directory);
-
 #ifdef ENABLEGPU
-    // These are broken, I'm not quite sure where, seems to be allocation issues related to consme that Shiran wrote. Revisit.
-    // BatchedCorrelationRunner(hiv_images_80x80x10_filename, temp_directory);
-    SimpleCuFFTRunner(hiv_image_80x80x1_filename, temp_directory);
-
-    // passed =  BasicTensorOpsRunner(hiv_images_80x80x10_filename, temp_directory);
-    // passed =  CPUvsGPUMaskingTest(hiv_image_80x80x1_filename, temp_directory); // these are not working due to the NPPI statistical library issues.
-    CPUvsGPUResizeRunner(hiv_image_80x80x1_filename, temp_directory);
-
-    CPUvsGPUProjectionRunner(temp_directory);
-
-    CPUvsGPUStatisticalOpsRunner(hiv_image_80x80x1_filename, temp_directory);
-
-#else
-    wxPrintf("GPU support disabled. skipping GPU tests.\n");
+    TorchVsPytorchRunner(hiv_image_80x80x1_filename, temp_directory);
 #endif
 
+    if ( do_thesee ) {
+        // DiskIOImageRunner(hiv_images_80x80x10_filename, temp_directory);
+        Simple3dSimulationRunner(hiv_image_80x80x1_filename, temp_directory);
+
+#ifdef ENABLEGPU
+
+        // These are broken, I'm not quite sure where, seems to be allocation issues related to consme that Shiran wrote. Revisit.
+        // BatchedCorrelationRunner(hiv_images_80x80x10_filename, temp_directory);
+        SimpleCuFFTRunner(hiv_image_80x80x1_filename, temp_directory);
+
+        // passed =  BasicTensorOpsRunner(hiv_images_80x80x10_filename, temp_directory);
+        // passed =  CPUvsGPUMaskingTest(hiv_image_80x80x1_filename, temp_directory); // these are not working due to the NPPI statistical library issues.
+        CPUvsGPUResizeRunner(hiv_image_80x80x1_filename, temp_directory);
+
+        CPUvsGPUProjectionRunner(temp_directory);
+
+        CPUvsGPUStatisticalOpsRunner(hiv_image_80x80x1_filename, temp_directory);
+
+#else
+        wxPrintf("GPU support disabled. skipping GPU tests.\n");
+#endif
+    } // do_these
     SamplesBeginTest("All samples: ", passed);
     SamplesPrintResult(samples_tests_have_all_passed, __LINE__);
 

@@ -239,6 +239,22 @@ AC_ARG_ENABLE(gpu-cache-hints, AS_HELP_STRING([--disable-gpu-cache-hints],[Do no
   	AC_MSG_NOTICE([Disabling cache hint intrinsics requiring CUDA 11 or newer])  	
   fi])
   
+# Stick these here temporarily to see if it works
+TORCH_LD_FLAGS=" -Wl,-rpath,/opt/libtorch/lib:/usr/local/cuda/lib64/stubs:/usr/local/cuda/lib64 /opt/libtorch/lib/libtorch.so /opt/libtorch/lib/libc10.so /opt/libtorch/lib/libkineto.a /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libnvrtc.so /usr/local/cuda/lib64/libnvToolsExt.so /usr/local/cuda/lib64/libcudart.so /opt/libtorch/lib/libc10_cuda.so"
+TORCH_LD_FLAGS+=" -Wl,--no-as-needed,/opt/libtorch/lib/libtorch_cuda.so" 
+TORCH_LD_FLAGS+=" -Wl,--as-needed -Wl,--no-as-needed,/opt/libtorch/lib/libtorch_cuda_cpp.so" 
+TORCH_LD_FLAGS+=" -Wl,--as-needed -Wl,--no-as-needed,/opt/libtorch/lib/libtorch_cpu.so" 
+TORCH_LD_FLAGS+=" -Wl,--as-needed -lpthread -lmkl_intel_ilp64 -lmkl_core -lmkl_intel_thread /opt/libtorch/lib/libc10_cuda.so /opt/libtorch/lib/libc10.so /usr/local/cuda/lib64/libcufft.so /usr/local/cuda/lib64/libcurand.so /usr/local/cuda/lib64/libcublas.so -lcudnn"
+TORCH_LD_FLAGS+=" -Wl,--no-as-needed,/opt/libtorch/lib/libtorch_cuda_cu.so" 
+TORCH_LD_FLAGS+=" -Wl,--as-needed -Wl,--no-as-needed,/opt/libtorch/lib/libtorch.so" 
+TORCH_LD_FLAGS+=" -Wl,--as-needed /usr/local/cuda/lib64/libnvToolsExt.so /usr/local/cuda/lib64/libcudart.so "
+
+TORCH_CXX_FLAGS=" -I/opt/libtorch/include -I/opt/libtorch/include/torch/csrc/api/include -L/opt/libtorch/lib -D_GLIBCXX_USE_CXX11_ABI=1 -std=gnu++17 -DUSE_C10D_GLOO -DUSE_C10D_NCCL -DUSE_DISTRIBUTED -DUSE_RPC -DUSE_TENSORPIPE"
+
+AC_SUBST(TORCH_LD_FLAGS)
+AC_SUBST(TORCH_CXX_FLAGS)
+
+
 AC_SUBST(CUDA_LIBS)
 AC_SUBST(CUDA_CFLAGS)
 AC_SUBST(NVCCFLAGS)

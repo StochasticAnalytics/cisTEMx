@@ -97,11 +97,6 @@ RUN echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main" | tee -a 
     cd /usr/bin && ln -s clang-format-14 clang-format \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pytorch
-RUN cd /tmp && wget https://download.pytorch.org/libtorch/cu113/libtorch-cxx11-abi-shared-with-deps-1.11.0%2Bcu113.zip && \
-    unzip libtorch-cxx11-abi-shared-with-deps-1.11.0+cu113.zip && \
-    rm libtorch-cxx11-abi-shared-with-deps-1.11.0+cu113.zip && \
-    mv libtorch /opt
 
 # Install cutensor
 ARG CUTENSOR_VERSION=libcutensor-linux-x86_64-1.6.0.3-archive

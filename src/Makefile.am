@@ -1071,15 +1071,18 @@ if WANT_CISTEM_GPU_AM
         samples_functional_testing_SOURCES += programs/samples/3_tensor_ops/gpu_image_tensor_ops.cpp
         samples_functional_testing_SOURCES += programs/samples/4_ffts/simple_cufft.cpp
         samples_functional_testing_SOURCES += programs/samples/5_batched_ops/batched_correlation.cpp
+        samples_functional_testing_SOURCES += programs/samples/7_pytorch/torch_vs_pytorch.cpp
 endif
 
+# torch_flags= -L/opt/libtorch/lib -I/opt/libtorch/include -I/opt/libtorch/include/torch/csrc/api/include -D_GLIBCXX_USE_CXX11_ABI=0 -L/opt/libtorch/lib  -Wl,-R/opt/libtorch/lib -ltorch -ltorch_cpu -lc10 
+
 if WANT_CISTEM_GPU_AM 
-        samples_functional_testing_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
-        samples_functional_testing_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
+        samples_functional_testing_CXXFLAGS = -DENABLEGPU $(TORCH_CXX_FLAGS) $(TORCH_LD_FLAGS) $(WX_CPPFLAGS_BASE)
+        samples_functional_testing_CPPFLAGS = -DENABLEGPU $(TORCH_CXX_FLAGS) $(TORCH_LD_FLAGS) $(WX_CPPFLAGS_BASE)
         samples_functional_testing_LDADD    = libgpucore.a libcore.a $(WX_LIBS_BASE) $(CUDA_LIBS)
 else
-    samples_functional_testing_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-    samples_functional_testing_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+    samples_functional_testing_CXXFLAGS = $(TORCH_CXX_FLAGS) $(TORCH_LD_FLAGS) $(WX_CPPFLAGS_BASE)
+    samples_functional_testing_CPPFLAGS = $(TORCH_CXX_FLAGS) $(TORCH_LD_FLAGS) $(WX_CPPFLAGS_BASE)
     samples_functional_testing_LDADD    = libcore.a $(WX_LIBS_BASE)
 endif
  

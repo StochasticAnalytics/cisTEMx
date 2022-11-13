@@ -657,6 +657,10 @@ if test "x$CXX" = "xg++"; then
 fi
 AC_MSG_NOTICE([check flags is g++ want modules value is ($MODULES_CXXFLAGS )])
 
+AC_SUBST(TORCH_LD_FLAGS)
+AC_SUBST(TORCH_CXX_FLAGS)
+
+
 AC_SUBST(MODULES_CXXFLAGS)
 AC_SUBST(MODULES_CPPFLAGS)
 AC_SUBST(WX_LIBS)

@@ -474,7 +474,7 @@ endif
 
 
 if WANT_CISTEM_GPU_AM
-    bin_PROGRAMS += refine3d_gpu match_template_gpu unblur_gpu global_search_gpu
+    bin_PROGRAMS += refine3d_gpu match_template_gpu unblur_gpu global_search_gpu global_search_refinement_gpu
 endif
 
 if EXPERIMENTAL_AM   
@@ -1088,6 +1088,11 @@ global_search_gpu_SOURCES  = programs/global_search/global_search.cpp
 global_search_gpu_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
 global_search_gpu_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
 global_search_gpu_LDADD    = libgpucore.a libcore.a $(WX_LIBS_BASE) $(CUDA_LIBS)
+
+global_search_refinement_gpu_SOURCES  = programs/global_search_refinement/global_search_refinement.cpp
+global_search_refinement_gpu_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
+global_search_refinement_gpu_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
+global_search_refinement_gpu_LDADD    = libgpucore.a libcore.a $(WX_LIBS_BASE) $(CUDA_LIBS)
 
 match_template_SOURCES  = programs/match_template/match_template.cpp
 match_template_CXXFLAGS = $(WX_CPPFLAGS_BASE)

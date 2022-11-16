@@ -1,7 +1,17 @@
-#include "../../core/core_headers.h"
-
+#include <cistem_config.h>
 #include "../refine3d/refine3d_defines.h"
+
+#ifdef ENABLEGPU
+#warning "GPU enabled in refine3d"
+#include "../../gpu/gpu_core_headers.h"
+#include "../../gpu/GpuImage.h"
+#else
+#include "../../core/core_headers.h"
+#endif
+
 #include "../refine3d/ProjectionComparisonObjects.h"
+
+#define PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
 
 class GlobalSearchRefinementApp : public MyApp {
   public:
@@ -11,27 +21,11 @@ class GlobalSearchRefinementApp : public MyApp {
     wxString input_search_images;
     wxString input_reconstruction;
 
-    wxString mip_input_filename;
-    wxString scaled_mip_input_filename;
-    wxString best_psi_input_filename;
-    wxString best_theta_input_filename;
-    wxString best_phi_input_filename;
+    cisTEMParameters input_star_file;
+    cisTEMParameters output_star_file;
+    wxString         input_star_filename;
+    wxString         output_star_filename;
 
-    cisTEMParameterLine input_parameters;
-    cisTEMParameters    input_star_file;
-    cisTEMParameterLine output_parameters;
-    cisTEMParameters    output_star_file;
-    wxString            input_star_filename;
-    wxString            output_star_filename;
-
-    float pixel_size              = 1.0f;
-    float voltage_kV              = 300.0f;
-    float spherical_aberration_mm = 2.7f;
-    float amplitude_contrast      = 0.07f;
-    float defocus1                = 10000.0f;
-    float defocus2                = 10000.0f;
-    float defocus_angle;
-    float phase_shift;
     float low_resolution_limit    = 300.0f;
     float high_resolution_limit   = 8.0f;
     float angular_range           = 2.0f;
@@ -43,7 +37,7 @@ class GlobalSearchRefinementApp : public MyApp {
     //	float		pixel_size_refine_step = 0.001f;
     float    padding               = 1.0;
     bool     do_defocus_refinement = false;
-    float    mask_radius           = 0.0f;
+    float    wanted_mask_radius    = 0.0f;
     wxString my_symmetry           = "C1";
     float    in_plane_angular_step = 0;
     float    wanted_threshold;
@@ -76,6 +70,7 @@ Peak TemplateScore(void* scoring_parameters) {
     Image                     current_projection;
     //	Peak box_peak;
 
+    // FIXME: ALlocating this on every loop is bonkers
     current_projection.Allocate(comparison_object->projection_filter->logical_x_dimension, comparison_object->projection_filter->logical_x_dimension, false);
     if ( comparison_object->input_reconstruction->logical_x_dimension != current_projection.logical_x_dimension ) {
         Image padded_projection;
@@ -131,26 +126,14 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
     wxFileName input_search_image_file_name_full(input_search_images);
     wxString   directory_for_results_string = directory_for_results.GetFullPath( );
 
-    mip_input_filename        = input_search_image_file_name_full.GetName( ) + "_mip.mrc";
-    scaled_mip_input_filename = input_search_image_file_name_full.GetName( ) + "_scaled_mip.mrc";
-    best_psi_input_filename   = input_search_image_file_name_full.GetName( ) + "_psi.mrc";
-    best_theta_input_filename = input_search_image_file_name_full.GetName( ) + "_theta.mrc";
-    best_phi_input_filename   = input_search_image_file_name_full.GetName( ) + "_phi.mrc";
     // For now, we'll just use the scaled_mip as supplied, but may want to be able to adjust the scalling later
     // Then instead of applying the smoothing in global_search, we have the raw output to save here.
     // correlation_avg_input_filename = input_search_image_file_name_full.GetName( ) + "_avg.mrc";
     // correlation_std_input_filename = input_search_image_file_name_full.GetName( ) + "_std.mrc";
 
-    wanted_threshold        = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
-    min_peak_radius         = my_input->GetFloatFromUser("Min peak radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 0.0);
-    pixel_size              = my_input->GetFloatFromUser("Pixel size of images (A)", "Pixel size of input images in Angstroms", "1.0", 0.0);
-    voltage_kV              = my_input->GetFloatFromUser("Beam energy (keV)", "The energy of the electron beam used to image the sample in kilo electron volts", "300.0", 0.0);
-    spherical_aberration_mm = my_input->GetFloatFromUser("Spherical aberration (mm)", "Spherical aberration of the objective lens in millimeters", "2.7");
-    amplitude_contrast      = my_input->GetFloatFromUser("Amplitude contrast", "Assumed amplitude contrast", "0.07", 0.0, 1.0);
-    defocus1                = my_input->GetFloatFromUser("Defocus1 (angstroms)", "Defocus1 for the input image", "10000", 0.0);
-    defocus2                = my_input->GetFloatFromUser("Defocus2 (angstroms)", "Defocus2 for the input image", "10000", 0.0);
-    defocus_angle           = my_input->GetFloatFromUser("Defocus angle (degrees)", "Defocus Angle for the input image", "0.0");
-    phase_shift             = my_input->GetFloatFromUser("Phase shift (degrees)", "Additional phase shift in degrees", "0.0");
+    wanted_threshold = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
+    min_peak_radius  = my_input->GetFloatFromUser("Min peak radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 0.0);
+
     //	low_resolution_limit = my_input->GetFloatFromUser("Low resolution limit (A)", "Low resolution limit of the data used for alignment in Angstroms", "300.0", 0.0);
     //	high_resolution_limit = my_input->GetFloatFromUser("High resolution limit (A)", "High resolution limit of the data used for alignment in Angstroms", "8.0", 0.0);
     //	angular_range = my_input->GetFloatFromUser("Angular refinement range", "AAngular range to refine", "2.0", 0.1);
@@ -162,8 +145,8 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
     do_defocus_refinement = my_input->GetYesNoFromUser("Refine defocus", "Should the particle defocus be refined?", "No");
 
     //	pixel_size_refine_step = my_input->GetFloatFromUser("Pixel size refine step (A) (0.0 = no refinement)", "Step size used in the pixel size refinement", "0.001", 0.0);
-    padding     = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "2.0", 1.0);
-    mask_radius = my_input->GetFloatFromUser("Mask radius (A) (0.0 = no mask)", "Radius of a circular mask to be applied to the input particles during refinement", "0.0", 0.0);
+    padding            = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "2.0", 1.0);
+    wanted_mask_radius = my_input->GetFloatFromUser("Mask radius (A) (0.0 = no mask)", "Radius of a circular mask to be applied to the input particles during refinement", "0.0", 0.0);
     //	my_symmetry = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
     xy_change_threshold        = my_input->GetFloatFromUser("Moved peak warning (A)", "Threshold for displaying warning of peak location changes during refinement", "10.0", 0.0);
     exclude_above_xy_threshold = my_input->GetYesNoFromUser("Exclude moving peaks", "Should the peaks that move more than the threshold be excluded from the output MIPs?", "No");
@@ -187,48 +170,35 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
     delete my_input;
 
     //	my_current_job.Reset(42);
-    my_current_job.ManualSetArguments("ttfffffffffffifffbfftttttfffbtfiiiiiitftbt",
+    my_current_job.ManualSetArguments("ttffffifffbffffbtfiiiiiitftbt",
                                       input_search_images.ToUTF8( ).data( ), // 0
                                       input_reconstruction.ToUTF8( ).data( ), // 1
-                                      pixel_size, // 2
-                                      voltage_kV, // 3
-                                      spherical_aberration_mm, // 4
-                                      amplitude_contrast, // 5
-                                      defocus1, // 6
-                                      defocus2, // 7
-                                      defocus_angle, // 8
-                                      low_resolution_limit, // 9
-                                      high_resolution_limit, // 10
-                                      angular_range, // 11
-                                      angular_step, // 12
-                                      best_parameters_to_keep, // 13
-                                      defocus_search_range, // 14
-                                      defocus_search_step, // 15
-                                      padding, // 16
-                                      do_defocus_refinement, // 17
-                                      mask_radius, // 18
-                                      phase_shift, // 19
-                                      mip_input_filename.ToUTF8( ).data( ), // 20
-                                      scaled_mip_input_filename.ToUTF8( ).data( ), // 21
-                                      best_psi_input_filename.ToUTF8( ).data( ), // 22
-                                      best_theta_input_filename.ToUTF8( ).data( ), // 23
-                                      best_phi_input_filename.ToUTF8( ).data( ), // 24
-                                      wanted_threshold, // 25
-                                      min_peak_radius, // 26
-                                      xy_change_threshold, // 27
-                                      exclude_above_xy_threshold, // 28
-                                      my_symmetry.ToUTF8( ).data( ), // 29
-                                      in_plane_angular_step, // 30
-                                      first_search_position, // 31
-                                      last_search_position, // 32
-                                      image_number_for_gui, // 33
-                                      number_of_jobs_per_image_in_gui, // 34
-                                      result_number, // 35
-                                      max_threads, // 36
-                                      directory_for_results_string.ToUTF8( ).data( ), // 37
-                                      threshold_for_result_plotting, // 38
-                                      filename_for_gui_result_image.ToUTF8( ).data( ), // 39
-                                      input_star_filename.ToUTF8( ).data( )); // 40
+                                      low_resolution_limit, // 2
+                                      high_resolution_limit, // 3
+                                      angular_range, // 4
+                                      angular_step, // 5
+                                      best_parameters_to_keep, // 6
+                                      defocus_search_range, // 7
+                                      defocus_search_step, // 8
+                                      padding, // 9
+                                      do_defocus_refinement, // 10
+                                      wanted_mask_radius, // 11
+                                      wanted_threshold, // 12
+                                      min_peak_radius, // 13
+                                      xy_change_threshold, // 14
+                                      exclude_above_xy_threshold, // 15
+                                      my_symmetry.ToUTF8( ).data( ), // 16
+                                      in_plane_angular_step, // 17
+                                      first_search_position, // 18
+                                      last_search_position, // 19
+                                      image_number_for_gui, // 20
+                                      number_of_jobs_per_image_in_gui, // 21
+                                      result_number, // 22
+                                      max_threads, // 23
+                                      directory_for_results_string.ToUTF8( ).data( ), // 24
+                                      threshold_for_result_plotting, // 25
+                                      filename_for_gui_result_image.ToUTF8( ).data( ), // 26
+                                      input_star_filename.ToUTF8( ).data( )); // 27
 }
 
 // override the do calculation method which will be what is actually run..
@@ -236,49 +206,34 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
 bool GlobalSearchRefinementApp::DoCalculation( ) {
     wxDateTime start_time = wxDateTime::Now( );
 
-    input_search_images       = my_current_job.arguments[0].ReturnStringArgument( );
-    input_search_images       = my_current_job.arguments[1].ReturnStringArgument( );
-    pixel_size                = my_current_job.arguments[2].ReturnFloatArgument( );
-    voltage_kV                = my_current_job.arguments[3].ReturnFloatArgument( );
-    spherical_aberration_mm   = my_current_job.arguments[4].ReturnFloatArgument( );
-    amplitude_contrast        = my_current_job.arguments[5].ReturnFloatArgument( );
-    defocus1                  = my_current_job.arguments[6].ReturnFloatArgument( );
-    defocus2                  = my_current_job.arguments[7].ReturnFloatArgument( );
-    defocus_angle             = my_current_job.arguments[8].ReturnFloatArgument( );
-    low_resolution_limit      = my_current_job.arguments[9].ReturnFloatArgument( );
-    high_resolution_limit     = my_current_job.arguments[10].ReturnFloatArgument( );
-    angular_range             = my_current_job.arguments[11].ReturnFloatArgument( );
-    angular_step              = my_current_job.arguments[12].ReturnFloatArgument( );
-    best_parameters_to_keep   = my_current_job.arguments[13].ReturnIntegerArgument( );
-    defocus_search_range      = my_current_job.arguments[14].ReturnFloatArgument( );
-    defocus_search_step       = my_current_job.arguments[15].ReturnFloatArgument( );
-    padding                   = my_current_job.arguments[16].ReturnFloatArgument( );
-    do_defocus_refinement     = my_current_job.arguments[17].ReturnBoolArgument( );
-    mask_radius               = my_current_job.arguments[18].ReturnFloatArgument( );
-    phase_shift               = my_current_job.arguments[19].ReturnFloatArgument( );
-    mip_input_filename        = my_current_job.arguments[20].ReturnStringArgument( );
-    scaled_mip_input_filename = my_current_job.arguments[21].ReturnStringArgument( );
-    best_psi_input_filename   = my_current_job.arguments[22].ReturnStringArgument( );
-    best_theta_input_filename = my_current_job.arguments[23].ReturnStringArgument( );
-    best_phi_input_filename   = my_current_job.arguments[24].ReturnStringArgument( );
-
-    wanted_threshold           = my_current_job.arguments[25].ReturnFloatArgument( );
-    min_peak_radius            = my_current_job.arguments[26].ReturnFloatArgument( );
-    xy_change_threshold        = my_current_job.arguments[27].ReturnFloatArgument( );
-    exclude_above_xy_threshold = my_current_job.arguments[28].ReturnBoolArgument( );
-    wxString my_symmetry       = my_current_job.arguments[29].ReturnStringArgument( );
-    in_plane_angular_step      = my_current_job.arguments[30].ReturnFloatArgument( );
-
-    int first_search_position              = my_current_job.arguments[31].ReturnIntegerArgument( );
-    int last_search_position               = my_current_job.arguments[32].ReturnIntegerArgument( );
-    int image_number_for_gui               = my_current_job.arguments[33].ReturnIntegerArgument( );
-    int number_of_jobs_per_image_in_gui    = my_current_job.arguments[34].ReturnIntegerArgument( );
-    result_number                          = my_current_job.arguments[35].ReturnIntegerArgument( );
-    max_threads                            = my_current_job.arguments[36].ReturnIntegerArgument( );
-    wxString directory_for_results         = my_current_job.arguments[37].ReturnStringArgument( );
-    float    threshold_for_result_plotting = my_current_job.arguments[38].ReturnFloatArgument( );
-    wxString filename_for_gui_result_image = my_current_job.arguments[39].ReturnStringArgument( );
-    input_star_filename                    = my_current_job.arguments[40].ReturnStringArgument( );
+    input_search_images                    = my_current_job.arguments[0].ReturnStringArgument( );
+    input_search_images                    = my_current_job.arguments[1].ReturnStringArgument( );
+    low_resolution_limit                   = my_current_job.arguments[2].ReturnFloatArgument( );
+    high_resolution_limit                  = my_current_job.arguments[3].ReturnFloatArgument( );
+    angular_range                          = my_current_job.arguments[4].ReturnFloatArgument( );
+    angular_step                           = my_current_job.arguments[5].ReturnFloatArgument( );
+    best_parameters_to_keep                = my_current_job.arguments[6].ReturnIntegerArgument( );
+    defocus_search_range                   = my_current_job.arguments[7].ReturnFloatArgument( );
+    defocus_search_step                    = my_current_job.arguments[8].ReturnFloatArgument( );
+    padding                                = my_current_job.arguments[9].ReturnFloatArgument( );
+    do_defocus_refinement                  = my_current_job.arguments[10].ReturnBoolArgument( );
+    wanted_mask_radius                     = my_current_job.arguments[11].ReturnFloatArgument( );
+    wanted_threshold                       = my_current_job.arguments[12].ReturnFloatArgument( );
+    min_peak_radius                        = my_current_job.arguments[13].ReturnFloatArgument( );
+    xy_change_threshold                    = my_current_job.arguments[14].ReturnFloatArgument( );
+    exclude_above_xy_threshold             = my_current_job.arguments[15].ReturnBoolArgument( );
+    wxString my_symmetry                   = my_current_job.arguments[16].ReturnStringArgument( );
+    in_plane_angular_step                  = my_current_job.arguments[17].ReturnFloatArgument( );
+    int first_search_position              = my_current_job.arguments[18].ReturnIntegerArgument( );
+    int last_search_position               = my_current_job.arguments[19].ReturnIntegerArgument( );
+    int image_number_for_gui               = my_current_job.arguments[20].ReturnIntegerArgument( );
+    int number_of_jobs_per_image_in_gui    = my_current_job.arguments[21].ReturnIntegerArgument( );
+    result_number                          = my_current_job.arguments[22].ReturnIntegerArgument( );
+    max_threads                            = my_current_job.arguments[23].ReturnIntegerArgument( );
+    wxString directory_for_results         = my_current_job.arguments[24].ReturnStringArgument( );
+    float    threshold_for_result_plotting = my_current_job.arguments[25].ReturnFloatArgument( );
+    wxString filename_for_gui_result_image = my_current_job.arguments[26].ReturnStringArgument( );
+    input_star_filename                    = my_current_job.arguments[27].ReturnStringArgument( );
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
@@ -293,16 +248,11 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     long  pixel_counter;
     float sq_dist_x, sq_dist_y;
     long  address;
-    long  best_address;
 
     int current_x;
     int current_y;
 
-    int phi_i;
-    int theta_i;
-    int psi_i;
     int defocus_i;
-    int defocus_is = 0;
     int size_i;
     int size_is = 0;
 
@@ -320,22 +270,9 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     Image input_image;
     Image input_reconstruction;
 
-    Peak* found_peaks = nullptr;
-    Peak  current_peak;
-    Peak  template_peak;
-    Peak  best_peak;
-    long  current_address;
-    long  address_offset;
+    Peak current_peak;
+    Peak template_peak;
 
-    float current_phi;
-    float current_theta;
-    float current_psi;
-    float current_defocus1;
-    float current_defocus2;
-
-    float current_pixel_size;
-    float best_score;
-    float score;
     float starting_score;
     bool  first_score;
 
@@ -344,12 +281,8 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     float best_psi_score;
     float best_defocus_score;
 
-    int   ii, jj, kk, ll;
-    float mult_i;
-    float mult_i_start;
     float defocus_step;
     float score_adjustment;
-    float offset_distance;
     //	float offset_warning_threshold = 10.0f;
 
     int   number_of_peaks_found = 0;
@@ -375,12 +308,6 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     input_reconstruction.SwapRealSpaceQuadrants( );
 
     CTF input_ctf;
-
-    // assume cube in determining the maximum radius.
-
-    float maximum_mask_radius = (float(input_reconstruction_file.ReturnXSize( )) / 2.0f - 1.0f) * pixel_size;
-    if ( mask_radius > maximum_mask_radius )
-        mask_radius = maximum_mask_radius;
 
     // work out the filter to just whiten the image..
     // we will cound on "local" whitening when getting into using refin3d for the final refinement.
@@ -416,22 +343,17 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
     // if running locally, search over all of them
 
-    best_scaled_mip.CopyFrom(&scaled_mip_image);
     current_peak.value = std::numeric_limits<float>::max( );
 
-    wxFileName star_filename(ReadFromcisTEMStarFile);
-    if ( star_filename.GetExt( ) == "cistem" )
-        input_star_file.ReadFromcisTEMBinaryFile(input_star_filename);
-    else
-        input_star_file.ReadFromcisTEMStarFile(input_star_filename);
+    input_star_file.ReadFromcisTEMStarFile(input_star_filename);
+
+    // TODO: would ensuring constness for the input parameters make any sense?
+    output_star_file = input_star_file;
 
     // To make the transition easier, first keep these unnecessary columns in the output file
     number_of_peaks_found = input_star_file.ReturnNumberofLines( );
 
-    // FIXME: replace this logic with an actual bool to refine or not to refine and then instead have a sanity check here.
-    // FIXME: There is a defocus_search_step, defocus_refine_step, and a defocus_step - wtf
-
-    if ( is_running_locally == true ) {
+    if ( is_running_locally ) {
         wxPrintf("\nRefining %i positions in the MIP.\n", number_of_peaks_found);
 
         wxPrintf("\nPerforming refinement...\n\n");
@@ -451,26 +373,33 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     if ( max_threads > number_of_peaks_found )
         max_threads = number_of_peaks_found;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(number_of_peaks_found, found_peaks, input_image, mask_radius, pixel_size, mask_falloff,                                                                                                                                                       \
-                                                                   mip_image, scaled_mip_image, phi_image, theta_image, psi_image, defocus_search_range, defocus_refine_step,                                                                                                                                    \
-                                                                   defocus1, defocus2, defocus_angle, angular_step, in_plane_angular_step, whitening_filter, input_reconstruction, min_peak_radius2,                                                                                                             \
-                                                                   input_reconstruction_file, voltage_kV, spherical_aberration_mm, amplitude_contrast,                                                                                                                                                           \
-                                                                   phase_shift, max_threads, defocus_step, xy_change_threshold, exclude_above_xy_threshold, all_peak_changes, all_peak_infos) private(current_peak, sq_dist_x, sq_dist_y, address, current_address, current_phi, current_theta, current_psi,     \
-                                                                                                                                                                                                      current_defocus1, current_defocus2, best_score, phi_i, theta_i, psi_i, defocus_i, size_i,                  \
-                                                                                                                                                                                                      mult_i_start, mult_i, ll, input_ctf, best_defocus_score, best_phi_score, best_theta_score, best_psi_score, \
-                                                                                                                                                                                                      kk, jj, ii, angles, score, address_offset, template_peak, i, j, best_address, peak_number,                 \
-                                                                                                                                                                                                      first_score, starting_score, size_is, defocus_is, score_adjustment, offset_distance, best_peak)
+#pragma omp parallel num_threads(max_threads) default(none) shared(number_of_peaks_found, input_image, mask_falloff, wanted_mask_radius, input_star_file, output_star_file,             \
+                                                                   defocus_search_range, angular_step, in_plane_angular_step, whitening_filter, input_reconstruction, min_peak_radius2, \
+                                                                   input_reconstruction_file, max_threads, defocus_step, xy_change_threshold, exclude_above_xy_threshold,               \
+                                                                   all_peak_changes, all_peak_infos) private(current_peak, sq_dist_x, sq_dist_y, address,                               \
+                                                                                                             defocus_i, size_i,                                                         \
+                                                                                                             best_defocus_score, best_phi_score, best_theta_score, best_psi_score,      \
+                                                                                                             angles, template_peak, i, j, peak_number,                                  \
+                                                                                                             first_score, starting_score, size_is, score_adjustment)
     {
 
         Image windowed_particle_;
         Image projection_filter_;
+
+        //
+        cisTEMParameterLine input_parameters_;
+
+        CTF  ctf_;
+        Peak best_peak_;
+
+        float pixel_size_; // Set from the input parameters
+        float mask_radius_ = wanted_mask_radius;
 
         // TODO: switch to me for gpu access, requires going from input_reconstruction (Image) to reconstructed volume
         // requires a particle object as well
         // ProjectionComparisonObjects comparison_object_;
         TemplateComparisonObject template_object;
 
-        input_ctf.Init(voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, 0.0, 0.0, 0.0, pixel_size, deg_2_rad(phase_shift));
         windowed_particle_.Allocate(input_reconstruction_file.ReturnXSize( ), input_reconstruction_file.ReturnXSize( ), true);
         projection_filter_.Allocate(input_reconstruction_file.ReturnXSize( ), input_reconstruction_file.ReturnXSize( ), false);
 
@@ -486,18 +415,37 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 //	while (current_peak.value >= wanted_threshold)
 #pragma omp for schedule(dynamic, 1)
         for ( peak_number = 0; peak_number < number_of_peaks_found; peak_number++ ) {
-            // look for a peak..
 
-            current_peak.x     = input_star_file.ReturnXShift(peak_number) / pixel_size;
-            current_peak.y     = input_star_file.ReturnYShift(peak_number) / pixel_size;
-            current_peak.value = input_star_file.ReturnScore(peak_number);
+            // Grab a local copy of input parameters from the shared starfile
+            input_parameters_ = input_star_file.ReturnLine(peak_number);
 
-            // ok we have peak..
+            pixel_size_ = input_parameters_.pixel_size;
+
+            // assume cube in determining the maximum radius.
+
+            float maximum_mask_radius = (float(input_reconstruction_file.ReturnXSize( )) / 2.0f - 1.0f) * pixel_size_;
+            if ( mask_radius_ > maximum_mask_radius )
+                mask_radius_ = maximum_mask_radius;
+            // TODO: adjust pixel size here?
+
+            // I don't think there is any significant overhead to intializing the CTF here, vs setting individual values
+            // ctf_.Init(voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, 0.0, 0.0, 0.0, pixel_size, deg_2_rad(phase_shift));
+            ctf_.Init(input_parameters_.microscope_voltage_kv,
+                      input_parameters_.microscope_spherical_aberration_mm,
+                      input_parameters_.amplitude_contrast,
+                      input_parameters_.defocus_1,
+                      input_parameters_.defocus_2,
+                      input_parameters_.defocus_angle,
+                      0.0,
+                      0.0,
+                      0.0,
+                      pixel_size_, // TODO: if we are downsampling, this pixel size is wrong
+                      deg_2_rad(input_parameters_.phase_shift)); // NOTE: no beam tilt here. If you want to adapt this to high resolution, you will need to add beam tilt
 
             // FIXME: confirm how the fractional shifts should look, but for now it prob doesn't matter too much.
-            input_image.ClipInto(&windowed_particle_, 0.0f, false, 1.0f, myroundint(current_peak.x), myroundint(current_peak.y), 0);
-            if ( mask_radius > 0.0f )
-                windowed_particle_.CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size);
+            input_image.ClipInto(&windowed_particle_, 0.0f, false, 1.0f, myroundint(input_parameters_.x_shift), myroundint(input_parameters_.y_shift), 0);
+            if ( mask_radius_ > 0.0f )
+                windowed_particle_.CosineMask(mask_radius_ / pixel_size_, mask_falloff / pixel_size_);
             windowed_particle_.ForwardFFT( );
             windowed_particle_.SwapRealSpaceQuadrants( );
 
@@ -507,151 +455,120 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
             //		number_of_peaks_found++;
 
-            // get angles and mask out the local area so it won't be picked again..
+            float initial_phi      = input_parameters_.phi;
+            float initial_theta    = input_parameters_.theta;
+            float initial_psi      = input_parameters_.psi;
+            float initial_defocus1 = input_parameters_.defocus_1;
+            float initial_defocus2 = input_parameters_.defocus_2;
 
-            address = 0;
+            float best_phi   = initial_phi;
+            float best_theta = initial_theta;
+            float best_psi   = initial_psi;
 
-            // FIXME we should already have all of this info in the parameters object
-            // current_peak.x = current_peak.x + scaled_mip_image_local.physical_address_of_box_center_x;
-            // current_peak.y = current_peak.y + scaled_mip_image_local.physical_address_of_box_center_y;
-
-            // FIXME: from parameters
-            // current_phi        = best_phi_local.real_values[address];
-            // current_theta      = best_theta_local.real_values[address];
-            // current_psi        = best_psi_local.real_values[address];
-            // current_defocus    = best_defocus_local.real_values[address];
-            current_phi      = input_star_file.ReturnPhi(peak_number);
-            current_theta    = input_star_file.ReturnTheta(peak_number);
-            current_psi      = input_star_file.ReturnPsi(peak_number);
-            current_defocus1 = input_star_file.ReturnDefocus1(peak_number);
-            current_defocus2 = input_star_file.ReturnDefocus2(peak_number);
-
-            best_score = -std::numeric_limits<float>::max( );
-            angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
-
-            // FIXME: current_defocus will be zero and pixel_size should be replaced with either pixel_size_search or something similar to account for resampling
-            input_ctf.SetDefocus(current_defocus1 / pixel_size, current_defocus2 / pixel_size, deg_2_rad(input_star_file.ReturnDefocusAngle(peak_number)));
-            projection_filter_.CalculateCTFImage(input_ctf);
+            // Get a starting score for the input position
+            // TODO: should the AnglesAndShifts object have the residual shifts from x/y
+            angles.Init(initial_phi, initial_theta, initial_psi, 0.0, 0.0);
+            // NOTE: Astigmatism angle is fixed, but could be fit and smoothed over the image (same as defocus refinement)
+            ctf_.SetDefocus(initial_defocus1 / pixel_size_, initial_defocus2 / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
+            projection_filter_.CalculateCTFImage(ctf_);
             projection_filter_.ApplyCurveFilter(&whitening_filter);
+            best_peak_ = TemplateScore(&template_object);
 
-            template_peak = TemplateScore(&template_object);
+#ifdef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
+#pragma omp critical
+            {
+                wxPrintf("\nRefining peak %i at x, y =  %6i, %6i with starting score: %3.3f\n", peak_number + 1, myroundint(current_peak.x), myroundint(current_peak.y), best_peak_.value);
+            }
+#endif
 
-            if ( max_threads == 1 )
-                wxPrintf("\nRefining peak %i at x, y =  %6i, %6i\n", peak_number + 1, myroundint(current_peak.x), myroundint(current_peak.y));
+            // Do a brute force search over the defocus range
 
-            // TODO: resume here - go back and get rid of microscope parameters on input and replace them from the parameter file.
-            // FIXME: This should probably be after the angular search (perhaps test both or possible make it exclusive (can't be done with angular search))
+            // TODO: right now, defocus is also searched in the refinement loop so this is redundant
+            int best_iDefocus = 0;
             if ( do_defocus_refinement ) {
-                for ( defocus_is = -myroundint(float(defocus_search_range) / float(defocus_step)); defocus_is <= myroundint(float(defocus_search_range) / float(defocus_step)); defocus_is++ ) {
-                    input_ctf.SetDefocus((defocus1 + current_defocus + defocus_is * defocus_step) / pixel_size, (defocus2 + current_defocus + defocus_is * defocus_step) / pixel_size, deg_2_rad(defocus_angle));
-                    projection_filter_.CalculateCTFImage(input_ctf);
+#ifdef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
+#pragma omp critical
+                {
+                    wxPrintf("Refining defocus range: %f in step size %f\n", defocus_search_range, defocus_search_step);
+                }
+#endif
+                for ( int iDefocus = -myroundint(float(defocus_search_range) / float(defocus_step)); iDefocus <= myroundint(float(defocus_search_range) / float(defocus_step)); iDefocus++ ) {
+
+                    ctf_.SetDefocus((initial_defocus1 + iDefocus * defocus_step) / pixel_size_, (initial_defocus2 + iDefocus * defocus_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
+                    projection_filter_.CalculateCTFImage(ctf_);
                     projection_filter_.ApplyCurveFilter(&whitening_filter);
-
-                    //							angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
-
                     template_peak = TemplateScore(&template_object);
-                    score         = template_peak.value;
-                    if ( score > best_score ) {
-                        best_peak       = template_peak;
-                        best_score      = score;
-                        address_offset  = (scaled_mip_image.logical_x_dimension + scaled_mip_image.padding_jump_value) * myroundint(template_peak.y) + myroundint(template_peak.x);
-                        best_address    = current_address + address_offset;
-                        offset_distance = sqrtf(powf(template_peak.x, 2) + powf(template_peak.y, 2));
+
+                    if ( template_peak.value > best_peak_.value ) {
+                        best_peak_    = template_peak;
+                        best_iDefocus = iDefocus;
                     }
                 }
-                // current_defocus = best_defocus_local.real_values[best_address];
             }
 
-            phi_i     = 0;
-            theta_i   = 0;
-            psi_i     = 0;
-            defocus_i = 0;
-            //					score = best_score;
+            int n_phi_steps   = 0;
+            int n_theta_steps = 0;
+            int n_psi_steps   = 0;
+            // defocus_i = 0;
 
-            mult_i_start = defocus_step / defocus_refine_step;
-            for ( mult_i = mult_i_start; mult_i > 0.5f; mult_i /= 2.0f ) {
-                for ( ll = 0; ll < 2; ll = -2 * ll + 1 ) {
-                    if ( (ll != 0) && (defocus_refine_step == 0.0f) )
-                        break;
-                    do { // while ( best_score > best_defocus_score );
-                        best_defocus_score = best_score;
-                        if ( defocus_search_range != 0.0f )
-                            defocus_i += myroundint(mult_i * ll);
+            // TODO: This would be a place to constrain the fit defocus across the image before moving on, but this would require joining all threads.
+            // For now, I am just removing the outermost loop which was over the defocus range. (def, euler sphere, in plane)
+            // for ( ll = 0; ll < 2; ll = -2 * ll + 1 ) {
+            //     if ( (ll != 0) && (! do_defocus_refinement) )
+            //         break;
 
-                        // make the projection filter, which will be CTF * whitening filter
-                        input_ctf.SetDefocus((defocus1 + current_defocus + defocus_i * defocus_refine_step) / pixel_size, (defocus2 + current_defocus + defocus_i * defocus_refine_step) / pixel_size, deg_2_rad(defocus_angle));
-                        projection_filter_.CalculateCTFImage(input_ctf);
-                        projection_filter_.ApplyCurveFilter(&whitening_filter);
+            do { // while ( best_peak_.value > best_defocus_score );
+                best_defocus_score = best_peak_.value;
+                // if ( do_defocus_refinement )
+                //     defocus_i += 1;
+                // make the projection filter, which will be CTF * whitening filter
+                ctf_.SetDefocus((initial_defocus1 + best_iDefocus * defocus_step) / pixel_size_, (initial_defocus2 + best_iDefocus * defocus_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
+                projection_filter_.CalculateCTFImage(ctf_);
+                projection_filter_.ApplyCurveFilter(&whitening_filter);
 
-                        for ( kk = 0; kk < 2; kk = -2 * kk + 1 ) {
-                            do { // while ( best_score > best_phi_score );
-                                best_phi_score = best_score;
-                                phi_i += kk;
-                                for ( jj = 0; jj < 2; jj = -2 * jj + 1 ) {
-                                    do { // while ( best_score > best_theta_score );
-                                        best_theta_score = best_score;
-                                        theta_i += jj;
-                                        for ( ii = 0; ii < 2; ii = -2 * ii + 1 ) {
-                                            do { // while ( best_score > best_psi_score );
-                                                best_psi_score = best_score;
-                                                psi_i += ii;
-
-                                                angles.Init(current_phi + phi_i * angular_step, current_theta + theta_i * angular_step, current_psi + psi_i * in_plane_angular_step, 0.0, 0.0);
-
-                                                template_peak = TemplateScore(&template_object);
-                                                score         = template_peak.value;
-                                                if ( score > best_score ) {
-                                                    best_peak       = template_peak;
-                                                    best_score      = score;
-                                                    address_offset  = (scaled_mip_image.logical_x_dimension + scaled_mip_image.padding_jump_value) * myroundint(template_peak.y) + myroundint(template_peak.x);
-                                                    best_address    = current_address + address_offset;
-                                                    offset_distance = sqrtf(powf(template_peak.x, 2) + powf(template_peak.y, 2));
-                                                    // best_psi_local.real_values[best_address]   = current_psi + psi_i * in_plane_angular_step;
-                                                    // best_theta_local.real_values[best_address] = current_theta + theta_i * angular_step;
-                                                    // best_phi_local.real_values[best_address]   = current_phi + phi_i * angular_step;
-                                                }
-                                            } while ( best_score > best_psi_score );
-                                            psi_i -= ii;
+                for ( int i_phi = 0; i_phi < 2; i_phi = -2 * i_phi + 1 ) {
+                    do { // while ( best_peak_.value > best_phi_score );
+                        best_phi_score = best_peak_.value;
+                        n_phi_steps += i_phi;
+                        for ( int i_theta = 0; i_theta < 2; i_theta = -2 * i_theta + 1 ) {
+                            do { // while ( best_peak_.value > best_theta_score );
+                                best_theta_score = best_peak_.value;
+                                n_theta_steps += i_theta;
+                                for ( int i_psi = 0; i_psi < 2; i_psi = -2 * i_psi + 1 ) {
+                                    do { // while ( best_peak_.value > best_psi_score );
+                                        best_psi_score = best_peak_.value;
+                                        n_psi_steps += i_psi;
+                                        // FIXME: In the First loop we should have our starting score = best score, which should break out of the while loop (which is a waste)
+                                        angles.Init(initial_phi + n_phi_steps * angular_step, initial_theta + n_theta_steps * angular_step, initial_psi + n_psi_steps * in_plane_angular_step, 0.0, 0.0);
+                                        template_peak = TemplateScore(&template_object);
+                                        if ( template_peak.value > best_peak_.value ) {
+                                            best_peak_ = template_peak;
+                                            best_phi   = initial_phi + n_phi_steps * angular_step;
+                                            best_theta = initial_theta + n_theta_steps * angular_step;
+                                            best_psi   = initial_psi + n_psi_steps * in_plane_angular_step;
                                         }
-                                    } while ( best_score > best_theta_score );
-                                    theta_i -= jj;
+
+                                    } while ( best_peak_.value > best_psi_score );
+                                    n_psi_steps -= i_psi;
                                 }
-                            } while ( best_score > best_phi_score );
-                            phi_i -= kk;
+                            } while ( best_peak_.value > best_theta_score );
+                            n_theta_steps -= i_theta;
                         }
-                    } while ( best_score > best_defocus_score );
-                    if ( defocus_search_range != 0.0f )
-                        defocus_i -= ll;
+                    } while ( best_peak_.value > best_phi_score );
+                    n_phi_steps -= i_phi;
                 }
-            }
+            } while ( best_peak_.value > best_defocus_score );
+            // if ( do_defocus_refinement )
+            //     defocus_i -= ll;
+            // }
 
-            all_peak_changes[peak_number].x_pos = best_peak.x * pixel_size;
-            all_peak_changes[peak_number].y_pos = best_peak.y * pixel_size;
-            // all_peak_changes[peak_number].psi   = best_psi_local.real_values[best_address] - psi_image.real_values[current_address];
-            // all_peak_changes[peak_number].theta = best_theta_local.real_values[best_address] - theta_image.real_values[current_address];
+            all_peak_changes[peak_number].x_pos = best_peak_.x * pixel_size_;
+            all_peak_changes[peak_number].y_pos = best_peak_.y * pixel_size_;
 
-            // all_peak_changes[peak_number].peak_height = best_scaled_mip_local.real_values[best_address] - starting_score;
-
-            all_peak_infos[peak_number].x_pos = found_peaks[peak_number].x + best_peak.x; // NOT SCALING BY PIXEL SIZE - DO AFTER MAKING RESULT IMAGE
-            all_peak_infos[peak_number].y_pos = found_peaks[peak_number].y + best_peak.y; // NOT SCALING BY PIXEL SIZE - DO AFTER MAKING RESULT IMAGE
-            // all_peak_infos[peak_number].psi   = best_psi_local.real_values[best_address];
-            // all_peak_infos[peak_number].theta = best_theta_local.real_values[best_address];
-            // all_peak_infos[peak_number].phi   = best_phi_local.real_values[best_address];
-            // all_peak_infos[peak_number].defocus = best_defocus_local.real_values[best_address];
-
-            // all_peak_infos[peak_number].peak_height = best_scaled_mip_local.real_values[best_address];
-
-        NEXTPEAK:
-            if ( angular_step == 0.0 && in_plane_angular_step == 0.0 )
-                wxPrintf("Stopping refinement now\n");
-        }
-
+            // all_peak_infos[peak_number].x_pos = found_peaks[peak_number].x + best_peak_.x; // NOT SCALING BY PIXEL SIZE - DO AFTER MAKING RESULT IMAGE
+            // all_peak_infos[peak_number].y_pos = found_peaks[peak_number].y + best_peak_.y; // NOT SCALING BY PIXEL SIZE - DO AFTER MAKING RESULT IMAGE
+        } // end omp for loop
     } // end omp section
-
-    //	delete my_progress;
-
-    delete[] found_peaks;
-    //	delete [] addresses;
 
     if ( is_running_locally == true ) {
         wxPrintf("\nRefine Template: Normal termination\n");
@@ -663,15 +580,13 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
         for ( int counter = 0; counter < all_peak_infos.GetCount( ); counter++ ) {
 
+            // FIXME: paramters
+
             if ( all_peak_infos[counter].peak_height < threshold_for_result_plotting ) {
-                all_peak_infos[counter].x_pos = (all_peak_infos[counter].x_pos + best_scaled_mip.physical_address_of_box_center_x) * pixel_size;
-                all_peak_infos[counter].y_pos = (all_peak_infos[counter].y_pos + best_scaled_mip.physical_address_of_box_center_y) * pixel_size;
+                // all_peak_infos[counter].x_pos = (all_peak_infos[counter].x_pos + best_scaled_mip.physical_address_of_box_center_x) * pixel_size;
+                // all_peak_infos[counter].y_pos = (all_peak_infos[counter].y_pos + best_scaled_mip.physical_address_of_box_center_y) * pixel_size;
                 continue;
             }
-
-            offset_distance = sqrtf(powf(all_peak_changes[counter].x_pos, 2) + powf(all_peak_changes[counter].y_pos, 2));
-            if ( offset_distance * pixel_size >= xy_change_threshold && exclude_above_xy_threshold == true )
-                continue;
 
             // ok we have peak..
 
@@ -681,8 +596,8 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
             // scale the shifts by the pixel size..
 
-            all_peak_infos[counter].x_pos = (all_peak_infos[counter].x_pos + best_scaled_mip.physical_address_of_box_center_x) * pixel_size;
-            all_peak_infos[counter].y_pos = (all_peak_infos[counter].y_pos + best_scaled_mip.physical_address_of_box_center_y) * pixel_size;
+            // all_peak_infos[counter].x_pos = (all_peak_infos[counter].x_pos + best_scaled_mip.physical_address_of_box_center_x) * pixel_size;
+            // all_peak_infos[counter].y_pos = (all_peak_infos[counter].y_pos + best_scaled_mip.physical_address_of_box_center_y) * pixel_size;
         }
 
         // tell the gui that this result is available...
@@ -692,3 +607,5 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
     return true;
 }
+
+#undef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO

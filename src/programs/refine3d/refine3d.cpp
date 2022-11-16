@@ -1380,7 +1380,7 @@ bool Refine3DApp::DoCalculation( ) {
                         //					wxPrintf("Parameter line = %i, Defocus = %f, score = %g\n", current_line, defocus_i * defocus_step, score);
                     }
                     refine_particle_.particle_image->CopyFrom(&binned_image);
-                    comparison_object.ResetCleanCopyOfParticleImage(false);
+                    comparison_object.GetCleanCopyOfParticleImage(false);
                     refine_particle_.is_ssnr_filtered   = false;
                     refine_particle_.is_masked          = false;
                     refine_particle_.is_centered_in_box = true;

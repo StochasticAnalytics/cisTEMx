@@ -13,6 +13,8 @@
 
 #define PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
 
+#define SHIFT_AND_RECALCULATE_SCORE
+
 class GlobalSearchRefinementApp : public MyApp {
   public:
     bool DoCalculation( );
@@ -42,9 +44,6 @@ class GlobalSearchRefinementApp : public MyApp {
     float    in_plane_angular_step = 0;
     float    wanted_threshold;
     float    min_peak_radius;
-    float    xy_change_threshold        = 10.0f;
-    bool     exclude_above_xy_threshold = false;
-    int      result_number              = 1;
 
     int max_threads;
 
@@ -91,6 +90,11 @@ Peak TemplateScore(void* scoring_parameters) {
 
     current_projection.ZeroCentralPixel( );
     current_projection.DivideByConstant(sqrtf(current_projection.ReturnSumOfSquares( )));
+#ifdef SHIFT_AND_RECALCULATE_SCORE
+    Image copy_of_current_projection;
+    copy_of_current_projection.CopyFrom(&current_projection);
+#endif
+
 #ifdef MKL
     // Use the MKL
     vmcMulByConj(current_projection.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(comparison_object->windowed_particle->complex_values), reinterpret_cast<MKL_Complex8*>(current_projection.complex_values), reinterpret_cast<MKL_Complex8*>(current_projection.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
@@ -102,7 +106,28 @@ Peak TemplateScore(void* scoring_parameters) {
     current_projection.BackwardFFT( );
     //	wxPrintf("ping");
 
-    return current_projection.FindPeakWithIntegerCoordinates( );
+    // FIXME: This is a hack to get the peak to work
+    Peak tmp_peak = current_projection.FindPeakWithParabolaFit( );
+    tmp_peak.value *= sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension);
+
+#ifdef SHIFT_AND_RECALCULATE_SCORE
+    copy_of_current_projection.PhaseShift(tmp_peak.x, tmp_peak.y);
+#ifdef MKL
+    // Use the MKL
+    vmcMulByConj(copy_of_current_projection.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(comparison_object->windowed_particle->complex_values), reinterpret_cast<MKL_Complex8*>(copy_of_current_projection.complex_values), reinterpret_cast<MKL_Complex8*>(copy_of_current_projection.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
+#else
+    for ( long pixel_counter = 0; pixel_counter < current_projection.real_memory_allocated / 2; pixel_counter++ ) {
+        copy_of_current_projection.complex_values[pixel_counter] = std::conj(copy_of_current_projection.complex_values[pixel_counter]) * comparison_object->windowed_particle->complex_values[pixel_counter];
+    }
+#endif
+    copy_of_current_projection.BackwardFFT( );
+    //	wxPrintf("ping");
+
+    // FIXME: This is a hack to get the peak to work
+    tmp_peak = copy_of_current_projection.FindPeakWithParabolaFit( );
+    tmp_peak.value *= sqrtf(copy_of_current_projection.logical_x_dimension * copy_of_current_projection.logical_y_dimension);
+#endif
+    return tmp_peak;
 }
 
 IMPLEMENT_APP(GlobalSearchRefinementApp)
@@ -115,8 +140,11 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
 
     // This block is the same as in globale_search.cpp
     input_search_images  = my_input->GetFilenameFromUser("Input images to be searched", "The input image stack, containing the images that should be searched", "image_stack.mrc", true);
-    input_star_filename  = my_input->GetFilenameFromUser("Input star file, ignored if prev false", "The input star file, containing the images that should be searched", "input_particles.star", true);
     input_reconstruction = my_input->GetFilenameFromUser("Input template reconstruction", "The 3D reconstruction from which projections are calculated", "reconstruction.mrc", true);
+
+    input_star_filename  = my_input->GetFilenameFromUser("Input star file", "The input star file, containing the images that should be searched", "input_particles.star", true);
+    output_star_filename = my_input->GetFilenameFromUser("output star file", "The output star file, containing the images that should be searched", "input_particles.star", false);
+
     wxFileName directory_for_results(my_input->GetFilenameFromUser("Output directory for results, subdirectory using image name will be created.", "", "./", false));
     MyDebugAssertFalse(directory_for_results.HasExt( ), "Output directory should not have an extension");
     if ( ! directory_for_results.DirExists( ) ) {
@@ -126,31 +154,20 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
     wxFileName input_search_image_file_name_full(input_search_images);
     wxString   directory_for_results_string = directory_for_results.GetFullPath( );
 
-    // For now, we'll just use the scaled_mip as supplied, but may want to be able to adjust the scalling later
-    // Then instead of applying the smoothing in global_search, we have the raw output to save here.
-    // correlation_avg_input_filename = input_search_image_file_name_full.GetName( ) + "_avg.mrc";
-    // correlation_std_input_filename = input_search_image_file_name_full.GetName( ) + "_std.mrc";
-
-    wanted_threshold = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
-    min_peak_radius  = my_input->GetFloatFromUser("Min peak radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 0.0);
-
-    //	low_resolution_limit = my_input->GetFloatFromUser("Low resolution limit (A)", "Low resolution limit of the data used for alignment in Angstroms", "300.0", 0.0);
-    //	high_resolution_limit = my_input->GetFloatFromUser("High resolution limit (A)", "High resolution limit of the data used for alignment in Angstroms", "8.0", 0.0);
+    low_resolution_limit  = my_input->GetFloatFromUser("Low resolution limit (A)", "Low resolution limit of the data used for alignment in Angstroms", "300.0", 0.0);
+    high_resolution_limit = my_input->GetFloatFromUser("High resolution limit (A)", "High resolution limit of the data used for alignment in Angstroms", "8.0", 0.0);
     //	angular_range = my_input->GetFloatFromUser("Angular refinement range", "AAngular range to refine", "2.0", 0.1);
     angular_step          = my_input->GetFloatFromUser("Out of plane angular step", "Angular step size for global grid search", "0.2", 0.00);
     in_plane_angular_step = my_input->GetFloatFromUser("In plane angular step", "Angular step size for in-plane rotations during the search", "0.1", 0.00);
     //	best_parameters_to_keep = my_input->GetIntFromUser("Number of top hits to refine", "The number of best global search orientations to refine locally", "20", 1);
+    do_defocus_refinement = my_input->GetYesNoFromUser("Refine defocus", "Should the particle defocus be refined?", "No");
     defocus_search_range  = my_input->GetFloatFromUser("Defocus search range (A) (0.0 = no search)", "Search range (-value ... + value) around current defocus", "200.0", 0.0);
     defocus_search_step   = my_input->GetFloatFromUser("Desired defocus accuracy (A)", "Accuracy to be achieved in defocus search", "10.0", 0.0);
-    do_defocus_refinement = my_input->GetYesNoFromUser("Refine defocus", "Should the particle defocus be refined?", "No");
 
     //	pixel_size_refine_step = my_input->GetFloatFromUser("Pixel size refine step (A) (0.0 = no refinement)", "Step size used in the pixel size refinement", "0.001", 0.0);
     padding            = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "2.0", 1.0);
     wanted_mask_radius = my_input->GetFloatFromUser("Mask radius (A) (0.0 = no mask)", "Radius of a circular mask to be applied to the input particles during refinement", "0.0", 0.0);
     //	my_symmetry = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
-    xy_change_threshold        = my_input->GetFloatFromUser("Moved peak warning (A)", "Threshold for displaying warning of peak location changes during refinement", "10.0", 0.0);
-    exclude_above_xy_threshold = my_input->GetYesNoFromUser("Exclude moving peaks", "Should the peaks that move more than the threshold be excluded from the output MIPs?", "No");
-    result_number              = my_input->GetIntFromUser("Result number to refine", "If input files contain results from several searches, which one should be refined?", "1", 1);
 
 #ifdef _OPENMP
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "When threading, what is the max threads to run", "1", 1);
@@ -170,7 +187,7 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
     delete my_input;
 
     //	my_current_job.Reset(42);
-    my_current_job.ManualSetArguments("ttffffifffbffffbtfiiiiiitftbt",
+    my_current_job.ManualSetArguments("ttffffibfffffiiiiitftt",
                                       input_search_images.ToUTF8( ).data( ), // 0
                                       input_reconstruction.ToUTF8( ).data( ), // 1
                                       low_resolution_limit, // 2
@@ -178,27 +195,21 @@ void GlobalSearchRefinementApp::DoInteractiveUserInput( ) {
                                       angular_range, // 4
                                       angular_step, // 5
                                       best_parameters_to_keep, // 6
+                                      do_defocus_refinement, // 10
                                       defocus_search_range, // 7
                                       defocus_search_step, // 8
                                       padding, // 9
-                                      do_defocus_refinement, // 10
                                       wanted_mask_radius, // 11
-                                      wanted_threshold, // 12
-                                      min_peak_radius, // 13
-                                      xy_change_threshold, // 14
-                                      exclude_above_xy_threshold, // 15
-                                      my_symmetry.ToUTF8( ).data( ), // 16
-                                      in_plane_angular_step, // 17
-                                      first_search_position, // 18
-                                      last_search_position, // 19
-                                      image_number_for_gui, // 20
-                                      number_of_jobs_per_image_in_gui, // 21
-                                      result_number, // 22
-                                      max_threads, // 23
-                                      directory_for_results_string.ToUTF8( ).data( ), // 24
-                                      threshold_for_result_plotting, // 25
-                                      filename_for_gui_result_image.ToUTF8( ).data( ), // 26
-                                      input_star_filename.ToUTF8( ).data( )); // 27
+                                      in_plane_angular_step, // 14
+                                      first_search_position, // 15
+                                      last_search_position, //  16
+                                      image_number_for_gui, // 17
+                                      number_of_jobs_per_image_in_gui, // 18
+                                      max_threads, // 19
+                                      directory_for_results_string.ToUTF8( ).data( ), // 20
+                                      threshold_for_result_plotting, // 21
+                                      filename_for_gui_result_image.ToUTF8( ).data( ), // 22
+                                      input_star_filename.ToUTF8( ).data( )); // 23
 }
 
 // override the do calculation method which will be what is actually run..
@@ -207,33 +218,27 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     wxDateTime start_time = wxDateTime::Now( );
 
     input_search_images                    = my_current_job.arguments[0].ReturnStringArgument( );
-    input_search_images                    = my_current_job.arguments[1].ReturnStringArgument( );
+    input_reconstruction                   = my_current_job.arguments[1].ReturnStringArgument( );
     low_resolution_limit                   = my_current_job.arguments[2].ReturnFloatArgument( );
     high_resolution_limit                  = my_current_job.arguments[3].ReturnFloatArgument( );
     angular_range                          = my_current_job.arguments[4].ReturnFloatArgument( );
     angular_step                           = my_current_job.arguments[5].ReturnFloatArgument( );
     best_parameters_to_keep                = my_current_job.arguments[6].ReturnIntegerArgument( );
-    defocus_search_range                   = my_current_job.arguments[7].ReturnFloatArgument( );
-    defocus_search_step                    = my_current_job.arguments[8].ReturnFloatArgument( );
-    padding                                = my_current_job.arguments[9].ReturnFloatArgument( );
-    do_defocus_refinement                  = my_current_job.arguments[10].ReturnBoolArgument( );
+    do_defocus_refinement                  = my_current_job.arguments[7].ReturnBoolArgument( );
+    defocus_search_range                   = my_current_job.arguments[8].ReturnFloatArgument( );
+    defocus_search_step                    = my_current_job.arguments[9].ReturnFloatArgument( );
+    padding                                = my_current_job.arguments[10].ReturnFloatArgument( );
     wanted_mask_radius                     = my_current_job.arguments[11].ReturnFloatArgument( );
-    wanted_threshold                       = my_current_job.arguments[12].ReturnFloatArgument( );
-    min_peak_radius                        = my_current_job.arguments[13].ReturnFloatArgument( );
-    xy_change_threshold                    = my_current_job.arguments[14].ReturnFloatArgument( );
-    exclude_above_xy_threshold             = my_current_job.arguments[15].ReturnBoolArgument( );
-    wxString my_symmetry                   = my_current_job.arguments[16].ReturnStringArgument( );
-    in_plane_angular_step                  = my_current_job.arguments[17].ReturnFloatArgument( );
-    int first_search_position              = my_current_job.arguments[18].ReturnIntegerArgument( );
-    int last_search_position               = my_current_job.arguments[19].ReturnIntegerArgument( );
-    int image_number_for_gui               = my_current_job.arguments[20].ReturnIntegerArgument( );
-    int number_of_jobs_per_image_in_gui    = my_current_job.arguments[21].ReturnIntegerArgument( );
-    result_number                          = my_current_job.arguments[22].ReturnIntegerArgument( );
-    max_threads                            = my_current_job.arguments[23].ReturnIntegerArgument( );
-    wxString directory_for_results         = my_current_job.arguments[24].ReturnStringArgument( );
-    float    threshold_for_result_plotting = my_current_job.arguments[25].ReturnFloatArgument( );
-    wxString filename_for_gui_result_image = my_current_job.arguments[26].ReturnStringArgument( );
-    input_star_filename                    = my_current_job.arguments[27].ReturnStringArgument( );
+    in_plane_angular_step                  = my_current_job.arguments[12].ReturnFloatArgument( );
+    int first_search_position              = my_current_job.arguments[13].ReturnIntegerArgument( );
+    int last_search_position               = my_current_job.arguments[14].ReturnIntegerArgument( );
+    int image_number_for_gui               = my_current_job.arguments[15].ReturnIntegerArgument( );
+    int number_of_jobs_per_image_in_gui    = my_current_job.arguments[16].ReturnIntegerArgument( );
+    max_threads                            = my_current_job.arguments[17].ReturnIntegerArgument( );
+    wxString directory_for_results         = my_current_job.arguments[18].ReturnStringArgument( );
+    float    threshold_for_result_plotting = my_current_job.arguments[19].ReturnFloatArgument( );
+    wxString filename_for_gui_result_image = my_current_job.arguments[20].ReturnStringArgument( );
+    input_star_filename                    = my_current_job.arguments[21].ReturnStringArgument( );
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
@@ -264,8 +269,11 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     Curve whitening_filter;
     Curve number_of_terms;
 
+    Curve whitening_filter_vol;
+    Curve number_of_terms_vol;
+
     input_search_image_file.OpenFile(input_search_images.ToStdString( ), false);
-    input_reconstruction_file.OpenFile(input_search_images.ToStdString( ), false);
+    input_reconstruction_file.OpenFile(input_reconstruction.ToStdString( ), false);
 
     Image input_image;
     Image input_reconstruction;
@@ -290,13 +298,13 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     float mask_falloff     = 20.0;
     float min_peak_radius2 = powf(min_peak_radius, 2);
 
-    // if ( (input_search_image_file.ReturnZSize( ) < result_number) || (mip_input_file.ReturnZSize( ) < result_number) || (scaled_mip_input_file.ReturnZSize( ) < result_number) || (best_psi_input_file.ReturnZSize( ) < result_number) || (best_theta_input_file.ReturnZSize( ) < result_number) || (best_phi_input_file.ReturnZSize( ) < result_number) ) {
+    // if ( (input_search_image_file.ReturnZSize( ) < 1) || (mip_input_file.ReturnZSize( ) < 1) || (scaled_mip_input_file.ReturnZSize( ) < 1) || (best_psi_input_file.ReturnZSize( ) < 1) || (best_theta_input_file.ReturnZSize( ) < 1) || (best_phi_input_file.ReturnZSize( ) < 1) ) {
     //     SendErrorAndCrash("Error: Input files do not contain selected result\n");
     // }
 
     //
 
-    input_image.ReadSlice(&input_search_image_file, result_number);
+    input_image.ReadSlice(&input_search_image_file, 1);
 
     input_reconstruction.ReadSlices(&input_reconstruction_file, 1, input_reconstruction_file.ReturnNumberOfSlices( ));
     // TODO: this should also include any scalling needed based on resolution, this can be added for efficiency, first use full size and just filter to limit resolution.
@@ -314,6 +322,10 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
     whitening_filter.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
     number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
+
+    //
+    whitening_filter_vol.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_reconstruction.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
+    number_of_terms_vol.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_reconstruction.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
 
     wxDateTime my_time_out;
     wxDateTime my_time_in;
@@ -373,9 +385,9 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     if ( max_threads > number_of_peaks_found )
         max_threads = number_of_peaks_found;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(number_of_peaks_found, input_image, mask_falloff, wanted_mask_radius, input_star_file, output_star_file,             \
+#pragma omp parallel num_threads(max_threads) default(none) shared(std::cerr, number_of_peaks_found, input_image, mask_falloff, wanted_mask_radius, input_star_file, output_star_file,  \
                                                                    defocus_search_range, angular_step, in_plane_angular_step, whitening_filter, input_reconstruction, min_peak_radius2, \
-                                                                   input_reconstruction_file, max_threads, defocus_step, xy_change_threshold, exclude_above_xy_threshold,               \
+                                                                   input_reconstruction_file, max_threads, defocus_step, low_resolution_limit, high_resolution_limit,                   \
                                                                    all_peak_changes, all_peak_infos) private(current_peak, sq_dist_x, sq_dist_y, address,                               \
                                                                                                              defocus_i, size_i,                                                         \
                                                                                                              best_defocus_score, best_phi_score, best_theta_score, best_psi_score,      \
@@ -443,7 +455,10 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
                       deg_2_rad(input_parameters_.phase_shift)); // NOTE: no beam tilt here. If you want to adapt this to high resolution, you will need to add beam tilt
 
             // FIXME: confirm how the fractional shifts should look, but for now it prob doesn't matter too much.
-            input_image.ClipInto(&windowed_particle_, 0.0f, false, 1.0f, myroundint(input_parameters_.x_shift), myroundint(input_parameters_.y_shift), 0);
+            input_image.ClipInto(&windowed_particle_, 0.0f, false, 1.0f,
+                                 myroundint(input_parameters_.x_shift / pixel_size_ - input_image.physical_address_of_box_center_x),
+                                 myroundint(input_parameters_.y_shift / pixel_size_ - input_image.physical_address_of_box_center_y), 0);
+
             if ( mask_radius_ > 0.0f )
                 windowed_particle_.CosineMask(mask_radius_ / pixel_size_, mask_falloff / pixel_size_);
             windowed_particle_.ForwardFFT( );
@@ -472,12 +487,18 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
             ctf_.SetDefocus(initial_defocus1 / pixel_size_, initial_defocus2 / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
             projection_filter_.CalculateCTFImage(ctf_);
             projection_filter_.ApplyCurveFilter(&whitening_filter);
-            best_peak_ = TemplateScore(&template_object);
+            if ( high_resolution_limit > 0.0 )
+                projection_filter_.CosineMask(pixel_size_ / high_resolution_limit, pixel_size_ / 100.0);
+            if ( low_resolution_limit > 0.0 )
+                projection_filter_.CosineMask(pixel_size_ / low_resolution_limit, pixel_size_ / 100.0, true);
+
+            best_peak_              = TemplateScore(&template_object);
+            input_parameters_.score = best_peak_.value;
 
 #ifdef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
 #pragma omp critical
             {
-                wxPrintf("\nRefining peak %i at x, y =  %6i, %6i with starting score: %3.3f\n", peak_number + 1, myroundint(current_peak.x), myroundint(current_peak.y), best_peak_.value);
+                wxPrintf("\nRefining peak %i at x, y =  %6i, %6i with starting score: %3.3e\n", peak_number + 1, myroundint(current_peak.x), myroundint(current_peak.y), best_peak_.value);
             }
 #endif
 
@@ -496,7 +517,13 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
                     ctf_.SetDefocus((initial_defocus1 + iDefocus * defocus_step) / pixel_size_, (initial_defocus2 + iDefocus * defocus_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
                     projection_filter_.CalculateCTFImage(ctf_);
-                    projection_filter_.ApplyCurveFilter(&whitening_filter);
+                    // FIXME: we shoulid be applying the image curve to the volume projection, not this.
+
+                    // projection_filter_.ApplyCurveFilter(&whitening_filter);
+                    if ( high_resolution_limit > 0.0 )
+                        projection_filter_.CosineMask(pixel_size_ / high_resolution_limit, pixel_size_ / 100.0);
+                    if ( low_resolution_limit > 0.0 )
+                        projection_filter_.CosineMask(pixel_size_ / low_resolution_limit, pixel_size_ / 100.0, true);
                     template_peak = TemplateScore(&template_object);
 
                     if ( template_peak.value > best_peak_.value ) {
@@ -524,7 +551,11 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
                 // make the projection filter, which will be CTF * whitening filter
                 ctf_.SetDefocus((initial_defocus1 + best_iDefocus * defocus_step) / pixel_size_, (initial_defocus2 + best_iDefocus * defocus_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
                 projection_filter_.CalculateCTFImage(ctf_);
-                projection_filter_.ApplyCurveFilter(&whitening_filter);
+                // projection_filter_.ApplyCurveFilter(&whitening_filter);
+                if ( high_resolution_limit > 0.0 )
+                    projection_filter_.CosineMask(pixel_size_ / high_resolution_limit, pixel_size_ / 100.0);
+                if ( low_resolution_limit > 0.0 )
+                    projection_filter_.CosineMask(pixel_size_ / low_resolution_limit, pixel_size_ / 100.0, true);
 
                 for ( int i_phi = 0; i_phi < 2; i_phi = -2 * i_phi + 1 ) {
                     do { // while ( best_peak_.value > best_phi_score );
@@ -541,6 +572,9 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
                                         // FIXME: In the First loop we should have our starting score = best score, which should break out of the while loop (which is a waste)
                                         angles.Init(initial_phi + n_phi_steps * angular_step, initial_theta + n_theta_steps * angular_step, initial_psi + n_psi_steps * in_plane_angular_step, 0.0, 0.0);
                                         template_peak = TemplateScore(&template_object);
+                                        // std::cerr << "n_psi and i_psi: " << n_psi_steps << " " << i_psi << std::endl;
+                                        // std::cerr << "testing angles " << angles.ReturnPhiAngle( ) << " " << angles.ReturnThetaAngle( ) << " " << angles.ReturnPsiAngle( ) << " score " << template_peak.value << std::endl;
+
                                         if ( template_peak.value > best_peak_.value ) {
                                             best_peak_ = template_peak;
                                             best_phi   = initial_phi + n_phi_steps * angular_step;
@@ -562,14 +596,21 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
             //     defocus_i -= ll;
             // }
 
-            all_peak_changes[peak_number].x_pos = best_peak_.x * pixel_size_;
-            all_peak_changes[peak_number].y_pos = best_peak_.y * pixel_size_;
+            output_star_file.all_parameters.Item(peak_number).x_shift = best_peak_.x * pixel_size_ + input_parameters_.x_shift;
+            output_star_file.all_parameters.Item(peak_number).y_shift = best_peak_.y * pixel_size_ + input_parameters_.y_shift;
 
-            // all_peak_infos[peak_number].x_pos = found_peaks[peak_number].x + best_peak_.x; // NOT SCALING BY PIXEL SIZE - DO AFTER MAKING RESULT IMAGE
-            // all_peak_infos[peak_number].y_pos = found_peaks[peak_number].y + best_peak_.y; // NOT SCALING BY PIXEL SIZE - DO AFTER MAKING RESULT IMAGE
-        } // end omp for loop
+            output_star_file.all_parameters.Item(peak_number).phi          = best_phi;
+            output_star_file.all_parameters.Item(peak_number).theta        = best_theta;
+            output_star_file.all_parameters.Item(peak_number).psi          = best_psi;
+            output_star_file.all_parameters.Item(peak_number).defocus_1    = (initial_defocus1 + best_iDefocus * defocus_step);
+            output_star_file.all_parameters.Item(peak_number).defocus_2    = (initial_defocus2 + best_iDefocus * defocus_step);
+            output_star_file.all_parameters.Item(peak_number).score        = best_peak_.value;
+            output_star_file.all_parameters.Item(peak_number).score_change = best_peak_.value - input_parameters_.score;
+
+        } // end omp for loop over peaks
     } // end omp section
 
+    output_star_file.WriteTocisTEMStarFile(output_star_filename.ToStdString( ));
     if ( is_running_locally == true ) {
         wxPrintf("\nRefine Template: Normal termination\n");
         wxDateTime finish_time = wxDateTime::Now( );
@@ -578,6 +619,7 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     else // find peaks, write and write a result image, then send result..
     {
 
+        MyAssertTrue(false, "RefineTemplate: This should not be called in a distributed environment.");
         for ( int counter = 0; counter < all_peak_infos.GetCount( ); counter++ ) {
 
             // FIXME: paramters

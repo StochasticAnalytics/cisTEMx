@@ -10,7 +10,8 @@ mkdir -p $output_dir/images
 mkdir -p $output_dir/volumes
 mkdir -p $output_dir/global_search
 
-# ./auto_sim_ref.sh
+[[ $run_simulate == "yes" ]] && ./auto_sim_ref.sh
+
 
 # When each movie is completed, it will record that it is ready to be processed.
 ls $movie_dir/* | parallel --bar --progress -j${max_movies_per_gpu} ./auto_movie_align.sh {}

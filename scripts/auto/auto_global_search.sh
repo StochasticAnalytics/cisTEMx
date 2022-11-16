@@ -8,6 +8,7 @@ defocus_1=$(tail -n -1 ${dir_name}/ctf_diagnostic.txt | awk '{print $2}')
 defocus_2=$(tail -n -1 ${dir_name}/ctf_diagnostic.txt | awk '{print $3}')
 defocus_ang=$(tail -n -1 ${dir_name}/ctf_diagnostic.txt | awk '{print $4}')
 
+if [[ $run_global == "yes" ]] ; then
 
 mkdir -p ${output_dir}/global_search
 mkdir -p ${output_dir}/global_search/$(basename ${dir_name})
@@ -67,6 +68,7 @@ $microscope_spherical_aberration
 $microscope_amplitude_contrast
 EOF
 
+fi
 #FIXME
 # Need a check on zero peaks (or even < N peaks found)
-./auto_local_and_ctf.sh ${dir_name}
+./auto_grid_refinement.sh ${dir_name}

@@ -4,6 +4,7 @@ dir_name=$1
 
 source params.sh
 
+if [[ $run_ctf_fit == "yes" ]] ; then
 ${bin_cmd}/ctffind << EOF 
 ${dir_name}/aligned_img.mrc
 ${dir_name}/ctf_diagnostic.mrc
@@ -40,8 +41,9 @@ $ctf_diagnostic_box_size
 $ctf_diagnostic_box_size
 EOF
 
-mv $${dir_name}/ctf_diagnostic.mrc_rs ${dir_name}/ctf_diagnostic.mrc
+mv ${dir_name}/ctf_diagnostic.mrc_rs ${dir_name}/ctf_diagnostic.mrc
 
 fi
 
+fi
 ./auto_global_search.sh $dir_name

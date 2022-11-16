@@ -129,7 +129,8 @@ ProjectionComparisonObjects& ProjectionComparisonObjects::operator=(const Projec
 
 #ifndef ENABLEGPU
 
-void ProjectionComparisonObjects::PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search) {
+template <class InputVolumeType>
+void ProjectionComparisonObjects::PrepareGpuVolumeProjection(InputVolumeType& input_3d_local, const bool is_for_global_search) {
     return;
 }
 
@@ -149,7 +150,7 @@ void ProjectionComparisonObjects::SetCleanCopyOfParticleImage(const bool is_for_
     return;
 }
 
-void ProjectionComparisonObjects::ResetCleanCopyOfParticleImage(const bool is_for_global_search) {
+void ProjectionComparisonObjects::GetCleanCopyOfParticleImage(const bool is_for_global_search) {
     return;
 }
 
@@ -176,7 +177,7 @@ void ProjectionComparisonObjects::DeallocateCleanCopyOfParticleImage( ) {
     return;
 }
 
-void ProjectionComparisonObjects::ResetCleanCopyOfParticleImage(const bool is_for_global_search) {
+void ProjectionComparisonObjects::GetCleanCopyOfParticleImage(const bool is_for_global_search) {
 
 #ifndef CALCULATE_SCORE_ON_CPU_DISABLE_GPU_PARTICLE
     GpuImage* tmp_ptr = is_for_global_search ? &gpu_search_particle_image : &gpu_particle_image;
@@ -198,11 +199,22 @@ void ProjectionComparisonObjects::ResetCleanCopyOfParticleImage(const bool is_fo
  * @param external_gpu_volume The GPU image to use for the volume.
 */
 
-void ProjectionComparisonObjects::PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search) {
+template <class InputVolumeType>
+void ProjectionComparisonObjects::PrepareGpuVolumeProjection(InputVolumeType& input_3d_local, const bool is_for_global_search) {
 
     // Make a copy since we cannot take a back fft after FourierSpaceQuadrant Swap
     Image temp_image;
-    temp_image.CopyFrom(input_3d_local.density_map);
+    if constexpr ( std::is_same<InputVolumeType, ReconstructedVolume>::value ) {
+        temp_image.CopyFrom(input_3d_local.density_map);
+    }
+    else {
+        if constexpr ( std::is_same<InputVolumeType, Image>::value ) {
+            temp_image.CopyFrom(&input_3d_local);
+        }
+        else {
+            MyDebugAssertTrue(false, "InputVolumeType is not a valid type");
+        }
+    }
 
     MyDebugAssertTrue(temp_image.is_in_memory, "Density map is not in memory");
     MyDebugAssertFalse(temp_image.is_in_real_space, "Density map is in real space");
@@ -398,3 +410,7 @@ float ProjectionComparisonObjects::DoGpuProjection( ) {
 };
 
 #endif
+
+// Whether or not we are including the dummy methods, we still want to instantiate these templates
+template void ProjectionComparisonObjects::PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search);
+template void ProjectionComparisonObjects::PrepareGpuVolumeProjection(Image& input_3d_local, const bool is_for_global_search);

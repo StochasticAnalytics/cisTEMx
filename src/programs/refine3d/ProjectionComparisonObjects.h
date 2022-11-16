@@ -138,14 +138,15 @@ class ProjectionComparisonObjects {
     float DoGpuProjection( );
     void  PrepareGpuImages(Particle& host_particle, Image& host_projection_image, const bool is_for_global_search, c_img_t image_type = c_img_t::particle_image_t);
     void  PrepareGpuCTFImages(Particle& host_particle, const bool is_for_global_search);
-    void  PrepareGpuVolumeProjection(ReconstructedVolume& input_3d_local, const bool is_for_global_search);
+    template <class InputVolumeType>
+    void PrepareGpuVolumeProjection(InputVolumeType& input_3d_local, const bool is_for_global_search);
 
     // In the ctf refinement loop, we want to keep a clean copy of the particle image and just copy it back each loop
     void SetCleanCopyOfParticleImage(const bool is_for_global_search);
 
     void DeallocateCleanCopyOfParticleImage( );
 
-    void ResetCleanCopyOfParticleImage(const bool is_for_global_search);
+    void GetCleanCopyOfParticleImage(const bool is_for_global_search);
 
     void AllocateBuffers(int new_buffer_size);
 

@@ -15,6 +15,7 @@ image_binning=$(echo "print($output_pixel_size/$physical_pixel_size)" | python3)
 # Set the termination to half an output pixel (expected in angstroms)
 termination_criteria=$(echo "print($output_pixel_size/2)" | python3)
 
+if [[ $run_movie_align == "yes" ]] ; then
 echo "Aligning movies"
 APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_for_movies} ${bin_cmd}/unblur_gpu << EOF &> /dev/null
 $movie_file
@@ -47,5 +48,7 @@ $eer_super_res_factor
 $movie_correct_mag_distortion
 $movie_max_threads
 EOF
+
+fi
 
 ./auto_ctf.sh $output_dir/images/$img_base

@@ -1,11 +1,14 @@
 #!/bin/bash
 
-output_dir=test_2
+output_dir=test_grid
 
 bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif ${HOME}/git/cisTEM/build/intel-gpu-debug-profile/src"
 pdb_file=7a4m_assembly_no_C_T.pdb
 
+
 movie_dir=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/movies
+# movie_dir=/scratch/salina/EMPIAR-10568-apoferritin-g4-EER/data/Images-Disc1/GridSquare_8824187/Data
+use_movie_gain_ref="no"
 movie_gain_ref=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/gain_1xUps_8k.mrc
 
 total_exposure=52.7
@@ -22,6 +25,9 @@ apply_exposure_filter=yes
 microscope_voltage=300
 microscope_spherical_aberration=2.7
 microscope_amplitude_contrast=0.1
+
+
+########### TODO add below to validation checks
 
 # Simulation parameters
 sim_output_size=480
@@ -61,26 +67,29 @@ movie_correct_mag_distortion=no
 movie_max_threads=1
 
 global_phase_shift=0.0
-global_out_of_plane_angle=2.5
-global_in_plane_angle=1.5
+global_out_of_plane_angle=5.0
+global_in_plane_angle=3.0
 global_high_resolution_limit=$(echo "print($output_pixel_size*2)" | python3)
 global_padding_value=1.0
 global_mask_radius=0.0
 global_symmetry="O"
-global_max_threads=3
+global_max_threads=6
 # TODO, this should be tied to particle size
 global_min_peak_radius=40.0
 
 # Run with the input model
 global_resolution=7.5
-local_resolution_1=5.0
-local_resolution_2=2.8 # TODO should be based on target res and nyquist, this is just for CTF with other params frozen
-local_resolution_3=3.5
+local_resolution=(7 5 3.0) # zero for abberation refinement (max res)
+local_angle_step=(3 1.75 0.5)
+n_local_iterations=${#local_resolution[@]}
 local_defocus_range_angstroms=500
 local_defocus_step_angstroms=10
 
 # Run with the reconstruction from the first search
 final_resolution=3.5
+
+# Recosntruction parameters
+reconstruct3d_max_threads=8
 
 # To use for load balancing
 gpu_for_movies=0
@@ -96,6 +105,13 @@ local_max_threads=8
 # lock files for coordination 
 
 
-
+# jsut for testing
+run_simulate=no
+run_movie_align=yes
+run_ctf_fit=yes
+run_global=yes
+run_grid=yes
+run_local=yes
+run_reconstruct3d=no
 
 

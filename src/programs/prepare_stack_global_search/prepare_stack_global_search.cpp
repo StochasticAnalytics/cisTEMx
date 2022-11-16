@@ -208,7 +208,9 @@ bool MakeParticleStack::DoCalculation( ) {
         if ( ! read_coordinates ) {
             // look for a peak..
 
-            current_peak = mip_image.FindPeakWithIntegerCoordinates(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
+            current_peak = mip_image.FindPeakWithParabolaFit(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
+
+            // current_peak = mip_image.FindPeakWithIntegerCoordinates(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
             if ( current_peak.value < wanted_threshold )
                 break;
 
@@ -273,6 +275,8 @@ bool MakeParticleStack::DoCalculation( ) {
         output_parameters.psi                                = current_psi;
         output_parameters.theta                              = current_theta;
         output_parameters.phi                                = current_phi;
+        output_parameters.x_shift                            = current_peak.x * pixel_size; // FIXME: if saving a particle stack this is no longer valid, need option for both
+        output_parameters.y_shift                            = current_peak.y * pixel_size;
         output_parameters.defocus_1                          = average_defocus_1 + current_defocus;
         output_parameters.defocus_2                          = average_defocus_2 + current_defocus;
         output_parameters.defocus_angle                      = average_defocus_angle;
@@ -292,6 +296,7 @@ bool MakeParticleStack::DoCalculation( ) {
 
         wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x * pixel_size, current_peak.y * pixel_size, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
 
+        // TODO: make this optional and save param file accordingly..
         micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0,
                             int(current_peak.x - micrograph.physical_address_of_box_center_x),
                             int(current_peak.y - micrograph.physical_address_of_box_center_y), 0);

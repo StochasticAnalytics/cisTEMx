@@ -208,7 +208,7 @@ bool MakeParticleStack::DoCalculation( ) {
         if ( ! read_coordinates ) {
             // look for a peak..
 
-            current_peak = mip_image.FindPeakWithParabolaFit(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
+            current_peak = mip_image.FindPeakWithIntegerCoordinates(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
 
             // current_peak = mip_image.FindPeakWithIntegerCoordinates(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
             if ( current_peak.value < wanted_threshold )
@@ -220,13 +220,14 @@ bool MakeParticleStack::DoCalculation( ) {
 
             // get angles and mask out the local area so it won't be picked again..
 
-            address = 0;
-
             current_peak.x = current_peak.x + mip_image.physical_address_of_box_center_x;
             current_peak.y = current_peak.y + mip_image.physical_address_of_box_center_y;
-
+            address        = current_peak.y * (mip_image.logical_x_dimension + mip_image.padding_jump_value) + current_peak.x;
+            current_phi    = phi_image.real_values[address];
+            current_theta  = theta_image.real_values[address];
+            current_psi    = psi_image.real_values[address];
             //			wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
-
+            address = 0;
             for ( j = 0; j < mip_y_dimension; j++ ) {
                 sq_dist_y = float(pow(j - current_peak.y, 2));
                 for ( i = 0; i < mip_x_dimension; i++ ) {
@@ -235,12 +236,6 @@ bool MakeParticleStack::DoCalculation( ) {
                     // The square centered at the pixel
                     if ( sq_dist_x + sq_dist_y <= min_peak_radius ) {
                         mip_image.real_values[address] = -FLT_MAX;
-                    }
-
-                    if ( sq_dist_x == 0 && sq_dist_y == 0 ) {
-                        current_phi   = phi_image.real_values[address];
-                        current_theta = theta_image.real_values[address];
-                        current_psi   = psi_image.real_values[address];
                     }
 
                     address++;

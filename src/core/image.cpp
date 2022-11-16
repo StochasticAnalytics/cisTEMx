@@ -9942,7 +9942,7 @@ float Image::FindBeamTilt(CTF& input_ctf, float pixel_size, Image& phase_error_o
     return best_score;
 }
 
-Peak Image::FindPeakWithParabolaFit(float wanted_min_radius, float wanted_max_radius) {
+Peak Image::FindPeakWithParabolaFit(float wanted_min_radius, float wanted_max_radius, int wanted_min_distance_from_edges) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(logical_z_dimension == 1, "Only 2D images supported for now");
@@ -9972,7 +9972,7 @@ Peak Image::FindPeakWithParabolaFit(float wanted_min_radius, float wanted_max_ra
     float x_max;
     float y_max;
 
-    integer_peak = FindPeakWithIntegerCoordinates(wanted_min_radius, wanted_max_radius);
+    integer_peak = FindPeakWithIntegerCoordinates(wanted_min_radius, wanted_max_radius, wanted_min_distance_from_edges);
 
     //wxPrintf("Integer Peak = %f, %f\n", integer_peak.x, integer_peak.y);
 

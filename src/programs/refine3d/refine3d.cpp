@@ -1073,7 +1073,7 @@ bool Refine3DApp::DoCalculation( ) {
 
     current_projection = 0;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(std::cerr, timer, parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                                        \
+#pragma omp parallel num_threads(max_threads) default(none) shared(timer, parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                                                   \
                                                                    first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, ctf_refinement, defocus_search_range, defocus_step, normalize_input_3d,                                                                                                                       \
                                                                    refine_statistics, pixel_size, my_progress, outer_mask_radius, mask_falloff, high_resolution_limit, molecular_mass_kDa, percent_used, output_shifts_file, do_local_refinement,                                                                                                                    \
                                                                    binning_factor_refine, low_resolution_limit, input_statistics, output_star_file, current_projection, do_global_search_and_local_refinement, signed_CC_limit, defocus_bias,                                                                                                                        \
@@ -1335,7 +1335,7 @@ bool Refine3DApp::DoCalculation( ) {
 
                 // FIXME: NAMING Binned image isn't really binned, but it is being used to keep a clean copy of the image
                 binned_image.CopyFrom(refine_particle_.particle_image);
-                comparison_object.SetCleanCopyOfParticleImage(false);
+                comparison_object.GetCleanCopyOfParticleImage(false);
                 refine_particle_.InitCTF(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, input_parameters.amplitude_contrast, input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, image_shift_x, image_shift_y);
                 best_score = -std::numeric_limits<float>::max( );
 
@@ -1481,15 +1481,6 @@ bool Refine3DApp::DoCalculation( ) {
                     //				search_particle_.CenterInCorner();
                     //				search_particle_.WeightBySSNR(search_reference_3d_.statistics.part_SSNR);
 
-                    std::cerr << "Input angles are " << input_parameters.phi << " " << input_parameters.theta << " " << input_parameters.psi << std::endl;
-                    std::cerr << "Angular step " << angular_step << std::endl;
-                    euler_search_.InitLocalGrid(my_symmetry, angular_step, input_parameters.phi, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_.pixel_size / high_resolution_limit_search, search_particle_.parameter_map, best_parameters_to_keep);
-                    for ( int il = 0; il < 5; il++ ) {
-                        std::cerr << "for position " << il << " " << euler_search_.list_of_search_parameters[il][0] << " " << euler_search_.list_of_search_parameters[il][1] << std::endl;
-                    }
-
-                    exit(1);
-
                     if ( search_particle_.parameter_map.phi && ! search_particle_.parameter_map.theta ) {
                         euler_search_.InitGrid(my_symmetry, angular_step, 0.0, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_.pixel_size / high_resolution_limit_search, search_particle_.parameter_map, best_parameters_to_keep);
                         if ( euler_search_.best_parameters_to_keep != best_parameters_to_keep )
@@ -1511,7 +1502,6 @@ bool Refine3DApp::DoCalculation( ) {
                         batch_size_optimizer.update_batch_size( );
                     }
                     else if ( search_particle_.parameter_map.phi && search_particle_.parameter_map.theta ) {
-                        // FIXME: Why is there not InitGrid call for this block?
                         if ( ! search_particle_.parameter_map.psi )
                             euler_search_.psi_start = 360.0 - input_parameters.phi;
                         if ( euler_search_.best_parameters_to_keep != best_parameters_to_keep )
@@ -1722,14 +1712,43 @@ bool Refine3DApp::DoCalculation( ) {
                     timer.lap("local refinement local");
                     //				my_time_out = wxDateTime::UNow(); wxPrintf("local refinement done: ms taken = %li\n", my_time_out.Subtract(my_time_in).GetMilliseconds());
                 }
-
+                //			log_diff = input_parameters[15] - output_parameters[15];
+                //			wxPrintf("in = %g out = %g log_diff = %g ratio = %g\n", input_parameters[15], output_parameters[15], log_diff, 1.0 / (1.0 + exp(log_diff)));
+                //			if (log_diff > log_range) log_diff = log_range;
+                //			if (log_diff < - log_range) log_diff = - log_range;
+                // If log_diff >= 0, exp(log_diff) will never be smaller than the random number and the new parameters will be kept.
+                // If log_diff < 0 (new parameters give worse likelihood), new parameters will only be kept if random number smaller than exp(log_diff).
+                //			if ((global_random_number_generator.GetUniformRandom() + 1.0) / 2.0 >= 1.0 / (1.0 + exp(log_diff))) for (i = 0; i < refine_particle_.number_of_parameters; i++) {output_parameters[i] = input_parameters[i];}
+                //			else output_parameters[16] = output_parameters[15] - input_parameters[15];
                 output_parameters.score_change = output_parameters.score - input_parameters.score;
                 //			wxPrintf("in, out, diff = %g %g %g\n", input_parameters.score, output_parameters.score, output_parameters.score_change);
                 if ( output_parameters.score_change < 0.0f )
                     output_parameters = input_parameters;
             }
+            //		else
+            //		{
+            ////			input_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
+            ////			output_parameters.score = - 100.0 * FrealignObjectiveFunction(&comparison_object, cg_starting_point);
+            //			output_parameters.score = input_parameters.score;
+            //			output_parameters.score_change = 0.0f;
+            //		}
+            // refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
 
             refine_particle_.SetParameters(output_parameters);
+            // refine_particle_.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
+
+            //		refine_particle_.SetAlignmentParameters(output_parameters.phi, output_parameters.theta, output_parameters.psi, 0.0, 0.0);
+            //		unbinned_image.ClipInto(refine_particle_.particle_image);
+            //		refine_particle_.particle_image->MultiplyByConstant(binning_factor_refine);
+            //		refine_particle_.particle_image->QuickAndDirtyWriteSlice("part3.mrc", 1);
+            //		refine_particle_.PhaseFlipImage();
+            //		refine_particle_.BeamTiltMultiplyImage();
+            //		refine_particle_.CalculateProjection(projection_image_, input_3d_);
+            //		projection_image_.ClipInto(&unbinned_image);
+            //		unbinned_image.BackwardFFT();
+            //		unbinned_image.ClipInto(&final_image);
+            //		logp = refine_particle_.ReturnLogLikelihood(input_image_, final_image, pixel_size, classification_resolution_limit, alpha, sigma);
+
             timer.start("return log likelihood");
             if ( (refine_particle_.number_of_search_dimensions > 0) && (do_global_search_ || do_local_refinement_) ) {
 

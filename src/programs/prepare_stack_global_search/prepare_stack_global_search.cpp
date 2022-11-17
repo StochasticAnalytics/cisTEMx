@@ -23,7 +23,7 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
     wxString input_best_defocus_filename;
     wxString output_star_filename;
     wxString output_particle_stack_filename;
-    wxString xyz_coords_filename;
+    wxString input_starfilename;
 
     float wanted_threshold;
     float min_peak_radius;
@@ -42,34 +42,35 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
 
     UserInput* my_input = new UserInput("MakeParticleStack", 1.00);
 
-    read_coordinates = my_input->GetYesNoFromUser("Read coordinates from file?", "Should the target coordinates be read from a file instead of search results?", "No");
-    if ( ! read_coordinates ) {
+    read_coordinates = my_input->GetYesNoFromUser("Read coordinates from starfile?", "Should the target coordinates be read from a starfile instead of search results?", "No");
+    if ( read_coordinates ) {
+        input_starfilename = my_input->GetFilenameFromUser("Input starfile", "The file containing information on the targets", "particle_stack.star", true);
+    }
+    else {
         input_mip_filename          = my_input->GetFilenameFromUser("Input MIP file", "The file for saving the maximum intensity projection image", "mip.mrc", true);
         input_best_psi_filename     = my_input->GetFilenameFromUser("Input psi file", "The file containing the best psi image", "psi.mrc", true);
         input_best_theta_filename   = my_input->GetFilenameFromUser("Input theta file", "The file containing the best psi image", "theta.mrc", true);
         input_best_phi_filename     = my_input->GetFilenameFromUser("Input phi file", "The file containing the best phi image", "phi.mrc", true);
         input_best_defocus_filename = my_input->GetFilenameFromUser("Input defocus file", "The file with the best defocus image", "defocus.mrc", false);
-        xyz_coords_filename         = my_input->GetFilenameFromUser("Output x,y,z coordinate file", "The file for saving the x,y,z coordinates of the found targets", "coordinates.txt", false);
+        input_starfilename          = my_input->GetFilenameFromUser("Output x,y,z coordinate file", "The file for saving the x,y,z coordinates of the found targets", "coordinates.txt", false);
         wanted_threshold            = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
         min_peak_radius             = my_input->GetFloatFromUser("Min Peak Radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 1.0);
         result_number               = my_input->GetIntFromUser("Result number to process", "If input files contain results from several searches, which one should be used?", "1", 1);
-    }
-    else {
-        mip_x_dimension     = my_input->GetIntFromUser("X-dimension of original MIP", "The x-dimension of the MIP that contained the peaks listed in the input coordinate file", "5760", 100);
-        mip_y_dimension     = my_input->GetIntFromUser("Y-dimension of original MIP", "The y-dimension of the MIP that contained the peaks listed in the input coordinate file", "4092", 100);
-        xyz_coords_filename = my_input->GetFilenameFromUser("Input x,y,z coordinate file", "The file containing the x,y,z coordinates of the found targets", "coordinates.txt", false);
     }
     input_image_filename           = my_input->GetFilenameFromUser("Input image file", "The image that was searched", "image.mrc", true);
     output_star_filename           = my_input->GetFilenameFromUser("Output star file", "The star file containing the particle alignment parameters", "particle_stack.star", false);
     output_particle_stack_filename = my_input->GetFilenameFromUser("Output particle stack", "The output image stack, containing the picked particles", "particle_stack.mrc", false);
     box_size                       = my_input->GetIntFromUser("Box size for particles (px.)", "The pixel dimensions of the box used to cut out the particles", "256", 10);
-    pixel_size                     = my_input->GetFloatFromUser("Pixel size of image (A)", "Pixel size of input image in Angstroms", "1.0", 0.0);
-    average_defocus_1              = my_input->GetFloatFromUser("Average defocus 1 (A)", "The average defocus estimated for the image in direction 1", "5000.0");
-    average_defocus_2              = my_input->GetFloatFromUser("Average defocus 2 (A)", "The average defocus estimated for the image in direction 2", "5000.0");
-    average_defocus_angle          = my_input->GetFloatFromUser("Average defocus angle (deg)", "The average defocus angle estimated for the image", "0.0");
-    voltage_kV                     = my_input->GetFloatFromUser("Beam energy (keV)", "The energy of the electron beam used to image the sample in kilo electron volts", "300.0", 0.0);
-    spherical_aberration_mm        = my_input->GetFloatFromUser("Spherical aberration (mm)", "Spherical aberration of the objective lens in millimeters", "2.7", 0.0);
-    amplitude_contrast             = my_input->GetFloatFromUser("Amplitude contrast", "Assumed amplitude contrast", "0.07", 0.0, 1.0);
+    if ( ! read_coordinates ) {
+        // We'll grab these from the starfile
+        pixel_size              = my_input->GetFloatFromUser("Pixel size of image (A)", "Pixel size of input image in Angstroms", "1.0", 0.0);
+        average_defocus_1       = my_input->GetFloatFromUser("Average defocus 1 (A)", "The average defocus estimated for the image in direction 1", "5000.0");
+        average_defocus_2       = my_input->GetFloatFromUser("Average defocus 2 (A)", "The average defocus estimated for the image in direction 2", "5000.0");
+        average_defocus_angle   = my_input->GetFloatFromUser("Average defocus angle (deg)", "The average defocus angle estimated for the image", "0.0");
+        voltage_kV              = my_input->GetFloatFromUser("Beam energy (keV)", "The energy of the electron beam used to image the sample in kilo electron volts", "300.0", 0.0);
+        spherical_aberration_mm = my_input->GetFloatFromUser("Spherical aberration (mm)", "Spherical aberration of the objective lens in millimeters", "2.7", 0.0);
+        amplitude_contrast      = my_input->GetFloatFromUser("Amplitude contrast", "Assumed amplitude contrast", "0.07", 0.0, 1.0);
+    }
 
     delete my_input;
 
@@ -80,7 +81,7 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
                                       input_best_theta_filename.ToUTF8( ).data( ), // 2
                                       input_best_phi_filename.ToUTF8( ).data( ), // 3
                                       input_best_defocus_filename.ToUTF8( ).data( ), // 4
-                                      xyz_coords_filename.ToUTF8( ).data( ), // 5
+                                      input_starfilename.ToUTF8( ).data( ), // 5
                                       input_image_filename.ToUTF8( ).data( ), // 6
                                       output_star_filename.ToUTF8( ).data( ), // 7
                                       output_particle_stack_filename.ToUTF8( ).data( ), // 8
@@ -111,7 +112,7 @@ bool MakeParticleStack::DoCalculation( ) {
     wxString input_best_theta_filename      = my_current_job.arguments[2].ReturnStringArgument( );
     wxString input_best_phi_filename        = my_current_job.arguments[3].ReturnStringArgument( );
     wxString input_best_defocus_filename    = my_current_job.arguments[4].ReturnStringArgument( );
-    wxString xyz_coords_filename            = my_current_job.arguments[5].ReturnStringArgument( );
+    wxString input_starfilename             = my_current_job.arguments[5].ReturnStringArgument( );
     wxString input_image_filename           = my_current_job.arguments[6].ReturnStringArgument( );
     wxString output_star_filename           = my_current_job.arguments[7].ReturnStringArgument( );
     wxString output_particle_stack_filename = my_current_job.arguments[8].ReturnStringArgument( );
@@ -153,20 +154,20 @@ bool MakeParticleStack::DoCalculation( ) {
     long  text_file_access_type;
     int   i, j;
 
-    float coordinates[8];
-    if ( read_coordinates )
-        text_file_access_type = OPEN_TO_READ;
-    else
-        text_file_access_type = OPEN_TO_WRITE;
-    NumericTextFile     coordinate_file(xyz_coords_filename, text_file_access_type, 8);
+    cisTEMParameters    input_star_file;
     cisTEMParameterLine output_parameters;
     cisTEMParameters    output_star_file;
 
-    // Preallocate space: number of peaks not known, so assume large enough number
-    output_star_file.PreallocateMemoryAndBlank(1000000);
+    if ( read_coordinates ) {
+        input_star_file.ReadFromcisTEMStarFile(input_starfilename.ToStdString( ), false);
+        // all that should change are the x/y shifts as we cut out from the micrograph
+        output_star_file = input_star_file;
+    }
+    else {
+        output_star_file.PreallocateMemoryAndBlank(cistem::maximum_number_of_detections);
+    }
 
     if ( ! read_coordinates ) {
-        coordinate_file.WriteCommentLine("         Psi          Theta            Phi              X              Y              Z      PixelSize           Peak");
 
         mip_image.QuickAndDirtyReadSlice(input_mip_filename.ToStdString( ), result_number);
         psi_image.QuickAndDirtyReadSlice(input_best_psi_filename.ToStdString( ), result_number);
@@ -180,28 +181,17 @@ bool MakeParticleStack::DoCalculation( ) {
 
     micrograph.QuickAndDirtyReadSlice(input_image_filename.ToStdString( ), 1);
     micrograph_mean = micrograph.ReturnAverageOfRealValues( );
-    //	address = 0;
-    //	for (j = 0; j < micrograph.logical_y_dimension; j++)
-    //	{
-    //		for (i = 0; i < micrograph.logical_x_dimension; i++)
-    //		{
-    //			address++;
-    //			micrograph.real_values[address] = i + 10000.0f * j;
-    //		}
-    //		address += micrograph.padding_jump_value;
-    //	}
 
     // assume square
-
-    current_particle.Allocate(box_size, box_size, true);
-
     // loop until the found peak is below the threshold
     MRCFile output_file;
-    std::cerr << "Output file name " << output_particle_stack_filename.ToStdString( ) << std::endl;
+    if ( read_coordinates ) {
+        current_particle.Allocate(box_size, box_size, true);
 
-    output_file.OpenFile(output_particle_stack_filename.ToStdString( ), true, false);
-    output_file.SetPixelSize(pixel_size);
-    output_file.SetOutputToFP16( );
+        output_file.OpenFile(output_particle_stack_filename.ToStdString( ), true, false);
+        output_file.SetPixelSize(pixel_size);
+        output_file.SetOutputToFP16( );
+    }
 
     wxPrintf("\n");
     while ( 1 == 1 ) {
@@ -226,7 +216,8 @@ bool MakeParticleStack::DoCalculation( ) {
             current_phi    = phi_image.real_values[address];
             current_theta  = theta_image.real_values[address];
             current_psi    = psi_image.real_values[address];
-            //			wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
+            wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
+            wxPrintf("At address, with angles = %li, %f, %f, %f", address, current_phi, current_theta, current_psi);
             address = 0;
             for ( j = 0; j < mip_y_dimension; j++ ) {
                 sq_dist_y = float(pow(j - current_peak.y, 2));
@@ -242,72 +233,74 @@ bool MakeParticleStack::DoCalculation( ) {
                 }
                 address += mip_image.padding_jump_value;
             }
-            coordinates[0] = current_psi;
-            coordinates[1] = current_theta;
-            coordinates[2] = current_phi;
-            coordinates[3] = current_peak.x * pixel_size;
-            coordinates[4] = current_peak.y * pixel_size;
-            coordinates[5] = current_defocus;
-            coordinates[6] = current_pixel_size;
-            coordinates[7] = current_peak.value;
-            coordinate_file.WriteLine(coordinates);
+            output_parameters.SetAllToZero( );
+            output_parameters.position_in_stack                  = number_of_peaks_found;
+            output_parameters.psi                                = current_psi;
+            output_parameters.theta                              = current_theta;
+            output_parameters.phi                                = current_phi;
+            output_parameters.x_shift                            = current_peak.x * pixel_size; // FIXME: if saving a particle stack this is no longer valid, need option for both
+            output_parameters.y_shift                            = current_peak.y * pixel_size;
+            output_parameters.defocus_1                          = average_defocus_1 + current_defocus;
+            output_parameters.defocus_2                          = average_defocus_2 + current_defocus;
+            output_parameters.defocus_angle                      = average_defocus_angle;
+            output_parameters.pixel_size                         = pixel_size;
+            output_parameters.microscope_voltage_kv              = voltage_kV;
+            output_parameters.microscope_spherical_aberration_mm = spherical_aberration_mm;
+            output_parameters.amplitude_contrast                 = amplitude_contrast;
+            output_parameters.occupancy                          = 1.0f;
+            output_parameters.sigma                              = 10.0f;
+            output_parameters.logp                               = 5000.0f;
+            output_parameters.score                              = 50.0f;
+            output_parameters.image_is_active                    = 1;
+            output_parameters.stack_filename                     = output_particle_stack_filename;
+            output_parameters.original_image_filename            = input_image_filename;
+
+            output_star_file.all_parameters[number_of_peaks_found] = output_parameters;
         }
         else {
-            coordinate_file.ReadLine(coordinates);
+            // Get the x/y position and convert from ang to pixels
+            current_peak.x = output_star_file.all_parameters.Item(number_of_peaks_found).x_shift / output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
+            current_peak.y = output_star_file.all_parameters.Item(number_of_peaks_found).y_shift / output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
+
+            // First adjust to an offset from the center of the image
+            output_star_file.all_parameters.Item(number_of_peaks_found).x_shift = current_peak.x - float(micrograph.physical_address_of_box_center_x);
+            output_star_file.all_parameters.Item(number_of_peaks_found).y_shift = current_peak.y - float(micrograph.physical_address_of_box_center_y);
+
+            // Now grab the non-integer part of the shift
+            output_star_file.all_parameters.Item(number_of_peaks_found).x_shift = output_star_file.all_parameters.Item(number_of_peaks_found).x_shift - myroundint(output_star_file.all_parameters.Item(number_of_peaks_found).x_shift);
+            output_star_file.all_parameters.Item(number_of_peaks_found).y_shift = output_star_file.all_parameters.Item(number_of_peaks_found).y_shift - myroundint(output_star_file.all_parameters.Item(number_of_peaks_found).y_shift);
+
+            // Finally convert back to angstroms
+            output_star_file.all_parameters.Item(number_of_peaks_found).x_shift = output_star_file.all_parameters.Item(number_of_peaks_found).x_shift * output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
+            output_star_file.all_parameters.Item(number_of_peaks_found).y_shift = output_star_file.all_parameters.Item(number_of_peaks_found).y_shift * output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
+
+            // lastly post increment the counter on peaks found
             number_of_peaks_found++;
-            current_psi        = coordinates[0];
-            current_theta      = coordinates[1];
-            current_phi        = coordinates[2];
-            current_peak.x     = coordinates[3] / pixel_size;
-            current_peak.y     = coordinates[4] / pixel_size;
-            current_defocus    = coordinates[5];
-            current_pixel_size = coordinates[6];
-            current_peak.value = coordinates[7];
         }
 
-        output_parameters.SetAllToZero( );
-        output_parameters.position_in_stack                  = number_of_peaks_found;
-        output_parameters.psi                                = current_psi;
-        output_parameters.theta                              = current_theta;
-        output_parameters.phi                                = current_phi;
-        output_parameters.x_shift                            = current_peak.x * pixel_size; // FIXME: if saving a particle stack this is no longer valid, need option for both
-        output_parameters.y_shift                            = current_peak.y * pixel_size;
-        output_parameters.defocus_1                          = average_defocus_1 + current_defocus;
-        output_parameters.defocus_2                          = average_defocus_2 + current_defocus;
-        output_parameters.defocus_angle                      = average_defocus_angle;
-        output_parameters.pixel_size                         = pixel_size;
-        output_parameters.microscope_voltage_kv              = voltage_kV;
-        output_parameters.microscope_spherical_aberration_mm = spherical_aberration_mm;
-        output_parameters.amplitude_contrast                 = amplitude_contrast;
-        output_parameters.occupancy                          = 1.0f;
-        output_parameters.sigma                              = 10.0f;
-        output_parameters.logp                               = 5000.0f;
-        output_parameters.score                              = 50.0f;
-        output_parameters.image_is_active                    = 1;
-        output_parameters.stack_filename                     = output_particle_stack_filename;
-        output_parameters.original_image_filename            = input_image_filename;
+        // wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x * pixel_size, current_peak.y * pixel_size, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
 
-        output_star_file.all_parameters[number_of_peaks_found] = output_parameters;
+        if ( read_coordinates ) {
+            micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0,
+                                myroundint(current_peak.x - micrograph.physical_address_of_box_center_x),
+                                myroundint(current_peak.y - micrograph.physical_address_of_box_center_y), 0);
+            //		micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0, int(current_peak.x * pixel_size), int(current_peak.y * pixel_size), 0);
+            //		micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0, int(- current_peak.x * pixel_size + current_particle.physical_address_of_box_center_x), int(- current_peak.y * pixel_size + current_particle.physical_address_of_box_center_y), 0);
+            variance = current_particle.ReturnVarianceOfRealValues( );
+            if ( variance == 0.0f )
+                variance = 1.0f;
+            current_particle.AddMultiplyConstant(-current_particle.ReturnAverageOfRealValuesOnEdges( ), 1.0f / sqrtf(variance));
 
-        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x * pixel_size, current_peak.y * pixel_size, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
+            current_particle.WriteSlice(&output_file, number_of_peaks_found);
+        }
 
-        // TODO: make this optional and save param file accordingly..
-        micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0,
-                            int(current_peak.x - micrograph.physical_address_of_box_center_x),
-                            int(current_peak.y - micrograph.physical_address_of_box_center_y), 0);
-        //		micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0, int(current_peak.x * pixel_size), int(current_peak.y * pixel_size), 0);
-        //		micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0, int(- current_peak.x * pixel_size + current_particle.physical_address_of_box_center_x), int(- current_peak.y * pixel_size + current_particle.physical_address_of_box_center_y), 0);
-        variance = current_particle.ReturnVarianceOfRealValues( );
-        if ( variance == 0.0f )
-            variance = 1.0f;
-        current_particle.AddMultiplyConstant(-current_particle.ReturnAverageOfRealValuesOnEdges( ), 1.0f / sqrtf(variance));
-
-        current_particle.WriteSlice(&output_file, number_of_peaks_found);
-
-        if ( read_coordinates && coordinate_file.number_of_lines == number_of_peaks_found )
+        if ( read_coordinates && input_star_file.ReturnNumberofLines( ) == number_of_peaks_found )
             break;
     }
-    output_file.CloseFile( );
+
+    if ( read_coordinates ) {
+        output_file.CloseFile( );
+    }
 
     output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, 1, number_of_peaks_found);
 

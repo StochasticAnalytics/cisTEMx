@@ -14,9 +14,18 @@ mkdir -p $output_dir/global_search
 
 
 # When each movie is completed, it will record that it is ready to be processed.
+do_parallel=1
+if [[ $do_parallel -eq 1 ]] ; then
 ls $movie_dir/* | parallel --bar --progress -j${max_movies_per_gpu} ./auto_movie_align.sh {}
+else
 
-# ls $movie_dir/* | while read a; do  ./auto_movie_align.sh $a ; exit 0 ; done
+ls $movie_dir/* | 
+    while read a; do  
+        ./auto_movie_align.sh $a 
+        exit 0 
+    done
+
+fi
 
 
 

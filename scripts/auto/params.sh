@@ -1,6 +1,6 @@
 #!/bin/bash
 
-output_dir=test_grid
+output_dir=sweep_10
 
 bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif ${HOME}/git/cisTEM/build/intel-gpu-debug-profile/src"
 pdb_file=7a4m_assembly_no_C_T.pdb
@@ -8,7 +8,7 @@ pdb_file=7a4m_assembly_no_C_T.pdb
 
 movie_dir=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/movies
 # movie_dir=/scratch/salina/EMPIAR-10568-apoferritin-g4-EER/data/Images-Disc1/GridSquare_8824187/Data
-use_movie_gain_ref="no"
+use_movie_gain_ref="yes"
 movie_gain_ref=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/gain_1xUps_8k.mrc
 
 total_exposure=52.7
@@ -67,8 +67,8 @@ movie_correct_mag_distortion=no
 movie_max_threads=1
 
 global_phase_shift=0.0
-global_out_of_plane_angle=5.0
-global_in_plane_angle=3.0
+global_out_of_plane_angle=10
+global_in_plane_angle=5
 global_high_resolution_limit=$(echo "print($output_pixel_size*2)" | python3)
 global_padding_value=1.0
 global_mask_radius=0.0
@@ -77,16 +77,16 @@ global_max_threads=6
 # TODO, this should be tied to particle size
 global_min_peak_radius=40.0
 
-# Run with the input model
+# Run with the input model# zero for abberation refinement (max res)
 global_resolution=7.5
-local_resolution=(7 5 3.0) # zero for abberation refinement (max res)
-local_angle_step=(3 1.75 0.5)
+local_resolution=(10 8 6 4 3 0 2.8)
+local_angle_step=(5 4 3 2 1 1 0.5)
 n_local_iterations=${#local_resolution[@]}
-local_defocus_range_angstroms=500
-local_defocus_step_angstroms=10
+local_defocus_range_angstroms=250
+local_defocus_step_angstroms=25
 
 # Run with the reconstruction from the first search
-final_resolution=3.5
+final_resolution=2.0
 
 # Recosntruction parameters
 reconstruct3d_max_threads=8
@@ -106,7 +106,7 @@ local_max_threads=8
 
 
 # jsut for testing
-run_simulate=no
+run_simulate=yes
 run_movie_align=yes
 run_ctf_fit=yes
 run_global=yes

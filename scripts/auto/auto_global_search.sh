@@ -44,6 +44,7 @@ echo "Wanted threshold is  - $wanted_threshold - "
 echo "amp $microscope_amplitude_contrast"
 result_number=1
 
+# We are just making a star file to work with micrographs at this piont
 APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_for_global} ${bin_cmd}/prepare_stack_global_search << EOF 
 no
 ${output_dir}/global_search/$(basename ${dir_name})/aligned_img_scaled_mip.mrc
@@ -56,8 +57,8 @@ ${wanted_threshold}
 ${global_min_peak_radius}
 $result_number
 ${dir_name}/aligned_img.mrc
-${output_dir}/particle_stacks/$(basename ${dir_name})/particle_stack.star
-${output_dir}/particle_stacks/$(basename ${dir_name})/particle_stack.mrc
+${output_dir}/particle_stacks/$(basename ${dir_name})/micrograph.star
+${output_dir}/particle_stacks/$(basename ${dir_name})/micrograph.mrc
 ${sim_output_size}
 $output_pixel_size
 $defocus_1

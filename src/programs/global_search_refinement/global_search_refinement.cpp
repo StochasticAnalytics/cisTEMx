@@ -11,7 +11,7 @@
 
 #include "../refine3d/ProjectionComparisonObjects.h"
 
-#define PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
+//#define PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
 
 #define SHIFT_AND_RECALCULATE_SCORE
 
@@ -52,13 +52,98 @@ class GlobalSearchRefinementApp : public MyApp {
 
 // TODO: replace this with the ProjectionComparisonObject class and setup for GPU
 class TemplateComparisonObject {
+
+    long   _n_pixels_in_variance_estimate;
+    double _sum_of_pixel_values;
+    double _sum_of_pixel_values_squared;
+    long   _number_of_real_space_pixels;
+    double _variance_estimate;
+    bool   _is_score_adjusted_by_size;
+    int    _n_updates;
+
+    EmpiricalDistribution _score_distribution;
+    float                 _mask_radius;
+
   public:
     Image* input_reconstruction;
     Image* windowed_particle;
     Image* projection_filter;
-
+    Image  current_projection;
+#ifdef SHIFT_AND_RECALCULATE_SCORE
+    Image copy_of_current_projection;
+#endif
     AnglesAndShifts* angles;
     float            pixel_size_factor;
+
+    void ZeroVarianceEstimate( ) {
+        _n_pixels_in_variance_estimate = 0;
+        _sum_of_pixel_values           = 0;
+        _sum_of_pixel_values_squared   = 0;
+        _number_of_real_space_pixels   = projection_filter->number_of_real_space_pixels;
+        _is_score_adjusted_by_size     = false;
+        _n_updates                     = 0;
+        _variance_estimate             = sqrt(double(_number_of_real_space_pixels));
+    }
+
+    void ZeroImages( ) {
+        current_projection.Allocate(projection_filter->logical_x_dimension, projection_filter->logical_x_dimension, false);
+        current_projection.SetToConstant(0.0f);
+        // just in case we didn't allocate, make sure we don't trip up the backward FFT routine
+        current_projection.is_in_real_space = false;
+#ifdef SHIFT_AND_RECALCULATE_SCORE
+        copy_of_current_projection.Allocate(projection_filter->logical_x_dimension, projection_filter->logical_x_dimension, false);
+        copy_of_current_projection.SetToConstant(0.0f);
+        // just in case we didn't allocate, make sure we don't trip up the backward FFT routine
+        copy_of_current_projection.is_in_real_space = false;
+#endif
+    }
+
+    void Zero(float wanted_mask_radius) {
+        // We need to call ZeroImages first, or else there is a change we get zero image size
+        ZeroImages( );
+        ZeroVarianceEstimate( );
+        _score_distribution.Reset( );
+        _mask_radius = wanted_mask_radius;
+    }
+
+    float GetSigma( ) {
+        return _score_distribution.GetSampleStandardDeviation( );
+    }
+
+    float GetMean( ) {
+        return _score_distribution.GetSampleMean( );
+    }
+
+    void UpdateVarianceEstimate( ) {
+        // FIXME this ignores the possible use of the non copy
+
+        copy_of_current_projection.UpdateDistributionOfRealValues(&_score_distribution, _mask_radius);
+        // wxPrintf("Update %i: %f %f %f %ld\n", _n_updates, _variance_estimate, _sum_of_pixel_values, _sum_of_pixel_values_squared, _number_of_real_space_pixels);
+    }
+
+    void AdjustScoreByNumberOfPixels(float& score) {
+        MyDebugAssertTrue(_number_of_real_space_pixels > 0, "Number of real space pixels is zero");
+        score *= _variance_estimate;
+        _is_score_adjusted_by_size = true;
+    }
+
+    void GetPeak(Peak& my_peak, bool is_copy_of_prj) {
+        if ( is_copy_of_prj )
+            my_peak = copy_of_current_projection.FindPeakWithParabolaFit( );
+        else
+            my_peak = current_projection.FindPeakWithParabolaFit( );
+    }
+
+    void AdjustScoreByVarianceEstimate(float& score) {
+        float undo_prior_adjustment = 1.0f;
+        if ( _is_score_adjusted_by_size ) {
+            undo_prior_adjustment = _variance_estimate;
+        }
+        // wxPrintf("Variance estimate is %f, bool is %i %f\n", _score_distribution.GetSampleStandardDeviation( ), _is_score_adjusted_by_size, undo_prior_adjustment);
+
+        score /= undo_prior_adjustment;
+        score = (score - _score_distribution.GetSampleMean( )) / _score_distribution.GetSampleStandardDeviation( );
+    }
 
     //	int							slice = 1;
 };
@@ -66,66 +151,75 @@ class TemplateComparisonObject {
 // This is the function which will be minimized
 Peak TemplateScore(void* scoring_parameters) {
     TemplateComparisonObject* comparison_object = reinterpret_cast<TemplateComparisonObject*>(scoring_parameters);
-    Image                     current_projection;
     //	Peak box_peak;
 
     // FIXME: ALlocating this on every loop is bonkers
-    current_projection.Allocate(comparison_object->projection_filter->logical_x_dimension, comparison_object->projection_filter->logical_x_dimension, false);
-    if ( comparison_object->input_reconstruction->logical_x_dimension != current_projection.logical_x_dimension ) {
+    comparison_object->ZeroImages( );
+    if ( comparison_object->input_reconstruction->logical_x_dimension != comparison_object->current_projection.logical_x_dimension ) {
         Image padded_projection;
         padded_projection.Allocate(comparison_object->input_reconstruction->logical_x_dimension, comparison_object->input_reconstruction->logical_x_dimension, false);
         comparison_object->input_reconstruction->ExtractSlice(padded_projection, *comparison_object->angles, 1.0f, false);
         padded_projection.SwapRealSpaceQuadrants( );
         padded_projection.BackwardFFT( );
-        padded_projection.ChangePixelSize(&current_projection, comparison_object->pixel_size_factor, 0.001f, true);
+        padded_projection.ChangePixelSize(&comparison_object->current_projection, comparison_object->pixel_size_factor, 0.001f, true);
     }
     else {
-        comparison_object->input_reconstruction->ExtractSlice(current_projection, *comparison_object->angles, 1.0f, false);
-        current_projection.SwapRealSpaceQuadrants( );
-        current_projection.BackwardFFT( );
-        current_projection.ChangePixelSize(&current_projection, comparison_object->pixel_size_factor, 0.001f, true);
+        comparison_object->input_reconstruction->ExtractSlice(comparison_object->current_projection, *comparison_object->angles, 1.0f, false);
+        comparison_object->current_projection.SwapRealSpaceQuadrants( );
+        comparison_object->current_projection.BackwardFFT( );
+        comparison_object->current_projection.ChangePixelSize(&comparison_object->current_projection, comparison_object->pixel_size_factor, 0.001f, true);
     }
 
-    current_projection.MultiplyPixelWise(*comparison_object->projection_filter);
+    comparison_object->current_projection.MultiplyPixelWise(*comparison_object->projection_filter);
 
-    current_projection.ZeroCentralPixel( );
-    current_projection.DivideByConstant(sqrtf(current_projection.ReturnSumOfSquares( )));
+    comparison_object->current_projection.ZeroCentralPixel( );
+    comparison_object->current_projection.DivideByConstant(sqrtf(comparison_object->current_projection.ReturnSumOfSquares( )));
+
 #ifdef SHIFT_AND_RECALCULATE_SCORE
-    Image copy_of_current_projection;
-    copy_of_current_projection.CopyFrom(&current_projection);
+    comparison_object->copy_of_current_projection.CopyFrom(&comparison_object->current_projection);
 #endif
 
 #ifdef MKL
     // Use the MKL
-    vmcMulByConj(current_projection.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(comparison_object->windowed_particle->complex_values), reinterpret_cast<MKL_Complex8*>(current_projection.complex_values), reinterpret_cast<MKL_Complex8*>(current_projection.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
+    vmcMulByConj(comparison_object->current_projection.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(comparison_object->windowed_particle->complex_values), reinterpret_cast<MKL_Complex8*>(comparison_object->current_projection.complex_values), reinterpret_cast<MKL_Complex8*>(comparison_object->current_projection.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
 #else
-    for ( long pixel_counter = 0; pixel_counter < current_projection.real_memory_allocated / 2; pixel_counter++ ) {
-        current_projection.complex_values[pixel_counter] = std::conj(current_projection.complex_values[pixel_counter]) * comparison_object->windowed_particle->complex_values[pixel_counter];
+    for ( long pixel_counter = 0; pixel_counter < comparison_object->current_projection.real_memory_allocated / 2; pixel_counter++ ) {
+        comparison_object->current_projection.complex_values[pixel_counter] = std::conj(comparison_object->current_projection.complex_values[pixel_counter]) * comparison_object->windowed_particle->complex_values[pixel_counter];
     }
 #endif
-    current_projection.BackwardFFT( );
+    comparison_object->current_projection.BackwardFFT( );
+
     //	wxPrintf("ping");
 
     // FIXME: This is a hack to get the peak to work
-    Peak tmp_peak = current_projection.FindPeakWithParabolaFit( );
-    tmp_peak.value *= sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension);
+    Peak tmp_peak;
+    comparison_object->GetPeak(tmp_peak, false);
+    comparison_object->AdjustScoreByNumberOfPixels(tmp_peak.value);
+
+    float initial_x = tmp_peak.x;
+    float initial_y = tmp_peak.y;
 
 #ifdef SHIFT_AND_RECALCULATE_SCORE
-    copy_of_current_projection.PhaseShift(tmp_peak.x, tmp_peak.y);
+    comparison_object->copy_of_current_projection.PhaseShift(initial_x, initial_y);
 #ifdef MKL
     // Use the MKL
-    vmcMulByConj(copy_of_current_projection.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(comparison_object->windowed_particle->complex_values), reinterpret_cast<MKL_Complex8*>(copy_of_current_projection.complex_values), reinterpret_cast<MKL_Complex8*>(copy_of_current_projection.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
+    vmcMulByConj(comparison_object->copy_of_current_projection.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(comparison_object->windowed_particle->complex_values), reinterpret_cast<MKL_Complex8*>(comparison_object->copy_of_current_projection.complex_values), reinterpret_cast<MKL_Complex8*>(comparison_object->copy_of_current_projection.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
 #else
     for ( long pixel_counter = 0; pixel_counter < current_projection.real_memory_allocated / 2; pixel_counter++ ) {
-        copy_of_current_projection.complex_values[pixel_counter] = std::conj(copy_of_current_projection.complex_values[pixel_counter]) * comparison_object->windowed_particle->complex_values[pixel_counter];
+        comparison_object->copy_of_current_projection.complex_values[pixel_counter] = std::conj(comparison_object->copy_of_current_projection.complex_values[pixel_counter]) * comparison_object->windowed_particle->complex_values[pixel_counter];
     }
+
 #endif
-    copy_of_current_projection.BackwardFFT( );
     //	wxPrintf("ping");
+    comparison_object->copy_of_current_projection.BackwardFFT( );
+    comparison_object->UpdateVarianceEstimate( );
 
     // FIXME: This is a hack to get the peak to work
-    tmp_peak = copy_of_current_projection.FindPeakWithParabolaFit( );
-    tmp_peak.value *= sqrtf(copy_of_current_projection.logical_x_dimension * copy_of_current_projection.logical_y_dimension);
+    comparison_object->GetPeak(tmp_peak, true);
+    comparison_object->AdjustScoreByNumberOfPixels(tmp_peak.value);
+    tmp_peak.x += initial_x;
+    tmp_peak.y += initial_y;
+
 #endif
     return tmp_peak;
 }
@@ -289,7 +383,6 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     float best_psi_score;
     float best_defocus_score;
 
-    float defocus_step;
     float score_adjustment;
     //	float offset_warning_threshold = 10.0f;
 
@@ -387,7 +480,7 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
 #pragma omp parallel num_threads(max_threads) default(none) shared(std::cerr, number_of_peaks_found, input_image, mask_falloff, wanted_mask_radius, input_star_file, output_star_file,  \
                                                                    defocus_search_range, angular_step, in_plane_angular_step, whitening_filter, input_reconstruction, min_peak_radius2, \
-                                                                   input_reconstruction_file, max_threads, defocus_step, low_resolution_limit, high_resolution_limit,                   \
+                                                                   input_reconstruction_file, max_threads, low_resolution_limit, high_resolution_limit,                                 \
                                                                    all_peak_changes, all_peak_infos) private(current_peak, sq_dist_x, sq_dist_y, address,                               \
                                                                                                              defocus_i, size_i,                                                         \
                                                                                                              best_defocus_score, best_phi_score, best_theta_score, best_psi_score,      \
@@ -492,6 +585,7 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
             if ( low_resolution_limit > 0.0 )
                 projection_filter_.CosineMask(pixel_size_ / low_resolution_limit, pixel_size_ / 100.0, true);
 
+            template_object.Zero(mask_radius_ / pixel_size_);
             best_peak_              = TemplateScore(&template_object);
             input_parameters_.score = best_peak_.value;
 
@@ -513,88 +607,102 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
                     wxPrintf("Refining defocus range: %f in step size %f\n", defocus_search_range, defocus_search_step);
                 }
 #endif
-                for ( int iDefocus = -myroundint(float(defocus_search_range) / float(defocus_step)); iDefocus <= myroundint(float(defocus_search_range) / float(defocus_step)); iDefocus++ ) {
+                for ( int iDefocus = -myroundint(float(defocus_search_range) / float(defocus_search_step)); iDefocus <= myroundint(float(defocus_search_range) / float(defocus_search_step)); iDefocus++ ) {
 
-                    ctf_.SetDefocus((initial_defocus1 + iDefocus * defocus_step) / pixel_size_, (initial_defocus2 + iDefocus * defocus_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
+                    ctf_.SetDefocus((initial_defocus1 + iDefocus * defocus_search_step) / pixel_size_, (initial_defocus2 + iDefocus * defocus_search_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
                     projection_filter_.CalculateCTFImage(ctf_);
                     // FIXME: we shoulid be applying the image curve to the volume projection, not this.
 
-                    // projection_filter_.ApplyCurveFilter(&whitening_filter);
+                    projection_filter_.ApplyCurveFilter(&whitening_filter);
                     if ( high_resolution_limit > 0.0 )
                         projection_filter_.CosineMask(pixel_size_ / high_resolution_limit, pixel_size_ / 100.0);
                     if ( low_resolution_limit > 0.0 )
                         projection_filter_.CosineMask(pixel_size_ / low_resolution_limit, pixel_size_ / 100.0, true);
                     template_peak = TemplateScore(&template_object);
 
+                    // wxPrintf("For defocus1 %f, offset %i, score is %f\n", initial_defocus1 + iDefocus * defocus_search_step, iDefocus, template_peak.value);
+
                     if ( template_peak.value > best_peak_.value ) {
                         best_peak_    = template_peak;
                         best_iDefocus = iDefocus;
                     }
                 }
+#ifdef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
+#pragma omp critical
+                {
+                    wxPrintf("Best defocus was: %i \n", best_iDefocus);
+                }
+#endif
+            }
+            else {
+
+                int n_phi_steps   = 0;
+                int n_theta_steps = 0;
+                int n_psi_steps   = 0;
+                // defocus_i = 0;
+
+                // TODO: This would be a place to constrain the fit defocus across the image before moving on, but this would require joining all threads.
+                // For now, I am just removing the outermost loop which was over the defocus range. (def, euler sphere, in plane)
+                // for ( ll = 0; ll < 2; ll = -2 * ll + 1 ) {
+                //     if ( (ll != 0) && (! do_defocus_refinement) )
+                //         break;
+
+                do { // while ( best_peak_.value > best_defocus_score );
+                    best_defocus_score = best_peak_.value;
+                    // if ( do_defocus_refinement )
+                    //     defocus_i += 1;
+                    // make the projection filter, which will be CTF * whitening filter
+                    ctf_.SetDefocus((initial_defocus1 + best_iDefocus * defocus_search_step) / pixel_size_, (initial_defocus2 + best_iDefocus * defocus_search_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
+                    projection_filter_.CalculateCTFImage(ctf_);
+                    projection_filter_.ApplyCurveFilter(&whitening_filter);
+                    if ( high_resolution_limit > 0.0 )
+                        projection_filter_.CosineMask(pixel_size_ / high_resolution_limit, pixel_size_ / 100.0);
+                    if ( low_resolution_limit > 0.0 )
+                        projection_filter_.CosineMask(pixel_size_ / low_resolution_limit, pixel_size_ / 100.0, true);
+
+                    for ( int i_phi = 0; i_phi < 2; i_phi = -2 * i_phi + 1 ) {
+                        do { // while ( best_peak_.value > best_phi_score );
+                            best_phi_score = best_peak_.value;
+                            n_phi_steps += i_phi;
+                            for ( int i_theta = 0; i_theta < 2; i_theta = -2 * i_theta + 1 ) {
+                                do { // while ( best_peak_.value > best_theta_score );
+                                    best_theta_score = best_peak_.value;
+                                    n_theta_steps += i_theta;
+                                    for ( int i_psi = 0; i_psi < 2; i_psi = -2 * i_psi + 1 ) {
+                                        do { // while ( best_peak_.value > best_psi_score );
+                                            best_psi_score = best_peak_.value;
+                                            n_psi_steps += i_psi;
+                                            // FIXME: In the First loop we should have our starting score = best score, which should break out of the while loop (which is a waste)
+                                            angles.Init(initial_phi + n_phi_steps * angular_step, initial_theta + n_theta_steps * angular_step, initial_psi + n_psi_steps * in_plane_angular_step, 0.0, 0.0);
+                                            template_peak = TemplateScore(&template_object);
+                                            // std::cerr << "n_psi and i_psi: " << n_psi_steps << " " << i_psi << std::endl;
+                                            // std::cerr << "testing angles " << angles.ReturnPhiAngle( ) << " " << angles.ReturnThetaAngle( ) << " " << angles.ReturnPsiAngle( ) << " score " << template_peak.value << std::endl;
+
+                                            if ( template_peak.value > best_peak_.value ) {
+                                                best_peak_ = template_peak;
+                                                best_phi   = initial_phi + n_phi_steps * angular_step;
+                                                best_theta = initial_theta + n_theta_steps * angular_step;
+                                                best_psi   = initial_psi + n_psi_steps * in_plane_angular_step;
+                                            }
+
+                                        } while ( best_peak_.value > best_psi_score );
+                                        n_psi_steps -= i_psi;
+                                    }
+                                } while ( best_peak_.value > best_theta_score );
+                                n_theta_steps -= i_theta;
+                            }
+                        } while ( best_peak_.value > best_phi_score );
+                        n_phi_steps -= i_phi;
+                    }
+                } while ( best_peak_.value > best_defocus_score );
+                // if ( do_defocus_refinement )
+                //     defocus_i -= ll;
+                // }
             }
 
-            int n_phi_steps   = 0;
-            int n_theta_steps = 0;
-            int n_psi_steps   = 0;
-            // defocus_i = 0;
-
-            // TODO: This would be a place to constrain the fit defocus across the image before moving on, but this would require joining all threads.
-            // For now, I am just removing the outermost loop which was over the defocus range. (def, euler sphere, in plane)
-            // for ( ll = 0; ll < 2; ll = -2 * ll + 1 ) {
-            //     if ( (ll != 0) && (! do_defocus_refinement) )
-            //         break;
-
-            do { // while ( best_peak_.value > best_defocus_score );
-                best_defocus_score = best_peak_.value;
-                // if ( do_defocus_refinement )
-                //     defocus_i += 1;
-                // make the projection filter, which will be CTF * whitening filter
-                ctf_.SetDefocus((initial_defocus1 + best_iDefocus * defocus_step) / pixel_size_, (initial_defocus2 + best_iDefocus * defocus_step) / pixel_size_, deg_2_rad(input_parameters_.defocus_angle));
-                projection_filter_.CalculateCTFImage(ctf_);
-                // projection_filter_.ApplyCurveFilter(&whitening_filter);
-                if ( high_resolution_limit > 0.0 )
-                    projection_filter_.CosineMask(pixel_size_ / high_resolution_limit, pixel_size_ / 100.0);
-                if ( low_resolution_limit > 0.0 )
-                    projection_filter_.CosineMask(pixel_size_ / low_resolution_limit, pixel_size_ / 100.0, true);
-
-                for ( int i_phi = 0; i_phi < 2; i_phi = -2 * i_phi + 1 ) {
-                    do { // while ( best_peak_.value > best_phi_score );
-                        best_phi_score = best_peak_.value;
-                        n_phi_steps += i_phi;
-                        for ( int i_theta = 0; i_theta < 2; i_theta = -2 * i_theta + 1 ) {
-                            do { // while ( best_peak_.value > best_theta_score );
-                                best_theta_score = best_peak_.value;
-                                n_theta_steps += i_theta;
-                                for ( int i_psi = 0; i_psi < 2; i_psi = -2 * i_psi + 1 ) {
-                                    do { // while ( best_peak_.value > best_psi_score );
-                                        best_psi_score = best_peak_.value;
-                                        n_psi_steps += i_psi;
-                                        // FIXME: In the First loop we should have our starting score = best score, which should break out of the while loop (which is a waste)
-                                        angles.Init(initial_phi + n_phi_steps * angular_step, initial_theta + n_theta_steps * angular_step, initial_psi + n_psi_steps * in_plane_angular_step, 0.0, 0.0);
-                                        template_peak = TemplateScore(&template_object);
-                                        // std::cerr << "n_psi and i_psi: " << n_psi_steps << " " << i_psi << std::endl;
-                                        // std::cerr << "testing angles " << angles.ReturnPhiAngle( ) << " " << angles.ReturnThetaAngle( ) << " " << angles.ReturnPsiAngle( ) << " score " << template_peak.value << std::endl;
-
-                                        if ( template_peak.value > best_peak_.value ) {
-                                            best_peak_ = template_peak;
-                                            best_phi   = initial_phi + n_phi_steps * angular_step;
-                                            best_theta = initial_theta + n_theta_steps * angular_step;
-                                            best_psi   = initial_psi + n_psi_steps * in_plane_angular_step;
-                                        }
-
-                                    } while ( best_peak_.value > best_psi_score );
-                                    n_psi_steps -= i_psi;
-                                }
-                            } while ( best_peak_.value > best_theta_score );
-                            n_theta_steps -= i_theta;
-                        }
-                    } while ( best_peak_.value > best_phi_score );
-                    n_phi_steps -= i_phi;
-                }
-            } while ( best_peak_.value > best_defocus_score );
-            // if ( do_defocus_refinement )
-            //     defocus_i -= ll;
-            // }
+            float tmp_to_print = best_peak_.value;
+            template_object.AdjustScoreByVarianceEstimate(tmp_to_print);
+            // wxPrintf("Estimated sigma %f, score %f, re-adjusted score %f\n", template_object.GetSigma( ), best_peak_.value, tmp_to_print);
 
             output_star_file.all_parameters.Item(peak_number).x_shift = best_peak_.x * pixel_size_ + input_parameters_.x_shift;
             output_star_file.all_parameters.Item(peak_number).y_shift = best_peak_.y * pixel_size_ + input_parameters_.y_shift;
@@ -602,8 +710,9 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
             output_star_file.all_parameters.Item(peak_number).phi          = best_phi;
             output_star_file.all_parameters.Item(peak_number).theta        = best_theta;
             output_star_file.all_parameters.Item(peak_number).psi          = best_psi;
-            output_star_file.all_parameters.Item(peak_number).defocus_1    = (initial_defocus1 + best_iDefocus * defocus_step);
-            output_star_file.all_parameters.Item(peak_number).defocus_2    = (initial_defocus2 + best_iDefocus * defocus_step);
+            output_star_file.all_parameters.Item(peak_number).defocus_1    = (initial_defocus1 + best_iDefocus * defocus_search_step);
+            output_star_file.all_parameters.Item(peak_number).defocus_2    = (initial_defocus2 + best_iDefocus * defocus_search_step);
+            output_star_file.all_parameters.Item(peak_number).sigma        = tmp_to_print;
             output_star_file.all_parameters.Item(peak_number).score        = best_peak_.value;
             output_star_file.all_parameters.Item(peak_number).score_change = best_peak_.value - input_parameters_.score;
 
@@ -650,4 +759,6 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     return true;
 }
 
+#ifdef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
 #undef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
+#endif

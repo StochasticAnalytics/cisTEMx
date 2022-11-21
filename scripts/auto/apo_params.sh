@@ -2,7 +2,7 @@
 
 output_dir=full_grid
 
-bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif /sa_shared/software/local_cistem/intel-gpu-debug-profile/src"
+bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif ${HOME}/git/cisTEM/build/intel-gpu-debug-profile/src"
 pdb_file=7a4m_assembly_no_C_T.pdb
 
 

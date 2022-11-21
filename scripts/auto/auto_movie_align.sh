@@ -3,6 +3,7 @@
 source params.sh
 
 movie_file=$1
+gpu_id=$2
 
 # TODO: when converting to python, use os.path.basename have a list of possible file extensions to source.
 # For testing we'll assume eer, otherwise the movie inputs need to be changed as well.
@@ -17,7 +18,8 @@ termination_criteria=$(echo "print($output_pixel_size/2)" | python3)
 
 if [[ $run_movie_align == "yes" ]] ; then
 echo "Aligning movies"
-APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_for_movies} ${bin_cmd}/unblur_gpu << EOF &> /dev/null
+get_start
+APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_id} ${bin_cmd}/unblur_gpu << EOF &> /dev/null
 $movie_file
 $output_dir/images/$img_base/aligned_img.mrc
 $output_dir/images/$img_base/aligned_img_shifts.txt
@@ -37,8 +39,7 @@ $termination_criteria
 $movie_max_iters
 yes
 yes
-no
-$movie_gain_ref
+yes
 $movie_first_frame_to_average
 $movie_last_frame_to_average
 $movie_running_average
@@ -48,7 +49,10 @@ $eer_super_res_factor
 $movie_correct_mag_distortion
 $movie_max_threads
 EOF
+check_exit_status "unblur_gpu"
+get_stop
+add_time_to_file $movie_align_timing_file
 
 fi
 
-./auto_ctf.sh $output_dir/images/$img_base
+./auto_ctf.sh $output_dir/images/$img_base $gpu_id

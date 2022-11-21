@@ -2,15 +2,23 @@
 
 source params.sh
 
-[[ $# -ne 2 && $# -ne 4 ]] && { echo "Usage: <input_images> <input_starfile> first_particle last_particle" ; exit 1; }
+[[ $# -ne 2 && $# -ne 4 ]] && { echo "Usage: <input_images> <input_starfile> reconstruction_id score_cutoff" ; exit 1; }
 
 if [[ $# -eq 4 ]]; then
-    first_particle=$3
-    last_particle=$4
+    # This seems to depend on the resolution so is not good to use yet.
+    score_cutoff=$4
+    # TODO: get a reconstruction id an use here also including number of particles
+    reconstruction_id=$3
 else
-    first_particle=1
-    last_particle=0
+    # This seems to depend on the resolution so is not good to use yet.
+    score_cutoff=1
+    reconstruction_id=1
+    # TODO: get a reconstruction id an use here also including number of particles
 fi
+
+
+first_particle=1
+last_particle=0
 
 # no GPU yet for reconstruct3d
 input_images=$1
@@ -24,15 +32,11 @@ low_res_limit_ang=300 # TODO set this based on particle size
 #TODO do these make any real difference, default 5
 particle_weight_factor=5.0
 smoothing_factor=1
-padding_factor=1
+padding_factor=2.0
 normalize_particles='yes'
 adjust_scores_for_defocus='yes' # TODO: this makes sense if properly whitented, but I bet it is a bullshit heuristic.
 exclude_blank_edges='yes'
 
-score_cutoff=1 # This seems to depend on the resolution so is not good to use yet.
-
-# TODO: get a reconstruction id an use here also including number of particles
-reconstruction_id=1
 
 # TODO: we will want this to be configurable so that it can be no when accumulating volumes for bfactor calculations.
 calculate_fsc='yes'

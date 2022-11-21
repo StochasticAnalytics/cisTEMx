@@ -5,6 +5,13 @@
 #include "DeviceManager.h"
 #include "Histogram.h"
 
+struct __align__(8) TM_PEAK {
+    __half score;
+    __half psi;
+    __half theta;
+    __half phi;
+};
+
 class TemplateMatchingCore {
 
   public:
@@ -71,6 +78,8 @@ class TemplateMatchingCore {
     long total_number_of_cccs_calculated;
     long total_correlation_positions;
 
+    int n_global_search_images_to_save;
+
     bool is_running_locally;
 
     Histogram histogram;
@@ -88,10 +97,12 @@ class TemplateMatchingCore {
     __half2* my_stats;
     __half2* my_peaks;
     __half2* my_new_peaks; // for passing euler angles to the callback
-    void     SumPixelWise(GpuImage& image);
-    void     MipPixelWise(__half psi, __half theta, __half phi);
-    void     MipToImage( );
-    void     AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
+    TM_PEAK* secondary_peaks;
+
+    void SumPixelWise(GpuImage& image);
+    void MipPixelWise(__half psi, __half theta, __half phi);
+    void MipToImage( );
+    void AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
 
     void Init(MyApp*           parent_pointer,
               Image&           template_reconstruction,
@@ -117,7 +128,8 @@ class TemplateMatchingCore {
               int              last_search_position,
               ProgressBar*     my_progress,
               long             total_correlation_positions,
-              bool             is_running_locally);
+              bool             is_running_locally,
+              int              number_of_global_search_images_to_save = 1);
 
     void RunInnerLoop(Image& projection_filter, float pixel_i, float defocus_i, int threadIDX, long& current_correlation_position);
 

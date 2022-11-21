@@ -152,7 +152,7 @@ void GlobalSearchApp::DoInteractiveUserInput( ) {
     output_histogram_file       = input_search_image_file_name_full.GetName( ) + "_histogram.txt";
     pixel_size                  = my_input->GetFloatFromUser("Pixel size of images (A)", "Pixel size of input images in Angstroms", "1.0", 0.0);
     voltage_kV                  = my_input->GetFloatFromUser("Beam energy (keV)", "The energy of the electron beam used to image the sample in kilo electron volts", "300.0", 0.0);
-spherical_aberration_mm     = my_input->GetFloatFromUser("Spherical aberration (mm)", "Spherical aberration of the objective lens in millimeters", "2.7");
+    spherical_aberration_mm     = my_input->GetFloatFromUser("Spherical aberration (mm)", "Spherical aberration of the objective lens in millimeters", "2.7");
     amplitude_contrast          = my_input->GetFloatFromUser("Amplitude contrast", "Assumed amplitude contrast", "0.07", 0.0, 1.0);
     defocus1                    = my_input->GetFloatFromUser("Defocus1 (angstroms)", "Defocus1 for the input image", "10000", 0.0);
     defocus2                    = my_input->GetFloatFromUser("Defocus2 (angstroms)", "Defocus2 for the input image", "10000", 0.0);
@@ -455,10 +455,11 @@ bool GlobalSearchApp::DoCalculation( ) {
     }
 
     padded_reference.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
-    max_intensity_projection.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
-    best_psi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
-    best_theta.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
-    best_phi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
+    // We only need extra copies of the mip and angles
+    max_intensity_projection.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
+    best_psi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
+    best_theta.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
+    best_phi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
 
     correlation_pixel_sum_image.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
     correlation_pixel_sum_of_squares_image.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
@@ -674,7 +675,8 @@ bool GlobalSearchApp::DoCalculation( ) {
                            angles, global_euler_search,
                            histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
                            max_padding, t_first_search_position, t_last_search_position,
-                           my_progress, total_correlation_positions_per_thread, is_running_locally);
+                           my_progress, total_correlation_positions_per_thread, is_running_locally,
+                           cistem::number_of_global_search_images_to_save);
 
             wxPrintf("%d\n", tIDX);
             wxPrintf("%d\n", t_first_search_position);
@@ -842,11 +844,11 @@ bool GlobalSearchApp::DoCalculation( ) {
         MRCFile output_file;
 
         temp_image.CopyFrom(&max_intensity_projection);
-        temp_image.Resize(original_input_image_x, original_input_image_y, 1, temp_image.ReturnAverageOfRealValuesOnEdges( ));
+        temp_image.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_savee, temp_image.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + mip_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        temp_image.WriteSlice(&output_file, 1);
+        temp_image.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_savee);
 
 #ifdef CISTEM_TEST_FILTERED_MIP
 
@@ -872,36 +874,43 @@ bool GlobalSearchApp::DoCalculation( ) {
         correlation_pixel_sum_of_squares_image.BackwardFFT( );
 
         //        max_intensity_projection.SubtractImage(&correlation_pixel_sum);
-        for ( int pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
-            max_intensity_projection.real_values[pixel_counter] -= correlation_pixel_sum_image.real_values[pixel_counter];
-            if ( correlation_pixel_sum_of_squares_image.real_values[pixel_counter] > 0.0f ) {
-                max_intensity_projection.real_values[pixel_counter] /= correlation_pixel_sum_of_squares_image.real_values[pixel_counter];
+        long slice_offset;
+        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_savee; iSlice++ ) {
+            slice_offset = iSlice * input_image.real_memory_allocated;
+            for ( int pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
+                max_intensity_projection.real_values[pixel_counter + slice_offset] -= correlation_pixel_sum_image.real_values[pixel_counter];
+                if ( correlation_pixel_sum_of_squares_image.real_values[pixel_counter] > 0.0f ) {
+                    max_intensity_projection.real_values[pixel_counter + slice_offset] /= correlation_pixel_sum_of_squares_image.real_values[pixel_counter];
+                }
+                else
+                    max_intensity_projection.real_values[pixel_counter + slice_offset] = 0.0f;
             }
-            else
-                max_intensity_projection.real_values[pixel_counter] = 0.0f;
         }
 #else
 
-        //        max_intensity_projection.SubtractImage(&correlation_pixel_sum);
-        for ( pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
-            max_intensity_projection.real_values[pixel_counter] -= correlation_pixel_sum[pixel_counter];
-            if ( correlation_pixel_sum_of_squares[pixel_counter] > 0.0f ) {
-                max_intensity_projection.real_values[pixel_counter] /= correlation_pixel_sum_of_squares[pixel_counter];
+        long slice_offset;
+        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_savee; iSlice++ ) {
+            slice_offset = iSlice * input_image.real_memory_allocated;
+            for ( pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
+                max_intensity_projection.real_values[pixel_counter] -= correlation_pixel_sum[pixel_counter];
+                if ( correlation_pixel_sum_of_squares[pixel_counter] > 0.0f ) {
+                    max_intensity_projection.real_values[pixel_counter] /= correlation_pixel_sum_of_squares[pixel_counter];
+                }
+                else
+                    max_intensity_projection.real_values[pixel_counter] = 0.0f;
+                correlation_pixel_sum_image.real_values[pixel_counter]            = correlation_pixel_sum[pixel_counter];
+                correlation_pixel_sum_of_squares_image.real_values[pixel_counter] = correlation_pixel_sum_of_squares[pixel_counter];
             }
-            else
-                max_intensity_projection.real_values[pixel_counter] = 0.0f;
-            correlation_pixel_sum_image.real_values[pixel_counter]            = correlation_pixel_sum[pixel_counter];
-            correlation_pixel_sum_of_squares_image.real_values[pixel_counter] = correlation_pixel_sum_of_squares[pixel_counter];
         }
 #endif
         //        max_intensity_projection.DividePixelWise(correlation_pixel_sum_of_squares);
 
         ////////////////////////////
-        max_intensity_projection.Resize(original_input_image_x, original_input_image_y, 1, max_intensity_projection.ReturnAverageOfRealValuesOnEdges( ));
+        max_intensity_projection.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_savee, max_intensity_projection.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + scaled_mip_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        max_intensity_projection.WriteSlice(&output_file, 1);
+        max_intensity_projection.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
 
         correlation_pixel_sum_image.Resize(original_input_image_x, original_input_image_y, 1, correlation_pixel_sum_image.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + correlation_avg_output_file.ToStdString( ), true, false);
@@ -915,23 +924,23 @@ bool GlobalSearchApp::DoCalculation( ) {
         output_file.SetOutputToFP16( );
         correlation_pixel_sum_of_squares_image.WriteSlice(&output_file, 1);
 
-        best_psi.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
+        best_psi.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, 0.0f);
         output_file.OpenFile(directory_for_results + "/" + best_psi_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        best_psi.WriteSlice(&output_file, 1);
+        best_psi.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
 
-        best_theta.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
+        best_theta.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, 0.0f);
         output_file.OpenFile(directory_for_results + "/" + best_theta_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        best_theta.WriteSlice(&output_file, 1);
+        best_theta.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
 
-        best_phi.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
+        best_phi.Resize(original_input_image_x, original_input_image_y, , 0.0f);
         output_file.OpenFile(directory_for_results + "/" + best_phi_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        best_phi.WriteSlice(&output_file, 1);
+        best_phi.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
 
         // write out histogram..
 

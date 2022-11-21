@@ -56,14 +56,16 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
                                 int              last_search_position,
                                 ProgressBar*     my_progress,
                                 long             total_correlation_positions,
-                                bool             is_running_locally)
+                                bool             is_running_locally,
+                                int              number_of_global_search_images_to_save)
 
 {
 
-    this->first_search_position = first_search_position;
-    this->last_search_position  = last_search_position;
-    this->angles                = angles;
-    this->global_euler_search   = global_euler_search;
+    this->first_search_position          = first_search_position;
+    this->last_search_position           = last_search_position;
+    this->angles                         = angles;
+    this->global_euler_search            = global_euler_search;
+    this->n_global_search_images_to_save = number_of_global_search_images_to_save;
 
     this->psi_start = psi_start;
     this->psi_step  = psi_step;
@@ -142,6 +144,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaMalloc((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
     cudaErr(cudaMalloc((void**)&my_stats, sizeof(__half2) * d_input_image.real_memory_allocated));
     cudaErr(cudaMemset(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
+    if ( n_global_search_images_to_save > 1 ) {
+        cudaErr(cudaMalloc((void**)&secondary_peaks, sizeof(TM_PEAK) * d_input_image.real_memory_allocated * n_global_search_images_to_save));
+        cudaErr(cudaMemset(secondary_peaks, 0, sizeof(TM_PEAK) * d_input_image.real_memory_allocated * n_global_search_images_to_save));
+    }
     //	cudaErr(cudaMemset(my_stats,0,sizeof(Peaks)*d_input_image.real_memory_allocated));
 
     cudaEvent_t projection_is_free_Event, gpu_work_is_done_Event;
@@ -323,7 +329,9 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
     // N
     d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
-    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks, (int)d_padded_reference.real_memory_allocated, psi, theta, phi, my_stats, my_new_peaks);
+    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
+                                                                                                                    (int)d_padded_reference.real_memory_allocated,
+                                                                                                                    psi, theta, phi, my_stats, my_new_peaks);
     postcheck;
 }
 
@@ -358,6 +366,46 @@ __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks
         }
     }
     //
+}
+
+__global__ void UpdateSecondaryPeaksKernel(TM_PEAK* secondary_peaks, __half2* my_peaks, __half2* my_new_peaks, const int n_images, const int numel) {
+
+    //	Peaks tmp_peak;
+    int best_index = 0;
+    int offset     = 0;
+    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
+        offset                 = i * n_images;
+        const __half  half_val = correlation_output[i];
+        const __half2 input    = __half2half2(half_val * __half(10000.0));
+        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
+
+        best_index = -1;
+        for ( int i_img = 0; i_img < n_images; i_img++ ) {
+            if ( __low2half(my_peaks[i]) > secondary_peaks[offset + i_img].score ) {
+                best_index = i_img;
+                break;
+            }
+        }
+
+        if ( best_index > -1 ) {
+
+            my_peaks[i]     = __halves2half2(half_val, psi);
+            my_new_peaks[i] = __halves2half2(theta, phi);
+        }
+    }
+}
+
+void TemplateMatchingCore::UpdateSecondaryPeaks( ) {
+
+    precheck;
+    // N
+    d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
+
+    UpdateSecondaryPeaksKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f,
+                                                                                                                            secondary_peaks,
+                                                                                                                            (int)d_padded_reference.real_memory_allocated,
+                                                                                                                            psi, theta, phi);
+    postcheck;
 }
 
 __global__ void MipToImageKernel(const __half2*, const __half2* my_new_peaks, const int, cufftReal*, cufftReal*, cufftReal*, cufftReal*);

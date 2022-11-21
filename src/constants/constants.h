@@ -17,6 +17,8 @@ namespace cistem {
 constexpr const int fraction_of_box_size_to_exclude_for_border = 4;
 constexpr const int maximum_number_of_detections               = 1000;
 
+constexpr const int number_of_global_search_images_to_save = 6;
+
 namespace physical_constants {
 
 // From Shang and Sigworth, average of polar and non-polar from table 1 (with correction to polar radius 3, 1.7-->3.0);

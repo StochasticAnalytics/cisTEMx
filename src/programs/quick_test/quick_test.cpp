@@ -8,6 +8,8 @@ class
     bool     DoCalculation( );
     void     DoInteractiveUserInput( );
     wxString symmetry_symbol;
+    bool     my_test_1 = false;
+    bool     my_test_2 = true;
 
     std::array<wxString, 2> input_starfile_filename;
 
@@ -33,6 +35,17 @@ void QuickTestApp::DoInteractiveUserInput( ) {
 
 bool QuickTestApp::DoCalculation( ) {
 
+    std::cerr << "my_test 1 = " << my_test_1 << std::endl;
+    std::cerr << "my_test 2 = " << my_test_2 << std::endl;
+    exit(0);
+    wxPrintf("%20.100f\n", std::numeric_limits<float>::epsilon( ));
+    wxPrintf("%20.100f\n", sqrt(std::numeric_limits<float>::epsilon( )));
+    wxPrintf("%20.100f\n", sqrt(sqrt(std::numeric_limits<float>::epsilon( ))));
+
+    wxPrintf("%20.100f\n", std::numeric_limits<double>::epsilon( ));
+    wxPrintf("%20.100f\n", sqrt(std::numeric_limits<double>::epsilon( )));
+    wxPrintf("%20.100f\n", sqrt(sqrt(std::numeric_limits<double>::epsilon( ))));
+    exit(0);
     Image vol;
     float bfactor;
     vol.QuickAndDirtyReadSlices("no_bfactor.mrc", 1, 192);

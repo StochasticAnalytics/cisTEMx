@@ -5,13 +5,6 @@
 #include "DeviceManager.h"
 #include "Histogram.h"
 
-struct __align__(8) TM_PEAK {
-    __half score;
-    __half psi;
-    __half theta;
-    __half phi;
-};
-
 class TemplateMatchingCore {
 
   public:
@@ -68,6 +61,7 @@ class TemplateMatchingCore {
     float psi_max;
     float psi_start;
     float psi_step;
+    float minimum_threshold = 20.0f; //  Optionally override this to limit what is considered for refinement
 
     float c_defocus;
     float c_pixel;
@@ -97,12 +91,14 @@ class TemplateMatchingCore {
     __half2* my_stats;
     __half2* my_peaks;
     __half2* my_new_peaks; // for passing euler angles to the callback
-    TM_PEAK* secondary_peaks;
+    __half* secondary_peaks;
 
     void SumPixelWise(GpuImage& image);
     void MipPixelWise(__half psi, __half theta, __half phi);
     void MipToImage( );
     void AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
+
+    void SetMinimumThreshold(float wanted_threshold) { minimum_threshold = wanted_threshold; }
 
     void Init(MyApp*           parent_pointer,
               Image&           template_reconstruction,

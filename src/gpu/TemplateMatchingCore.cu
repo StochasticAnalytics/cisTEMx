@@ -145,8 +145,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaMalloc((void**)&my_stats, sizeof(__half2) * d_input_image.real_memory_allocated));
     cudaErr(cudaMemset(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
     if ( n_global_search_images_to_save > 1 ) {
-        cudaErr(cudaMalloc((void**)&secondary_peaks, sizeof(TM_PEAK) * d_input_image.real_memory_allocated * n_global_search_images_to_save));
-        cudaErr(cudaMemset(secondary_peaks, 0, sizeof(TM_PEAK) * d_input_image.real_memory_allocated * n_global_search_images_to_save));
+        cudaErr(cudaMalloc((void**)&secondary_peaks, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4));
+        cudaErr(cudaMemset(secondary_peaks, 0, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4));
     }
     //	cudaErr(cudaMemset(my_stats,0,sizeof(Peaks)*d_input_image.real_memory_allocated));
 
@@ -368,30 +368,43 @@ __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks
     //
 }
 
-__global__ void UpdateSecondaryPeaksKernel(TM_PEAK* secondary_peaks, __half2* my_peaks, __half2* my_new_peaks, const int n_images, const int numel) {
+__global__ void UpdateSecondaryPeaksKernel(_half* secondary_peaks, __half2* my_peaks, __half2* my_new_peaks,
+                                           const float minimum_threshold, const int n_peaks, const int numel) {
 
     //	Peaks tmp_peak;
     int best_index = 0;
     int offset     = 0;
-    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
-        offset                 = i * n_images;
-        const __half  half_val = correlation_output[i];
-        const __half2 input    = __half2half2(half_val * __half(10000.0));
-        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
+    for ( int img_index = blockIdx.x * blockDim.x + threadIdx.x; img_index < numel; img_index += blockDim.x * gridDim.x ) {
 
-        best_index = -1;
-        for ( int i_img = 0; i_img < n_images; i_img++ ) {
-            if ( __low2half(my_peaks[i]) > secondary_peaks[offset + i_img].score ) {
-                best_index = i_img;
+        if ( __low2half(my_peaks[i]) < minimum_threshold )
+            continue;
+
+        best_index = n_peaks;
+        for ( int i_peak = 0; i_peak < n_peaks; i_peak++ ) {
+            // Check to see if any peak from this search position is in the top n_peaks scores
+            if ( __low2half(my_peaks[i]) > secondary_peaks[img_index + i_peak * numel] ) {
+                best_index = i_peak;
                 break;
             }
         }
 
-        if ( best_index > -1 ) {
-
-            my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = __halves2half2(theta, phi);
+        // If we didn't find a better peak, this loop will not execute
+        // We have a numel * n_peaks * 4 (score, psi, theta, phi) array
+        for ( int worst_peak = n_peaks - 1; worst_peak > best_index; worst_peak-- ) {
+            offset = img_index + worst_peak * numel;
+            // Move the worst peak down one
+            secondary_peaks[offset] = secondary_peaks[offset - numel];
         }
+        // Now insert the new peak
+        if ( best_index < n_peaks ) {
+            offset                      = img_index + best_index * numel;
+            secondary_peaks[offset]     = __low2half(my_peaks[i]);
+            secondary_peaks[offset + 1] = __high2half(my_peaks[i]);
+            secondary_peaks[offset + 2] = __low2half(my_new_peaks[i]);
+            secondary_peaks[offset + 3] = __high2half(my_new_peaks[i]);
+        }
+        my_peaks[i]     = __halves2half2(half_val, psi);
+        my_new_peaks[i] = __halves2half2(theta, phi);
     }
 }
 

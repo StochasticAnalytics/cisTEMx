@@ -590,6 +590,17 @@ bool GlobalSearchApp::DoCalculation( ) {
         }
     }
 
+    // calculate the expected threshold (from peter's paper)
+    const float CCG_NOISE_STDDEV = 1.0;
+    double      temp_threshold;
+    double      erf_input = 2.0 / (1.0 * (double)original_input_image_x * (double)original_input_image_y * (double)total_correlation_positions);
+#ifdef MKL
+    vdErfcInv(1, &erf_input, &temp_threshold);
+#else
+    cisTEM_erfcinv(erf_input);
+#endif
+    expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
+
     total_correlation_positions_per_thread = total_correlation_positions;
 
     number_of_rotations = 0;
@@ -605,7 +616,8 @@ bool GlobalSearchApp::DoCalculation( ) {
     wxPrintf("\n\tFor image id %i\n", image_number_for_gui);
     wxPrintf("Searching %i positions on the Euler sphere (first-last: %i-%i)\n", last_search_position - first_search_position, first_search_position, last_search_position);
     wxPrintf("Searching %i rotations per position.\n", number_of_rotations);
-    wxPrintf("There are %li correlation positions total.\n\n", total_correlation_positions);
+    wxPrintf("There are %li correlation positions total.\n", total_correlation_positions);
+    wxPrintf("The expected threshold is %f\n\n", expected_threshold);
 
     wxPrintf("Performing Search...\n\n");
 
@@ -677,6 +689,9 @@ bool GlobalSearchApp::DoCalculation( ) {
                            max_padding, t_first_search_position, t_last_search_position,
                            my_progress, total_correlation_positions_per_thread, is_running_locally,
                            cistem::number_of_global_search_images_to_save);
+
+            // TODO: make the fraction of the expected threshold to use a parameter
+            GPU[tIDX].SetMinimumThreshold(0.8f * expected_threshold);
 
             wxPrintf("%d\n", tIDX);
             wxPrintf("%d\n", t_first_search_position);
@@ -829,17 +844,6 @@ bool GlobalSearchApp::DoCalculation( ) {
         }
 
         max_intensity_projection.MultiplyByConstant((float)sqrt_input_pixels);
-
-        // calculate the expected threshold (from peter's paper)
-        const float CCG_NOISE_STDDEV = 1.0;
-        double      temp_threshold;
-        double      erf_input = 2.0 / (1.0 * (double)original_input_image_x * (double)original_input_image_y * (double)total_correlation_positions);
-#ifdef MKL
-        vdErfcInv(1, &erf_input, &temp_threshold);
-#else
-        cisTEM_erfcinv(erf_input);
-#endif
-        expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
 
         MRCFile output_file;
 

@@ -2,18 +2,18 @@
 
 output_dir=full_grid
 
-bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif /sa_shared/software/local_cistem/intel-gpu-debug-profile/src"
+bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif ${HOME}/git/cisTEM/build/intel-gpu-debug-profile/src"
 pdb_file=7a4m_assembly_no_C_T.pdb
 
 
 # movie_dir=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/movies
-movie_dir=/scratch/salina/EMPIAR-10568-apoferritin-g4-EER/data/Images-Disc1/GridSquare_8824187/Data
+movie_dir=/scratch/salina/cryo0835a_braf_20220902_data/movies_small
 use_movie_gain_ref="yes"
 movie_gain_ref=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/gain_1xUps_8k.mrc
 
 total_exposure=52.7
-physical_pixel_size=0.3948
-output_pixel_size=0.8
+physical_pixel_size=0.5
+output_pixel_size=1.0
 n_eer_frames=720
 n_eer_frames_to_average=12
 eer_super_res_factor=1
@@ -24,27 +24,27 @@ apply_exposure_filter=yes
 # Microscope parameters
 microscope_voltage=300
 microscope_spherical_aberration=2.7
-microscope_amplitude_contrast=0.1
+microscope_amplitude_contrast=0.07
 
 
 ########### TODO add below to validation checks
 
 # Simulation parameters
-sim_output_size=256
+sim_output_size=192
 sim_max_threads=4
 sim_linear_scaling_of_pdb_bfactors=1.0
 sim_base_bfactor=15.0
 sim_total_exposure=$total_exposure
 # should be returned from the call to simulate or otherwise set based on PDB info
-sim_particle_mass=460
+sim_particle_mass=60
 
 # CTF fitting parameters
 ctf_box_size=768
 ctf_diagnostic_box_size=$(( $ctf_box_size / 2 ))
 ctf_min_res=30
-ctf_max_res=2.8
-ctf_min_defocus=500
-ctf_max_defocus=25000
+ctf_max_res=3.5
+ctf_min_defocus=1000
+ctf_max_defocus=35000
 ctf_defocus_step=25
 ctf_tolerated_astigmatism=1000
 ctf_restrain_astigmatism=yes
@@ -72,8 +72,8 @@ global_in_plane_angle=3.75
 global_high_resolution_limit=$(echo "print($output_pixel_size*2)" | python3)
 global_padding_value=1.0
 global_mask_radius=0.0
-global_symmetry="O"
-global_max_threads=8
+global_symmetry="C1"
+global_max_threads=4
 # TODO, this should be tied to particle size
 global_min_peak_radius=40.0
 
@@ -93,14 +93,14 @@ reconstruct3d_max_threads=8
 
 # To use for load balancing
 gpu_for_movies=0
-max_movies_per_gpu=3
+max_movies_per_gpu=4
 
 gpu_for_global=0
 max_images_per_gpu=3
 
 gpu_for_local=0
 max_stacks_per_gpu=3
-local_max_threads=8
+local_max_threads=2
 
 # lock files for coordination 
 

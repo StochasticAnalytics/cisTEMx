@@ -4,7 +4,7 @@ source params.sh
 
 
 # no GPU yet for simualtor
-${bin_cmd}/simulate << EOF &> /dev/null
+${bin_cmd}/simulate << EOF 
 ${output_dir}/volumes/${pdb_file}.mrc
 yes
 $sim_output_size

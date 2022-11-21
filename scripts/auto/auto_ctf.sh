@@ -1,10 +1,12 @@
 #!/bin/bash
 
 dir_name=$1
+gpu_id=$2
 
 source params.sh
 
 if [[ $run_ctf_fit == "yes" ]] ; then
+get_start
 ${bin_cmd}/ctffind << EOF 
 ${dir_name}/aligned_img.mrc
 ${dir_name}/ctf_diagnostic.mrc
@@ -29,6 +31,11 @@ yes
 no
 $ctf_max_threads
 EOF
+check_exit_status "CTF fitting"
+get_stop
+add_time_to_file $ctf_fit_timing_file
+
+
 
 # bin the output diagnostic image
 if [[ $ctf_box_size -ne $ctf_diagnostic_box_size ]] ; then
@@ -46,4 +53,4 @@ mv ${dir_name}/ctf_diagnostic.mrc_rs ${dir_name}/ctf_diagnostic.mrc
 fi
 
 fi
-./auto_global_search.sh $dir_name
+./auto_global_search.sh $dir_name $gpu_id

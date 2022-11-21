@@ -4,7 +4,7 @@ i=1;
 first_file=1;
 
 #source params.sh
-source t.sh
+source params.sh
 # TODO: move these to params
 
 # wanted number of images
@@ -20,8 +20,10 @@ header_length=39
 #output_star_name="wlg_${scaling}.star"
 #output_stack_name="wlg_${scaling}.mrc"
 
-output_star_name="${output_dir}/combined_1.star"
-output_stack_name="${output_dir}/combined_1.mrc"
+output_base="combined_1"
+output_star_name="${output_dir}/${output_base}.star"
+output_star_adj_name="${output_dir}/${output_base}_adj.star"
+output_stack_name="${output_dir}/${output_base}.mrc"
 
 rm -f $output_star_name
 rm -f $output_stack_name
@@ -32,11 +34,11 @@ ls -d ${output_dir}/particle_stacks/* |
   while read stack_dir ; do
     echo $stack_dir
 
-    stack_file_name="${stack_dir}/refined_parameters_5_stack.mrc"
+    stack_file_name="${stack_dir}/refined_parameters_3_stack.mrc"
     # star_file_name="${stack_dir}/refined_parameters_$((${n_local_iterations}-1)).star"
     # star_file_name="${stack_dir}/final_refinement.star"
     #star_file_name="${stack_dir}/micrograph.star"
-    star_file_name="${stack_dir}/refined_parameters_5_stack.star"
+    star_file_name="${stack_dir}/refined_parameters_3_stack.star"
 
     if [[ ! -f $stack_file_name ]] ; then echo "Warning: stack $stack_file_name not found, continuing" ; continue ; fi
     if [[ ! -f $star_file_name ]] ; then echo "Warning: star $star_file_name not found, continuing" ; continue ; fi
@@ -45,11 +47,14 @@ ls -d ${output_dir}/particle_stacks/* |
         
         if [[ $first_file -eq 1 ]]; then 
             awk -v HL=$header_length '{if(FNR <= HL ) print $0}' $star_file_name > $output_star_name 
+            awk -v HL=$header_length '{if(FNR <= HL ) print $0}' $star_file_name > $output_star_adj_name
         fi
         first_file=0
 
-
-        awk -v I=$i -v H=$header_length '{if(FNR>H) {$1=(I+$1-1); print $0}}' $star_file_name >> $output_star_name 
+        # For now, just set sigma to 100 until I can check into how it is used 
+        awk -v I=$i -v H=$header_length '{if(FNR>H) {$1=(I+$1-1); $14=100; print $0}}' $star_file_name >> $output_star_name 
+        # Replace the score with the value in score change, which is for now, the re-weighted score based on the estimate of the CCC noise in refinement
+        awk -v I=$i -v H=$header_length '{if(FNR>H) {$1=(I+$1-1); $14=100; $15=$16; print $0}}' $star_file_name >> $output_star_adj_name
         
 
         n_stacks_recorded=$(($n_stacks_recorded+1))

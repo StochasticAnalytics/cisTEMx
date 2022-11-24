@@ -3921,6 +3921,145 @@ float Image::CosineMask(float wanted_mask_radius, float wanted_mask_edge, bool i
     return float(mask_volume);
 }
 
+void Image::CosineMaskAndNormalizeInPassBand(float low_resolution_cutoff_angstroms,
+                                             float high_resolution_cutoff_angstroms,
+                                             float pixel_size_in_angstroms,
+                                             int   number_of_padded_pixels) {
+
+    MyDebugAssertTrue(is_in_memory, "Image is not in memory");
+
+    bool need_to_fft = false;
+    if ( is_in_real_space ) {
+        need_to_fft = true;
+        ForwardFFT( );
+    }
+
+    double sum_of_squares_under_mask = 0.0;
+    double weight_under_mask         = 0.0;
+
+    float x;
+    float y;
+    float z;
+
+    long pixel_counter = 0;
+
+    float mask_radius_plus_edge;
+    float mask_radius;
+    float mask_radius_squared;
+    float mask_radius_plus_edge_squared;
+    float edge;
+
+    float frequency;
+    float frequency_squared;
+
+    // Conver the cutoffs from angstroms to reciprocal pixels
+    // TODO: Evaluate the falloffs
+    float low_resolution_radius            = low_resolution_cutoff_angstroms;
+    float high_resolution_radius           = high_resolution_cutoff_angstroms;
+    float low_resolution_radius_plus_edge  = low_resolution_radius;
+    float high_resolution_radius_plus_edge = high_resolution_radius;
+
+    float low_resolution_edge  = 4.0; // NOTE: all of these are converted in the following functions
+    float high_resolution_edge = 14.0;
+    ReturnCosineMaskBandpassResolution(pixel_size_in_angstroms, low_resolution_radius, low_resolution_edge);
+    ReturnCosineMaskBandpassResolution(pixel_size_in_angstroms, high_resolution_radius, high_resolution_edge);
+
+    low_resolution_radius  = low_resolution_radius + low_resolution_edge * 0.5;
+    high_resolution_radius = high_resolution_radius - high_resolution_edge * 0.5;
+
+    if ( low_resolution_radius < 0.0 )
+        low_resolution_radius = 0.0;
+    if ( high_resolution_radius < 0.0 )
+        high_resolution_radius = 0.0;
+
+    low_resolution_radius_plus_edge  = low_resolution_radius - low_resolution_edge;
+    high_resolution_radius_plus_edge = high_resolution_radius + high_resolution_edge;
+
+    float low_resolution_radius_squared            = powf(low_resolution_radius, 2);
+    float high_resolution_radius_squared           = powf(high_resolution_radius, 2);
+    float low_resolution_radius_plus_edge_squared  = powf(low_resolution_radius_plus_edge, 2);
+    float high_resolution_radius_plus_edge_squared = powf(high_resolution_radius_plus_edge, 2);
+    bool  x_is_even                                = IsEven(logical_x_dimension);
+    float independent_fourier_coefficient;
+    for ( int k = 0; k <= physical_upper_bound_complex_z; k++ ) {
+        z = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k) * fourier_voxel_size_z, 2);
+
+        for ( int j = 0; j <= physical_upper_bound_complex_y; j++ ) {
+            y = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * fourier_voxel_size_y, 2);
+
+            for ( int i = 0; i <= physical_upper_bound_complex_x; i++ ) {
+                x = powf(i * fourier_voxel_size_x, 2);
+
+                if ( (i == 0 || (i == logical_upper_bound_complex_x && x_is_even)) && (y == 0 || (y == logical_lower_bound_complex_y && x_is_even)) && (z == 0 || (z == logical_lower_bound_complex_z && x_is_even)) )
+                    independent_fourier_coefficient = 0.5f;
+                else if ( (i == 0 || (i == logical_upper_bound_complex_x && x_is_even)) && logical_z_dimension != 1 )
+                    independent_fourier_coefficient = 0.25f;
+                else if ( (i != 0 && (i != logical_upper_bound_complex_x || ! x_is_even)) || (y >= 0 && z >= 0) )
+                    independent_fourier_coefficient = 1.f;
+                else
+                    independent_fourier_coefficient = 0.f;
+
+                // compute squared radius, in units of reciprocal pixels
+
+                frequency_squared = x + y + z;
+
+                // Check the high frequency cutoff first
+                if ( frequency_squared >= high_resolution_radius_plus_edge_squared || frequency_squared <= low_resolution_radius_plus_edge_squared ) {
+                    complex_values[pixel_counter] = 0.0f + I * 0.0f;
+                }
+                else {
+
+                    // Check to see if we are in the roll-off region for the high frequency cutoff
+                    if ( frequency_squared >= high_resolution_radius_squared && frequency_squared < high_resolution_radius_plus_edge_squared ) {
+                        frequency = sqrtf(frequency_squared);
+                        edge      = (1.0 + cosf(PI * (frequency - high_resolution_radius) / high_resolution_edge)) / 2.0;
+                        complex_values[pixel_counter] *= edge;
+                        weight_under_mask += edge;
+                        sum_of_squares_under_mask += independent_fourier_coefficient * powf(abs(complex_values[pixel_counter]), 2);
+                    }
+                    else {
+                        // Now check the low frequency cutoff
+                        if ( frequency_squared <= low_resolution_radius_squared && frequency_squared > low_resolution_radius_plus_edge_squared ) {
+                            frequency = sqrtf(frequency_squared);
+                            edge      = (1.0 + cosf(PI * (frequency - low_resolution_radius) / low_resolution_edge)) / 2.0;
+
+                            complex_values[pixel_counter] *= (1.0 - edge);
+                            weight_under_mask += (1.0 - edge);
+                            sum_of_squares_under_mask += independent_fourier_coefficient * powf(abs(complex_values[pixel_counter]), 2);
+                        }
+                        else {
+                            weight_under_mask += 1.0;
+                            sum_of_squares_under_mask += independent_fourier_coefficient * powf(abs(complex_values[pixel_counter]), 2);
+                        }
+                    }
+                }
+
+                pixel_counter++;
+            }
+        }
+    }
+
+    // FIXME: if this looks useful, it is not quite correct because of redundancy on the x=0 axis, check ReturnSumOfSquares for mods.
+
+    // Zero mean
+    complex_values[0] = 0.0f + I * 0.0f;
+    // Normalize variance of valid pixels to 1.0
+    // if we are going to pad out with zeros, makes sure the variance of that image is one
+    // The factor of 2 is due to summing only over the positive frequencies
+    if ( number_of_padded_pixels < 1 )
+        number_of_padded_pixels = 1; // prevent zero dibision
+        
+    float normalization_factor = sqrtf(float(number_of_padded_pixels) * 2.f * sum_of_squares_under_mask / weight_under_mask);
+
+    for ( pixel_counter = 0; pixel_counter < number_of_real_space_pixels / 2; pixel_counter++ ) {
+        complex_values[pixel_counter] /= normalization_factor;
+    }
+
+    if ( need_to_fft ) {
+        BackwardFFT( );
+    }
+}
+
 float Image::CosineRectangularMask(float wanted_mask_radius_x, float wanted_mask_radius_y, float wanted_mask_radius_z, float wanted_mask_edge, bool invert, bool force_mask_value, float wanted_mask_value) {
     //	MyDebugAssertTrue(! is_in_real_space || object_is_centred_in_box, "Image in real space but not centered");
     if ( is_in_real_space ) {
@@ -7093,7 +7232,7 @@ void Image::ComputeLocalMeanAndVarianceMaps(Image* local_mean_map, Image* local_
  * Real-space box convolution meant for 2D amplitude spectra
  *
  * This is adapted from the MSMOOTH subroutine from CTFFIND3, with a different wrap-around behaviour.
- * Also, in this version, we loop over the full 2D, rather than just half_float::half - this runs faster because less logic within the loop
+ * Also, in this version, we loop over the full 2D, rather than just half - this runs faster because less logic within the loop
  * DNM rewrote this to be vastly faster
  */
 void Image::SpectrumBoxConvolution(Image* output_image, int box_size, float minimum_radius) {

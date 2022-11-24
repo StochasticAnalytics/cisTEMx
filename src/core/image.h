@@ -216,6 +216,7 @@ class Image {
     float               CosineRingMask(float wanted_inner_radius, float wanted_outer_radius, float wanted_mask_edge);
     float               CosineMask(float wanted_mask_radius, float wanted_mask_edge, bool invert = false, bool force_mask_value = false, float wanted_mask_value = 0.0);
     float               CosineRectangularMask(float wanted_mask_radius_x, float wanted_mask_radius_y, float wanted_mask_radius_z, float wanted_mask_edge, bool invert = false, bool force_mask_value = false, float wanted_mask_value = 0.0);
+    void                CosineMaskAndNormalizeInPassBand(float low_resolution_cutoff_angstroms, float high_resolution_cutoff_angstroms, float pixel_size_in_angstroms, int number_of_padded_pixels = 0);
     void                ConvertToAutoMask(float pixel_size, float outer_mask_radius_in_angstroms, float filter_resolution_in_angstroms, float rebin_value, bool auto_estimate_initial_bin_value = true, float wanted_initial_bin_value = 0.0f);
     void                LocalResSignificanceFilter(float pixel_size, float starting_resolution, float mask_radius_in_angstroms);
     void                GaussianLowPassFilter(float sigma);
@@ -331,7 +332,7 @@ class Image {
     inline void ReturnCosineMaskBandpassResolution(float pixel_size_in_angstrom, float& wanted_cutoff_in_angstrom, float& wanted_falloff_in_number_of_fourier_space_voxels) {
         // For example, if you want a cutoff at 2 Angstrom res, with a 14 pixel fall off, and your image is at 1.2 apix, inputs will be 1.2, 2, 14
         // output in the last two args will be the mask_outer_radius, and mask_edge that are passed to CosineRingMask.
-        wanted_cutoff_in_angstrom = 0.5f * (pixel_size_in_angstrom * 2.0f / wanted_cutoff_in_angstrom);
+        wanted_cutoff_in_angstrom = (wanted_cutoff_in_angstrom > 0.0) ? 0.5f * (pixel_size_in_angstrom * 2.0f / wanted_cutoff_in_angstrom) : 0.0f;
 
         if ( logical_z_dimension > 1 ) {
             wanted_falloff_in_number_of_fourier_space_voxels = wanted_falloff_in_number_of_fourier_space_voxels / 3.0f * (fourier_voxel_size_x + fourier_voxel_size_y + fourier_voxel_size_z);

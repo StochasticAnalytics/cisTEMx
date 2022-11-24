@@ -56,8 +56,11 @@ bool QuickTestApp::DoCalculation( ) {
     float high_resolution_limit_search = pixel_size * 2.0f;
     float mask_radius_search           = vol.logical_x_dimension / 2.0f * pixel_size;
     int   best_parameters_to_keep      = 20;
-    parameter_map.phi                  = true;
-    parameter_map.theta                = true;
+    if ( angular_step < 0.01 ) {
+        parameter_map.phi   = false;
+        parameter_map.theta = false;
+        angular_step        = 0.f;
+    }
 
     global_euler_search.InitGrid(symmetry_symbol, angular_step, wanted_phi, wanted_theta, psi_max, psi_step, psi_start,
                                  pixel_size / high_resolution_limit_search, parameter_map, best_parameters_to_keep);
@@ -101,13 +104,14 @@ bool QuickTestApp::DoCalculation( ) {
     // the image class to save as half precision
     int output_size = 0;
     for ( int outer_counter = 0; outer_counter < angle_list.size( ); outer_counter++ ) {
-        for ( int current_search_position = first_search_position + outer_counter; current_search_position < angle_list.size( ); current_search_position++ ) {
+        for ( int current_search_position = outer_counter; current_search_position < angle_list.size( ); current_search_position++ ) {
             output_size++;
         }
     }
     int total_number_to_record = output_size;
     output_size                = myroundint(0.5f + sqrt(output_size));
     std::cerr << "Output size is " << output_size << std::endl;
+    std::cerr << "total to record is " << total_number_to_record << std::endl;
 
     Image ccc_matrix;
     ccc_matrix.Allocate(output_size, output_size, 1);
@@ -139,8 +143,9 @@ bool QuickTestApp::DoCalculation( ) {
     int  printed_complete                  = 0;
     // Saving only the lower triangular so we need one less value each time, use the outer loop to decrement the starting point of the inner loop
     for ( int outer_counter = 0; outer_counter < angle_list.size( ); outer_counter++ ) {
+        // Setting first_time to true will cause the reference projection to be calculated
         first_time = true;
-        for ( int current_search_position = first_search_position + outer_counter; current_search_position < angle_list.size( ); current_search_position++ ) {
+        for ( int current_search_position = outer_counter; current_search_position < angle_list.size( ); current_search_position++ ) {
             angles.Init(angle_list.at(current_search_position).at(0),
                         angle_list.at(current_search_position).at(1),
                         angle_list.at(current_search_position).at(2),
@@ -180,6 +185,7 @@ bool QuickTestApp::DoCalculation( ) {
             if ( first_time ) {
                 test_prj.CopyFrom(current_projection);
                 current_projection = &test_prj;
+                first_time         = false;
             }
 
             // Use the MKL
@@ -199,28 +205,23 @@ bool QuickTestApp::DoCalculation( ) {
                 exit(1);
             }
             search_counter++;
-            if ( first_time ) {
 
-                first_time = false;
+            ccc_matrix.real_values[address] = found_peak.value;
+            n_x++;
+            address++;
+            if ( n_x == ccc_matrix.logical_x_dimension ) {
+                n_x = 0;
+                address += ccc_matrix.padding_jump_value;
             }
-            else {
-                // We don't care about the autocorrlation value (the diagn)
-                ccc_matrix.real_values[address] = found_peak.value;
-                n_x++;
-                if ( n_x == ccc_matrix.logical_x_dimension ) {
-                    n_x = 0;
-                    address += ccc_matrix.padding_jump_value;
-                }
-                else
-                    address++;
-                number_angles_searched++;
 
-                float percent_complete = 100.0 * float(number_angles_searched) / float(total_number_to_record);
-                if ( int(percent_complete) % 2 == 0 && int(percent_complete) > printed_complete ) {
-                    std::cerr << "percent complete: " << percent_complete << std::endl;
-                    printed_complete = int(percent_complete);
-                }
+            number_angles_searched++;
+
+            float percent_complete = 100.0 * float(number_angles_searched) / float(total_number_to_record);
+            if ( int(percent_complete) % 2 == 0 && int(percent_complete) > printed_complete ) {
+                std::cerr << "percent complete: " << percent_complete << std::endl;
+                printed_complete = int(percent_complete);
             }
+
         } // loop comparing i to j
     } // loop over h
 

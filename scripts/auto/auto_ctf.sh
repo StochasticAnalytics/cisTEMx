@@ -31,7 +31,7 @@ yes
 no
 $ctf_max_threads
 EOF
-check_exit_status "CTF fitting"
+check_exit_status "CTF fitting" $output_dir
 get_stop
 add_time_to_file $ctf_fit_timing_file
 

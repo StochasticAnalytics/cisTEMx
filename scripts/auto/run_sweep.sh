@@ -3,7 +3,7 @@
 ang_val=(2.5 5 7.5 10 12.5)
 
 
-for i in 2; do 
+for i in 4; do 
     R=${ang_val[$i]}
 
     case $i in
@@ -38,11 +38,12 @@ for i in 2; do
     esac
 
 
-    awk -v I="$R" -v A="$loc_ang" -v R="$res_val"  '{if(/^output_dir/) print "output_dir=sweep_2_"I ; else print $0}'  params.sh > tmp 
+    awk -v I="$R" -v A="$loc_ang" -v R="$res_val"  '{if(/^output_dir/) print "output_dir=no_bp_"I ; else print $0}'  apo_params.sh > tmp 
     awk -v I="$R" -v A="$loc_ang" -v R="$res_val"  '{if(/^global_out_of_plane_angle/) print "global_out_of_plane_angle="I; else print $0}' tmp  > tmp2
     awk -v I="$R" -v A="$loc_ang" -v R="$res_val"  '{if(/^global_in_plane_angle/) print "global_in_plane_angle="I/2; else print $0}' tmp2  > tmp
     awk -v I="$R" -v A="$loc_ang" -v R="$res_val"  '{if(/^local_resolution/) print "local_resolution="R; else print $0}' tmp  > tmp2
-    awk -v I="$R" -v A="$loc_ang" -v R="$res_val"  '{if(/^local_angle_step/) print "local_angle_step="A; else print $0}' tmp2  > params.sh
+    awk -v I="$R" -v A="$loc_ang" -v R="$res_val"  '{if(/^local_angle_step/) print "local_angle_step="A; else print $0}' tmp2  > params_${R}.sh
+    ln -sf params_${R}.sh params.sh
 
     ./Movie2Map.sh
 done

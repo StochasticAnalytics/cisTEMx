@@ -34,11 +34,11 @@ ls -d ${output_dir}/particle_stacks/* |
   while read stack_dir ; do
     echo $stack_dir
 
-    stack_file_name="${stack_dir}/refined_parameters_3_stack.mrc"
+    stack_file_name="${stack_dir}/refined_parameters_1_stack.mrc"
     # star_file_name="${stack_dir}/refined_parameters_$((${n_local_iterations}-1)).star"
     # star_file_name="${stack_dir}/final_refinement.star"
     #star_file_name="${stack_dir}/micrograph.star"
-    star_file_name="${stack_dir}/refined_parameters_3_stack.star"
+    star_file_name="${stack_dir}/refined_parameters_1_stack.star"
 
     if [[ ! -f $stack_file_name ]] ; then echo "Warning: stack $stack_file_name not found, continuing" ; continue ; fi
     if [[ ! -f $star_file_name ]] ; then echo "Warning: star $star_file_name not found, continuing" ; continue ; fi

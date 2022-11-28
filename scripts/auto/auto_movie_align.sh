@@ -5,6 +5,8 @@ source params.sh
 movie_file=$1
 gpu_id=$2
 
+if [[ ! -f $movie_file ]] ; then echo "Warning, file $movie_file doesn't exist" ; exit 0; fi
+
 # TODO: when converting to python, use os.path.basename have a list of possible file extensions to source.
 # For testing we'll assume eer, otherwise the movie inputs need to be changed as well.
 img_base=$(basename $movie_file .eer)
@@ -19,7 +21,7 @@ termination_criteria=$(echo "print($output_pixel_size/2)" | python3)
 if [[ $run_movie_align == "yes" ]] ; then
 echo "Aligning movies"
 get_start
-APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_id} ${bin_cmd}/unblur_gpu << EOF &> /dev/null
+APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_id} ${bin_cmd}/unblur_gpu << EOF 
 $movie_file
 $output_dir/images/$img_base/aligned_img.mrc
 $output_dir/images/$img_base/aligned_img_shifts.txt
@@ -49,7 +51,7 @@ $eer_super_res_factor
 $movie_correct_mag_distortion
 $movie_max_threads
 EOF
-check_exit_status "unblur_gpu"
+check_exit_status "unblur_gpu" $output_dir
 get_stop
 add_time_to_file $movie_align_timing_file
 

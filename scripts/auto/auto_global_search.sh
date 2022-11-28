@@ -14,6 +14,29 @@ get_start
 mkdir -p ${output_dir}/global_search
 mkdir -p ${output_dir}/global_search/$(basename ${dir_name})
 
+
+# {
+# echo "${dir_name}/aligned_img.mrc"
+# echo "${output_dir}/volumes/${pdb_file}.mrc"
+# echo "${output_dir}/global_search/$(basename ${dir_name})"
+# echo "$output_pixel_size"
+# echo "$microscope_voltage"
+# echo "$microscope_spherical_aberration"
+# echo "$microscope_amplitude_contrast"
+# echo "$defocus_1"
+# echo "$defocus_2"
+# echo "$defocus_ang"
+# echo "$global_phase_shift"
+# echo "$global_high_resolution_limit"
+# echo "$global_out_of_plane_angle"
+# echo "$global_in_plane_angle"
+# echo "$global_padding_value"
+# echo "$global_mask_radius"
+# echo "$global_symmetry"
+# echo "$global_min_peak_radius"
+# echo "$global_max_threads"
+# } > .global.dff
+echo "APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_id} ${bin_cmd}/global_search_gpu"
 APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_id} ${bin_cmd}/global_search_gpu << EOF 
 ${dir_name}/aligned_img.mrc
 ${output_dir}/volumes/${pdb_file}.mrc
@@ -35,51 +58,12 @@ $global_symmetry
 $global_min_peak_radius
 $global_max_threads
 EOF
-check_exit_status "global_search_gpu"
+check_exit_status "global_search_gpu" $output_dir
 get_stop
 add_time_to_file $global_search_timing_file
 
 
-
-mkdir -p ${output_dir}/particle_stacks
-mkdir -p ${output_dir}/particle_stacks/$(basename ${dir_name})
-
-wanted_threshold=$(awk '/Expected threshold/{print $5}' ${output_dir}/global_search/$(basename ${dir_name})/aligned_img_histogram.txt)
-echo "Wanted threshold is  - $wanted_threshold - "
-echo "amp $microscope_amplitude_contrast"
-result_number=1
-
-get_start
-# We are just making a star file to work with micrographs at this piont
-APPTAINERENV_CUDA_VISIBLE_DEVICES=${gpu_id} ${bin_cmd}/prepare_stack_global_search << EOF 
-no
-${output_dir}/global_search/$(basename ${dir_name})/aligned_img_scaled_mip.mrc
-${output_dir}/global_search/$(basename ${dir_name})/aligned_img_psi.mrc
-${output_dir}/global_search/$(basename ${dir_name})/aligned_img_theta.mrc
-${output_dir}/global_search/$(basename ${dir_name})/aligned_img_phi.mrc
-/dev/null
-/dev/null
-${wanted_threshold}
-${global_min_peak_radius}
-$result_number
-${dir_name}/aligned_img.mrc
-${output_dir}/particle_stacks/$(basename ${dir_name})/micrograph.star
-${output_dir}/particle_stacks/$(basename ${dir_name})/micrograph.mrc
-${sim_output_size}
-$output_pixel_size
-$defocus_1
-$defocus_2
-$defocus_ang
-$microscope_voltage
-$microscope_spherical_aberration
-$microscope_amplitude_contrast
-EOF
-check_exit_status "prepare_stack_global_search"
-get_stop
-add_time_to_file $global_prepare_stack_timing_file
-
-
 fi
-#FIXME
-# Need a check on zero peaks (or even < N peaks found)
-./auto_grid_refinement.sh ${dir_name} $gpu_id
+
+./auto_prepare_global_results.sh ${dir_name} ${gpu_id}
+

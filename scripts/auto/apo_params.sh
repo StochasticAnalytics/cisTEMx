@@ -1,13 +1,13 @@
 #!/bin/bash
 
-output_dir=full_grid
+output_dir=test_multi_output
 
-bin_cmd="apptainer exec --nv -B /scratch/ /sa_shared/software/cisTEMx_production_1.0.5.sif ${HOME}/git/cisTEM/build/intel-gpu-debug-profile/src"
+bin_cmd="apptainer exec --nv -B /scratch/,/sa_shared/software /sa_shared/software/cisTEMx_production_1.0.5.sif /sa_shared/software/local_cistem/intel-gpu-debug-profile/src"
 pdb_file=7a4m_assembly_no_C_T.pdb
 
 
 # movie_dir=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/movies
-movie_dir=/scratch/salina/EMPIAR-10568-apoferritin-g4-EER/data/Images-Disc1/GridSquare_8824187/Data
+movie_dir=/scratch/etna/test_auto/apo_tests/movies
 use_movie_gain_ref="yes"
 movie_gain_ref=/scratch/salina/proc_EMPIAR-10568-apoferritin-g4-EER/setup_Movie2Map/gain_1xUps_8k.mrc
 
@@ -69,13 +69,16 @@ movie_max_threads=1
 global_phase_shift=0.0
 global_out_of_plane_angle=7.5
 global_in_plane_angle=3.75
-global_high_resolution_limit=$(echo "print($output_pixel_size*2)" | python3)
+global_low_resolution_limit=60.0
+global_high_resolution_limit=0.0
 global_padding_value=1.0
 global_mask_radius=0.0
 global_symmetry="O"
-global_max_threads=8
+global_max_threads=1
 # TODO, this should be tied to particle size
-global_min_peak_radius=40.0
+global_min_peak_radius=65.0
+
+global_n_peaks=6
 
 # Run with the input model# zero for abberation refinement (max res)
 global_resolution=7.5
@@ -93,7 +96,7 @@ reconstruct3d_max_threads=8
 
 # To use for load balancing
 gpu_for_movies=0
-max_movies_per_gpu=3
+max_movies_per_gpu=1
 
 gpu_for_global=0
 max_images_per_gpu=3
@@ -106,12 +109,13 @@ local_max_threads=8
 
 
 # jsut for testing
-run_simulate=yes
-run_movie_align=yes
-run_ctf_fit=yes
-run_global=yes
+run_simulate=no
+run_movie_align=no
+run_ctf_fit=no
+run_global=no
+run_global_results=no
 run_grid=yes
-run_local=yes
+run_local=no
 run_reconstruct3d=no
 
 # timing files to append to, will be zeroed at the beginning of a movie run

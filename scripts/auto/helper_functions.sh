@@ -24,7 +24,7 @@ function get_elapsed {
 
 function check_exit_status() {
     if [ $? -ne 0 ]; then
-        echo "Error: $1 failed!"
+        flock -x "$2/log/err.log" -c "echo Error: $1 failed! >> $2/log/err.log"
         exit 0
     fi
 }

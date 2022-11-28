@@ -91,12 +91,14 @@ class TemplateMatchingCore {
     __half2* my_stats;
     __half2* my_peaks;
     __half2* my_new_peaks; // for passing euler angles to the callback
-    __half* secondary_peaks;
+    __half*  secondary_peaks;
 
     void SumPixelWise(GpuImage& image);
     void MipPixelWise(__half psi, __half theta, __half phi);
     void MipToImage( );
     void AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
+
+    void UpdateSecondaryPeaks( );
 
     void SetMinimumThreshold(float wanted_threshold) { minimum_threshold = wanted_threshold; }
 

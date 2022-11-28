@@ -456,10 +456,10 @@ bool GlobalSearchApp::DoCalculation( ) {
 
     padded_reference.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
     // We only need extra copies of the mip and angles
-    max_intensity_projection.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
-    best_psi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
-    best_theta.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
-    best_phi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_savee);
+    max_intensity_projection.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
+    best_psi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
+    best_theta.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
+    best_phi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
 
     correlation_pixel_sum_image.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
     correlation_pixel_sum_of_squares_image.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
@@ -753,24 +753,30 @@ bool GlobalSearchApp::DoCalculation( ) {
 
             // TODO swap max_padding for explicit padding in x/y and limit calcs to that region.
             pixel_counter = 0;
-            for ( current_y = 0; current_y < max_intensity_projection.logical_y_dimension; current_y++ ) {
-                for ( current_x = 0; current_x < max_intensity_projection.logical_x_dimension; current_x++ ) {
-                    // first mip
+            for ( int z = 0; z < max_intensity_projection.logical_z_dimension; z++ ) {
+                for ( current_y = 0; current_y < max_intensity_projection.logical_y_dimension; current_y++ ) {
+                    for ( current_x = 0; current_x < max_intensity_projection.logical_x_dimension; current_x++ ) {
+                        // first mip
 
-                    if ( mip_buffer.real_values[pixel_counter] > max_intensity_projection.real_values[pixel_counter] ) {
-                        max_intensity_projection.real_values[pixel_counter] = mip_buffer.real_values[pixel_counter];
-                        best_psi.real_values[pixel_counter]                 = psi_buffer.real_values[pixel_counter];
-                        best_theta.real_values[pixel_counter]               = theta_buffer.real_values[pixel_counter];
-                        best_phi.real_values[pixel_counter]                 = phi_buffer.real_values[pixel_counter];
+                        if ( mip_buffer.real_values[pixel_counter] > max_intensity_projection.real_values[pixel_counter] ) {
+                            max_intensity_projection.real_values[pixel_counter] = mip_buffer.real_values[pixel_counter];
+                            best_psi.real_values[pixel_counter]                 = psi_buffer.real_values[pixel_counter];
+                            best_theta.real_values[pixel_counter]               = theta_buffer.real_values[pixel_counter];
+                            best_phi.real_values[pixel_counter]                 = phi_buffer.real_values[pixel_counter];
+                        }
+
+                        if ( z == 0 ) {
+                            // We only need on image to track stats
+                            
+                            correlation_pixel_sum[pixel_counter] += (double)sum.real_values[pixel_counter];
+                            correlation_pixel_sum_of_squares[pixel_counter] += (double)sumSq.real_values[pixel_counter];
+                        }
+
+                        pixel_counter++;
                     }
 
-                    correlation_pixel_sum[pixel_counter] += (double)sum.real_values[pixel_counter];
-                    correlation_pixel_sum_of_squares[pixel_counter] += (double)sumSq.real_values[pixel_counter];
-
-                    pixel_counter++;
+                    pixel_counter += max_intensity_projection.padding_jump_value;
                 }
-
-                pixel_counter += max_intensity_projection.padding_jump_value;
             }
 
             GPU[tIDX].histogram.CopyToHostAndAdd(histogram_data);
@@ -848,11 +854,11 @@ bool GlobalSearchApp::DoCalculation( ) {
         MRCFile output_file;
 
         temp_image.CopyFrom(&max_intensity_projection);
-        temp_image.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_savee, temp_image.ReturnAverageOfRealValuesOnEdges( ));
+        temp_image.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, temp_image.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + mip_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        temp_image.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_savee);
+        temp_image.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
 
 #ifdef CISTEM_TEST_FILTERED_MIP
 
@@ -879,7 +885,7 @@ bool GlobalSearchApp::DoCalculation( ) {
 
         //        max_intensity_projection.SubtractImage(&correlation_pixel_sum);
         long slice_offset;
-        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_savee; iSlice++ ) {
+        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_save; iSlice++ ) {
             slice_offset = iSlice * input_image.real_memory_allocated;
             for ( int pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
                 max_intensity_projection.real_values[pixel_counter + slice_offset] -= correlation_pixel_sum_image.real_values[pixel_counter];
@@ -893,7 +899,7 @@ bool GlobalSearchApp::DoCalculation( ) {
 #else
 
         long slice_offset;
-        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_savee; iSlice++ ) {
+        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_save; iSlice++ ) {
             slice_offset = iSlice * input_image.real_memory_allocated;
             for ( pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
                 max_intensity_projection.real_values[pixel_counter] -= correlation_pixel_sum[pixel_counter];
@@ -910,7 +916,7 @@ bool GlobalSearchApp::DoCalculation( ) {
         //        max_intensity_projection.DividePixelWise(correlation_pixel_sum_of_squares);
 
         ////////////////////////////
-        max_intensity_projection.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_savee, max_intensity_projection.ReturnAverageOfRealValuesOnEdges( ));
+        max_intensity_projection.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, max_intensity_projection.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + scaled_mip_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
@@ -940,7 +946,7 @@ bool GlobalSearchApp::DoCalculation( ) {
         output_file.SetOutputToFP16( );
         best_theta.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
 
-        best_phi.Resize(original_input_image_x, original_input_image_y, , 0.0f);
+        best_phi.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, 0.0f);
         output_file.OpenFile(directory_for_results + "/" + best_phi_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );

@@ -81,18 +81,18 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 
     d_current_projection.Init(this->current_projection);
 
-    d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_best_psi.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_best_theta.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_best_phi.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
+    d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
+    d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
+    d_best_psi.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
+    d_best_theta.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
+    d_best_phi.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
 
-    d_sum1.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_sumSq1.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_sum2.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_sumSq2.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_sum3.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
-    d_sumSq3.Allocate(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
+    d_sum1.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
+    d_sumSq1.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
+    d_sum2.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
+    d_sumSq2.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
+    d_sum3.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
+    d_sumSq3.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
 
     wxPrintf("Setting up the histogram\n\n");
     histogram.Init(histogram_number_of_bins, histogram_min_scaled, histogram_step_scaled);
@@ -144,6 +144,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaMalloc((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
     cudaErr(cudaMalloc((void**)&my_stats, sizeof(__half2) * d_input_image.real_memory_allocated));
     cudaErr(cudaMemset(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
+    cudaErr(cudaMemset(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaMalloc((void**)&secondary_peaks, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4));
         cudaErr(cudaMemset(secondary_peaks, 0, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4));
@@ -297,6 +298,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             }
         } // loop over psi angles
 
+        if ( n_global_search_images_to_save > 1 )
+            UpdateSecondaryPeaks( );
+
     } // end of outer loop euler sphere position
 
     wxPrintf("\t\t\ntotal number %d\n", ccc_counter);
@@ -368,21 +372,23 @@ __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks
     //
 }
 
-__global__ void UpdateSecondaryPeaksKernel(_half* secondary_peaks, __half2* my_peaks, __half2* my_new_peaks,
-                                           const float minimum_threshold, const int n_peaks, const int numel) {
+__global__ void
+UpdateSecondaryPeaksKernel(__half*   secondary_peaks,
+                           __half2*  my_peaks,
+                           __half2*  my_new_peaks,
+                           const int NY,
+                           const int NX) {
 
-    //	Peaks tmp_peak;
+    //	When returning more than one search result, the peaks are stored in a 3d array,
+    // numel * n_peaks * 4 (mip, psi, theta, phi)
     int best_index = 0;
     int offset     = 0;
-    for ( int img_index = blockIdx.x * blockDim.x + threadIdx.x; img_index < numel; img_index += blockDim.x * gridDim.x ) {
+    for ( int img_index = blockIdx.x * blockDim.x + threadIdx.x; img_index < NX; img_index += blockDim.x * gridDim.x ) {
 
-        if ( __low2half(my_peaks[i]) < minimum_threshold )
-            continue;
-
-        best_index = n_peaks;
-        for ( int i_peak = 0; i_peak < n_peaks; i_peak++ ) {
+        best_index = NY;
+        for ( int i_peak = 0; i_peak < NY; i_peak++ ) {
             // Check to see if any peak from this search position is in the top n_peaks scores
-            if ( __low2half(my_peaks[i]) > secondary_peaks[img_index + i_peak * numel] ) {
+            if ( __low2half(my_peaks[img_index]) > secondary_peaks[img_index + i_peak * NX] ) {
                 best_index = i_peak;
                 break;
             }
@@ -390,21 +396,34 @@ __global__ void UpdateSecondaryPeaksKernel(_half* secondary_peaks, __half2* my_p
 
         // If we didn't find a better peak, this loop will not execute
         // We have a numel * n_peaks * 4 (score, psi, theta, phi) array
-        for ( int worst_peak = n_peaks - 1; worst_peak > best_index; worst_peak-- ) {
-            offset = img_index + worst_peak * numel;
+        for ( int worst_peak = NY - 1; worst_peak > best_index; worst_peak-- ) {
+            offset = img_index + NX * worst_peak;
             // Move the worst peak down one
-            secondary_peaks[offset] = secondary_peaks[offset - numel];
+            secondary_peaks[offset] = secondary_peaks[offset - NX];
+            // Psi
+            offset += NX * NY;
+            secondary_peaks[offset] = secondary_peaks[offset - NX];
+            // Theta
+            offset += NX * NY;
+            secondary_peaks[offset] = secondary_peaks[offset - NX];
+            // Phi
+            offset += NX * NY;
+            secondary_peaks[offset] = secondary_peaks[offset - NX];
         }
         // Now insert the new peak
-        if ( best_index < n_peaks ) {
-            offset                      = img_index + best_index * numel;
-            secondary_peaks[offset]     = __low2half(my_peaks[i]);
-            secondary_peaks[offset + 1] = __high2half(my_peaks[i]);
-            secondary_peaks[offset + 2] = __low2half(my_new_peaks[i]);
-            secondary_peaks[offset + 3] = __high2half(my_new_peaks[i]);
+        if ( best_index < NY ) {
+            offset                  = img_index + best_index * NX;
+            secondary_peaks[offset] = __low2half(my_peaks[img_index]);
+            // Psi
+            offset += NX * NY;
+            secondary_peaks[offset] = __high2half(my_peaks[img_index]);
+            // Theta
+            offset += NX * NY;
+            secondary_peaks[offset] = __low2half(my_new_peaks[img_index]);
+            // Phi
+            offset += NX * NY;
+            secondary_peaks[offset] = __high2half(my_new_peaks[img_index]);
         }
-        my_peaks[i]     = __halves2half2(half_val, psi);
-        my_new_peaks[i] = __halves2half2(theta, phi);
     }
 }
 
@@ -414,14 +433,51 @@ void TemplateMatchingCore::UpdateSecondaryPeaks( ) {
     // N
     d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
-    UpdateSecondaryPeaksKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f,
-                                                                                                                            secondary_peaks,
-                                                                                                                            (int)d_padded_reference.real_memory_allocated,
-                                                                                                                            psi, theta, phi);
+    UpdateSecondaryPeaksKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)secondary_peaks,
+                                                                                                                            my_peaks,
+                                                                                                                            my_new_peaks,
+                                                                                                                            n_global_search_images_to_save,
+                                                                                                                            (int)d_padded_reference.real_memory_allocated);
     postcheck;
+
+    // We need to reset this each outer angle search or we'll never see new maximums
+    cudaErr(cudaMemset(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
+    cudaErr(cudaMemset(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
 }
 
-__global__ void MipToImageKernel(const __half2*, const __half2* my_new_peaks, const int, cufftReal*, cufftReal*, cufftReal*, cufftReal*);
+__global__ void MipToImageKernel(const __half2* my_peaks,
+                                 const __half2* my_new_peaks,
+                                 const __half*  secondary_peaks,
+                                 const int      numel,
+                                 cufftReal*     mip,
+                                 cufftReal*     psi,
+                                 cufftReal*     theta,
+                                 cufftReal*     phi,
+                                 const int      n_peaks) {
+
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    if ( x >= numel )
+        return;
+
+    if ( n_peaks == 1 ) {
+
+        mip[x]   = (cufftReal)__low2float(my_peaks[x]);
+        psi[x]   = (cufftReal)__high2float(my_peaks[x]);
+        theta[x] = (cufftReal)__low2float(my_new_peaks[x]);
+        phi[x]   = (cufftReal)__high2float(my_new_peaks[x]);
+    }
+    else {
+        int offset;
+        for ( int iPeak = 0; iPeak < n_peaks; iPeak++ ) {
+            offset = x + numel * iPeak; // out puts are NX * NY * NZ
+            // Move the worst peak down one
+            mip[offset]   = (cufftReal)secondary_peaks[offset];
+            psi[offset]   = (cufftReal)secondary_peaks[offset + numel * n_peaks];
+            theta[offset] = (cufftReal)secondary_peaks[offset + numel * n_peaks * 2];
+            phi[offset]   = (cufftReal)secondary_peaks[offset + numel * n_peaks * 3];
+        }
+    }
+}
 
 void TemplateMatchingCore::MipToImage( ) {
 
@@ -429,22 +485,16 @@ void TemplateMatchingCore::MipToImage( ) {
     dim3 threadsPerBlock = dim3(1024, 1, 1);
     dim3 gridDims        = dim3((d_max_intensity_projection.real_memory_allocated + threadsPerBlock.x - 1) / threadsPerBlock.x, 1, 1);
 
-    MipToImageKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(my_peaks, my_new_peaks, d_max_intensity_projection.real_memory_allocated,
-                                                                            d_max_intensity_projection.real_values_gpu, d_best_psi.real_values_gpu, d_best_theta.real_values_gpu, d_best_phi.real_values_gpu);
+    MipToImageKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(my_peaks,
+                                                                            my_new_peaks,
+                                                                            secondary_peaks,
+                                                                            d_padded_reference.real_memory_allocated,
+                                                                            d_max_intensity_projection.real_values_gpu,
+                                                                            d_best_psi.real_values_gpu,
+                                                                            d_best_theta.real_values_gpu,
+                                                                            d_best_phi.real_values_gpu,
+                                                                            n_global_search_images_to_save);
     postcheck;
-}
-
-__global__ void MipToImageKernel(const __half2* my_peaks, const __half2* my_new_peaks, const int numel, cufftReal* mip, cufftReal* psi, cufftReal* theta, cufftReal* phi) {
-
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if ( x < numel ) {
-
-        mip[x]   = (cufftReal)__low2float(my_peaks[x]);
-        psi[x]   = (cufftReal)__high2float(my_peaks[x]);
-        theta[x] = (cufftReal)__low2float(my_new_peaks[x]);
-        phi[x]   = (cufftReal)__high2float(my_new_peaks[x]);
-    }
 }
 
 __global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftReal* sum, cufftReal* sq_sum);

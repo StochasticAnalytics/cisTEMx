@@ -79,15 +79,30 @@ bool QuickTestApp::DoCalculation( ) {
     int last_search_position             = global_euler_search.number_of_search_positions;
     int total_number_of_search_positions = 0;
 
-    for ( int current_search_position = first_search_position; current_search_position < last_search_position; current_search_position++ ) {
+    std::vector<float> in_plane_angles;
+    bool               save_text_file = true;
+    if ( save_text_file ) {
+        // for testing
+        in_plane_angles.push_back(33.5f);
+        for ( int i = 0; i < 360; i += 6 ) {
+            in_plane_angles.push_back(i);
+        }
+    }
+    else {
         for ( int current_psi = psi_start; current_psi < psi_max; current_psi += psi_step ) {
+            in_plane_angles.push_back(current_psi);
+        }
+    }
+
+    for ( int current_search_position = first_search_position; current_search_position < last_search_position; current_search_position++ ) {
+        for ( auto& current_psi : in_plane_angles ) {
             total_number_of_search_positions++;
         }
     }
     std::vector<std::array<float, 3>> angle_list(total_number_of_search_positions);
     total_number_of_search_positions = 0;
     for ( int current_search_position = first_search_position; current_search_position < last_search_position; current_search_position++ ) {
-        for ( int current_psi = psi_start; current_psi < psi_max; current_psi += psi_step ) {
+        for ( auto& current_psi : in_plane_angles ) {
             angle_list.at(total_number_of_search_positions).at(0) = global_euler_search.list_of_search_parameters[current_search_position][0];
             angle_list.at(total_number_of_search_positions).at(1) = global_euler_search.list_of_search_parameters[current_search_position][1];
             angle_list.at(total_number_of_search_positions).at(2) = current_psi;
@@ -122,11 +137,13 @@ bool QuickTestApp::DoCalculation( ) {
     ref_prj.Allocate(2 * vol.logical_x_dimension, 2 * vol.logical_y_dimension, 1, false);
     Image test_prj;
     test_prj = ref_prj;
+    Image small_prj;
+    small_prj.Allocate(2 * vol.logical_x_dimension, 2 * vol.logical_y_dimension, 1, false);
+
+    vol.AddConstant(-vol.ReturnAverageOfRealValuesOnEdges( ));
+    vol.Resize(vol.logical_x_dimension * 2, vol.logical_y_dimension * 2, vol.logical_z_dimension * 2, 0.0f);
     vol.ForwardFFT( );
     vol.SwapRealSpaceQuadrants( );
-
-    Image small_prj;
-    small_prj.Allocate(vol.logical_x_dimension, vol.logical_y_dimension, 1, false);
 
     float  variance;
     Image* current_projection;
@@ -136,105 +153,169 @@ bool QuickTestApp::DoCalculation( ) {
     int    search_counter = 0;
     bool   first_time     = true;
 
-    long number_angles_searched            = 0;
-    int  number_search_positions_completed = 0;
-    int  n_x                               = 0;
-    long address                           = 0;
-    int  printed_complete                  = 0;
-    // Saving only the lower triangular so we need one less value each time, use the outer loop to decrement the starting point of the inner loop
-    for ( int outer_counter = 0; outer_counter < angle_list.size( ); outer_counter++ ) {
-        // Setting first_time to true will cause the reference projection to be calculated
-        first_time = true;
-        for ( int current_search_position = outer_counter; current_search_position < angle_list.size( ); current_search_position++ ) {
-            angles.Init(angle_list.at(current_search_position).at(0),
-                        angle_list.at(current_search_position).at(1),
-                        angle_list.at(current_search_position).at(2),
-                        0.0f, 0.0f);
+    float low_resolution_limit  = 400.0f;
+    float high_resolution_limit = 4.0f;
 
-            if ( first_time ) {
-                current_projection = &ref_prj;
+    if ( high_resolution_limit > 0.0 )
+        vol.CosineMask(pixel_size / high_resolution_limit, pixel_size / 100.0);
+    if ( low_resolution_limit > 0.0 )
+        vol.CosineMask(pixel_size / low_resolution_limit, pixel_size / 100.0, true);
+
+    int n_noise_loops = (save_text_file) ? 8 : 1;
+    for ( int iNoise = 0; iNoise < n_noise_loops; iNoise++ ) {
+
+        long number_angles_searched            = 0;
+        int  number_search_positions_completed = 0;
+        int  n_x                               = 0;
+        long address                           = 0;
+        int  printed_complete                  = 0;
+        // Saving only the lower triangular so we need one less value each time, use the outer loop to decrement the starting point of the inner loop
+        CTF ctf;
+        ctf.Init(300, 2.7, 0.07, 8000, 7000, -25, 1.2, 0);
+
+        float noise_value = iNoise * 0.35f;
+        for ( int outer_counter = 0; outer_counter < angle_list.size( ); outer_counter++ ) {
+            // Setting first_time to true will cause the reference projection to be calculated
+            first_time = true;
+            for ( int current_search_position = outer_counter; current_search_position < angle_list.size( ); current_search_position++ ) {
+                angles.Init(angle_list.at(current_search_position).at(0),
+                            angle_list.at(current_search_position).at(1),
+                            angle_list.at(current_search_position).at(2),
+                            0.0f, 0.0f);
+
+                if ( first_time ) {
+                    current_projection = &ref_prj;
+                }
+                else {
+                    current_projection = &test_prj;
+                }
+                small_prj.is_in_real_space = false;
+
+                vol.ExtractSlice(small_prj, angles, pixel_size / high_resolution_limit, true);
+
+                // small_prj.CosineMaskAndNormalizeInPassBand(400, res_limit, pixel_size, small_prj.number_of_real_space_pixels * 3);
+
+                small_prj.SwapRealSpaceQuadrants( );
+                small_prj.BackwardFFT( );
+
+                // float average_on_edge  = small_prj.ReturnAverageOfRealValuesOnEdges( );
+                // float average_of_reals = small_prj.ReturnAverageOfRealValues( ) - average_on_edge;
+
+                // small_prj.AddConstant(-average_on_edge);
+                float average_vals = small_prj.ReturnAverageOfRealValues( );
+                small_prj.AddConstant(-average_vals);
+                small_prj.MultiplyByConstant(0.25f / sqrt(small_prj.ReturnSumOfSquares( )));
+
+                // Add a little noise that sees the ctf
+                small_prj.AddNoiseFromNormalDistribution(0.0f, 0.5f);
+                small_prj.ForwardFFT( );
+
+                small_prj.ApplyCTF(ctf);
+                small_prj.BackwardFFT( );
+
+                // Re-normalize
+                average_vals = small_prj.ReturnAverageOfRealValues( );
+                small_prj.AddConstant(-average_vals);
+                small_prj.MultiplyByConstant(0.25f / sqrt(small_prj.ReturnSumOfSquares( )));
+
+                if ( save_text_file ) {
+                    if ( first_time && outer_counter == 0 ) {
+                        // Add a small offset to the ground truth
+                        // small_prj.PhaseShift(-0.5, 0.5, 0.0);
+                        std::cerr << "Current Angles are " << angles.ReturnPhiAngle( ) << " " << angles.ReturnThetaAngle( ) << " " << angles.ReturnPsiAngle( ) << std::endl;
+                        Image tmp = small_prj;
+                        tmp.AddNoiseFromNormalDistribution(0, noise_value);
+                        tmp.QuickAndDirtyWriteSlice("ref_prj" + std::to_string(iNoise) + "_.mrc", 1, 1);
+                    }
+                    else {
+                        // Add noise to everything but the reference projection
+                        small_prj.AddNoiseFromNormalDistribution(0, noise_value);
+                    }
+                }
+
+                // Re-normalize
+                average_vals = small_prj.ReturnAverageOfRealValues( );
+                small_prj.AddConstant(-average_vals);
+                small_prj.MultiplyByConstant(0.25f / sqrt(small_prj.ReturnSumOfSquares( )));
+
+                // The average in the full padded image will be different;
+                // average_of_reals *= small_prj.number_of_real_space_pixels / current_projection->number_of_real_space_pixels;
+
+                // small_prj.DivideByConstant(sqrtf(small_prj.ReturnSumOfSquares( ) * small_prj.number_of_real_space_pixels / current_projection->number_of_real_space_pixels - average_of_reals * average_of_reals));
+
+                small_prj.ClipInto(current_projection);
+                current_projection->ForwardFFT( );
+                // Zeroing the central pixel is probably not doing anything useful...
+                current_projection->ZeroCentralPixel( );
+
+                //                    padded_reference.DivideByConstant(sqrtf(variance));
+
+                if ( first_time ) {
+                    test_prj.CopyFrom(current_projection);
+                    current_projection = &test_prj;
+                    first_time         = false;
+                }
+
+                // Use the MKL
+                vmcMulByConj(ref_prj.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(current_projection->complex_values), reinterpret_cast<MKL_Complex8*>(ref_prj.complex_values), reinterpret_cast<MKL_Complex8*>(current_projection->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
+
+                current_projection->BackwardFFT( );
+                current_projection->is_in_real_space         = true;
+                current_projection->object_is_centred_in_box = false;
+                found_peak                                   = current_projection->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
+                // std::cerr << "For phi theta psi " << angles.ReturnPhiAngle( ) << " " << angles.ReturnThetaAngle( ) << " " << angles.ReturnPsiAngle( ) << " found peak at " << found_peak.x << " " << found_peak.y << " " << found_peak.value << std::endl;
+                // search_results.at(search_counter)[0] = found_peak.value;
+                // search_results.at(search_counter)[1] = angles.ReturnPhiAngle( );
+                // search_results.at(search_counter)[2] = angles.ReturnThetaAngle( );
+                // search_results.at(search_counter)[3] = angles.ReturnPsiAngle( );
+                if ( found_peak.value > 2.0 ) {
+                    current_projection->QuickAndDirtyWriteSlice("test.mrc", 1);
+                    exit(1);
+                }
+                search_counter++;
+
+                ccc_matrix.real_values[address] = found_peak.value;
+                n_x++;
+                address++;
+                if ( n_x == ccc_matrix.logical_x_dimension ) {
+                    n_x = 0;
+                    address += ccc_matrix.padding_jump_value;
+                }
+
+                number_angles_searched++;
+
+                float percent_complete = 100.0 * float(number_angles_searched) / float(total_number_to_record);
+                if ( int(percent_complete) % 2 == 0 && int(percent_complete) > printed_complete ) {
+                    std::cerr << "percent complete: " << percent_complete << std::endl;
+                    printed_complete = int(percent_complete);
+                }
+
+            } // loop comparing i to j
+        } // loop over h
+
+        if ( save_text_file ) {
+            NumericTextFile output_file("search_noise" + std::to_string(iNoise) + ".txt", OPEN_TO_WRITE, 1);
+            n_x     = 0;
+            address = 0;
+            for ( int i = 0; i < in_plane_angles.size( ); i++ ) {
+                output_file.WriteLine(&ccc_matrix.real_values[address]);
+                n_x++;
+                address++;
+                if ( n_x == ccc_matrix.logical_x_dimension ) {
+                    n_x = 0;
+                    address += ccc_matrix.padding_jump_value;
+                }
             }
-            else {
-                current_projection = &test_prj;
-            }
-            small_prj.is_in_real_space = false;
-
-            vol.ExtractSlice(small_prj, angles, 1.0f, false);
-            small_prj.CosineMaskAndNormalizeInPassBand(400, 4, 1, small_prj.number_of_real_space_pixels * 3);
-
-            small_prj.SwapRealSpaceQuadrants( );
-            small_prj.BackwardFFT( );
-
-            float average_on_edge  = small_prj.ReturnAverageOfRealValuesOnEdges( );
-            float average_of_reals = small_prj.ReturnAverageOfRealValues( ) - average_on_edge;
-
-            small_prj.AddConstant(-average_on_edge);
-
-            // The average in the full padded image will be different;
-            average_of_reals *= small_prj.number_of_real_space_pixels / current_projection->number_of_real_space_pixels;
-
-            small_prj.DivideByConstant(sqrtf(small_prj.ReturnSumOfSquares( ) * small_prj.number_of_real_space_pixels / current_projection->number_of_real_space_pixels - average_of_reals * average_of_reals));
-
-            small_prj.ClipInto(current_projection);
-            current_projection->ForwardFFT( );
-            // Zeroing the central pixel is probably not doing anything useful...
-            current_projection->ZeroCentralPixel( );
-
-            //                    padded_reference.DivideByConstant(sqrtf(variance));
-
-            if ( first_time ) {
-                test_prj.CopyFrom(current_projection);
-                current_projection = &test_prj;
-                first_time         = false;
-            }
-
-            // Use the MKL
-            vmcMulByConj(ref_prj.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(current_projection->complex_values), reinterpret_cast<MKL_Complex8*>(ref_prj.complex_values), reinterpret_cast<MKL_Complex8*>(current_projection->complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
-
-            current_projection->BackwardFFT( );
-            current_projection->is_in_real_space         = true;
-            current_projection->object_is_centred_in_box = false;
-            found_peak                                   = current_projection->FindPeakAtOriginFast2D(max_pix_x, max_pix_y);
-            // std::cerr << "For phi theta psi " << angles.ReturnPhiAngle( ) << " " << angles.ReturnThetaAngle( ) << " " << angles.ReturnPsiAngle( ) << " found peak at " << found_peak.x << " " << found_peak.y << " " << found_peak.value << std::endl;
-            // search_results.at(search_counter)[0] = found_peak.value;
-            // search_results.at(search_counter)[1] = angles.ReturnPhiAngle( );
-            // search_results.at(search_counter)[2] = angles.ReturnThetaAngle( );
-            // search_results.at(search_counter)[3] = angles.ReturnPsiAngle( );
-            if ( found_peak.value > 2.0 ) {
-                current_projection->QuickAndDirtyWriteSlice("test.mrc", 1);
-                exit(1);
-            }
-            search_counter++;
-
-            ccc_matrix.real_values[address] = found_peak.value;
-            n_x++;
-            address++;
-            if ( n_x == ccc_matrix.logical_x_dimension ) {
-                n_x = 0;
-                address += ccc_matrix.padding_jump_value;
-            }
-
-            number_angles_searched++;
-
-            float percent_complete = 100.0 * float(number_angles_searched) / float(total_number_to_record);
-            if ( int(percent_complete) % 2 == 0 && int(percent_complete) > printed_complete ) {
-                std::cerr << "percent complete: " << percent_complete << std::endl;
-                printed_complete = int(percent_complete);
-            }
-
-        } // loop comparing i to j
-    } // loop over h
-
-    MRCFile output_file;
-    output_file.OpenFile(input_starfile_filename.at(1).ToStdString( ), false);
-    output_file.SetOutputToFP16( );
-    ccc_matrix.WriteSlice(&output_file, 1);
-    output_file.CloseFile( );
-    // NumericTextFile output_file("search_results.txt", OPEN_TO_WRITE, 4);
-    // for ( int i = 0; i < search_results.size( ); i++ ) {
-    //     output_file.WriteLine(search_results.at(i).data( ));
-    // }
-    // output_file.Close( );
+            output_file.Close( );
+        }
+        else {
+            MRCFile output_file;
+            output_file.OpenFile(input_starfile_filename.at(1).ToStdString( ), false);
+            // output_file.SetOutputToFP16( );
+            ccc_matrix.WriteSlice(&output_file, 1);
+            output_file.CloseFile( );
+        }
+    }
     exit(0);
 
     std::cerr << "my_test 1 = " << my_test_1 << std::endl;

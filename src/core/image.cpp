@@ -3927,7 +3927,7 @@ void Image::CosineMaskAndNormalizeInPassBand(float low_resolution_cutoff_angstro
                                              int   number_of_padded_pixels) {
 
     MyDebugAssertTrue(is_in_memory, "Image is not in memory");
-
+    MyAssertTrue(false, "Not implemented yet, getting weird streaking");
     bool need_to_fft = false;
     if ( is_in_real_space ) {
         need_to_fft = true;
@@ -3959,8 +3959,8 @@ void Image::CosineMaskAndNormalizeInPassBand(float low_resolution_cutoff_angstro
     float low_resolution_radius_plus_edge  = low_resolution_radius;
     float high_resolution_radius_plus_edge = high_resolution_radius;
 
-    float low_resolution_edge  = 4.0; // NOTE: all of these are converted in the following functions
-    float high_resolution_edge = 14.0;
+    float low_resolution_edge  = 24.0; // NOTE: all of these are converted in the following functions
+    float high_resolution_edge = 34.0;
     ReturnCosineMaskBandpassResolution(pixel_size_in_angstroms, low_resolution_radius, low_resolution_edge);
     ReturnCosineMaskBandpassResolution(pixel_size_in_angstroms, high_resolution_radius, high_resolution_edge);
 
@@ -4048,7 +4048,7 @@ void Image::CosineMaskAndNormalizeInPassBand(float low_resolution_cutoff_angstro
     // The factor of 2 is due to summing only over the positive frequencies
     if ( number_of_padded_pixels < 1 )
         number_of_padded_pixels = 1; // prevent zero dibision
-        
+
     float normalization_factor = sqrtf(float(number_of_padded_pixels) * 2.f * sum_of_squares_under_mask / weight_under_mask);
 
     for ( pixel_counter = 0; pixel_counter < number_of_real_space_pixels / 2; pixel_counter++ ) {

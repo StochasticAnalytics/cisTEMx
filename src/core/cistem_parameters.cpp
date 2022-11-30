@@ -2333,6 +2333,64 @@ int cisTEMParameters::ReturnMaxPositionInStack(bool exclude_negative_film_number
     return max;
 }
 
+cisTEMParameters cisTEMParameters::ReturnTopNFromParticleGroups(int wanted_top_scoring_in_each_particle_group) {
+
+    MyAssertTrue(wanted_top_scoring_in_each_particle_group == 1, "Only top 1 scoring particles are currently supported");
+    // parameters to return subset in
+    cisTEMParameters top_n_parameters;
+    // We'll set the particle group numbers to -1 after evaluating the top N, so we can use this to check if we've already evaluated the top N for a given particle group
+    cisTEMParameters temp_parameters = *this;
+
+    // This will be overkill, but safe
+    top_n_parameters.PreallocateMemoryAndBlank(all_parameters.GetCount( ));
+    int   current_particle_group;
+    float best_score;
+    int   best_score_index;
+    int   lines_left_to_process = all_parameters.GetCount( );
+    // The most loops we should run would occur with a particle group size of 1, so set this incase we have an issue in the while loop
+    int max_loops         = all_parameters.GetCount( );
+    int n_loops           = 0;
+    int n_particles_added = 0;
+    while ( lines_left_to_process > 0 && n_loops + 1 < max_loops ) {
+        // Get the next group to work on
+        for ( int iLine = 0; iLine < all_parameters.GetCount( ); iLine++ ) {
+            if ( temp_parameters.ReturnParticleGroup(iLine) >= 0 ) {
+                current_particle_group = temp_parameters.ReturnParticleGroup(iLine);
+                break;
+            }
+        }
+
+        // Loop over all lines
+        best_score = -std::numeric_limits<float>::max( );
+        for ( int iLine = 0; iLine < all_parameters.GetCount( ); iLine++ ) {
+            if ( temp_parameters.ReturnParticleGroup(iLine) == current_particle_group ) {
+                if ( temp_parameters.ReturnScore(iLine) > best_score ) {
+                    best_score       = temp_parameters.ReturnScore(iLine);
+                    best_score_index = iLine;
+                }
+                temp_parameters.all_parameters.Item(iLine).particle_group = -1;
+                lines_left_to_process--;
+            }
+        }
+
+        top_n_parameters.all_parameters.Item(n_particles_added)                   = all_parameters.Item(best_score_index);
+        top_n_parameters.all_parameters.Item(n_particles_added).position_in_stack = n_particles_added + 1;
+        n_particles_added++;
+        n_loops++;
+    }
+
+    // If any group numbers are left non-negative, we have a problem
+    bool all_are_negative = true;
+    for ( int iLine = 0; iLine < all_parameters.GetCount( ); iLine++ ) {
+        if ( temp_parameters.ReturnParticleGroup(iLine) >= 0 ) {
+            all_are_negative = false;
+            break;
+        }
+    }
+    MyDebugAssertTrue(all_are_negative, "Error: Not all particle group numbers are negative after evaluating top N from particle groups");
+    return top_n_parameters;
+}
+
 static int wxCMPFUNC_CONV SortByReference3DFilenameCompareFunction(cisTEMParameterLine** a, cisTEMParameterLine** b) // function for sorting the classum selections by parent_image_id - this makes cutting them out more efficient
 {
     // In versions around wx 3.1.5 the args change form pointers to reference

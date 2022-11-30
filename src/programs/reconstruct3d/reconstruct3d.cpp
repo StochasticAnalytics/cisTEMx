@@ -275,8 +275,9 @@ bool Reconstruct3DApp::DoCalculation( ) {
     else
         input_star_file.ReadFromcisTEMStarFile(input_star_filename);
 
-    // TODO: remove this - there may be cases when there are multiple particle groups and yet we do NOT want to apply an exposure filter during reconstruction
-    apply_exposure_filter_during_reconstruction = input_star_file.ContainsMultipleParticleGroups( );
+    // FIXME: remove this - there may be cases when there are multiple particle groups and yet we do NOT want to apply an exposure filter during reconstruction
+    // I'm overriding for now, but it should be re-enabled at some point if tomo reconstruction is ever implemented.
+    apply_exposure_filter_during_reconstruction = false; //input_star_file.ContainsMultipleParticleGroups( );
 
     //	input_par_file.ReadFile(true, input_stack.ReturnZSize());
     /*	input_par_file.ReduceAngles();
@@ -470,7 +471,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
 			parameter_average[i] += input_parameters[i];
 			parameter_variance[i] += powf(input_parameters[i],2);
 		}*/
-
+        // FIXME: why are we comparing an int to a float for image is active?
         if ( input_parameters.position_in_stack >= first_particle && input_parameters.position_in_stack <= last_particle && input_parameters.occupancy != 0.0 && input_parameters.score >= score_threshold && input_parameters.image_is_active >= 0.0 )
             images_to_process++;
         if ( input_parameters.position_in_stack >= first_particle && input_parameters.position_in_stack <= last_particle )

@@ -27,17 +27,17 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
 
     float wanted_threshold;
     float min_peak_radius;
-    float pixel_size              = 1;
-    float voltage_kV              = 300.0;
-    float spherical_aberration_mm = 2.7;
-    float amplitude_contrast      = 0.07;
-    float average_defocus_1       = 5000.0;
-    float average_defocus_2       = 5000.0;
-    float average_defocus_angle   = 0.0;
-    int   box_size                = 256;
-    int   result_number           = 1;
-    int   mip_x_dimension         = 0;
-    int   mip_y_dimension         = 0;
+    float pixel_size                   = 1;
+    float voltage_kV                   = 300.0;
+    float spherical_aberration_mm      = 2.7;
+    float amplitude_contrast           = 0.07;
+    float average_defocus_1            = 5000.0;
+    float average_defocus_2            = 5000.0;
+    float average_defocus_angle        = 0.0;
+    int   box_size                     = 256;
+    int   number_of_results_to_process = 1;
+    int   mip_x_dimension              = 0;
+    int   mip_y_dimension              = 0;
     bool  read_coordinates;
 
     UserInput* my_input = new UserInput("MakeParticleStack", 1.00);
@@ -45,17 +45,22 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
     read_coordinates = my_input->GetYesNoFromUser("Read coordinates from starfile?", "Should the target coordinates be read from a starfile instead of search results?", "No");
     if ( read_coordinates ) {
         input_starfilename = my_input->GetFilenameFromUser("Input starfile", "The file containing information on the targets", "particle_stack.star", true);
+        wanted_threshold   = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
+        // Currently not used for read_coordinates, but should be used to remove duplicate particles.
+        // For an initial implementation, use "best 2d class to store the image number"
+        min_peak_radius              = my_input->GetFloatFromUser("Min Peak Radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 1.0);
+        number_of_results_to_process = my_input->GetIntFromUser("Number of results to process (0=all)", "If input files contain results from several searches, how many to include?", "0", 0);
     }
     else {
-        input_mip_filename          = my_input->GetFilenameFromUser("Input MIP file", "The file for saving the maximum intensity projection image", "mip.mrc", true);
-        input_best_psi_filename     = my_input->GetFilenameFromUser("Input psi file", "The file containing the best psi image", "psi.mrc", true);
-        input_best_theta_filename   = my_input->GetFilenameFromUser("Input theta file", "The file containing the best psi image", "theta.mrc", true);
-        input_best_phi_filename     = my_input->GetFilenameFromUser("Input phi file", "The file containing the best phi image", "phi.mrc", true);
-        input_best_defocus_filename = my_input->GetFilenameFromUser("Input defocus file", "The file with the best defocus image", "defocus.mrc", false);
-        input_starfilename          = my_input->GetFilenameFromUser("Output x,y,z coordinate file", "The file for saving the x,y,z coordinates of the found targets", "coordinates.txt", false);
-        wanted_threshold            = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
-        min_peak_radius             = my_input->GetFloatFromUser("Min Peak Radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 1.0);
-        result_number               = my_input->GetIntFromUser("Result number to process", "If input files contain results from several searches, which one should be used?", "1", 1);
+        input_mip_filename           = my_input->GetFilenameFromUser("Input MIP file", "The file for saving the maximum intensity projection image", "mip.mrc", true);
+        input_best_psi_filename      = my_input->GetFilenameFromUser("Input psi file", "The file containing the best psi image", "psi.mrc", true);
+        input_best_theta_filename    = my_input->GetFilenameFromUser("Input theta file", "The file containing the best psi image", "theta.mrc", true);
+        input_best_phi_filename      = my_input->GetFilenameFromUser("Input phi file", "The file containing the best phi image", "phi.mrc", true);
+        input_best_defocus_filename  = my_input->GetFilenameFromUser("Input defocus file", "The file with the best defocus image", "defocus.mrc", false);
+        input_starfilename           = my_input->GetFilenameFromUser("Output x,y,z coordinate file", "The file for saving the x,y,z coordinates of the found targets", "coordinates.txt", false);
+        wanted_threshold             = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
+        min_peak_radius              = my_input->GetFloatFromUser("Min Peak Radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 1.0);
+        number_of_results_to_process = my_input->GetIntFromUser("Number of results to process (0=all)", "If input files contain results from several searches, how many to include?", "0", 0);
     }
     input_image_filename           = my_input->GetFilenameFromUser("Input image file", "The image that was searched", "image.mrc", true);
     output_star_filename           = my_input->GetFilenameFromUser("Output star file", "The star file containing the particle alignment parameters", "particle_stack.star", false);
@@ -98,7 +103,7 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
                                       read_coordinates, // 19
                                       mip_x_dimension, // 20
                                       mip_y_dimension, // 21
-                                      result_number); // 22
+                                      number_of_results_to_process); // 22
 }
 
 // override the do calculation method which will be what is actually run..
@@ -129,12 +134,7 @@ bool MakeParticleStack::DoCalculation( ) {
     bool     read_coordinates               = my_current_job.arguments[19].ReturnBoolArgument( );
     int      mip_x_dimension                = my_current_job.arguments[20].ReturnIntegerArgument( );
     int      mip_y_dimension                = my_current_job.arguments[21].ReturnIntegerArgument( );
-    int      result_number                  = my_current_job.arguments[22].ReturnIntegerArgument( );
-
-    MRCFile input_mip_file(input_mip_filename.ToStdString( ), false);
-    MRCFile input_psi_file(input_best_psi_filename.ToStdString( ), false);
-    MRCFile input_theta_file(input_best_theta_filename.ToStdString( ), false);
-    MRCFile input_phi_file(input_best_phi_filename.ToStdString( ), false);
+    int      number_of_results_to_process   = my_current_job.arguments[22].ReturnIntegerArgument( );
 
     Image mip_image;
     Image psi_image;
@@ -151,8 +151,10 @@ bool MakeParticleStack::DoCalculation( ) {
     float current_defocus    = 0.f;
     float current_pixel_size = 1.0f;
 
-    int   number_of_peaks_found = 0;
-    int   particle_group        = 1;
+    int   number_of_peaks_found         = 0;
+    int   particle_group                = 0;
+    int   n_processed_in_particle_group = 0;
+    int   n_processed_in_total          = 0;
     float sq_dist_x, sq_dist_y;
     float micrograph_mean;
     float variance;
@@ -164,9 +166,25 @@ bool MakeParticleStack::DoCalculation( ) {
     cisTEMParameterLine output_parameters;
     cisTEMParameters    output_star_file;
 
-    int   number_of_results_to_process = 1;
-    float min_peak_radius_squared      = min_peak_radius * min_peak_radius;
+    float min_peak_radius_squared = min_peak_radius * min_peak_radius;
     if ( ! read_coordinates ) {
+
+        MRCFile input_mip_file(input_mip_filename.ToStdString( ), false);
+        MRCFile input_psi_file(input_best_psi_filename.ToStdString( ), false);
+        MRCFile input_theta_file(input_best_theta_filename.ToStdString( ), false);
+        MRCFile input_phi_file(input_best_phi_filename.ToStdString( ), false);
+        // Make sure the number of results to process is not greater than the number of particles in the input file
+        if ( number_of_results_to_process == 0 )
+            number_of_results_to_process = input_mip_file.ReturnNumberOfSlices( );
+        else if ( number_of_results_to_process > input_mip_file.ReturnNumberOfSlices( ) ) {
+            SendInfo("Warning: Number of results to process is greater than the number of particles in the input file. Setting number of results to process to the number of particles in the input file.");
+            number_of_results_to_process = input_mip_file.ReturnNumberOfSlices( );
+        }
+
+        // Now let's make sure all the results files are the same size
+        MyDebugAssertTrue(input_mip_file.HasSameDimensionsAs(input_psi_file), "Input MIP file and input psi file do not have the same dimensions");
+        MyDebugAssertTrue(input_mip_file.HasSameDimensionsAs(input_theta_file), "Input MIP file and input theta file do not have the same dimensions");
+        MyDebugAssertTrue(input_mip_file.HasSameDimensionsAs(input_phi_file), "Input MIP file and input phi file do not have the same dimensions");
 
         mip_image.ReadSlices(&input_mip_file, 1, input_mip_file.ReturnNumberOfSlices( ));
         psi_image.ReadSlices(&input_psi_file, 1, input_psi_file.ReturnNumberOfSlices( ));
@@ -174,31 +192,33 @@ bool MakeParticleStack::DoCalculation( ) {
         phi_image.ReadSlices(&input_phi_file, 1, input_phi_file.ReturnNumberOfSlices( ));
         mip_x_dimension = mip_image.logical_x_dimension;
         mip_y_dimension = mip_image.logical_y_dimension;
-
-        number_of_results_to_process = mip_image.logical_z_dimension;
     }
     std::vector<Peak>   peaks_found(number_of_results_to_process);
     std::vector<double> avg_occupancy(number_of_results_to_process, 0.f);
     for ( i = 0; i < number_of_results_to_process; i++ ) {
         peaks_found[i].value = -std::numeric_limits<float>::max( );
     }
-    std::cerr << "Processing : " << number_of_results_to_process << " results " << std::endl;
 
     if ( read_coordinates ) {
         input_star_file.ReadFromcisTEMStarFile(input_starfilename.ToStdString( ), false);
-        // all that should change are the x/y shifts as we cut out from the micrograph
-        output_star_file = input_star_file;
+
+        // For the time being, we'll only take the top scoring paricle from each group
+        output_star_file = input_star_file.ReturnTopNFromParticleGroups(1);
     }
     else {
+        std::cerr << "Processing : " << number_of_results_to_process << " results " << std::endl;
         output_star_file.PreallocateMemoryAndBlank(cistem::maximum_number_of_detections * number_of_results_to_process);
+        MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&psi_image), "MIP and psi images have different dimensions");
+        MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&theta_image), "MIP and theta images have different dimensions");
+        MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&phi_image), "MIP and phi images have different dimensions");
     }
-
-    MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&psi_image), "MIP and psi images have different dimensions");
-    MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&theta_image), "MIP and theta images have different dimensions");
-    MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&phi_image), "MIP and phi images have different dimensions");
 
     micrograph.QuickAndDirtyReadSlice(input_image_filename.ToStdString( ), 1);
     micrograph_mean = micrograph.ReturnAverageOfRealValues( );
+
+    // This will be redundant if there are not multiple results, but copying the first mip is the
+    // easiest way to get things right when the mip is a stack of results.
+    Image mip_to_search;
 
     // assume square
     // loop until the found peak is below the threshold
@@ -210,15 +230,12 @@ bool MakeParticleStack::DoCalculation( ) {
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
     }
-
-    // This will be redundant if there are not multiple results, but copying the first mip is the
-    // easiest way to get things right when the mip is a stack of results.
-    Image mip_to_search;
-
-    mip_to_search.Allocate(mip_image.logical_x_dimension, mip_image.logical_y_dimension, true);
-    for ( int iPixel = 0; iPixel < mip_to_search.real_memory_allocated; iPixel++ ) {
-        // TODO: could use a memcpy here.
-        mip_to_search.real_values[iPixel] = mip_image.real_values[iPixel];
+    else {
+        mip_to_search.Allocate(mip_image.logical_x_dimension, mip_image.logical_y_dimension, true);
+        for ( int iPixel = 0; iPixel < mip_to_search.real_memory_allocated; iPixel++ ) {
+            // TODO: could use a memcpy here.
+            mip_to_search.real_values[iPixel] = mip_image.real_values[iPixel];
+        }
     }
 
     wxPrintf("\n");
@@ -261,13 +278,15 @@ bool MakeParticleStack::DoCalculation( ) {
                     if ( sq_dist_x + sq_dist_y <= min_peak_radius_squared ) {
                         mip_to_search.real_values[address] = -std::numeric_limits<float>::max( );
                         // Check the other results if the exist
-                        for ( int iResult = 1; iResult < number_of_results_to_process; iResult++ ) {
-                            offset = iResult * mip_to_search.real_memory_allocated;
-                            if ( mip_image.real_values[address + offset] > peaks_found[iResult].value ) {
-                                peaks_found[iResult].x                             = i;
-                                peaks_found[iResult].y                             = j;
-                                peaks_found[iResult].value                         = mip_image.real_values[address + offset];
-                                peaks_found[iResult].physical_address_within_image = address;
+                        if ( FloatsAreAlmostTheSame(sq_dist_x, 0.f) && FloatsAreAlmostTheSame(sq_dist_y, 0.f) ) {
+                            for ( int iResult = 1; iResult < number_of_results_to_process; iResult++ ) {
+                                offset = iResult * mip_to_search.real_memory_allocated;
+                                if ( mip_image.real_values[address + offset] > peaks_found[iResult].value ) {
+                                    peaks_found[iResult].x                             = i;
+                                    peaks_found[iResult].y                             = j;
+                                    peaks_found[iResult].value                         = mip_image.real_values[address + offset];
+                                    peaks_found[iResult].physical_address_within_image = address;
+                                }
                             }
                         }
                     }
@@ -281,14 +300,15 @@ bool MakeParticleStack::DoCalculation( ) {
             //     avg_occupancy[iResult] = (peaks_found[iResult].value > wanted_threshold) ? std::erfc((wanted_threshold - peaks_found[iResult].value) / sqrt2_v<double>) / 2.0 : 0.0;
             //     sum_of_scores += avg_occupancy[iResult];
             // }
+            // only increment the particle group once for each group of possible orientations
+            particle_group++;
             for ( int iResult = 0; iResult < number_of_results_to_process; iResult++ ) {
                 // We don't want to include extra peaks that are below the threshold
                 // In reconstruct3d the weight is determined by occupancy / average occupancy, so to make the occupancy
                 // simply fractional, ensure the sum of the occupancy for each particle = N particles, st. the average = 1
 
-                number_of_peaks_found++;
                 output_parameters.SetAllToZero( );
-                output_parameters.position_in_stack                  = number_of_peaks_found;
+                output_parameters.position_in_stack                  = number_of_peaks_found + 1;
                 output_parameters.psi                                = psi_image.real_values[peaks_found[iResult].physical_address_within_image + iResult * mip_to_search.real_memory_allocated];
                 output_parameters.theta                              = theta_image.real_values[peaks_found[iResult].physical_address_within_image + iResult * mip_to_search.real_memory_allocated];
                 output_parameters.phi                                = phi_image.real_values[peaks_found[iResult].physical_address_within_image + iResult * mip_to_search.real_memory_allocated];
@@ -301,7 +321,7 @@ bool MakeParticleStack::DoCalculation( ) {
                 output_parameters.microscope_voltage_kv              = voltage_kV;
                 output_parameters.microscope_spherical_aberration_mm = spherical_aberration_mm;
                 output_parameters.amplitude_contrast                 = amplitude_contrast;
-                output_parameters.occupancy                          = 1.0f; //avg_occupancy[iResult] / sum_of_scores;
+                output_parameters.occupancy                          = (peaks_found[iResult].value > wanted_threshold) ? 1.0f : 0.f; // for now, include all peaks, even if below threshold and use occupancy to turn off
                 output_parameters.sigma                              = 10.0f;
                 output_parameters.logp                               = 5000.0f;
                 output_parameters.score                              = peaks_found[iResult].value;
@@ -309,29 +329,36 @@ bool MakeParticleStack::DoCalculation( ) {
                 output_parameters.particle_group                     = particle_group;
                 output_parameters.assigned_subset                    = IsOdd(particle_group) ? 1 : 2; // make sure that different possibilites for a given particle are in the same FSC subset
 
-                output_star_file.all_parameters[number_of_peaks_found] = output_parameters;
+                output_star_file.all_parameters.Item(number_of_peaks_found) = output_parameters;
+                number_of_peaks_found++;
             }
-            // only increment the particle group once for each group of possible orientations
-            particle_group++;
         }
         else {
+
+            output_star_file.all_parameters.Item(n_processed_in_total).image_is_active = (output_star_file.all_parameters.Item(n_processed_in_total).score < wanted_threshold) ? -1 : 1;
+
             // Get the x/y position and convert from ang to pixels
-            current_peak.x = output_star_file.all_parameters.Item(number_of_peaks_found).x_shift / output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
-            current_peak.y = output_star_file.all_parameters.Item(number_of_peaks_found).y_shift / output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
+            current_peak.x = output_star_file.all_parameters.Item(n_processed_in_total).x_shift / output_star_file.all_parameters.Item(n_processed_in_total).pixel_size;
+            current_peak.y = output_star_file.all_parameters.Item(n_processed_in_total).y_shift / output_star_file.all_parameters.Item(n_processed_in_total).pixel_size;
 
             // First adjust to an offset from the center of the image
-            output_star_file.all_parameters.Item(number_of_peaks_found).x_shift = current_peak.x - float(micrograph.physical_address_of_box_center_x);
-            output_star_file.all_parameters.Item(number_of_peaks_found).y_shift = current_peak.y - float(micrograph.physical_address_of_box_center_y);
+            output_star_file.all_parameters.Item(n_processed_in_total).x_shift = current_peak.x - float(micrograph.physical_address_of_box_center_x);
+            output_star_file.all_parameters.Item(n_processed_in_total).y_shift = current_peak.y - float(micrograph.physical_address_of_box_center_y);
 
             // Now grab the non-integer part of the shift
-            output_star_file.all_parameters.Item(number_of_peaks_found).x_shift = output_star_file.all_parameters.Item(number_of_peaks_found).x_shift - myroundint(output_star_file.all_parameters.Item(number_of_peaks_found).x_shift);
-            output_star_file.all_parameters.Item(number_of_peaks_found).y_shift = output_star_file.all_parameters.Item(number_of_peaks_found).y_shift - myroundint(output_star_file.all_parameters.Item(number_of_peaks_found).y_shift);
+            output_star_file.all_parameters.Item(n_processed_in_total).x_shift = output_star_file.all_parameters.Item(n_processed_in_total).x_shift - myroundint(output_star_file.all_parameters.Item(n_processed_in_total).x_shift);
+            output_star_file.all_parameters.Item(n_processed_in_total).y_shift = output_star_file.all_parameters.Item(n_processed_in_total).y_shift - myroundint(output_star_file.all_parameters.Item(n_processed_in_total).y_shift);
 
             // Finally convert back to angstroms
-            output_star_file.all_parameters.Item(number_of_peaks_found).x_shift = output_star_file.all_parameters.Item(number_of_peaks_found).x_shift * output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
-            output_star_file.all_parameters.Item(number_of_peaks_found).y_shift = output_star_file.all_parameters.Item(number_of_peaks_found).y_shift * output_star_file.all_parameters.Item(number_of_peaks_found).pixel_size;
+            output_star_file.all_parameters.Item(n_processed_in_total).x_shift = output_star_file.all_parameters.Item(n_processed_in_total).x_shift * output_star_file.all_parameters.Item(n_processed_in_total).pixel_size;
+            output_star_file.all_parameters.Item(n_processed_in_total).y_shift = output_star_file.all_parameters.Item(n_processed_in_total).y_shift * output_star_file.all_parameters.Item(n_processed_in_total).pixel_size;
 
+            output_star_file.all_parameters.Item(n_processed_in_total).position_in_stack = n_processed_in_total + 1;
+            // For now, we'll also still include inactive images in the output star file and hence the output stack
             // lastly post increment the counter on peaks found
+
+            output_star_file.all_parameters.Item(n_processed_in_total) = output_parameters;
+
             number_of_peaks_found++;
         }
 
@@ -351,21 +378,20 @@ bool MakeParticleStack::DoCalculation( ) {
             current_particle.WriteSlice(&output_file, number_of_peaks_found);
         }
 
-        if ( read_coordinates && input_star_file.ReturnNumberofLines( ) == number_of_peaks_found )
+        if ( read_coordinates && output_star_file.ReturnNumberofLines( ) == number_of_peaks_found )
             break;
     }
 
     if ( read_coordinates ) {
         output_file.CloseFile( );
     }
-    else {
-        // By using SetAllToZero, we inadvertently activate some parameters that aren't necessary.
-        // The filenames in particular make the star file harder to read and for auto_functionality are not necessary.
-        output_star_file.parameters_to_write.stack_filename          = false;
-        output_star_file.parameters_to_write.original_image_filename = false;
-        output_star_file.parameters_to_write.reference_3d_filename   = false;
-        output_star_file.parameters_to_write.best_2d_class           = false;
-    }
+
+    // By using SetAllToZero, we inadvertently activate some parameters that aren't necessary.
+    // The filenames in particular make the star file harder to read and for auto_functionality are not necessary.
+    output_star_file.parameters_to_write.stack_filename          = false;
+    output_star_file.parameters_to_write.original_image_filename = false;
+    output_star_file.parameters_to_write.reference_3d_filename   = false;
+    output_star_file.parameters_to_write.best_2d_class           = false;
 
     output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, 1, number_of_peaks_found);
 

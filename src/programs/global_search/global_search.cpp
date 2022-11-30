@@ -166,9 +166,12 @@ void GlobalSearchApp::DoInteractiveUserInput( ) {
 
     padding = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "1.0", 1.0, 2.0);
     //    ctf_refinement = my_input->GetYesNoFromUser("Refine defocus", "Should the particle defocus be refined?", "No");
-    particle_radius_angstroms = my_input->GetFloatFromUser("Mask radius for global search (A) (0.0 = max)", "Radius of a circular mask to be applied to the input images during global search", "0.0", 0.0);
-    my_symmetry               = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
-    float min_peak_radius     = my_input->GetFloatFromUser("Radius for peak exclusion and normalization", "", "10.0", 0.0);
+    particle_radius_angstroms                    = my_input->GetFloatFromUser("Mask radius for global search (A) (0.0 = max)", "Radius of a circular mask to be applied to the input images during global search", "0.0", 0.0);
+    my_symmetry                                  = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
+    float min_peak_radius                        = my_input->GetFloatFromUser("Radius for peak exclusion and normalization", "", "10.0", 0.0);
+    int   number_of_global_search_images_to_save = my_input->GetIntFromUser("Number of global search images to save", "The number of global search images to save, must be even", "1", 1);
+
+    MyAssertTrue(IsEven(number_of_global_search_images_to_save), "Number of global search images to save must be even");
 
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
 
@@ -181,7 +184,7 @@ void GlobalSearchApp::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttftiiiitttfi",
+    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttftiiiitttfii",
                                       input_search_images.ToUTF8( ).data( ), // 0
                                       input_reconstruction.ToUTF8( ).data( ), // 1
                                       pixel_size, // 2
@@ -220,7 +223,8 @@ void GlobalSearchApp::DoInteractiveUserInput( ) {
                                       directory_for_results_string.ToUTF8( ).data( ), // 35
                                       result_filename.ToUTF8( ).data( ), // 36
                                       min_peak_radius, // 37
-                                      max_threads); // 38
+                                      number_of_global_search_images_to_save, // 38
+                                      max_threads); // 39
 }
 
 // override the do calculation method which will be what is actually run..
@@ -239,36 +243,37 @@ bool GlobalSearchApp::DoCalculation( ) {
     float defocus2                         = my_current_job.arguments[7].ReturnFloatArgument( );
     float defocus_angle                    = my_current_job.arguments[8].ReturnFloatArgument( );
 
-    float       low_resolution_limit            = my_current_job.arguments[9].ReturnFloatArgument( );
-    float       high_resolution_limit_search    = my_current_job.arguments[10].ReturnFloatArgument( );
-    float       angular_step                    = my_current_job.arguments[11].ReturnFloatArgument( );
-    int         best_parameters_to_keep         = my_current_job.arguments[12].ReturnIntegerArgument( );
-    float       defocus_search_range            = my_current_job.arguments[13].ReturnFloatArgument( );
-    float       defocus_step                    = my_current_job.arguments[14].ReturnFloatArgument( );
-    float       pixel_size_search_range         = my_current_job.arguments[15].ReturnFloatArgument( );
-    float       pixel_size_step                 = my_current_job.arguments[16].ReturnFloatArgument( );
-    float       padding                         = my_current_job.arguments[17].ReturnFloatArgument( );
-    bool        ctf_refinement                  = my_current_job.arguments[18].ReturnBoolArgument( );
-    float       particle_radius_angstroms       = my_current_job.arguments[19].ReturnFloatArgument( );
-    float       phase_shift                     = my_current_job.arguments[20].ReturnFloatArgument( );
-    wxString    mip_output_file                 = my_current_job.arguments[21].ReturnStringArgument( );
-    wxString    best_psi_output_file            = my_current_job.arguments[22].ReturnStringArgument( );
-    wxString    best_theta_output_file          = my_current_job.arguments[23].ReturnStringArgument( );
-    wxString    best_phi_output_file            = my_current_job.arguments[24].ReturnStringArgument( );
-    wxString    scaled_mip_output_file          = my_current_job.arguments[25].ReturnStringArgument( );
-    wxString    correlation_std_output_file     = my_current_job.arguments[26].ReturnStringArgument( );
-    wxString    my_symmetry                     = my_current_job.arguments[27].ReturnStringArgument( );
-    float       in_plane_angular_step           = my_current_job.arguments[28].ReturnFloatArgument( );
-    wxString    output_histogram_file           = my_current_job.arguments[29].ReturnStringArgument( );
-    int         first_search_position           = my_current_job.arguments[30].ReturnIntegerArgument( );
-    int         last_search_position            = my_current_job.arguments[31].ReturnIntegerArgument( );
-    int         image_number_for_gui            = my_current_job.arguments[32].ReturnIntegerArgument( );
-    int         number_of_jobs_per_image_in_gui = my_current_job.arguments[33].ReturnIntegerArgument( );
-    wxString    correlation_avg_output_file     = my_current_job.arguments[34].ReturnStringArgument( );
-    std::string directory_for_results           = my_current_job.arguments[35].ReturnStringArgument( );
-    wxString    result_output_filename          = my_current_job.arguments[36].ReturnStringArgument( );
-    float       min_peak_radius                 = my_current_job.arguments[37].ReturnFloatArgument( );
-    int         max_threads                     = my_current_job.arguments[38].ReturnIntegerArgument( );
+    float       low_resolution_limit                   = my_current_job.arguments[9].ReturnFloatArgument( );
+    float       high_resolution_limit_search           = my_current_job.arguments[10].ReturnFloatArgument( );
+    float       angular_step                           = my_current_job.arguments[11].ReturnFloatArgument( );
+    int         best_parameters_to_keep                = my_current_job.arguments[12].ReturnIntegerArgument( );
+    float       defocus_search_range                   = my_current_job.arguments[13].ReturnFloatArgument( );
+    float       defocus_step                           = my_current_job.arguments[14].ReturnFloatArgument( );
+    float       pixel_size_search_range                = my_current_job.arguments[15].ReturnFloatArgument( );
+    float       pixel_size_step                        = my_current_job.arguments[16].ReturnFloatArgument( );
+    float       padding                                = my_current_job.arguments[17].ReturnFloatArgument( );
+    bool        ctf_refinement                         = my_current_job.arguments[18].ReturnBoolArgument( );
+    float       particle_radius_angstroms              = my_current_job.arguments[19].ReturnFloatArgument( );
+    float       phase_shift                            = my_current_job.arguments[20].ReturnFloatArgument( );
+    wxString    mip_output_file                        = my_current_job.arguments[21].ReturnStringArgument( );
+    wxString    best_psi_output_file                   = my_current_job.arguments[22].ReturnStringArgument( );
+    wxString    best_theta_output_file                 = my_current_job.arguments[23].ReturnStringArgument( );
+    wxString    best_phi_output_file                   = my_current_job.arguments[24].ReturnStringArgument( );
+    wxString    scaled_mip_output_file                 = my_current_job.arguments[25].ReturnStringArgument( );
+    wxString    correlation_std_output_file            = my_current_job.arguments[26].ReturnStringArgument( );
+    wxString    my_symmetry                            = my_current_job.arguments[27].ReturnStringArgument( );
+    float       in_plane_angular_step                  = my_current_job.arguments[28].ReturnFloatArgument( );
+    wxString    output_histogram_file                  = my_current_job.arguments[29].ReturnStringArgument( );
+    int         first_search_position                  = my_current_job.arguments[30].ReturnIntegerArgument( );
+    int         last_search_position                   = my_current_job.arguments[31].ReturnIntegerArgument( );
+    int         image_number_for_gui                   = my_current_job.arguments[32].ReturnIntegerArgument( );
+    int         number_of_jobs_per_image_in_gui        = my_current_job.arguments[33].ReturnIntegerArgument( );
+    wxString    correlation_avg_output_file            = my_current_job.arguments[34].ReturnStringArgument( );
+    std::string directory_for_results                  = my_current_job.arguments[35].ReturnStringArgument( );
+    wxString    result_output_filename                 = my_current_job.arguments[36].ReturnStringArgument( );
+    float       min_peak_radius                        = my_current_job.arguments[37].ReturnFloatArgument( );
+    int         number_of_global_search_images_to_save = my_current_job.arguments[38].ReturnIntegerArgument( );
+    int         max_threads                            = my_current_job.arguments[39].ReturnIntegerArgument( );
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
@@ -456,10 +461,10 @@ bool GlobalSearchApp::DoCalculation( ) {
 
     padded_reference.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
     // We only need extra copies of the mip and angles
-    max_intensity_projection.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
-    best_psi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
-    best_theta.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
-    best_phi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, cistem::number_of_global_search_images_to_save);
+    max_intensity_projection.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, number_of_global_search_images_to_save);
+    best_psi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, number_of_global_search_images_to_save);
+    best_theta.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, number_of_global_search_images_to_save);
+    best_phi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, number_of_global_search_images_to_save);
 
     correlation_pixel_sum_image.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
     correlation_pixel_sum_of_squares_image.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
@@ -688,7 +693,7 @@ bool GlobalSearchApp::DoCalculation( ) {
                            histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
                            max_padding, t_first_search_position, t_last_search_position,
                            my_progress, total_correlation_positions_per_thread, is_running_locally,
-                           cistem::number_of_global_search_images_to_save);
+                           number_of_global_search_images_to_save);
 
             // TODO: make the fraction of the expected threshold to use a parameter
             GPU[tIDX].SetMinimumThreshold(0.8f * expected_threshold);
@@ -767,7 +772,7 @@ bool GlobalSearchApp::DoCalculation( ) {
 
                         if ( z == 0 ) {
                             // We only need on image to track stats
-                            
+
                             correlation_pixel_sum[pixel_counter] += (double)sum.real_values[pixel_counter];
                             correlation_pixel_sum_of_squares[pixel_counter] += (double)sumSq.real_values[pixel_counter];
                         }
@@ -854,11 +859,11 @@ bool GlobalSearchApp::DoCalculation( ) {
         MRCFile output_file;
 
         temp_image.CopyFrom(&max_intensity_projection);
-        temp_image.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, temp_image.ReturnAverageOfRealValuesOnEdges( ));
+        temp_image.Resize(original_input_image_x, original_input_image_y, number_of_global_search_images_to_save, temp_image.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + mip_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        temp_image.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
+        temp_image.WriteSlices(&output_file, 1, number_of_global_search_images_to_save);
 
 #ifdef CISTEM_TEST_FILTERED_MIP
 
@@ -885,7 +890,7 @@ bool GlobalSearchApp::DoCalculation( ) {
 
         //        max_intensity_projection.SubtractImage(&correlation_pixel_sum);
         long slice_offset;
-        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_save; iSlice++ ) {
+        for ( int iSlice = 0; iSlice < number_of_global_search_images_to_save; iSlice++ ) {
             slice_offset = iSlice * input_image.real_memory_allocated;
             for ( int pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
                 max_intensity_projection.real_values[pixel_counter + slice_offset] -= correlation_pixel_sum_image.real_values[pixel_counter];
@@ -899,7 +904,7 @@ bool GlobalSearchApp::DoCalculation( ) {
 #else
 
         long slice_offset;
-        for ( int iSlice = 0; iSlice < cistem::number_of_global_search_images_to_save; iSlice++ ) {
+        for ( int iSlice = 0; iSlice < number_of_global_search_images_to_save; iSlice++ ) {
             slice_offset = iSlice * input_image.real_memory_allocated;
             for ( pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
                 max_intensity_projection.real_values[pixel_counter] -= correlation_pixel_sum[pixel_counter];
@@ -916,11 +921,11 @@ bool GlobalSearchApp::DoCalculation( ) {
         //        max_intensity_projection.DividePixelWise(correlation_pixel_sum_of_squares);
 
         ////////////////////////////
-        max_intensity_projection.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, max_intensity_projection.ReturnAverageOfRealValuesOnEdges( ));
+        max_intensity_projection.Resize(original_input_image_x, original_input_image_y, number_of_global_search_images_to_save, max_intensity_projection.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + scaled_mip_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        max_intensity_projection.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
+        max_intensity_projection.WriteSlices(&output_file, 1, number_of_global_search_images_to_save);
 
         correlation_pixel_sum_image.Resize(original_input_image_x, original_input_image_y, 1, correlation_pixel_sum_image.ReturnAverageOfRealValuesOnEdges( ));
         output_file.OpenFile(directory_for_results + "/" + correlation_avg_output_file.ToStdString( ), true, false);
@@ -934,23 +939,23 @@ bool GlobalSearchApp::DoCalculation( ) {
         output_file.SetOutputToFP16( );
         correlation_pixel_sum_of_squares_image.WriteSlice(&output_file, 1);
 
-        best_psi.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, 0.0f);
+        best_psi.Resize(original_input_image_x, original_input_image_y, number_of_global_search_images_to_save, 0.0f);
         output_file.OpenFile(directory_for_results + "/" + best_psi_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        best_psi.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
+        best_psi.WriteSlices(&output_file, 1, number_of_global_search_images_to_save);
 
-        best_theta.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, 0.0f);
+        best_theta.Resize(original_input_image_x, original_input_image_y, number_of_global_search_images_to_save, 0.0f);
         output_file.OpenFile(directory_for_results + "/" + best_theta_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        best_theta.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
+        best_theta.WriteSlices(&output_file, 1, number_of_global_search_images_to_save);
 
-        best_phi.Resize(original_input_image_x, original_input_image_y, cistem::number_of_global_search_images_to_save, 0.0f);
+        best_phi.Resize(original_input_image_x, original_input_image_y, number_of_global_search_images_to_save, 0.0f);
         output_file.OpenFile(directory_for_results + "/" + best_phi_output_file.ToStdString( ), true, false);
         output_file.SetPixelSize(pixel_size);
         output_file.SetOutputToFP16( );
-        best_phi.WriteSlices(&output_file, 1, cistem::number_of_global_search_images_to_save);
+        best_phi.WriteSlices(&output_file, 1, number_of_global_search_images_to_save);
 
         // write out histogram..
 

@@ -277,4 +277,6 @@ class cisTEMParameters {
     // For comparing multiple starfiles
     cisTEMParameterLine ReturnParameterAverages(const cisTEMParameters& other_parameters, const wxString& symmetry_symbol, bool only_average_active = true);
     cisTEMParameterLine ReturnParameterVariances(const cisTEMParameters& other_parameters, const wxString& symmetry_symbol, bool only_average_active = true);
+
+    cisTEMParameters ReturnTopNFromParticleGroups(int wanted_top_scoring_in_each_particle_group);
 };

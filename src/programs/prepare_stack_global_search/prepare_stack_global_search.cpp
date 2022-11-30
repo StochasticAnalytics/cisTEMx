@@ -167,6 +167,7 @@ bool MakeParticleStack::DoCalculation( ) {
     cisTEMParameters    output_star_file;
 
     float min_peak_radius_squared = min_peak_radius * min_peak_radius;
+    std::cerr << "min_peak_radius_squared = " << min_peak_radius_squared << std::endl;
     if ( ! read_coordinates ) {
 
         MRCFile input_mip_file(input_mip_filename.ToStdString( ), false);
@@ -255,7 +256,7 @@ bool MakeParticleStack::DoCalculation( ) {
 
             current_peak.x = current_peak.x + mip_to_search.physical_address_of_box_center_x;
             current_peak.y = current_peak.y + mip_to_search.physical_address_of_box_center_y;
-            address        = current_peak.y * (mip_to_search.logical_x_dimension + mip_to_search.padding_jump_value) + current_peak.x;
+            address        = myroundint(current_peak.y) * (mip_to_search.logical_x_dimension + mip_to_search.padding_jump_value) + myroundint(current_peak.x);
 
             peaks_found[0].x                             = current_peak.x;
             peaks_found[0].y                             = current_peak.y;
@@ -263,9 +264,11 @@ bool MakeParticleStack::DoCalculation( ) {
             peaks_found[0].physical_address_within_image = address;
 
             address = 0;
+            for ( int iResult = 1; iResult < number_of_results_to_process; iResult++ ) {
+                peaks_found[iResult].value = -std::numeric_limits<float>::max( );
+            }
 
             float sq_dist_x, sq_dist_y;
-            long  offset;
             for ( int j = std::max(myroundint(current_peak.y - min_peak_radius), 0); j < std::min(myroundint(current_peak.y + min_peak_radius), mip_to_search.logical_y_dimension); j++ ) {
                 sq_dist_y = float(j) - current_peak.y;
                 sq_dist_y *= sq_dist_y;
@@ -277,31 +280,22 @@ bool MakeParticleStack::DoCalculation( ) {
 
                     if ( sq_dist_x + sq_dist_y <= min_peak_radius_squared ) {
                         mip_to_search.real_values[address] = -std::numeric_limits<float>::max( );
+                        mip_image.real_values[address]     = -std::numeric_limits<float>::max( );
                         // Check the other results if the exist
-                        if ( FloatsAreAlmostTheSame(sq_dist_x, 0.f) && FloatsAreAlmostTheSame(sq_dist_y, 0.f) ) {
-                            for ( int iResult = 1; iResult < number_of_results_to_process; iResult++ ) {
-                                offset = iResult * mip_to_search.real_memory_allocated;
-                                if ( mip_image.real_values[address + offset] > peaks_found[iResult].value ) {
-                                    peaks_found[iResult].x                             = i;
-                                    peaks_found[iResult].y                             = j;
-                                    peaks_found[iResult].value                         = mip_image.real_values[address + offset];
-                                    peaks_found[iResult].physical_address_within_image = address;
-                                }
+                        for ( int iResult = 1; iResult < number_of_results_to_process; iResult++ ) {
+                            address += mip_to_search.real_memory_allocated;
+                            if ( mip_image.real_values[address] > peaks_found[iResult].value ) {
+                                peaks_found[iResult].x                             = i;
+                                peaks_found[iResult].y                             = j;
+                                peaks_found[iResult].value                         = mip_image.real_values[address];
+                                peaks_found[iResult].physical_address_within_image = address;
                             }
+                            mip_image.real_values[address] = -std::numeric_limits<float>::max( );
                         }
                     }
-                    address++;
                 }
-                address += mip_image.padding_jump_value;
             }
 
-            // double sum_of_scores = 0.0;
-            // for ( int iResult = 0; iResult < number_of_results_to_process; iResult++ ) {
-            //     avg_occupancy[iResult] = (peaks_found[iResult].value > wanted_threshold) ? std::erfc((wanted_threshold - peaks_found[iResult].value) / sqrt2_v<double>) / 2.0 : 0.0;
-            //     sum_of_scores += avg_occupancy[iResult];
-            // }
-            // only increment the particle group once for each group of possible orientations
-            particle_group++;
             for ( int iResult = 0; iResult < number_of_results_to_process; iResult++ ) {
                 // We don't want to include extra peaks that are below the threshold
                 // In reconstruct3d the weight is determined by occupancy / average occupancy, so to make the occupancy
@@ -309,9 +303,9 @@ bool MakeParticleStack::DoCalculation( ) {
 
                 output_parameters.SetAllToZero( );
                 output_parameters.position_in_stack                  = number_of_peaks_found + 1;
-                output_parameters.psi                                = psi_image.real_values[peaks_found[iResult].physical_address_within_image + iResult * mip_to_search.real_memory_allocated];
-                output_parameters.theta                              = theta_image.real_values[peaks_found[iResult].physical_address_within_image + iResult * mip_to_search.real_memory_allocated];
-                output_parameters.phi                                = phi_image.real_values[peaks_found[iResult].physical_address_within_image + iResult * mip_to_search.real_memory_allocated];
+                output_parameters.psi                                = psi_image.real_values[peaks_found[iResult].physical_address_within_image];
+                output_parameters.theta                              = theta_image.real_values[peaks_found[iResult].physical_address_within_image];
+                output_parameters.phi                                = phi_image.real_values[peaks_found[iResult].physical_address_within_image];
                 output_parameters.x_shift                            = peaks_found[iResult].x * pixel_size; // FIXME: if saving a particle stack this is no longer valid, need option for both
                 output_parameters.y_shift                            = peaks_found[iResult].y * pixel_size;
                 output_parameters.defocus_1                          = average_defocus_1 + current_defocus;
@@ -326,12 +320,13 @@ bool MakeParticleStack::DoCalculation( ) {
                 output_parameters.logp                               = 5000.0f;
                 output_parameters.score                              = peaks_found[iResult].value;
                 output_parameters.image_is_active                    = 1;
-                output_parameters.particle_group                     = particle_group;
+                output_parameters.particle_group                     = particle_group + 1;
                 output_parameters.assigned_subset                    = IsOdd(particle_group) ? 1 : 2; // make sure that different possibilites for a given particle are in the same FSC subset
 
                 output_star_file.all_parameters.Item(number_of_peaks_found) = output_parameters;
                 number_of_peaks_found++;
             }
+            particle_group++;
         }
         else {
 
@@ -381,6 +376,10 @@ bool MakeParticleStack::DoCalculation( ) {
         if ( read_coordinates && output_star_file.ReturnNumberofLines( ) == number_of_peaks_found )
             break;
     }
+
+    // mip_to_search.QuickAndDirtyWriteSlice("mip_to_search.mrc", 1);
+    // mip_image.QuickAndDirtyWriteSlices("mip_image.mrc", 1, mip_image.logical_z_dimension);
+    // exit(1);
 
     if ( read_coordinates ) {
         output_file.CloseFile( );

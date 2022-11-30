@@ -808,6 +808,12 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
         } // end omp for loop over peaks
     } // end omp section
 
+    // The filenames in particular make the star file harder to read and for auto_functionality are not necessary.
+    output_star_file.parameters_to_write.stack_filename          = false;
+    output_star_file.parameters_to_write.original_image_filename = false;
+    output_star_file.parameters_to_write.reference_3d_filename   = false;
+    output_star_file.parameters_to_write.best_2d_class           = false;
+
     timer.start("write output star");
     output_star_file.WriteTocisTEMStarFile(output_star_filename.ToStdString( ));
     timer.lap("write output star");

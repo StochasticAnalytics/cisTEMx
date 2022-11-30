@@ -7,6 +7,8 @@
 
 #include <cstdint>  // for uint8_t
 #include <string>
+#include <vector>
+#include "fail.hpp"
 
 namespace gemmi {
 
@@ -17,13 +19,14 @@ struct ResidueInfo {
   // PAA - proline-like aminoacid
   // MAA - methylated aminoacid
   // RNA, DNA - nucleic acids
-  // HOH - water or heavy water
+  // HOH - water or heavy water (OH, H3O, D3O are not included here)
   // PYR - pyranose according to the refmac dictionary
+  // KET - ketopyranose according to the refmac dictionary
   // BUF - agent from crystallization buffer according to PISA agents.dat
   // ELS - something else (ligand).
   enum Kind : unsigned char {
     // when changing this list update check_polymer_type()
-    UNKNOWN=0, AA, AAD, PAA, MAA, RNA, DNA, BUF, HOH, PYR, ELS
+    UNKNOWN=0, AA, AAD, PAA, MAA, RNA, DNA, BUF, HOH, PYR, KET, ELS
   };
   Kind kind;
   // one-letter code or space (uppercase iff it is a standard residues)
@@ -448,6 +451,18 @@ inline const char* expand_protein_one_letter(char c) {
   if (c < 'A' || c > 'Z' || c == 'J')
     return nullptr;
   return &data[4 * (c - 'A')];
+}
+
+inline std::vector<std::string> expand_protein_one_letter_string(const std::string& s) {
+  std::vector<std::string> r;
+  r.reserve(s.size());
+  for (char c : s) {
+    const char* three_letters = expand_protein_one_letter(c);
+    if (!three_letters)
+      fail("unexpected letter in protein sequence: ", c);
+    r.emplace_back(three_letters, 3);
+  }
+  return r;
 }
 
 } // namespace gemmi

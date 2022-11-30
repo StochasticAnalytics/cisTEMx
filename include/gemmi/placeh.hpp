@@ -17,24 +17,37 @@ namespace gemmi {
 
 // Assumes no hydrogens in the residue.
 // Position and serial number are not assigned for new atoms.
-inline void add_hydrogens_without_positions(const ChemComp& cc, Residue& res) {
-  for (auto it = cc.atoms.begin(); it != cc.atoms.end(); ++it) {
-    if (!it->is_hydrogen())
-      continue;
-    Atom atom = it->to_full_atom();
-    if (const Restraints::AtomId* bonded = cc.rt.first_bonded_atom(atom.name))
-      // Add H atom for each conformation (altloc) of the parent atom.
-      // Avoid range-based-for here because res.atoms may get re-allocated.
-      for (size_t i = 0, size = res.atoms.size(); i != size; ++i)
-        if (res.atoms[i].name == bonded->atom) {
-          const Atom& parent = res.atoms[i];
-          atom.altloc = parent.altloc;
-          atom.occ = parent.occ;
-          atom.b_iso = parent.b_iso;
-          // calc_flag will be changed to Calculated when the position is set
-          atom.calc_flag = CalcFlag::Dummy;
-          res.atoms.push_back(atom);
-        }
+inline void add_hydrogens_without_positions(Topo::ResInfo& ri) {
+  Residue& res = *ri.res;
+  // Add H atom for each conformation (altloc) of the parent atom.
+  for (size_t i = 0, size = res.atoms.size(); i != size; ++i) {
+    const ChemComp& cc = ri.get_final_chemcomp(res.atoms[i].altloc);
+    for (const Restraints::Bond& bond : cc.rt.bonds) {
+      // res.atoms may get re-allocated, so we can't set parent earlier
+      const Atom& parent = res.atoms[i];
+      assert(!parent.is_hydrogen());
+      const Restraints::AtomId* atom_id;
+      if (bond.id1 == parent.name)
+        atom_id = &bond.id2;
+      else if (bond.id2 == parent.name)
+        atom_id = &bond.id1;
+      else
+        continue;
+      auto it = cc.find_atom(atom_id->atom);
+      if (it == cc.atoms.end())
+        fail("inconsistent _chem_comp " + cc.name);
+      if (it->is_hydrogen()) {
+        gemmi::Atom atom;
+        atom.name = it->id;
+        atom.altloc = parent.altloc;
+        atom.element = it->el;
+        // calc_flag will be changed to Calculated when the position is set
+        atom.calc_flag = CalcFlag::Dummy;
+        atom.occ = parent.occ;
+        atom.b_iso = parent.b_iso;
+        res.atoms.push_back(atom);
+      }
+    }
   }
 }
 
@@ -43,13 +56,12 @@ inline void add_hydrogens_without_positions(const ChemComp& cc, Residue& res) {
 // Returns position of x4 in x1-x2-x3-x4, where dist=|x3-x4| and
 // theta is angle(x2, x3, x4).
 // Based on section 3.3 of Paciorek et al, Acta Cryst. A52, 349 (1996).
-inline
-Position position_from_angle_and_torsion(const Position& x1,
-                                         const Position& x2,
-                                         const Position& x3,
-                                         double dist,  // |x3-x4|
-                                         double theta, // angle x2-x3-x4
-                                         double tau) { // dihedral angle
+inline Position position_from_angle_and_torsion(const Position& x1,
+                                                const Position& x2,
+                                                const Position& x3,
+                                                double dist,  // |x3-x4|
+                                                double theta, // angle x2-x3-x4
+                                                double tau) { // dihedral angle
   using std::sin;
   using std::cos;
   Vec3 u = x2 - x1;
@@ -81,13 +93,13 @@ inline Vec3 get_vector_to_line(const Position& point,
   return ap - ap.dot(unit_vector) * unit_vector;
 }
 
-// Based on https://en.wikipedia.org/wiki/Trilateration
-// If no points satisfy the returns NaNs
+// If no points satisfy the distances returns a pair of NaNs
 inline
 std::pair<Position, Position> trilaterate(const Position& p1, double r1sq,
                                           const Position& p2, double r2sq,
                                           const Position& p3, double r3sq) {
-  // variables have the same names as on the Wikipedia Trilateration page
+  // It was based on https://en.wikipedia.org/wiki/Trilateration
+  // but apparently that page has changed in the meantime.
   Vec3 ex = (p2 - p1).normalized();
   double i = ex.dot(p3-p1);
   Vec3 ey = (Vec3(p3) - p1 - i*ex).normalized();
@@ -184,7 +196,7 @@ inline void place_hydrogens(const Topo& topo, const Atom& atom) {
         double y = 2 * atom.pos.y - hs[1].pos.y;
         hs[2].pos = Position(hs[1].pos.x, y, hs[1].pos.z);
       } else if (hs.size() == 4) {
-        // similarly, only CH4 (CH2.cif) and and NH4 (NH4.cif) are handled here
+        // similarly, only CH4 (CH2.cif) and NH4 (NH4.cif) are handled here
         const Angle* ang1 = topo.take_angle(hs[2].ptr, &atom, hs[0].ptr);
         const Angle* ang2 = topo.take_angle(hs[2].ptr, &atom, hs[1].ptr);
         double theta1 = rad(ang1 ? ang1->value : 109.47122);
@@ -214,9 +226,11 @@ inline void place_hydrogens(const Topo& topo, const Atom& atom) {
     double tau = 0.0;
     int period = 0;
     const Atom* tau_end = nullptr;
-    for (const Topo::Plane& plane : topo.planes) {
+    auto plane_range = topo.plane_index.equal_range(&atom);
+    for (auto i = plane_range.first; i != plane_range.second; ++i) {
+      const Topo::Plane& plane = *i->second;
       // only Topo::Plane with atoms.size() >= 4 is put into planes
-      if (plane.has(h.ptr) && plane.has(&atom) && plane.has(heavy.ptr)) {
+      if (plane.has(h.ptr) && plane.has(heavy.ptr)) {
         for (const Atom* a : plane.atoms) {
           if (!a->is_hydrogen() && a != &atom && a != heavy.ptr) {
             tau_end = a;
@@ -232,16 +246,18 @@ inline void place_hydrogens(const Topo& topo, const Atom& atom) {
       // We don't check here for which hydrogen the torsion angle is defined.
       // If an atom has 2 or 3 hydrogens, the torsion angle may not be given
       // for the first one, but only for the 2nd or 3rd (e.g. HD22 in ASN).
-      for (const Topo::Torsion& tor : topo.torsions) {
-        if (tor.atoms[0]->is_hydrogen() && tor.atoms[1] == &atom &&
-            tor.atoms[2] == heavy.ptr && !tor.atoms[3]->is_hydrogen()) {
+      auto tor_range = topo.torsion_index.equal_range(&atom);
+      for (auto i = tor_range.first; i != tor_range.second; ++i) {
+        const Topo::Torsion& tor = *i->second;
+        if (tor.atoms[1] == &atom && tor.atoms[2] == heavy.ptr &&
+            tor.atoms[0]->is_hydrogen() && !tor.atoms[3]->is_hydrogen()) {
           tau = rad(tor.restr->value);
           torsion_h = tor.atoms[0];
           tau_end = tor.atoms[3];
           period = tor.restr->period;
           break;
-        } else if (tor.atoms[3]->is_hydrogen() && tor.atoms[2] == &atom &&
-                   tor.atoms[1] == heavy.ptr && !tor.atoms[0]->is_hydrogen()) {
+        } else if (tor.atoms[2] == &atom && tor.atoms[1] == heavy.ptr &&
+                   tor.atoms[3]->is_hydrogen() && !tor.atoms[0]->is_hydrogen()) {
           tau = rad(tor.restr->value);
           torsion_h = tor.atoms[3];
           tau_end = tor.atoms[0];
@@ -297,16 +313,24 @@ inline void place_hydrogens(const Topo& topo, const Atom& atom) {
       // If all atoms are in the same plane (sum of angles is 360 degree)
       // the calculations can be simplified.
       double theta3 = ang3->radians();
-      Vec3 v12 = known[0].pos - atom.pos;
-      Vec3 v13 = known[1].pos - atom.pos;
-      // theta3 is the ideal restraint value, cur_theta3 is the current value
-      double cur_theta3 = v12.angle(v13);
       constexpr double two_pi = 2 * pi();
-      if (theta1 + theta2 + std::max(theta3, cur_theta3) + 0.01 > two_pi) {
+      // The sum of ideal angles in a plane is not always exactly 360 deg.
+      // Here we use an arbitrary limit 0.05 radians ~= 3 degrees.
+      if (theta1 + theta2 + theta3 + 0.05 > two_pi) {
+        Vec3 v12 = known[0].pos - atom.pos;
+        Vec3 v13 = known[1].pos - atom.pos;
+        // theta3 is the ideal restraint value, cur_theta3 is the current value
+        double cur_theta3 = v12.angle(v13);
         double ratio = (two_pi - cur_theta3) / (theta1 + theta2);
         Vec3 axis = v13.cross(v12).normalized();
         Vec3 v14 = rotate_about_axis(v12, axis, theta1 * ratio);
         hs[0].pos = atom.pos + Position(hs[0].dist / v14.length() * v14);
+        if (hs.size() > 1) {
+          topo.err("Unhandled topology of " + std::to_string(hs.size()) +
+                   " hydrogens bonded to " + atom.name);
+          for (size_t i = 1; i < hs.size(); ++i)
+            hs[i].ptr->occ = 0;
+        }
         return;
       }
     }
@@ -378,6 +402,21 @@ inline void place_hydrogens_on_all_atoms(Topo& topo) {
         }
 }
 
+inline void remove_hydrogens_from_atom(Topo::ResInfo* ri,
+                                       const std::string& atom_name, char alt) {
+  if (!ri)
+    return;
+  std::vector<Atom>& atoms = ri->res->atoms;
+  const Restraints& rt = ri->get_final_chemcomp(alt).rt;
+  for (auto it = atoms.end(); it-- != atoms.begin(); ) {
+    if (it->is_hydrogen()) {
+      const Restraints::AtomId* heavy = rt.first_bonded_atom(it->name);
+      if (heavy && heavy->atom == atom_name && (it->altloc == alt || it->altloc == '\0'))
+        atoms.erase(it);
+    }
+  }
+}
+
 enum class HydrogenChange { NoChange, Shift, Remove, ReAdd, ReAddButWater };
 
 inline std::unique_ptr<Topo>
@@ -392,28 +431,40 @@ prepare_topology(Structure& st, MonLib& monlib, size_t model_index,
 
   bool keep = (h_change == HydrogenChange::NoChange || h_change == HydrogenChange::Shift);
   if (!keep || reorder) {
-    // remove/add hydrogens, sort atoms in residues, assign serial numbers
-    int serial = 0;
-    for (Topo::ChainInfo& chain_info : topo->chain_infos)
+    // remove/add hydrogens, sort atoms in residues
+    for (Topo::ChainInfo& chain_info : topo->chain_infos) {
       for (Topo::ResInfo& ri : chain_info.res_infos) {
-        const ChemComp& cc = ri.chemcomp;
         Residue& res = *ri.res;
         if (!keep) {
           remove_hydrogens(res);
           if (h_change == HydrogenChange::ReAdd ||
               (h_change == HydrogenChange::ReAddButWater && !res.is_water())) {
-            add_hydrogens_without_positions(cc, res);
+            add_hydrogens_without_positions(ri);
             if (h_change == HydrogenChange::ReAddButWater) {
               // a special handling of HIS for compatibility with Refmac
-              if (cc.name == "HIS") {
+              if (res.name == "HIS") {
                 for (gemmi::Atom& atom : ri.res->atoms)
                   if (atom.name == "HD1" || atom.name == "HE2")
                     atom.occ = 0;
               }
             }
           }
+        } else {
+          // Special handling of Deuterium - mostly for Refmac.
+          // Note: if the model has deuterium, it gets modified.
+          if (replace_deuterium_with_fraction(res)) {
+            // deuterium names usually differ from the names in dictionary
+            for (Atom& atom : res.atoms)
+              if (atom.name[0] == 'D' && atom.fraction != 0) {
+                const ChemComp& cc = ri.get_final_chemcomp(atom.altloc);
+                if (cc.find_atom(atom.name) == cc.atoms.end())
+                  atom.name[0] = 'H';
+              }
+            st.has_d_fraction = true;
+          }
         }
-        if (reorder) {
+        if (reorder && ri.orig_chemcomp) {
+          const ChemComp& cc = *ri.orig_chemcomp;
           for (Atom& atom : res.atoms) {
             auto it = cc.find_atom(atom.name);
             if (it == cc.atoms.end())
@@ -426,11 +477,22 @@ prepare_topology(Structure& st, MonLib& monlib, size_t model_index,
                                                   : a.altloc < b.altloc;
           });
         }
-        for (Atom& atom : res.atoms)
-          atom.serial = ++serial;
       }
+    }
   }
 
+  // for atoms with ad-hoc links, for now we don't want hydrogens
+  if (!ignore_unknown_links && h_change != HydrogenChange::NoChange)
+    for (const Topo::Link& link : topo->extras) {
+      const ChemLink* cl = monlib.get_link(link.link_id);
+      if (cl && starts_with(cl->name, "auto-")) {
+        const Restraints::Bond& bond = cl->rt.bonds.at(0);
+        remove_hydrogens_from_atom(topo->find_resinfo(link.res1), bond.id1.atom, link.alt1);
+        remove_hydrogens_from_atom(topo->find_resinfo(link.res2), bond.id2.atom, link.alt2);
+      }
+    }
+
+  assign_serial_numbers(st.models[model_index]);
   topo->finalize_refmac_topology(monlib);
 
   // the hydrogens added previously have positions not set

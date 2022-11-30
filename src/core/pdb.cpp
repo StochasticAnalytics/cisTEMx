@@ -3,12 +3,20 @@
 WX_DEFINE_OBJARRAY(ArrayOfParticleTrajectories);
 
 // TODO: can these be more local to their usage?
-#include "../../include/gemmi/model.hpp"
 #include "../../include/gemmi/elem.hpp"
 #include "../../include/gemmi/mmread.hpp"
 #include "../../include/gemmi/gz.hpp"
 #include "../../include/gemmi/resinfo.hpp"
 #include "../../include/gemmi/calculate.hpp"
+#include "../../include/gemmi/select.hpp"
+#include "../../include/gemmi/assembly.hpp"
+
+#include "../../include/gemmi/to_cif.hpp" // cif::Document -> file
+
+// In exactly one compilation unit define this before including one of
+// mtz.hpp, to_mmcif.hpp, to_pdb.hpp.
+
+#include "../../include/gemmi/to_pdb.hpp" // Structure -> cif::Document
 
 Atom::Atom( ) {
     name             = "";
@@ -407,6 +415,32 @@ void PDB::SetEmpty( ) {
     }
 }
 
+int PDB::GetResidueCount(gemmi::Structure& st) {
+    int residue_count = 0;
+    for ( auto& model : st.models ) {
+        for ( auto& chain : model.chains ) {
+            for ( auto& res : chain.residues ) {
+                residue_count++;
+            }
+        }
+    }
+    return residue_count;
+}
+
+int PDB::GetAtomCount(gemmi::Structure& st) {
+    return gemmi::count_atom_sites(st);
+}
+
+void PDB::SetToBiologicalAssembly(gemmi::Structure& st) {
+    try {
+        // Using gemmi::HowToNameCopiedChain::AddNumber causes the write to PDB to fail.
+        gemmi::transform_to_assembly(st, st.assemblies.at(0).name, gemmi::HowToNameCopiedChain::Dup, &std::cerr);
+    } catch ( std::runtime_error& e ) {
+
+        MyPrintWithDetails("\n\nGEMMI threw an error converting to biological assembly this file:\n %s\n", e.what( ));
+    }
+}
+
 void PDB::Init( ) {
 
     wxString current_line;
@@ -431,9 +465,105 @@ void PDB::Init( ) {
     // After a phenix ADP refinement + Chimera selection and split, all ATOM --> HETATM. Quick hack to set this until I can figure out why. Generally speaking, this should be left as ATOM
     wxString pdb_atom = "ATOM";
 
+    // Get a count of a few select AA types for possible removal of sidechains as a negative control in template matching.
+    // We want to minimize the mass removed with maximal clarity so visually, going to try
+    // H, I, F, M, Q
+    // Select the one that is > 10 copies but smallest quantity otherwise. (this is experimental, there may be better options,
+    // particularly if we could be aware of symmetry groups, then we could just remove a specific number of each type, knowing it
+    // wouldn't be replicated.
+    constexpr int minimal_unique_residues  = 2; // not symmetric copies
+    constexpr int minimal_residue_count    = 10; //
+    constexpr int minimal_residue_position = 0.5; // we don't want floppy end residues, so pick closest to center of the sequence. TODO: consider bfactors as well.
+    constexpr int max_tries                = 2000;
+    double        weight_removed           = 0;
+    int           round_robin_count        = -1; // this is the residue in the sequence we want to hit
+    int           intra_round_robin_count  = 0;
+    int           total_residue_count      = 0; // unique residues will be checked with the unordered map
+
+    // TODO: get this programatically
+    bool remove_negative_control_atoms = false;
+    int  n_tries;
+    if ( remove_negative_control_atoms )
+        n_tries = 0;
+    else
+        n_tries = max_tries;
+
+    // We'll loop through these round-robin until the criteria above is met
+    std::unordered_map<std::string, int> aa_to_remove = {{"HIS", 0}, {"ILE", 0}, {"PHE", 0}, {"MET", 0}, {"GLN", 0}};
+
     gemmi::Structure st;
+
     try {
         st = gemmi::read_structure(gemmi::MaybeGzipped(text_filename.ToStdString( )));
+
+        int n_residues = GetResidueCount(st);
+
+        std::cerr << "Model starting with " << GetAtomCount(st) << " atoms in " << n_residues << " residues" << std::endl;
+        SetToBiologicalAssembly(st);
+        std::cerr << "Assembly has " << GetAtomCount(st) << " atoms" << std::endl;
+
+        // Gemmi has selection tools, but I do not know how to use them. So, I'm going to do it the old fashioned way.
+        // TODO: review the (undocumented) use of these tools.
+        while ( n_tries < max_tries ) {
+            round_robin_count++;
+            n_tries++;
+            for ( auto& x : aa_to_remove ) {
+                // Let's first check to see if there is any more work to do
+                int unique_residues = 0;
+                for ( auto& y : aa_to_remove ) {
+                    if ( y.second > 0 )
+                        unique_residues++;
+                }
+
+                if ( unique_residues >= minimal_unique_residues && total_residue_count >= minimal_residue_count )
+                    goto REMOVE_RESIDUES;
+
+                intra_round_robin_count = 0;
+                for ( auto& model : st.models ) {
+                    for ( auto& chain : model.chains ) {
+                        for ( auto& res : chain.residues ) {
+                            if ( res.name == x.first ) {
+                                if ( intra_round_robin_count == round_robin_count ) {
+                                    std::vector<gemmi::Atom> new_atoms;
+                                    // Select all side chain atoms and remove them
+                                    // FIXME: This selects all C (CB etc)
+                                    // gemmi::Selection atom_sel("////[!CA,C,N,O]");
+                                    for ( auto& atom : res.atoms ) {
+                                        if ( atom.name != "CA" && atom.name != "C" && atom.name != "N" && atom.name != "O" ) {
+                                            new_atoms.push_back(atom);
+                                            weight_removed += atom.element.weight( );
+                                        }
+
+                                        // Record that we have at least on of this residue type
+                                        x.second = 1;
+                                        // TODO: confirm this is always true, but it looks like atoms from symmetric positions in the biological assembly are recorded as dupicates here.
+                                        // Check the hemoglobin example, particularly for the case where there are 2 molecules / asymmetric unit.
+                                        // https://pdb101.rcsb.org/learn/guide-to-understanding-pdb-data/biological-assemblies
+
+                                        if ( atom.name == "CB" ) {
+                                            // This wouldn't work for Glycine, but we only care about side chains for this method anyway.
+                                            total_residue_count++;
+                                        }
+                                    }
+                                    res.atoms.clear( );
+                                    res.atoms = new_atoms;
+                                }
+
+                                intra_round_robin_count++;
+                                if ( intra_round_robin_count > round_robin_count )
+                                    goto ROUND_ROBIN;
+                            }
+                        }
+                    }
+                }
+            ROUND_ROBIN:
+                continue;
+            }
+        }
+    REMOVE_RESIDUES:
+        std::cerr << "Removing " << weight_removed / 1000.0 << " kDa of atoms" << std::endl;
+        std::cerr << "Removing " << total_residue_count << " residues' side chain atoms" << std::endl;
+        std::cerr << "Model now has " << gemmi::count_atom_sites(st) << " atoms" << std::endl;
         // I'm sure there is already something in GEMMI to do an iteration like this.
         for ( gemmi::Model& model : st.models ) {
             for ( gemmi::Chain& chain : model.chains ) {
@@ -449,12 +579,26 @@ void PDB::Init( ) {
                 }
             }
         }
+        MyPrintWithDetails("");
     } catch ( std::runtime_error& e ) {
         // It may be nice if this returned and printed in the error dialog invoked when is_valid is false, rather than
         // printing to stdout.
         MyPrintWithDetails("\n\nGEMMI threw an error reading this file:\n %s\n", e.what( ));
         exit(-1);
     }
+    MyPrintWithDetails("");
+
+    if ( remove_negative_control_atoms ) {
+        MyPrintWithDetails("");
+
+        std::ofstream os("test_verif.pdb");
+        MyPrintWithDetails("");
+
+        gemmi::write_pdb(st, os);
+        MyPrintWithDetails("");
+    }
+
+    std::cerr << "Model now has from count " << number_of_atoms << " atoms" << std::endl;
 
     // Only those atoms that are part of the target molecule - TODO change the name ... they are all real
     number_of_real_atoms = number_of_atoms;
@@ -678,7 +822,6 @@ void PDB::Init( ) {
 }
 
 void PDB::Rewind( ) {
-
     if ( access_type == OPEN_TO_READ ) {
         delete input_file_stream;
         delete input_text_stream;
@@ -1173,7 +1316,6 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
 }
 
 void PDB::TransformGlobalAndSortOnZ(long number_of_non_water_atoms, float shift_x, float shift_y, float shift_z, RotationMatrix rotmat) {
-
     long  current_atom;
     float tx, ty, tz; // transformed coords for current atom
 
@@ -1202,3 +1344,7 @@ void PDB::TransformGlobalAndSortOnZ(long number_of_non_water_atoms, float shift_
 
     return;
 }
+
+// #ifdef GEMMI_WRITE_IMPLEMENTATION
+// #undef GEMMI_WRITE_IMPLEMENTATION
+// #endif

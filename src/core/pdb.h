@@ -6,6 +6,7 @@
 #define MAX_NUMBER_OF_NOISE_PARTICLES 6
 
 #include "../constants/constants.h"
+#include "../../include/gemmi/model.hpp" // we need this here for the helper functions gemmi::structure - TODO:: move these to their own class
 
 // FIXME: move to constants/chemical_constants.h
 enum AtomType : int { hydrogen       = 0,
@@ -250,4 +251,9 @@ class PDB {
         }
         return isAcidicOxygen;
     }
+
+    // some helper functions for using gemmi
+    int  GetResidueCount(gemmi::Structure& st);
+    int  GetAtomCount(gemmi::Structure& st);
+    void SetToBiologicalAssembly(gemmi::Structure& st);
 };

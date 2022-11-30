@@ -53,7 +53,7 @@ struct MmcifOutputGroups {
       struct_asym(all), origx(all), struct_conf(all), struct_sheet(all),
       struct_biol(all), assembly(all), conn(all), cis(all),
       scale(all), atom_type(all), entity_poly_seq(all), tls(all),
-      software(all), group_pdb(false) {}
+      software(all), group_pdb(all) {}
 };
 
 void update_mmcif_block(const Structure& st, cif::Block& block,
@@ -79,7 +79,7 @@ void write_struct_conn(const Structure& st, cif::Block& block);
 #include <string>
 #include <utility>  // std::pair
 #include "sprintf.hpp"
-#include "enumstr.hpp"  // for entity_type_to_string, polymer_type_to_qstring
+#include "enumstr.hpp"  // for entity_type_to_string, polymer_type_to_string
 #include "calculate.hpp"  // for count_atom_sites
 
 namespace gemmi {
@@ -152,10 +152,12 @@ void add_cif_atoms(const Structure& st, cif::Block& block, bool use_group_pdb) {
     atom_loop.tags.emplace(atom_loop.tags.begin(), "_atom_site.group_PDB");
   bool has_calc_flag = false;
   bool has_tls_group_id = false;
+  size_t atom_site_count = 0;
   for (const Model& model : st.models)
     for (const Chain& chain : model.chains)
       for (const Residue& res : chain.residues)
         for (const Atom& atom : res.atoms) {
+          ++atom_site_count;
           if (atom.calc_flag != CalcFlag::NotSet)
             has_calc_flag = true;
           if (atom.tls_group_id >= 0)
@@ -165,9 +167,11 @@ void add_cif_atoms(const Structure& st, cif::Block& block, bool use_group_pdb) {
     atom_loop.tags.emplace_back("_atom_site.calc_flag");
   if (has_tls_group_id)
     atom_loop.tags.emplace_back("_atom_site.pdbx_tls_group_id");
+  if (st.has_d_fraction)
+    atom_loop.tags.emplace_back("_atom_site.ccp4_deuterium_fraction");
 
   std::vector<std::string>& vv = atom_loop.values;
-  vv.reserve(count_atom_sites(st) * atom_loop.tags.size());
+  vv.reserve(atom_site_count * atom_loop.tags.size());
   std::vector<std::pair<int, const Atom*>> aniso;
   int serial = 0;
   for (const Model& model : st.models) {
@@ -205,6 +209,8 @@ void add_cif_atoms(const Structure& st, cif::Block& block, bool use_group_pdb) {
             vv.emplace_back(&".\0d\0c\0dum"[2 * (int) atom.calc_flag]);
           if (has_tls_group_id)
             vv.emplace_back(int_or_qmark(atom.tls_group_id));
+          if (st.has_d_fraction)
+            vv.emplace_back(to_str(atom.fraction));
           if (atom.aniso.nonzero())
             aniso.emplace_back(serial, &atom);
         }
@@ -512,7 +518,7 @@ void update_mmcif_block(const Structure& st, cif::Block& block, MmcifOutputGroup
     for (const Entity& ent : st.entities)
       if (ent.entity_type == EntityType::Polymer)
         ent_poly_loop.add_row({impl::qchain(ent.name),
-                               polymer_type_to_qstring(ent.polymer_type)});
+                               polymer_type_to_string(ent.polymer_type)});
   }
 
   if (groups.struct_ref) { // _struct_ref, _struct_ref_seq

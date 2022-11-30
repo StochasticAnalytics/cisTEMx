@@ -73,18 +73,19 @@ template<typename T, typename M> std::vector<T> model_subchains(M* model) {
 } // namespace impl
 
 
-// File format of a macromolecular model. When passed to read_structure():
-// Unknown = guess format from the extension,
-// Detect = guess format from the content.
+/// File format of a macromolecular model. When passed to read_structure():
+/// Unknown = guess format from the extension,
+/// Detect = guess format from the content.
 enum class CoorFormat { Unknown, Detect, Pdb, Mmcif, Mmjson, ChemComp };
 
-// corresponds to _atom_site.calc_flag in mmCIF
+/// corresponds to _atom_site.calc_flag in mmCIF
 enum class CalcFlag : signed char { NotSet=0, Determined, Calculated, Dummy };
 
-// options affecting how pdb file is read
+/// options affecting how pdb file is read
 struct PdbReadOptions {
   int max_line_length = 0;
   bool split_chain_on_ter = false;
+  bool skip_remarks = false;
 };
 
 // remove empty residues from chain, empty chains from model, etc
@@ -97,6 +98,7 @@ inline bool is_same_conformer(char altloc1, char altloc2) {
   return altloc1 == '\0' || altloc2 == '\0' || altloc1 == altloc2;
 }
 
+/// Represents atom site in macromolecular structure (~100 bytes).
 struct Atom {
   static const char* what() { return "Atom"; }
   std::string name;
@@ -105,8 +107,9 @@ struct Atom {
   Element element = El::X;
   CalcFlag calc_flag = CalcFlag::NotSet;  // mmCIF _atom_site.calc_flag
   char flag = '\0';  // a custom flag
-  int serial = 0;
   short tls_group_id = -1;
+  int serial = 0;
+  float fraction = 0.f;  // custom value, one use is Refmac's ccp4_deuterium_fraction
   Position pos;
   float occ = 1.0f;
   // ADP - in MX it's usual to give isotropic ADP as B and anisotropic as U
@@ -131,7 +134,9 @@ struct Atom {
   std::string padded_name() const {
     std::string s;
     const char* el = element.uname();
-    if (el[1] == '\0' && el[0] == alpha_up(name[0]) && name.size() < 4)
+    if (el[1] == '\0' &&
+        (el[0] == alpha_up(name[0]) || (is_hydrogen() && alpha_up(name[0]) == 'H')) &&
+        name.size() < 4)
       s += ' ';
     s += name;
     return s;
@@ -169,6 +174,8 @@ struct Residue : public ResidueId {
   char het_flag = '\0';   // 'A' = ATOM, 'H' = HETATM, 0 = unspecified
   bool is_cis = false;    // bond to the next residue marked as cis
   char flag = '\0';       // custom flag
+  SiftsUnpResidue sifts_unp;  // UniProt reference from SIFTS
+  short group_idx = 0;        // ignore - internal variable
   std::vector<Atom> atoms;
 
   Residue() = default;
@@ -197,17 +204,14 @@ struct Residue : public ResidueId {
   }
 
   // default values accept anything
-  const Atom* find_atom(const std::string& atom_name, char altloc,
-                        El el=El::X) const {
-    for (const Atom& a : atoms)
-      if (a.name == atom_name && a.altloc_matches(altloc)
-          && (el == El::X || a.element == el))
+  Atom* find_atom(const std::string& atom_name, char altloc, El el=El::X) {
+    for (Atom& a : atoms)
+      if (a.name == atom_name && a.altloc_matches(altloc) && (el == El::X || a.element == el))
         return &a;
     return nullptr;
   }
-  Atom* find_atom(const std::string& atom_name, char altloc, El el=El::X) {
-    const Residue* const_this = this;
-    return const_cast<Atom*>(const_this->find_atom(atom_name, altloc, el));
+  const Atom* find_atom(const std::string& atom_name, char altloc, El el=El::X) const {
+    return const_cast<Residue*>(this)->find_atom(atom_name, altloc, el);
   }
 
   std::vector<Atom>::iterator find_atom_iter(const std::string& atom_name,
@@ -232,28 +236,12 @@ struct Residue : public ResidueId {
   }
 
   // short-cuts to access peptide backbone atoms
-  const Atom* get_ca() const {
-    static const std::string CA("CA");
-    return find_atom(CA, '*', El::C);
-  }
-  const Atom* get_c() const {
-    static const std::string C("C");
-    return find_atom(C, '*', El::C);
-  }
-  const Atom* get_n() const {
-    static const std::string N("N");
-    return find_atom(N, '*', El::N);
-  }
-
+  const Atom* get_ca() const { return find_atom("CA", '*', El::C); }
+  const Atom* get_c() const { return find_atom("C", '*', El::C); }
+  const Atom* get_n() const { return find_atom("N", '*', El::N); }
   // short-cuts to access nucleic acid atoms
-  const Atom* get_p() const {
-    static const std::string P("P");
-    return find_atom(P, '*', El::P);
-  }
-  const Atom* get_o3prim() const {
-    static const std::string P("O3'");
-    return find_atom(P, '*', El::O);
-  }
+  const Atom* get_p() const { return find_atom("P", '*', El::P); }
+  const Atom* get_o3prim() const { return find_atom("O3'", '*', El::O); }
 
   bool same_conformer(const Residue& other) const {
     return atoms.empty() || other.atoms.empty() ||
@@ -261,7 +249,9 @@ struct Residue : public ResidueId {
            other.find_atom(other.atoms[0].name, atoms[0].altloc) != nullptr;
   }
 
-  // convenience function that duplicates functionality from resinfo.hpp
+  /// Convenience function that duplicates functionality from resinfo.hpp.
+  /// Returns true for HOH and DOD (and old alternative names of HOH),
+  /// but not for OH and H3O/D3O.
   bool is_water() const {
     if (name.length() != 3)
       return false;
@@ -869,6 +859,9 @@ struct Structure {
   std::vector<Assembly> assemblies;
   Metadata meta;
 
+  CoorFormat input_format = CoorFormat::Unknown;
+  bool has_d_fraction = false;  // uses Refmac's ccp4_deuterium_fraction
+
   // Store ORIGXn / _database_PDB_matrix.origx*
   bool has_origx = false;
   Transform origx;
@@ -879,8 +872,6 @@ struct Structure {
   std::vector<std::string> raw_remarks;
   // simplistic resolution value from/for REMARK 2
   double resolution = 0;
-
-  CoorFormat input_format = CoorFormat::Unknown;
 
   const SpaceGroup* find_spacegroup() const {
     return find_spacegroup_by_name(spacegroup_hm, cell.alpha, cell.gamma);

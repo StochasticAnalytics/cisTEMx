@@ -25,7 +25,7 @@
 
 namespace gemmi {
 
-namespace impl_fprim {
+namespace impl_fprime {
 
 inline double pow2(double x) { return x * x; }
 
@@ -150,7 +150,10 @@ inline void cromer(int z, double energy_ev, int norb, const OrbitalCoef coefs[],
     g.bena = orbc.binden / kev2ry;
     int nparm = orbc.nparm;
 
-    Point lndata[11];
+    // GCC-12 prints bogus -Warray-bounds warning (about std::__insertion_sort
+    // code) when sorting lndata[11]. To avoid it we use here lndata[16] items.
+    //Point lndata[11];
+    Point lndata[16];
     for (int j = 0; j < 5; ++j)
       lndata[j].x = ln_xnrdat[j];
     // it could be optimized by storing log values in coefs[]
@@ -2928,7 +2931,7 @@ inline OrbitalCoef* get_orbital_coefficients(int z, int* n_orb) {
 # endif
 #endif
 
-} // namespace impl_fprim
+} // namespace impl_fprime
 
 
 // Cromer-Liberman calculation of anomalous scattering factors.
@@ -2942,15 +2945,14 @@ inline OrbitalCoef* get_orbital_coefficients(int z, int* n_orb) {
 inline
 void cromer_liberman_for_array(int z, int npts, const double* energy,
                                 double* fp, double* fpp) {
-  using namespace impl_fprim;
   if (z < 3 || z > 92)
     return;
   int norbz;
-  OrbitalCoef* coefs = get_orbital_coefficients(z, &norbz);
+  impl_fprime::OrbitalCoef* coefs = impl_fprime::get_orbital_coefficients(z, &norbz);
   for (int i = 0; i < npts; ++i) {
     double f1, f2;
-    cromer(z, energy[i], norbz, coefs, &f1, &f2);
-    fp[i] = f1 + calculate_correction(z);
+    impl_fprime::cromer(z, energy[i], norbz, coefs, &f1, &f2);
+    fp[i] = f1 + impl_fprime::calculate_correction(z);
     fpp[i] = f2;
   }
 }

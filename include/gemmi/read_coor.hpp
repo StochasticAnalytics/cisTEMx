@@ -8,7 +8,7 @@
 // #define GEMMI_READ_COOR_IMPLEMENTATION
 // #include <gemmi/read_coor.cpp>
 //
-// See src/input.cpp for an example.
+// See prog/input.cpp for an example.
 
 #ifndef GEMMI_READ_COOR_HPP_
 #define GEMMI_READ_COOR_HPP_
@@ -17,7 +17,10 @@
 
 namespace gemmi {
 
-Structure read_structure_gz(const std::string& path, CoorFormat format=CoorFormat::Unknown);
+namespace cif { struct Document; }
+
+Structure read_structure_gz(const std::string& path, CoorFormat format=CoorFormat::Unknown,
+                            cif::Document* save_doc=nullptr);
 
 Structure read_pdb_gz(const std::string& path, PdbReadOptions options=PdbReadOptions());
 
@@ -40,8 +43,9 @@ Structure read_pdb_gz(const std::string& path, PdbReadOptions options) {
   return read_pdb(MaybeGzipped(path), options);
 }
 
-Structure read_structure_gz(const std::string& path, CoorFormat format) {
-  return read_structure(MaybeGzipped(path), format);
+Structure read_structure_gz(const std::string& path, CoorFormat format,
+                            cif::Document* save_doc) {
+  return read_structure(MaybeGzipped(path), format, save_doc);
 }
 
 CoorFormat coor_format_from_ext_gz(const std::string& path) {

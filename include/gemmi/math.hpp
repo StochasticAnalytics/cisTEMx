@@ -6,7 +6,6 @@
 #define GEMMI_MATH_HPP_
 
 #include <cmath>      // for fabs, cos, sqrt, round
-#include <cstdio>     // for snprintf
 #include <algorithm>  // for min
 #include <array>
 #include <stdexcept>  // for out_of_range
@@ -89,11 +88,8 @@ struct Vec3 {
            std::fabs(y - o.y) <= epsilon &&
            std::fabs(z - o.z) <= epsilon;
   }
-  std::string str() const {
-    using namespace std;
-    char buf[64] = {0};
-    snprintf(buf, 63, "[%g %g %g]", x, y, z);
-    return buf;
+  bool has_nan() const {
+    return std::isnan(x) || std::isnan(y) || std::isnan(z);
   }
 };
 
@@ -173,6 +169,14 @@ struct Mat33 {
           return false;
     return true;
   }
+  bool has_nan() const {
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j)
+        if (std::isnan(a[i][j]))
+            return true;
+    return false;
+  }
+
   double determinant() const {
     return a[0][0] * (a[1][1]*a[2][2] - a[2][1]*a[1][2]) +
            a[0][1] * (a[1][2]*a[2][0] - a[2][2]*a[1][0]) +
@@ -353,6 +357,10 @@ struct Transform {
     return mat.is_identity() && vec.x == 0. && vec.y == 0. && vec.z == 0.;
   }
   void set_identity() { mat = Mat33(); vec = Vec3(); }
+
+  bool has_nan() const {
+    return mat.has_nan() || vec.has_nan();
+  }
 
   bool approx(const Transform& o, double epsilon) const {
     return mat.approx(o.mat, epsilon) && vec.approx(o.vec, epsilon);

@@ -36,9 +36,8 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
     float average_defocus_angle        = 0.0;
     int   box_size                     = 256;
     int   number_of_results_to_process = 1;
-    int   mip_x_dimension              = 0;
-    int   mip_y_dimension              = 0;
-    bool  read_coordinates;
+
+    bool read_coordinates;
 
     UserInput* my_input = new UserInput("MakeParticleStack", 1.00);
 
@@ -101,9 +100,7 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
                                       wanted_threshold, // 17
                                       min_peak_radius, // 18
                                       read_coordinates, // 19
-                                      mip_x_dimension, // 20
-                                      mip_y_dimension, // 21
-                                      number_of_results_to_process); // 22
+                                      number_of_results_to_process); // 20
 }
 
 // override the do calculation method which will be what is actually run..
@@ -132,9 +129,7 @@ bool MakeParticleStack::DoCalculation( ) {
     float    wanted_threshold               = my_current_job.arguments[17].ReturnFloatArgument( );
     float    min_peak_radius                = my_current_job.arguments[18].ReturnFloatArgument( );
     bool     read_coordinates               = my_current_job.arguments[19].ReturnBoolArgument( );
-    int      mip_x_dimension                = my_current_job.arguments[20].ReturnIntegerArgument( );
-    int      mip_y_dimension                = my_current_job.arguments[21].ReturnIntegerArgument( );
-    int      number_of_results_to_process   = my_current_job.arguments[22].ReturnIntegerArgument( );
+    int      number_of_results_to_process   = my_current_job.arguments[20].ReturnIntegerArgument( );
 
     Image mip_image;
     Image psi_image;
@@ -162,10 +157,10 @@ bool MakeParticleStack::DoCalculation( ) {
     long  text_file_access_type;
     int   i, j;
 
-    cisTEMParameters    input_star_file;
-    cisTEMParameterLine output_parameters;
-    cisTEMParameters    output_star_file;
+    cisTEMParameters input_star_file;
+    cisTEMParameters output_star_file;
 
+    // Min peak radius is excluded around each detected peak.
     float min_peak_radius_squared = min_peak_radius * min_peak_radius;
     std::cerr << "min_peak_radius_squared = " << min_peak_radius_squared << std::endl;
     if ( ! read_coordinates ) {
@@ -174,7 +169,7 @@ bool MakeParticleStack::DoCalculation( ) {
         MRCFile input_psi_file(input_best_psi_filename.ToStdString( ), false);
         MRCFile input_theta_file(input_best_theta_filename.ToStdString( ), false);
         MRCFile input_phi_file(input_best_phi_filename.ToStdString( ), false);
-        // Make sure the number of results to process is not greater than the number of particles in the input file
+        // Make sure the number of results to process is not greater than the number of particles in the input file. Zero to process all.
         if ( number_of_results_to_process == 0 )
             number_of_results_to_process = input_mip_file.ReturnNumberOfSlices( );
         else if ( number_of_results_to_process > input_mip_file.ReturnNumberOfSlices( ) ) {
@@ -191,30 +186,26 @@ bool MakeParticleStack::DoCalculation( ) {
         psi_image.ReadSlices(&input_psi_file, 1, input_psi_file.ReturnNumberOfSlices( ));
         theta_image.ReadSlices(&input_theta_file, 1, input_theta_file.ReturnNumberOfSlices( ));
         phi_image.ReadSlices(&input_phi_file, 1, input_phi_file.ReturnNumberOfSlices( ));
-        mip_x_dimension = mip_image.logical_x_dimension;
-        mip_y_dimension = mip_image.logical_y_dimension;
     }
-    std::vector<Peak>   peaks_found(number_of_results_to_process);
-    std::vector<double> avg_occupancy(number_of_results_to_process, 0.f);
-    for ( i = 0; i < number_of_results_to_process; i++ ) {
-        peaks_found[i].value = -std::numeric_limits<float>::max( );
-    }
+    // We'll reset the peaks values in each loop, so no need to initialize here.
+    std::vector<cisTEMParameterLine> output_parameters(number_of_results_to_process);
+    std::vector<double>              avg_occupancy(number_of_results_to_process, 0.f);
 
     if ( read_coordinates ) {
         input_star_file.ReadFromcisTEMStarFile(input_starfilename.ToStdString( ), false);
+        std::cerr << "Input star file size is " << input_star_file.ReturnNumberofLines( ) << std::endl;
 
-        // For the time being, we'll only take the top scoring paricle from each group
+        // FIXME: For the time being, we'll only take the top scoring paricle from each group
         output_star_file = input_star_file.ReturnTopNFromParticleGroups(1);
+        std::cerr << "Output star file size is " << output_star_file.ReturnNumberofLines( ) << std::endl;
     }
     else {
         std::cerr << "Processing : " << number_of_results_to_process << " results " << std::endl;
         output_star_file.PreallocateMemoryAndBlank(cistem::maximum_number_of_detections * number_of_results_to_process);
-        MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&psi_image), "MIP and psi images have different dimensions");
-        MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&theta_image), "MIP and theta images have different dimensions");
-        MyDebugAssertTrue(mip_image.HasSameDimensionsAs(&phi_image), "MIP and phi images have different dimensions");
     }
 
     micrograph.QuickAndDirtyReadSlice(input_image_filename.ToStdString( ), 1);
+    // This is used for Image::CliptInto to catch cases where the particle is too close to the edge of the image.
     micrograph_mean = micrograph.ReturnAverageOfRealValues( );
 
     // This will be redundant if there are not multiple results, but copying the first mip is the
@@ -232,7 +223,7 @@ bool MakeParticleStack::DoCalculation( ) {
         output_file.SetOutputToFP16( );
     }
     else {
-        mip_to_search.Allocate(mip_image.logical_x_dimension, mip_image.logical_y_dimension, true);
+        mip_to_search.Allocate(mip_image.logical_x_dimension, mip_image.logical_y_dimension, 1, true);
         for ( int iPixel = 0; iPixel < mip_to_search.real_memory_allocated; iPixel++ ) {
             // TODO: could use a memcpy here.
             mip_to_search.real_values[iPixel] = mip_image.real_values[iPixel];
@@ -240,35 +231,39 @@ bool MakeParticleStack::DoCalculation( ) {
     }
 
     wxPrintf("\n");
-    while ( 1 == 1 ) {
-        if ( ! read_coordinates ) {
-            // look for a peak..
+    for ( int possible_peak = 0; possible_peak < cistem::maximum_number_of_detections; possible_peak++ ) {
 
+        if ( ! read_coordinates ) {
+
+            // Get the next highest value.
+            // TODO: make this configurable as in make_template_results
             current_peak = mip_to_search.FindPeakWithIntegerCoordinates(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
 
             // current_peak = mip_image.FindPeakWithIntegerCoordinates(0.0, FLT_MAX, box_size / cistem::fraction_of_box_size_to_exclude_for_border + 1);
             if ( current_peak.value < wanted_threshold )
                 break;
 
-            // ok we have peak..
-
-            // get angles and mask out the local area so it won't be picked again..
-
+            // Set the origin to the lower-left rather than the center.
             current_peak.x = current_peak.x + mip_to_search.physical_address_of_box_center_x;
             current_peak.y = current_peak.y + mip_to_search.physical_address_of_box_center_y;
             address        = myroundint(current_peak.y) * (mip_to_search.logical_x_dimension + mip_to_search.padding_jump_value) + myroundint(current_peak.x);
 
-            peaks_found[0].x                             = current_peak.x;
-            peaks_found[0].y                             = current_peak.y;
-            peaks_found[0].value                         = current_peak.value;
-            peaks_found[0].physical_address_within_image = address;
-
-            address = 0;
-            for ( int iResult = 1; iResult < number_of_results_to_process; iResult++ ) {
-                peaks_found[iResult].value = -std::numeric_limits<float>::max( );
+            for ( int iResult = 0; iResult < number_of_results_to_process; iResult++ ) {
+                // Implicitly assuming the wanted threshold is always > 0.
+                output_parameters[iResult].SetAllToZero( );
             }
 
+            output_parameters[0].psi     = psi_image.real_values[address];
+            output_parameters[0].theta   = theta_image.real_values[address];
+            output_parameters[0].phi     = phi_image.real_values[address];
+            output_parameters[0].x_shift = current_peak.x * pixel_size; // FIXME: if saving a particle stack this is no longer valid, need option for both
+            output_parameters[0].y_shift = current_peak.y * pixel_size;
+            output_parameters[0].score   = current_peak.value;
+
+            address = 0;
+
             float sq_dist_x, sq_dist_y;
+            bool  peak_is_a_duplicate;
             for ( int j = std::max(myroundint(current_peak.y - min_peak_radius), 0); j < std::min(myroundint(current_peak.y + min_peak_radius), mip_to_search.logical_y_dimension); j++ ) {
                 sq_dist_y = float(j) - current_peak.y;
                 sq_dist_y *= sq_dist_y;
@@ -279,18 +274,29 @@ bool MakeParticleStack::DoCalculation( ) {
                     address = mip_to_search.ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
 
                     if ( sq_dist_x + sq_dist_y <= min_peak_radius_squared ) {
-                        mip_to_search.real_values[address] = -std::numeric_limits<float>::max( );
-                        mip_image.real_values[address]     = -std::numeric_limits<float>::max( );
-                        // Check the other results if the exist
+                        // We are within the exclusion radius, so first we'll zero out values in the mip_to_search.
+                        mip_to_search.real_values[address] = 0.f;
+                        // We are assuming that any alternate peaks are within the exclusion radius of the first peak in the additional mips.
                         for ( int iResult = 1; iResult < number_of_results_to_process; iResult++ ) {
                             address += mip_to_search.real_memory_allocated;
-                            if ( mip_image.real_values[address] > peaks_found[iResult].value ) {
-                                peaks_found[iResult].x                             = i;
-                                peaks_found[iResult].y                             = j;
-                                peaks_found[iResult].value                         = mip_image.real_values[address];
-                                peaks_found[iResult].physical_address_within_image = address;
+                            if ( mip_image.real_values[address] > output_parameters[iResult].score ) {
+                                // Make sure this isn't a duplicate on the angles
+                                for ( int iDuplicate = iResult - 1; iDuplicate > 0; iDuplicate-- ) {
+                                    if ( FloatsAreAlmostTheSame(output_parameters[iDuplicate].psi, psi_image.real_values[address]) &&
+                                         FloatsAreAlmostTheSame(output_parameters[iDuplicate].theta, theta_image.real_values[address]) &&
+                                         FloatsAreAlmostTheSame(output_parameters[iDuplicate].phi, phi_image.real_values[address]) ) {
+                                        std::cerr << "Duplicate peak found at " << i << ", " << j << ", " << iResult << std::endl;
+                                        break;
+                                    }
+                                    output_parameters[iResult].psi     = psi_image.real_values[address];
+                                    output_parameters[iResult].theta   = theta_image.real_values[address];
+                                    output_parameters[iResult].phi     = phi_image.real_values[address];
+                                    output_parameters[iResult].x_shift = i * pixel_size; // FIXME: if saving a particle stack this is no longer valid, need option for both
+                                    output_parameters[iResult].y_shift = j * pixel_size;
+                                    output_parameters[iResult].score   = mip_image.real_values[address];
+                                }
                             }
-                            mip_image.real_values[address] = -std::numeric_limits<float>::max( );
+                            mip_image.real_values[address] = 0.f;
                         }
                     }
                 }
@@ -301,36 +307,34 @@ bool MakeParticleStack::DoCalculation( ) {
                 // In reconstruct3d the weight is determined by occupancy / average occupancy, so to make the occupancy
                 // simply fractional, ensure the sum of the occupancy for each particle = N particles, st. the average = 1
 
-                output_parameters.SetAllToZero( );
-                output_parameters.position_in_stack                  = number_of_peaks_found + 1;
-                output_parameters.psi                                = psi_image.real_values[peaks_found[iResult].physical_address_within_image];
-                output_parameters.theta                              = theta_image.real_values[peaks_found[iResult].physical_address_within_image];
-                output_parameters.phi                                = phi_image.real_values[peaks_found[iResult].physical_address_within_image];
-                output_parameters.x_shift                            = peaks_found[iResult].x * pixel_size; // FIXME: if saving a particle stack this is no longer valid, need option for both
-                output_parameters.y_shift                            = peaks_found[iResult].y * pixel_size;
-                output_parameters.defocus_1                          = average_defocus_1 + current_defocus;
-                output_parameters.defocus_2                          = average_defocus_2 + current_defocus;
-                output_parameters.defocus_angle                      = average_defocus_angle;
-                output_parameters.pixel_size                         = pixel_size;
-                output_parameters.microscope_voltage_kv              = voltage_kV;
-                output_parameters.microscope_spherical_aberration_mm = spherical_aberration_mm;
-                output_parameters.amplitude_contrast                 = amplitude_contrast;
-                output_parameters.occupancy                          = (peaks_found[iResult].value > wanted_threshold) ? 1.0f : 0.f; // for now, include all peaks, even if below threshold and use occupancy to turn off
-                output_parameters.sigma                              = 10.0f;
-                output_parameters.logp                               = 5000.0f;
-                output_parameters.score                              = peaks_found[iResult].value;
-                output_parameters.image_is_active                    = 1;
-                output_parameters.particle_group                     = particle_group + 1;
-                output_parameters.assigned_subset                    = IsOdd(particle_group) ? 1 : 2; // make sure that different possibilites for a given particle are in the same FSC subset
+                output_parameters[iResult].position_in_stack = number_of_peaks_found + 1;
 
-                output_star_file.all_parameters.Item(number_of_peaks_found) = output_parameters;
+                output_parameters[iResult].defocus_1                          = average_defocus_1 + current_defocus;
+                output_parameters[iResult].defocus_2                          = average_defocus_2 + current_defocus;
+                output_parameters[iResult].defocus_angle                      = average_defocus_angle;
+                output_parameters[iResult].pixel_size                         = pixel_size;
+                output_parameters[iResult].microscope_voltage_kv              = voltage_kV;
+                output_parameters[iResult].microscope_spherical_aberration_mm = spherical_aberration_mm;
+                output_parameters[iResult].amplitude_contrast                 = amplitude_contrast;
+                output_parameters[iResult].occupancy                          = (output_parameters[iResult].score > wanted_threshold) ? 1.0f : 0.f; // for now, include all peaks, even if below threshold and use occupancy to turn off
+                output_parameters[iResult].sigma                              = 10.0f;
+                output_parameters[iResult].logp                               = 5000.0f;
+
+                output_parameters[iResult].image_is_active = (output_parameters[iResult].score > wanted_threshold) ? 1 : -1;
+                output_parameters[iResult].particle_group  = particle_group + 1;
+                output_parameters[iResult].assigned_subset = IsOdd(particle_group + 1) ? 1 : 2; // make sure that different possibilites for a given particle are in the same FSC subset
+
+                output_star_file.all_parameters.Item(number_of_peaks_found) = output_parameters[iResult];
                 number_of_peaks_found++;
             }
+            // All the peaks in a given exclusion radius will have the same particle group number.
             particle_group++;
         }
         else {
-
-            output_star_file.all_parameters.Item(n_processed_in_total).image_is_active = (output_star_file.all_parameters.Item(n_processed_in_total).score < wanted_threshold) ? -1 : 1;
+            output_star_file.all_parameters.Item(n_processed_in_total).score = output_star_file.all_parameters.Item(n_processed_in_total).score_change;
+            // We don't want to re-activate something that is otherwise shutdown
+            if ( output_star_file.all_parameters.Item(n_processed_in_total).image_is_active > 0 )
+                output_star_file.all_parameters.Item(n_processed_in_total).image_is_active = (output_star_file.all_parameters.Item(n_processed_in_total).score < wanted_threshold) ? -1 : 1;
 
             // Get the x/y position and convert from ang to pixels
             current_peak.x = output_star_file.all_parameters.Item(n_processed_in_total).x_shift / output_star_file.all_parameters.Item(n_processed_in_total).pixel_size;
@@ -352,9 +356,7 @@ bool MakeParticleStack::DoCalculation( ) {
             // For now, we'll also still include inactive images in the output star file and hence the output stack
             // lastly post increment the counter on peaks found
 
-            output_star_file.all_parameters.Item(n_processed_in_total) = output_parameters;
-
-            number_of_peaks_found++;
+            n_processed_in_total++;
         }
 
         // wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x * pixel_size, current_peak.y * pixel_size, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
@@ -370,10 +372,10 @@ bool MakeParticleStack::DoCalculation( ) {
                 variance = 1.0f;
             current_particle.AddMultiplyConstant(-current_particle.ReturnAverageOfRealValuesOnEdges( ), 1.0f / sqrtf(variance));
 
-            current_particle.WriteSlice(&output_file, number_of_peaks_found);
+            current_particle.WriteSlice(&output_file, n_processed_in_total);
         }
 
-        if ( read_coordinates && output_star_file.ReturnNumberofLines( ) == number_of_peaks_found )
+        if ( read_coordinates && output_star_file.ReturnNumberofLines( ) == n_processed_in_total )
             break;
     }
 
@@ -392,7 +394,9 @@ bool MakeParticleStack::DoCalculation( ) {
     output_star_file.parameters_to_write.reference_3d_filename   = false;
     output_star_file.parameters_to_write.best_2d_class           = false;
 
-    output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, 1, number_of_peaks_found);
+    // FIXME: unify
+    int n_to_write = (read_coordinates) ? n_processed_in_total : number_of_peaks_found;
+    output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, 1, n_to_write);
 
     if ( is_running_locally == true ) {
         wxPrintf("\nFound %i peaks.\n\n", number_of_peaks_found);

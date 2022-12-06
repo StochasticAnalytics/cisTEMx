@@ -134,7 +134,7 @@ void GlobalSearchApp::DoInteractiveUserInput( ) {
     input_search_images  = my_input->GetFilenameFromUser("Input images to be searched", "The input image stack, containing the images that should be searched", "image_stack.mrc", true);
     input_reconstruction = my_input->GetFilenameFromUser("Input template reconstruction", "The 3D reconstruction from which projections are calculated", "reconstruction.mrc", true);
     wxFileName directory_for_results(my_input->GetFilenameFromUser("Output directory for results, subdirectory using image name will be created.", "", "./", false));
-    MyDebugAssertFalse(directory_for_results.HasExt( ), "Output directory should not have an extension");
+    // MyDebugAssertFalse(directory_for_results.HasExt( ), "Output directory should not have an extension");
     if ( ! directory_for_results.DirExists( ) ) {
         MyDebugPrint("Output directory does not exist, creating it");
         directory_for_results.Mkdir(0777, wxPATH_MKDIR_FULL);
@@ -771,7 +771,7 @@ bool GlobalSearchApp::DoCalculation( ) {
                         }
 
                         if ( z == 0 ) {
-                            // We only need on image to track stats
+                            // We only need one image to track stats
 
                             correlation_pixel_sum[pixel_counter] += (double)sum.real_values[pixel_counter];
                             correlation_pixel_sum_of_squares[pixel_counter] += (double)sumSq.real_values[pixel_counter];
@@ -865,59 +865,59 @@ bool GlobalSearchApp::DoCalculation( ) {
         output_file.SetOutputToFP16( );
         temp_image.WriteSlices(&output_file, 1, number_of_global_search_images_to_save);
 
-#ifdef CISTEM_TEST_FILTERED_MIP
+        // #ifdef CISTEM_TEST_FILTERED_MIP
 
-        // We assume the user has set the min pixel radius in pixels to match the expected radius of the particle, which is only true if
-        // a) they are aware of this hack
-        // b) the sample is a single particle (layered sample will have a different radius)
-        float estimated_radius_in_pixels = min_peak_radius;
+        //         // We assume the user has set the min pixel radius in pixels to match the expected radius of the particle, which is only true if
+        //         // a) they are aware of this hack
+        //         // b) the sample is a single particle (layered sample will have a different radius)
+        //         float estimated_radius_in_pixels = min_peak_radius;
 
-        // The factor of 4 (two particle diameters) is in no way optimized.
-        float objective_aperture_resolution = pixel_size * estimated_radius_in_pixels * 4.0f;
-        float mask_falloff                  = 7.f;
+        //         // The factor of 4 (two particle diameters) is in no way optimized.
+        //         float objective_aperture_resolution = pixel_size * estimated_radius_in_pixels * 4.0f;
+        //         float mask_falloff                  = 7.f;
 
-        correlation_pixel_sum_image.ReturnCosineMaskBandpassResolution(pixel_size, objective_aperture_resolution, mask_falloff);
+        //         correlation_pixel_sum_image.ReturnCosineMaskBandpassResolution(pixel_size, objective_aperture_resolution, mask_falloff);
 
-        correlation_pixel_sum_image.ForwardFFT( );
-        correlation_pixel_sum_image.CosineRingMask(-1.0f, objective_aperture_resolution, mask_falloff);
-        correlation_pixel_sum_image.BackwardFFT( );
+        //         correlation_pixel_sum_image.ForwardFFT( );
+        //         correlation_pixel_sum_image.CosineRingMask(-1.0f, objective_aperture_resolution, mask_falloff);
+        //         correlation_pixel_sum_image.BackwardFFT( );
 
-        correlation_pixel_sum_of_squares_image.ReturnCosineMaskBandpassResolution(pixel_size, objective_aperture_resolution, mask_falloff);
+        //         correlation_pixel_sum_of_squares_image.ReturnCosineMaskBandpassResolution(pixel_size, objective_aperture_resolution, mask_falloff);
 
-        correlation_pixel_sum_of_squares_image.ForwardFFT( );
-        correlation_pixel_sum_of_squares_image.CosineRingMask(-1.0f, objective_aperture_resolution, mask_falloff);
-        correlation_pixel_sum_of_squares_image.BackwardFFT( );
+        //         correlation_pixel_sum_of_squares_image.ForwardFFT( );
+        //         correlation_pixel_sum_of_squares_image.CosineRingMask(-1.0f, objective_aperture_resolution, mask_falloff);
+        //         correlation_pixel_sum_of_squares_image.BackwardFFT( );
 
-        //        max_intensity_projection.SubtractImage(&correlation_pixel_sum);
-        long slice_offset;
-        for ( int iSlice = 0; iSlice < number_of_global_search_images_to_save; iSlice++ ) {
-            slice_offset = iSlice * input_image.real_memory_allocated;
-            for ( int pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
-                max_intensity_projection.real_values[pixel_counter + slice_offset] -= correlation_pixel_sum_image.real_values[pixel_counter];
-                if ( correlation_pixel_sum_of_squares_image.real_values[pixel_counter] > 0.0f ) {
-                    max_intensity_projection.real_values[pixel_counter + slice_offset] /= correlation_pixel_sum_of_squares_image.real_values[pixel_counter];
-                }
-                else
-                    max_intensity_projection.real_values[pixel_counter + slice_offset] = 0.0f;
-            }
-        }
-#else
+        //         //        max_intensity_projection.SubtractImage(&correlation_pixel_sum);
+        //         long slice_offset;
+        //         for ( int iSlice = 0; iSlice < number_of_global_search_images_to_save; iSlice++ ) {
+        //             slice_offset = iSlice * input_image.real_memory_allocated;
+        //             for ( int pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
+        //                 max_intensity_projection.real_values[pixel_counter + slice_offset] -= correlation_pixel_sum_image.real_values[pixel_counter];
+        //                 if ( correlation_pixel_sum_of_squares_image.real_values[pixel_counter] > 0.0f ) {
+        //                     max_intensity_projection.real_values[pixel_counter + slice_offset] /= correlation_pixel_sum_of_squares_image.real_values[pixel_counter];
+        //                 }
+        //                 else
+        //                     max_intensity_projection.real_values[pixel_counter + slice_offset] = 0.0f;
+        //             }
+        //         }
+        // #else
 
-        long slice_offset;
-        for ( int iSlice = 0; iSlice < number_of_global_search_images_to_save; iSlice++ ) {
-            slice_offset = iSlice * input_image.real_memory_allocated;
-            for ( pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
-                max_intensity_projection.real_values[pixel_counter] -= correlation_pixel_sum[pixel_counter];
-                if ( correlation_pixel_sum_of_squares[pixel_counter] > 0.0f ) {
-                    max_intensity_projection.real_values[pixel_counter] /= correlation_pixel_sum_of_squares[pixel_counter];
-                }
-                else
-                    max_intensity_projection.real_values[pixel_counter] = 0.0f;
-                correlation_pixel_sum_image.real_values[pixel_counter]            = correlation_pixel_sum[pixel_counter];
-                correlation_pixel_sum_of_squares_image.real_values[pixel_counter] = correlation_pixel_sum_of_squares[pixel_counter];
-            }
-        }
-#endif
+        //         long slice_offset;
+        //         for ( int iSlice = 0; iSlice < number_of_global_search_images_to_save; iSlice++ ) {
+        //             slice_offset = iSlice * input_image.real_memory_allocated;
+        //             for ( pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
+        //                 max_intensity_projection.real_values[pixel_counter] -= correlation_pixel_sum[pixel_counter];
+        //                 if ( correlation_pixel_sum_of_squares[pixel_counter] > 0.0f ) {
+        //                     max_intensity_projection.real_values[pixel_counter] /= correlation_pixel_sum_of_squares[pixel_counter];
+        //                 }
+        //                 else
+        //                     max_intensity_projection.real_values[pixel_counter] = 0.0f;
+        //                 correlation_pixel_sum_image.real_values[pixel_counter]            = correlation_pixel_sum[pixel_counter];
+        //                 correlation_pixel_sum_of_squares_image.real_values[pixel_counter] = correlation_pixel_sum_of_squares[pixel_counter];
+        //             }
+        //         }
+        // #endif
         //        max_intensity_projection.DividePixelWise(correlation_pixel_sum_of_squares);
 
         ////////////////////////////

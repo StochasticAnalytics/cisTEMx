@@ -517,10 +517,16 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     output_star_file = input_star_file;
     timer.lap("read star");
     // To make the transition easier, first keep these unnecessary columns in the output file
-    number_of_peaks_found = input_star_file.ReturnNumberofLines( );
+    number_of_peaks_found      = input_star_file.ReturnNumberofLines( );
+    int number_of_active_peaks = 0;
+    for ( int i = 0; i < number_of_peaks_found; i++ ) {
+        if ( input_star_file.ReturnImageIsActive(i) > 0 ) {
+            number_of_active_peaks++;
+        }
+    }
 
     if ( is_running_locally ) {
-        wxPrintf("\nRefining %i positions in the MIP.\n", number_of_peaks_found);
+        wxPrintf("\nRefining %i active positions of %i in the MIP.\n", number_of_active_peaks, number_of_peaks_found);
 
         wxPrintf("\nPerforming refinement...\n\n");
         //		my_progress = new ProgressBar(total_correlation_positions);
@@ -587,6 +593,8 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
             // Grab a local copy of input parameters from the shared starfile
             input_parameters_ = input_star_file.ReturnLine(peak_number);
+            if ( input_parameters_.image_is_active < 0 )
+                continue;
 
             pixel_size_ = input_parameters_.pixel_size;
 
@@ -660,10 +668,19 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
             template_object.Zero(mask_radius_ / pixel_size_);
             timer.lap("zero template object");
 
+            // The score change is currently holding the score adjusted based on local noise FIXME
+            float score_adjustment = input_parameters_.score_change / input_parameters_.score;
             timer.start("score 1");
             best_peak_              = TemplateScore(&template_object, refine_timer);
             input_parameters_.score = best_peak_.value;
             timer.lap("score 1");
+
+            if ( do_defocus_refinement && defocus_search_range == 0 ) {
+                // FIXME hack to get a score with a new template but no refinement
+                input_parameters_.score_change                    = input_parameters_.score * score_adjustment;
+                output_star_file.all_parameters.Item(peak_number) = input_parameters_;
+                continue;
+            }
 
 #ifdef PRINT_GLOBAL_SEARCH_REFINEMENT_EXTRA_INFO
 #pragma omp critical

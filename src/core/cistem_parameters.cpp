@@ -2388,6 +2388,8 @@ cisTEMParameters cisTEMParameters::ReturnTopNFromParticleGroups(int wanted_top_s
         }
     }
     MyDebugAssertTrue(all_are_negative, "Error: Not all particle group numbers are negative after evaluating top N from particle groups");
+    if ( n_particles_added < all_parameters.GetCount( ) )
+        top_n_parameters.all_parameters.RemoveAt(n_particles_added, all_parameters.GetCount( ) - n_particles_added);
     return top_n_parameters;
 }
 

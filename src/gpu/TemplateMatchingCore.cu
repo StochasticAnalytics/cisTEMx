@@ -298,6 +298,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             }
         } // loop over psi angles
 
+        // The current goal is to have only one peak per search position.
         if ( n_global_search_images_to_save > 1 )
             UpdateSecondaryPeaks( );
 
@@ -441,8 +442,8 @@ void TemplateMatchingCore::UpdateSecondaryPeaks( ) {
     postcheck;
 
     // We need to reset this each outer angle search or we'll never see new maximums
-    cudaErr(cudaMemset(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
-    cudaErr(cudaMemset(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
+    cudaErr(cudaMemsetAsync(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMemsetAsync(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
 }
 
 __global__ void MipToImageKernel(const __half2* my_peaks,
@@ -470,7 +471,7 @@ __global__ void MipToImageKernel(const __half2* my_peaks,
         int offset;
         for ( int iPeak = 0; iPeak < n_peaks; iPeak++ ) {
             offset = x + numel * iPeak; // out puts are NX * NY * NZ
-            // Move the worst peak down one
+
             mip[offset]   = (cufftReal)secondary_peaks[offset];
             psi[offset]   = (cufftReal)secondary_peaks[offset + numel * n_peaks];
             theta[offset] = (cufftReal)secondary_peaks[offset + numel * n_peaks * 2];

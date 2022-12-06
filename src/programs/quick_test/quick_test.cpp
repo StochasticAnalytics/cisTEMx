@@ -35,42 +35,91 @@ void QuickTestApp::DoInteractiveUserInput( ) {
 
 bool QuickTestApp::DoCalculation( ) {
 
-    std::cerr << "my_test 1 = " << my_test_1 << std::endl;
-    std::cerr << "my_test 2 = " << my_test_2 << std::endl;
-    exit(0);
-    wxPrintf("%20.100f\n", std::numeric_limits<float>::epsilon( ));
-    wxPrintf("%20.100f\n", sqrt(std::numeric_limits<float>::epsilon( )));
-    wxPrintf("%20.100f\n", sqrt(sqrt(std::numeric_limits<float>::epsilon( ))));
+    Image   test_1;
+    Image   test_2;
+    Image   vol;
+    MRCFile mrcf;
+    mrcf.OpenFile("/cisTEMx/cistem_reference_images/ribo_ref.mrc", false);
+    vol.ReadSlices(&mrcf, 1, mrcf.ReturnNumberOfSlices( ));
+    Curve whitening_filter;
+    Curve number_of_terms;
+    whitening_filter.SetupXAxis(0.0, 0.5 * sqrtf(3.0), int((vol.logical_x_dimension / 2.0 + 1.0) * sqrtf(3.0) + 1.0));
+    number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(3.0), int((vol.logical_x_dimension / 2.0 + 1.0) * sqrtf(3.0) + 1.0));
 
-    wxPrintf("%20.100f\n", std::numeric_limits<double>::epsilon( ));
-    wxPrintf("%20.100f\n", sqrt(std::numeric_limits<double>::epsilon( )));
-    wxPrintf("%20.100f\n", sqrt(sqrt(std::numeric_limits<double>::epsilon( ))));
-    exit(0);
-    Image vol;
-    float bfactor;
-    vol.QuickAndDirtyReadSlices("no_bfactor.mrc", 1, 192);
-    bfactor = vol.CalculateBFactor(1.0f);
-    std::cerr << "bfactor = " << bfactor << std::endl;
-
-    vol.QuickAndDirtyReadSlices("no_bfactor.mrc", 1, 192);
+    // remove outliers
+    // This won't work for movie frames (13.0 is used in unblur) TODO use poisson stats
+    vol.ReplaceOutliersWithMean(5.0f);
     vol.ForwardFFT( );
-    vol.ApplyBFactor(100.f);
-    bfactor = vol.CalculateBFactor(1.0f);
-    std::cerr << "bfactor = " << bfactor << std::endl;
+    vol.SwapRealSpaceQuadrants( );
 
-    vol.QuickAndDirtyReadSlices("no_bfactor.mrc", 1, 192);
-    vol.ForwardFFT( );
-    vol.ApplyBFactor(500.f);
-    bfactor = vol.CalculateBFactor(1.0f);
-    std::cerr << "bfactor = " << bfactor << std::endl;
+    vol.ZeroCentralPixel( );
+    vol.Compute1DPowerSpectrumCurve(&whitening_filter, &number_of_terms);
 
-    vol.QuickAndDirtyReadSlices("bfactor_100.mrc", 1, 192);
-    bfactor = vol.CalculateBFactor(1.0f);
-    std::cerr << "bfactor 100 = " << bfactor << std::endl;
+    std::vector<int> S = {64,
+                          128,
+                          256,
+                          512};
+    CTF              ctf;
+    ctf.Init(300, 2.7, 0.1, 12000, 12000, 0, 1.0, 0);
+    double sum_neg = 0;
+    double sum_pos = 0;
+    int    n_pts   = 1000;
+    float  val;
+    float  freq;
+    for ( int i = 0; i < whitening_filter.number_of_points; i++ ) {
+        val = sqrtf(whitening_filter.data_y[i]) * ctf.Evaluate(pow(whitening_filter.data_x[i], 2), 0);
+        if ( val < 0 ) {
+            sum_neg += val;
+        }
+        else {
+            sum_pos += val;
+        }
+    }
+    std::cerr << "sum_neg = " << sum_neg << std::endl;
+    std::cerr << "sum_pos = " << sum_pos << std::endl;
+    std::cerr << "Ratio   = " << sum_neg / sum_pos << std::endl;
 
-    vol.QuickAndDirtyReadSlices("bfactor_500.mrc", 1, 192);
-    bfactor = vol.CalculateBFactor(1.0f);
-    std::cerr << "bfactor 500 = " << bfactor << std::endl;
+    // const long                        locs = pow(S[S.size( ) - 1], 3);
+    // std::vector<std::array<float, 2>> full_results(4);
+    // for ( int i = 0; i < full_results.size( ); i++ ) {
+    //     full_results.at(i).at(0) = 0.0;
+    //     full_results.at(i).at(1) = 0.0;
+    // }
+    // for ( int i = 0; i < full_results.size( ); i++ ) {
+    //     for ( auto& s : S ) {
+    //         test_1.Allocate(s, s, 1, true);
+    //         test_2.Allocate(s, s, 1, true);
+    //         std::vector<float> results(locs / (s * s));
+    //         for ( long i = 0; i < results.size( ); i++ ) {
+    //             test_1.FillWithNoiseFromNormalDistribution(0.0, 1.0);
+    //             test_2.FillWithNoiseFromNormalDistribution(0.0, 1.0);
+    //             test_1.MultiplyPixelWise(test_2);
+    //             test_1.DivideByConstant(s);
+    //             results[i] = test_1.ReturnSumOfRealValues( );
+    //         }
+
+    //         double sum  = 0.0;
+    //         double sum2 = 0.0;
+    //         for ( auto& r : results ) {
+    //             sum += r;
+    //             sum2 += r * r;
+    //         }
+    //         double mean = sum / results.size( );
+    //         double var  = sum2 / results.size( ) - mean * mean;
+    //         std::cerr << "s = " << s << " mean = " << mean << " std = " << sqrt(var) << std::endl;
+    //         full_results.at(i).at(0) = mean;
+    //         full_results.at(i).at(1) = sqrt(var);
+    //     }
+    //     double sum  = 0.0;
+    //     double sum2 = 0.0;
+    //     for ( auto& r : full_results ) {
+    //         sum += r;
+    //         sum2 += r * r;
+    //     }
+    //     double mean = sum / full_results.size( );
+    //     double var  = sum2 / full_results.size( ) - mean * mean;
+    //     std::cerr << "FULL = " << s << " mean = " << mean << " std = " << sqrt(var) << std::endl;
+    // }
 
     exit(1);
     MRCFile my_file;

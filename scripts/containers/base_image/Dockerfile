@@ -4,21 +4,6 @@ FROM ubuntu:20.04
 
 # For compiling wxWidgets
 ARG n_threads=16
-ARG DEBIAN_FRONTEND=noninteractive
-ARG TZ=America/New_York
-ARG GCC_VER=11
-
-RUN apt-get update && apt-get -y install apt-utils tzdata && \ 
-    echo $TZ | tee /etc/timezone && \
-    dpkg-reconfigure --frontend noninteractive tzdata && \
-    date
-
-RUN apt-get install -y locales && rm -rf /var/lib/apt/lists/* \
-    && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
-
-ENV LANG en_US.utf8
-
-RUN apt-get update && apt-get install -y sudo
 
 # By default this will create cisTEMx as uid==1000 which is not what we want as it is also going to be the user id
 # of a host user when building the top layer with singularity. < 1000 is reserved for system users. 814 is a somewhat random choice.

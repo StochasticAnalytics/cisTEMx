@@ -22,6 +22,8 @@ using namespace cistem_timer_noop;
 #include "refine_alignment.h"
 #endif
 
+// #define ENABLE_ADJUST_BY_MODE
+
 constexpr bool allocate_fp16 = true;
 
 class
@@ -518,6 +520,7 @@ bool UnBlurApp::DoCalculation( ) {
                 profile_timing.lap("gain correct");
             }
 
+#ifdef ENABLE_ADJUST_BY_MODE
 #pragma omp critical
             {
                 // Only the first thread that gets here should do any work, hence the omp critical.
@@ -586,6 +589,7 @@ bool UnBlurApp::DoCalculation( ) {
             image_stack_[sub_stack_index].AddConstant(-measured_image_mode + wanted_image_mode);
             image_stack_[sub_stack_index].SetMinimumAndMaximumValues(0.f, std::numeric_limits<float>::max( ));
             profile_timing.lap("adjust image mode");
+#endif // ENABLE_ADJUST_BY_MODE
 
             profile_timing.start("replace outliers");
             image_stack_[sub_stack_index].ReplaceOutliersWithMean(8);

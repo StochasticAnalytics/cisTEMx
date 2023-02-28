@@ -7,12 +7,13 @@ From: bhimesbhimes/cistem_build_env:base_image_v1.5.0
 mkdir -p ${SINGULARITY_ROOTFS}/cisTEMx
 mkdir -p ${SINGULARITY_ROOTFS}/cisTEMx/scripts
 
+
 %files
 
 # copy the cisTEMx folder
 /home/himesb/git/cisTEM/build/intel-gpu-profile/src /cisTEMx
 # we'll use this to get information about the build environemnt, repo state and so on
-/home/himesb/git/cisTEM/build/intel-gpu/config.log /cisTEMx
+/home/himesb/git/cisTEM/build/intel-gpu-profile/config.log /cisTEMx
 /home/himesb/git/cisTEM/scripts/testing/cistem_tests.sh /cisTEMx/scripts
 /home/himesb/git/cisTEM/scripts/testing/* /cisTEMx/scripts
 # /home/himesb/git/cisTEM/scripts/testing/beta_gal_benchmark /cisTEMx/scripts
@@ -34,6 +35,9 @@ rm -rf /usr/local/cuda/nsight-compute-*
 
 # Get reference images for testing and debugging
 pip3 install gdown && cd /cisTEMx && gdown https://drive.google.com/drive/folders/1PO9tBU7lKqKUuSb8qdEPvlEk7xeektXv?usp --folder
+
+# Other python dependencies needed for the auto_align scripts. For now, packaging this outside the container.
+# pip3 install toml mrcfile starfile numpy matplotlib scipy tk PySimpleGUI 
 
 # Google is limiting downloads, so have a local copy
 chmod -R a+x /cisTEMx/* 

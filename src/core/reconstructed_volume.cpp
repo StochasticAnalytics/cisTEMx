@@ -185,7 +185,7 @@ void ReconstructedVolume::InitWithDimensions(int wanted_logical_x_dimension, int
 }
 
 //void ReconstructedVolume::PrepareForProjections(float resolution_limit, bool approximate_binning, bool apply_binning)
-void ReconstructedVolume::PrepareForProjections(float low_resolution_limit, float high_resolution_limit, bool approximate_binning, bool apply_binning) {
+void ReconstructedVolume::PrepareForProjections(float low_resolution_limit, float high_resolution_limit, bool approximate_binning, bool apply_binning, bool correct_sinc) {
     int   fourier_size_x;
     int   fourier_size_y;
     int   fourier_size_z;
@@ -194,7 +194,8 @@ void ReconstructedVolume::PrepareForProjections(float low_resolution_limit, floa
 
     //	density_map->CorrectSinc();
     // Correct3D amplifies noise at the edges. Maybe it is better not to do this...
-    Correct3D(mask_radius / pixel_size);
+    if ( correct_sinc )
+        Correct3D(mask_radius / pixel_size);
     //	if (mask_radius > 0.0) density_map->CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size, false, true, 0.0);
     //	else density_map->CosineMask(0.45 * density_map->logical_x_dimension, 10.0 / pixel_size, false, true, 0.0);
     //	density_map->CorrectSinc();

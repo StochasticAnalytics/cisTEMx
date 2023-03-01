@@ -439,8 +439,37 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
     timer.start("read in");
     input_image.ReadSlice(&input_search_image_file, 1);
-
+    input_star_file.ReadFromcisTEMStarFile(input_star_filename);
+    cisTEMParameterLine input_parameters_ = input_star_file.ReturnLine(0);
+    float               pixel_size        = input_parameters_.pixel_size;
+    // As with everywhere, we are assuming acubic volume.
     input_reconstruction.ReadSlices(&input_reconstruction_file, 1, input_reconstruction_file.ReturnNumberOfSlices( ));
+
+    float binning_factor_refine;
+    float original_pixel_size;
+    float binned_pixel_size;
+    int   original_x_size;
+    int   binned_x_size;
+
+    {
+        // We are done with the reconstructed volume, so let's get rid of it (something wonky was going on with the destrcutor)
+
+        ReconstructedVolume input_volume;
+        input_volume.InitWithDimensions(input_reconstruction_file.ReturnXSize( ), input_reconstruction_file.ReturnYSize( ), input_reconstruction_file.ReturnZSize( ), pixel_size, my_symmetry);
+        input_volume.density_map = &input_reconstruction;
+        input_volume.PrepareForProjections(low_resolution_limit, high_resolution_limit, false, true, false);
+        binning_factor_refine = input_volume.pixel_size / pixel_size;
+        original_pixel_size   = pixel_size;
+        binned_pixel_size     = input_volume.pixel_size;
+        original_x_size       = input_reconstruction_file.ReturnXSize( );
+        binned_x_size         = input_volume.density_map->logical_x_dimension;
+
+        input_volume.density_map            = nullptr;
+        input_volume.projection_initialized = false;
+    }
+
+    wxPrintf("\nBinning factor for refinement = %f, new pixel size = %f\n", binning_factor_refine, binned_pixel_size);
+
     timer.lap("read in");
 
     timer.start("setup 3d");
@@ -459,9 +488,10 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
     else {
         padded_size = input_reconstruction.logical_x_dimension;
     }
-    input_reconstruction.ForwardFFT( );
-    input_reconstruction.ZeroCentralPixel( );
-    input_reconstruction.SwapRealSpaceQuadrants( );
+    // These are handled in input_volume.prepareforprojections
+    // input_reconstruction.ForwardFFT( );
+    // input_reconstruction.ZeroCentralPixel( );
+    // input_reconstruction.SwapRealSpaceQuadrants( );
     timer.lap("setup 3d");
 
     CTF input_ctf;
@@ -511,7 +541,7 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 
     current_peak.value = std::numeric_limits<float>::max( );
     timer.start("read star");
-    input_star_file.ReadFromcisTEMStarFile(input_star_filename);
+    // input_star_file.ReadFromcisTEMStarFile(input_star_filename);
 
     // TODO: would ensuring constness for the input parameters make any sense?
     output_star_file = input_star_file;
@@ -550,16 +580,18 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
 #pragma omp parallel num_threads(max_threads) default(none) shared(timer, refine_timer, padded_size, std::cerr, number_of_peaks_found, input_image, mask_falloff, wanted_mask_radius, input_star_file, output_star_file, \
                                                                    defocus_search_range, angular_step, in_plane_angular_step, whitening_filter, input_reconstruction, min_peak_radius2,                                  \
                                                                    input_reconstruction_file, max_threads, low_resolution_limit, high_resolution_limit,                                                                  \
-                                                                   all_peak_changes, all_peak_infos) private(current_peak, sq_dist_x, sq_dist_y, address,                                                                \
-                                                                                                             defocus_i, size_i,                                                                                          \
-                                                                                                             best_defocus_score, best_phi_score, best_theta_score, best_psi_score,                                       \
-                                                                                                             angles, template_peak, i, j, peak_number,                                                                   \
-                                                                                                             first_score, starting_score, size_is, score_adjustment)
+                                                                   all_peak_changes, all_peak_infos, original_pixel_size, binned_pixel_size, binning_factor_refine,                                                      \
+                                                                   original_x_size, binned_x_size) private(current_peak, sq_dist_x, sq_dist_y, address,                                                                  \
+                                                                                                           defocus_i, size_i,                                                                                            \
+                                                                                                           best_defocus_score, best_phi_score, best_theta_score, best_psi_score,                                         \
+                                                                                                           angles, template_peak, i, j, peak_number,                                                                     \
+                                                                                                           first_score, starting_score, size_is, score_adjustment)
     {
 
         timer.start("alloc local imgs");
         Image windowed_particle_;
         Image projection_filter_;
+        Image binned_particle_;
 
         //
         cisTEMParameterLine input_parameters_;
@@ -575,15 +607,16 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
         // ProjectionComparisonObjects comparison_object_;
         TemplateComparisonObject template_object;
 
-        windowed_particle_.Allocate(padded_size, padded_size, 1, true);
-        projection_filter_.Allocate(padded_size, padded_size, 1, false);
+        windowed_particle_.Allocate(original_x_size, original_x_size, 1, true);
+        binned_particle_.Allocate(binned_x_size, binned_x_size, 1, false);
+        projection_filter_.Allocate(binned_x_size, binned_x_size, 1, false);
 
         current_peak.value = std::numeric_limits<float>::max( );
 
         //	number_of_peaks_found = 0;
 
         template_object.input_reconstruction = &input_reconstruction;
-        template_object.windowed_particle    = &windowed_particle_;
+        template_object.windowed_particle    = &binned_particle_;
         template_object.projection_filter    = &projection_filter_;
         template_object.angles               = &angles;
         timer.lap("alloc local imgs");
@@ -596,11 +629,11 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
             if ( input_parameters_.image_is_active < 0 )
                 continue;
 
-            pixel_size_ = input_parameters_.pixel_size;
+            pixel_size_ = binned_pixel_size; //input_parameters_.pixel_size;
 
             // assume cube in determining the maximum radius.
 
-            float maximum_mask_radius = (float(input_reconstruction_file.ReturnXSize( )) / 2.0f - 1.0f) * pixel_size_;
+            float maximum_mask_radius = (float(original_x_size) / 2.0f - 1.0f) * original_pixel_size;
             if ( mask_radius_ > maximum_mask_radius )
                 mask_radius_ = maximum_mask_radius;
             // TODO: adjust pixel size here?
@@ -617,22 +650,31 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
                       0.0,
                       0.0,
                       0.0,
-                      pixel_size_, // TODO: if we are downsampling, this pixel size is wrong
+                      pixel_size_,
                       deg_2_rad(input_parameters_.phase_shift)); // NOTE: no beam tilt here. If you want to adapt this to high resolution, you will need to add beam tilt
             timer.lap("init ctf");
             timer.start("window particle");
+
+            // Make sure the windowed particle is set to real space
+            windowed_particle_.is_in_real_space = true;
             // FIXME: confirm how the fractional shifts should look, but for now it prob doesn't matter too much.
             input_image.ClipInto(&windowed_particle_, 0.0f, false, 1.0f,
-                                 myroundint(input_parameters_.x_shift / pixel_size_ - input_image.physical_address_of_box_center_x),
-                                 myroundint(input_parameters_.y_shift / pixel_size_ - input_image.physical_address_of_box_center_y), 0);
+                                 myroundint(input_parameters_.x_shift / original_pixel_size - input_image.physical_address_of_box_center_x),
+                                 myroundint(input_parameters_.y_shift / original_pixel_size - input_image.physical_address_of_box_center_y), 0);
             timer.lap("window particle");
 
             timer.start("filter particle");
             if ( mask_radius_ > 0.0f )
-                windowed_particle_.CosineMask(mask_radius_ / pixel_size_, mask_falloff / pixel_size_);
+                windowed_particle_.CosineMask(mask_radius_ / original_pixel_size, mask_falloff / original_pixel_size);
             windowed_particle_.ForwardFFT( );
             windowed_particle_.SwapRealSpaceQuadrants( );
             timer.lap("filter particle");
+
+            timer.start("resize particle");
+            // Make sure the binned particle is set to fourier space
+            binned_particle_.is_in_real_space = false;
+            windowed_particle_.ClipInto(&binned_particle_, 0.0f);
+            timer.lap("resize particle");
 
             // TODO: what is pixel_size_factor? If not immediately switching to Projection compairson object, then add a Reset() method
             template_object.pixel_size_factor = 1.0f;
@@ -809,8 +851,8 @@ bool GlobalSearchRefinementApp::DoCalculation( ) {
             // wxPrintf("Estimated sigma %f, score %f, re-adjusted score %f\n", template_object.GetSigma( ), best_peak_.value, tmp_to_print);
 
             timer.start("update output star");
-            output_star_file.all_parameters.Item(peak_number).x_shift = best_peak_.x * pixel_size_ + input_parameters_.x_shift;
-            output_star_file.all_parameters.Item(peak_number).y_shift = best_peak_.y * pixel_size_ + input_parameters_.y_shift;
+            output_star_file.all_parameters.Item(peak_number).x_shift = best_peak_.x * binned_pixel_size + input_parameters_.x_shift;
+            output_star_file.all_parameters.Item(peak_number).y_shift = best_peak_.y * binned_pixel_size + input_parameters_.y_shift;
 
             output_star_file.all_parameters.Item(peak_number).phi          = best_phi;
             output_star_file.all_parameters.Item(peak_number).theta        = best_theta;

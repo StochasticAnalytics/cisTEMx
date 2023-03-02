@@ -32,9 +32,18 @@ class
   public:
     bool DoCalculation( );
     void DoInteractiveUserInput( );
+    void AddCommandLineOptions( );
+    bool ResizeByFourierFactor = false;
 
   private:
 };
+
+void UnBlurApp::AddCommandLineOptions( ) {
+
+    // This will be used to override the output binning to set a pixel size at
+    // ~ 1/3 the target resolution (so that res is ~2/3 Nyquist)
+    command_line_parser.AddOption("", "target-resolution", "The default is to use the binning value from InteractiveINput", wxCMD_LINE_VAL_DOUBLE);
+}
 
 IMPLEMENT_APP(UnBlurApp)
 
@@ -87,6 +96,22 @@ void UnBlurApp::DoInteractiveUserInput( ) {
     original_pixel_size    = my_input->GetFloatFromUser("Pixel size of images (A)", "Pixel size of input images in Angstroms", "1.0", 0.0);
     output_binning_factor  = my_input->GetFloatFromUser("Output binning factor", "Output images will be binned (downsampled) by this factor relative to the input images", "1", 1);
     should_dose_filter     = my_input->GetYesNoFromUser("Apply Exposure filter?", "Apply an exposure-dependent filter to frames before summing them", "yes");
+
+    // This will be used to override the output binning to set a pixel size at
+    // ~ 1/3 the target resolution (so that res is ~2/3 Nyquist)
+    // As it is a command line option, it won't be called from the GUI, so
+    // we can also use a class attribute to track that we have done this. (ResizeByFourierFactor)
+    double temp_double;
+    if ( command_line_parser.Found("target-resolution", &temp_double) ) {
+        ResizeByFourierFactor   = true;
+        float target_resolution = (float)temp_double;
+        output_binning_factor   = target_resolution / original_pixel_size / 2.5f;
+        // Let's not fuss arround if we are very close to 1.0, and we don't want to oversample the image either
+        if ( fabs(output_binning_factor - 1.0f) < 0.01f || output_binning_factor < 1.0f )
+            output_binning_factor = 1.0f;
+        // It will also be convenient if the binned image is a Fourier friendly size
+        // We will check that in the DoCalculation() method
+    }
 
     if ( should_dose_filter == true ) {
         acceleration_voltage = my_input->GetFloatFromUser("Acceleration voltage (kV)", "Acceleration voltage during imaging", "300.0");
@@ -149,6 +174,8 @@ void UnBlurApp::DoInteractiveUserInput( ) {
         }
     }
     else {
+        // if --target-resolution is used, this output_binning_factor may vary slightly from the one used here,
+        // but it is likely very small and these values are heuristic anyway
         minimum_shift_in_angstroms           = original_pixel_size * output_binning_factor + 0.001;
         maximum_shift_in_angstroms           = 100.0;
         bfactor_in_angstroms                 = 1500.0;
@@ -353,6 +380,57 @@ bool UnBlurApp::DoCalculation( ) {
     long slice_byte_size;
 
     std::vector<bool> first_iteration(max_threads, true);
+
+    // We are running interactive or scripted and the cli flag for target-resolution was set.
+    // Adjust the binning value to a nearby factorizable value.
+    if ( ResizeByFourierFactor && ! FloatsAreAlmostTheSame(output_binning_factor, 1.0f) ) {
+        // We want to find the smallest change from the output_binning_factor that will result in
+        // a factorizable output size in both dimensions, which may not be trivial for rectangular images.
+        constexpr std::array<int, 6> factors = {2, 3, 5, 7, 11, 13};
+        std::vector<int>             factorized_sizes_x;
+        std::vector<int>             factorized_sizes_y;
+        std::vector<float>           factorized_binning_factors;
+
+        constexpr bool enforce_even           = true;
+        constexpr bool enforce_factor_of_four = false;
+
+        int   output_x   = myroundint(float(input_file.ReturnXSize( )) / output_binning_factor);
+        int   output_y   = myroundint(float(input_file.ReturnYSize( )) / output_binning_factor);
+        float output_x_f = float(output_x);
+        float output_y_f = float(output_y);
+        // First, get a list of possible sizes for both X and y
+        for ( auto& factor : factors ) {
+            factorized_sizes_x.push_back(ReturnClosestFactorizedLower(output_x, factor, enforce_even, enforce_factor_of_four));
+            factorized_sizes_y.push_back(ReturnClosestFactorizedLower(output_y, factor, enforce_even, enforce_factor_of_four));
+            factorized_sizes_x.push_back(ReturnClosestFactorizedUpper(output_x, factor, enforce_even, enforce_factor_of_four));
+            factorized_sizes_y.push_back(ReturnClosestFactorizedUpper(output_y, factor, enforce_even, enforce_factor_of_four));
+        }
+
+        // Now, we want to find any pairs of factorized sizes that produce a common binning factor
+        float temp_binning_factor = 0.f;
+        for ( auto& x : factorized_sizes_x ) {
+            for ( auto& y : factorized_sizes_y ) {
+                temp_binning_factor = output_x_f / float(x);
+                if ( RoundAndMakeEven(output_x_f / temp_binning_factor) == x &&
+                     RoundAndMakeEven(output_y_f / temp_binning_factor) == y ) {
+                    factorized_binning_factors.push_back(temp_binning_factor);
+                }
+            }
+        }
+
+        // Finally we want to find the binning factor that produces the smallest change from the original
+        float best_binning_factor;
+        int   smallest_total_change = std::numeric_limits<int>::max( ); // Not sure total change vs avg makes more sense?
+        int   current_change;
+        for ( auto& binning_factor : factorized_binning_factors ) {
+            current_change = abs(RoundAndMakeEven(output_x_f / binning_factor) - output_x) +
+                             abs(RoundAndMakeEven(output_y_f / binning_factor) - output_y);
+            if ( current_change < smallest_total_change ) {
+                best_binning_factor   = binning_factor;
+                smallest_total_change = current_change;
+            }
+        }
+    }
 
     profile_timing.start("Image vector setup");
 #ifdef ENABLEGPU

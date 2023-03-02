@@ -1113,10 +1113,11 @@ bool UnBlurApp::DoCalculation( ) {
         binned_image.Resize(output_x, output_y, 1);
 
         // Remove the extension of the output filename and add the binning factor
-        wxFileName binned_output_name(output_filename);
-        binned_output_name.SetExt("_bin2.mrc");
+        wxFileName binned_output_filename(output_filename);
+        binned_output_filename.ClearExt( ); // Remove the extension AND the dot
+        std::string binned_output_name = binned_output_filename.GetFullPath( ).ToStdString( ) + wxString::Format("_bin%d.mrc", 2).ToStdString( );
 
-        MRCFile output_file(binned_output_name.GetFullPath( ).ToStdString( ), true);
+        MRCFile output_file(binned_output_name, true);
         binned_image.WriteSlice(&output_file, 1);
         output_file.SetPixelSize(output_pixel_size * output_binning_factor_bin2);
         EmpiricalDistribution density_distribution;

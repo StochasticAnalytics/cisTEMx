@@ -279,9 +279,9 @@ bool UnBlurApp::DoCalculation( ) {
     float termination_threshold_in_pixels;
 
 #ifdef ENABLEGPU
-    wxPrintf("Running unblur with GPU enabled\n");
+    wxPrintf("\nRunning unblur with GPU enabled\n");
 #else
-    wxPrintf("Running unblur without GPU enabled\n");
+    wxPrintf("\nRunning unblur without GPU enabled\n");
 #endif
 
     // get the arguments for this job..
@@ -383,53 +383,9 @@ bool UnBlurApp::DoCalculation( ) {
 
     // We are running interactive or scripted and the cli flag for target-resolution was set.
     // Adjust the binning value to a nearby factorizable value.
+    int dx, dy;
     if ( ResizeByFourierFactor && ! FloatsAreAlmostTheSame(output_binning_factor, 1.0f) ) {
-        // We want to find the smallest change from the output_binning_factor that will result in
-        // a factorizable output size in both dimensions, which may not be trivial for rectangular images.
-        constexpr std::array<int, 6> factors = {2, 3, 5, 7, 11, 13};
-        std::vector<int>             factorized_sizes_x;
-        std::vector<int>             factorized_sizes_y;
-        std::vector<float>           factorized_binning_factors;
-
-        constexpr bool enforce_even           = true;
-        constexpr bool enforce_factor_of_four = false;
-
-        int   output_x   = myroundint(float(input_file.ReturnXSize( )) / output_binning_factor);
-        int   output_y   = myroundint(float(input_file.ReturnYSize( )) / output_binning_factor);
-        float output_x_f = float(output_x);
-        float output_y_f = float(output_y);
-        // First, get a list of possible sizes for both X and y
-        for ( auto& factor : factors ) {
-            factorized_sizes_x.push_back(ReturnClosestFactorizedLower(output_x, factor, enforce_even, enforce_factor_of_four));
-            factorized_sizes_y.push_back(ReturnClosestFactorizedLower(output_y, factor, enforce_even, enforce_factor_of_four));
-            factorized_sizes_x.push_back(ReturnClosestFactorizedUpper(output_x, factor, enforce_even, enforce_factor_of_four));
-            factorized_sizes_y.push_back(ReturnClosestFactorizedUpper(output_y, factor, enforce_even, enforce_factor_of_four));
-        }
-
-        // Now, we want to find any pairs of factorized sizes that produce a common binning factor
-        float temp_binning_factor = 0.f;
-        for ( auto& x : factorized_sizes_x ) {
-            for ( auto& y : factorized_sizes_y ) {
-                temp_binning_factor = output_x_f / float(x);
-                if ( RoundAndMakeEven(output_x_f / temp_binning_factor) == x &&
-                     RoundAndMakeEven(output_y_f / temp_binning_factor) == y ) {
-                    factorized_binning_factors.push_back(temp_binning_factor);
-                }
-            }
-        }
-
-        // Finally we want to find the binning factor that produces the smallest change from the original
-        float best_binning_factor;
-        int   smallest_total_change = std::numeric_limits<int>::max( ); // Not sure total change vs avg makes more sense?
-        int   current_change;
-        for ( auto& binning_factor : factorized_binning_factors ) {
-            current_change = abs(RoundAndMakeEven(output_x_f / binning_factor) - output_x) +
-                             abs(RoundAndMakeEven(output_y_f / binning_factor) - output_y);
-            if ( current_change < smallest_total_change ) {
-                best_binning_factor   = binning_factor;
-                smallest_total_change = current_change;
-            }
-        }
+        ReturnBestFourierBinnedSize(output_binning_factor, dx, dy, input_file.ReturnXSize( ), input_file.ReturnYSize( ));
     }
 
     profile_timing.start("Image vector setup");

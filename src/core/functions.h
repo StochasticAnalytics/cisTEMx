@@ -386,8 +386,9 @@ wxString      ReturnIPAddressFromSocket(wxSocketBase* socket);
 
 float CalculateAngularStep(float required_resolution, float radius_in_angstroms);
 
-int ReturnClosestFactorizedUpper(int wanted_int, int largest_factor, bool enforce_even = false, int enforce_factor = 0);
-int ReturnClosestFactorizedLower(int wanted_int, int largest_factor, bool enforce_even = false, int enforce_factor = 0);
+int  ReturnClosestFactorizedUpper(int wanted_int, int largest_factor, bool enforce_even = false, int enforce_factor = 0);
+int  ReturnClosestFactorizedLower(int wanted_int, int largest_factor, bool enforce_even = false, int enforce_factor = 0);
+void ReturnBestFourierBinnedSize(float& output_binning_factor, int& dx, int& dy, const int input_x_size, const int input_y_size);
 
 bool FilenameExtensionMatches(std::string filename, std::string extension);
 

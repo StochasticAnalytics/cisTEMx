@@ -389,7 +389,7 @@ bool UnBlurApp::DoCalculation( ) {
     int   dy_full                    = 0;
     int   dy_bin2                    = 0;
     int   dx_bin2                    = 0;
-    float output_binning_factor_bin2 = 2.0f;
+    float output_binning_factor_bin2 = 2.5f;
 
     if ( ResizeByFourierFactor && ! FloatsAreAlmostTheSame(output_binning_factor, 1.0f) ) {
         ReturnBestFourierBinnedSize(output_binning_factor, dx_full, dy_full, input_file.ReturnXSize( ), input_file.ReturnYSize( ));

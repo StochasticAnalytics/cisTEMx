@@ -383,9 +383,22 @@ bool UnBlurApp::DoCalculation( ) {
 
     // We are running interactive or scripted and the cli flag for target-resolution was set.
     // Adjust the binning value to a nearby factorizable value.
-    int dx, dy;
+    // Note: this will only be applied to the final output image and is only useful in the case of downstream image processing
+    //       that relies on image inputs, e.g. global_search/global_search_refinement or match_template.
+    int   dx_full                    = 0;
+    int   dy_full                    = 0;
+    int   dy_bin2                    = 0;
+    int   dx_bin2                    = 0;
+    float output_binning_factor_bin2 = 2.0f;
+
     if ( ResizeByFourierFactor && ! FloatsAreAlmostTheSame(output_binning_factor, 1.0f) ) {
-        ReturnBestFourierBinnedSize(output_binning_factor, dx, dy, input_file.ReturnXSize( ), input_file.ReturnYSize( ));
+        ReturnBestFourierBinnedSize(output_binning_factor, dx_full, dy_full, input_file.ReturnXSize( ), input_file.ReturnYSize( ));
+        // We want a second image binned by two for global_search_refinement
+        // TODO: if this feature is kept, it may be better to have a seperate flag as it is not needed for match_template.
+        int output_x = RoundAndMakeEven(float(input_file.ReturnXSize( )) / output_binning_factor);
+        int output_y = RoundAndMakeEven(float(input_file.ReturnYSize( )) / output_binning_factor);
+
+        ReturnBestFourierBinnedSize(output_binning_factor_bin2, dx_bin2, dy_bin2, output_x, output_y);
     }
 
     profile_timing.start("Image vector setup");
@@ -1076,6 +1089,41 @@ bool UnBlurApp::DoCalculation( ) {
             buffer_image.QuickAndDirtyWriteSlice(small_sum_image_filename, 1, true);
         }
         profile_timing.lap("write out small sum image");
+    }
+
+    // Do this before the main image to avoid an extra FFT>
+    // FIXME: If we just pre-whitened the images, we would could avoid pre-processing in all other iamges AND
+    // save as fp16 ( I think ) without any negative consequences. Is there anywhere in cisTEM where we would NOT want
+    // the noise whitened image? We could either modify the header or have a function that checks for fp16 and assumes whitented.
+    // (The former is probably safer as we could recieve images from other software.)
+    if ( ResizeByFourierFactor ) {
+        profile_timing.start("resize by fourier factor");
+        // First rescale (bin by 2)
+        int   output_x = RoundAndMakeEven(float(output_sum->logical_x_dimension) / output_binning_factor_bin2);
+        int   output_y = RoundAndMakeEven(float(output_sum->logical_y_dimension) / output_binning_factor_bin2);
+        Image binned_image;
+        binned_image.Allocate(output_x, output_y, 1, false);
+        output_sum->ClipInto(&binned_image);
+
+        // Now we need the real space trimming on one of the dimensions to make it FFT friendly
+        // Always smaller, so we shouldn't need to worry about padding values.
+        binned_image.BackwardFFT( );
+        output_x += dx_bin2;
+        output_y += dy_bin2;
+        binned_image.Resize(output_x, output_y, 1);
+
+        // Remove the extension of the output filename and add the binning factor
+        wxFileName binned_output_name(output_filename);
+        binned_output_name.SetExt("_bin2.mrc");
+
+        MRCFile output_file(binned_output_name.GetFullPath( ).ToStdString( ), true);
+        binned_image.WriteSlice(&output_file, 1);
+        output_file.SetPixelSize(output_pixel_size * output_binning_factor_bin2);
+        EmpiricalDistribution density_distribution;
+        binned_image.UpdateDistributionOfRealValues(&density_distribution);
+        output_file.SetDensityStatistics(density_distribution.GetMinimum( ), density_distribution.GetMaximum( ), density_distribution.GetSampleMean( ), sqrtf(density_distribution.GetSampleVariance( )));
+        output_file.CloseFile( );
+        profile_timing.lap("resize by fourier factor");
     }
 
     // now we just need to write out the final sum..

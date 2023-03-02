@@ -596,8 +596,8 @@ int ReturnClosestFactorizedLower(int wanted_int, int largest_factor, bool enforc
 void ReturnBestFourierBinnedSize(float& output_binning_factor, int& dx, int& dy, const int input_x_size, const int input_y_size) {
     // We want to find the smallest change from the output_binning_factor that will result in
     // a factorizable output size in both dimensions, which may not be trivial for rectangular images.
-    wxPrintf("Wanted output binning factor    : %f\n", output_binning_factor);
-    constexpr std::array<int, 4>    factors = {2, 3, 5, 7};
+    wxPrintf("\nWanted output binning factor    : %f\n", output_binning_factor);
+    constexpr std::array<int, 6>    factors = {2, 3, 5, 7, 11, 13};
     std::vector<int>                factorized_sizes_x;
     std::vector<int>                factorized_sizes_y;
     std::vector<std::vector<float>> factorized_binning_factors_exact;
@@ -726,9 +726,8 @@ void ReturnBestFourierBinnedSize(float& output_binning_factor, int& dx, int& dy,
         output_x = RoundAndMakeEven(float(input_x_size) / output_binning_factor);
         output_y = RoundAndMakeEven(float(input_y_size) / output_binning_factor);
 
-        wxPrintf("Total binning factor w/ trimming: %f, producing size x and y of %d and %d respectively\n", output_binning_factor + dx, output_x, output_y + dy);
+        wxPrintf("Total binning factor w/ trimming: %f, producing size x and y of %d and %d respectively\n", output_binning_factor, output_x + dx, output_y + dy);
     }
-    exit(0);
 }
 
 float CalculateAngularStep(float required_resolution, float radius_in_angstroms) {

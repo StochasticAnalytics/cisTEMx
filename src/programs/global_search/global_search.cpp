@@ -244,7 +244,7 @@ bool GlobalSearchApp::DoCalculation( ) {
     float defocus_angle                    = my_current_job.arguments[8].ReturnFloatArgument( );
 
     float       low_resolution_limit                   = my_current_job.arguments[9].ReturnFloatArgument( );
-    float       high_resolution_limit_search           = my_current_job.arguments[10].ReturnFloatArgument( );
+    float       high_resolution_limit                  = my_current_job.arguments[10].ReturnFloatArgument( );
     float       angular_step                           = my_current_job.arguments[11].ReturnFloatArgument( );
     int         best_parameters_to_keep                = my_current_job.arguments[12].ReturnIntegerArgument( );
     float       defocus_search_range                   = my_current_job.arguments[13].ReturnFloatArgument( );
@@ -514,7 +514,7 @@ bool GlobalSearchApp::DoCalculation( ) {
         mask_radius_search = particle_radius_angstroms;
 
     if ( angular_step <= 0 ) {
-        angular_step = CalculateAngularStep(high_resolution_limit_search, mask_radius_search);
+        angular_step = CalculateAngularStep(high_resolution_limit, mask_radius_search);
     }
 
     if ( in_plane_angular_step <= 0 ) {
@@ -535,7 +535,7 @@ bool GlobalSearchApp::DoCalculation( ) {
 
     // search grid
 
-    global_euler_search.InitGrid(my_symmetry, angular_step, 0.0f, 0.0f, psi_max, psi_step, psi_start, pixel_size / high_resolution_limit_search, parameter_map, best_parameters_to_keep);
+    global_euler_search.InitGrid(my_symmetry, angular_step, 0.0f, 0.0f, psi_max, psi_step, psi_start, pixel_size / high_resolution_limit, parameter_map, best_parameters_to_keep);
     if ( my_symmetry.StartsWith("C") ) // TODO 2x check me - w/o this O symm at least is broken
     {
         if ( global_euler_search.test_mirror == true ) // otherwise the theta max is set to 90.0 and test_mirror is set to true.  However, I don't want to have to test the mirrors.
@@ -670,7 +670,10 @@ bool GlobalSearchApp::DoCalculation( ) {
     template_reconstruction.ZeroCentralPixel( );
     template_reconstruction.SwapRealSpaceQuadrants( );
 
-    //        wxPrintf("First search last search position %d/ %d\n",first_search_position, last_search_position);
+    if ( high_resolution_limit > 0.0 )
+        template_reconstruction.CosineMask(pixel_size / high_resolution_limit, pixel_size / 100.0);
+
+        //        wxPrintf("First search last search position %d/ %d\n",first_search_position, last_search_position);
 
 #pragma omp parallel num_threads(max_threads)
     {

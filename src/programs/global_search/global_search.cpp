@@ -171,7 +171,7 @@ void GlobalSearchApp::DoInteractiveUserInput( ) {
     float min_peak_radius                        = my_input->GetFloatFromUser("Radius for peak exclusion and normalization", "", "10.0", 0.0);
     int   number_of_global_search_images_to_save = my_input->GetIntFromUser("Number of global search images to save", "The number of global search images to save, must be even", "1", 1);
 
-    MyAssertTrue(IsEven(number_of_global_search_images_to_save), "Number of global search images to save must be even");
+    MyAssertTrue(number_of_global_search_images_to_save == 1 || IsEven(number_of_global_search_images_to_save), "Number of global search images to save must be even");
 
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
 

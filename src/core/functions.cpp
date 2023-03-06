@@ -48,6 +48,7 @@ void swapbytes(size_t size, unsigned char* v, size_t n) {
         swapbytes(v, n);
 }
 
+// FIXME: This should not be seperate from the MRCFile class - adding mode 12 here for now as it breaks import in the GUI w/o
 bool GetMRCDetails(const char* filename, int& x_size, int& y_size, int& number_of_images) {
     FILE* input;
     input = fopen(filename, "rb");
@@ -95,6 +96,8 @@ bool GetMRCDetails(const char* filename, int& x_size, int& y_size, int& number_o
             bytes_per_pixel = 2.0f;
         else if ( mode == 2 )
             bytes_per_pixel = 4.0f;
+        else if ( mode == 12 )
+            bytes_per_pixel = 2.0f;
         else if ( mode == 3 )
             bytes_per_pixel = 4.0f;
         else if ( mode == 4 )

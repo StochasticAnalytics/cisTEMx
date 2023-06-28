@@ -1,5 +1,10 @@
 /*  \brief  class for cisTEM parameters */
 
+#ifndef _src_core_cistem_parameters_h_
+#define _src_core_cistem_parameters_h_
+
+#ifndef EXPERIMENTAL_PARAMS
+
 #define POSITION_IN_STACK 1
 #define IMAGE_IS_ACTIVE 2
 #define PSI 4
@@ -33,6 +38,8 @@
 #define PRE_EXPOSURE 1073741824
 #define TOTAL_EXPOSURE 2147483648
 #define ASSIGNED_SUBSET 4294967296
+
+#endif
 
 // ADDING A NEW COLUMN
 // ----------------------
@@ -274,3 +281,5 @@ class cisTEMParameters {
     cisTEMParameterLine ReturnParameterAverages(bool only_average_active = true);
     cisTEMParameterLine ReturnParameterVariances(bool only_average_active = true);
 };
+
+#endif

@@ -57,7 +57,8 @@
                 "__WXGTK__",
                 "DEBUG",
                 "ENABLEGPU",
-                "SHOW_CISTEM_GPU_OPTIONS"
+                "SHOW_CISTEM_GPU_OPTIONS",
+                "EXPERIMENTAL_PARAMS"
             ],
             "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
             "cStandard": "c17",

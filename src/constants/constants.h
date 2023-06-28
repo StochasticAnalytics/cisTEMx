@@ -133,6 +133,45 @@ constexpr std::array<std::string_view, 17> cufft_error_types = {
         "CUFFT_NOT_SUPPORTED"};
 } // namespace gpu
 
+#ifdef EXPERIMENTAL_PARAMS
+namespace paramter_names {
+enum Enum : int {
+    position_in_stack,
+    image_is_active,
+    psi,
+    x_shift,
+    y_shift,
+    defocus_1,
+    defocus_2,
+    defocus_angle,
+    phase_shift,
+    occupancy,
+    logp,
+    sigma,
+    score,
+    score_change,
+    pixel_size,
+    microscope_voltage,
+    microscope_cs,
+    amplitude_contrast,
+    beam_tilt_x,
+    beam_tilt_y,
+    image_shift_x,
+    image_shift_y,
+    theta,
+    phi,
+    stack_filename,
+    original_image_filename,
+    reference_3d_filename,
+    best_2d_class,
+    beam_tilt_group,
+    particle_group,
+    pre_exposure,
+    total_exposure,
+    assigned_subset
+} // namespace paramter_names
+#endif
+
 } // namespace cistem
 
 #endif

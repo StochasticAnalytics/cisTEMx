@@ -35,7 +35,7 @@ class RotationMatrix {
         output_z_coord = this->m[2][0] * input_x_coord + this->m[2][1] * input_y_coord + this->m[2][2] * input_z_coord;
     };
 
-    inline void RotateCoords2D(float& input_x_coord, float& input_y_coord, float& output_x_coord, float& output_y_coord) {
+    inline void RotateCoords2D(const float input_x_coord, const float input_y_coord, float& output_x_coord, float& output_y_coord) {
         output_x_coord = this->m[0][0] * input_x_coord + this->m[0][1] * input_y_coord;
         output_y_coord = this->m[1][0] * input_x_coord + this->m[1][1] * input_y_coord;
     };

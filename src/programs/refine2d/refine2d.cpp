@@ -367,8 +367,36 @@ bool Refine2DApp::DoCalculation( ) {
     // allocate memory for output files..
 
     output_star_file.PreallocateMemoryAndBlank(input_star_file.ReturnNumberofLines( ));
-    output_star_file.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | BEST_2D_CLASS | PSI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | LOGP | SCORE | SCORE_CHANGE | OCCUPANCY | SIGMA | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y);
+    // List the set of wanted active parameters
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    using param_t = cistem::parameter_names::Enum;
 
+    std::vector<param_t> wanted_active_parameters = {param_t::position_in_stack,
+                                                     param_t::best_2d_class,
+                                                     param_t::psi,
+                                                     param_t::x_shift,
+                                                     param_t::y_shift,
+                                                     param_t::defocus_1,
+                                                     param_t::defocus_2,
+                                                     param_t::defocus_angle,
+                                                     param_t::phase_shift,
+                                                     param_t::logp,
+                                                     param_t::score,
+                                                     param_t::score_change,
+                                                     param_t::occupancy,
+                                                     param_t::sigma,
+                                                     param_t::pixel_size,
+                                                     param_t::microscope_voltage_kv,
+                                                     param_t::microscope_spherical_aberration_mm,
+                                                     param_t::amplitude_contrast,
+                                                     param_t::beam_tilt_x,
+                                                     param_t::beam_tilt_y,
+                                                     param_t::image_shift_x,
+                                                     param_t::image_shift_y};
+    output_star_file.parameters_to_write.SetActiveParameters(wanted_active_parameters);
+#else
+    output_star_file.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | BEST_2D_CLASS | PSI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | LOGP | SCORE | SCORE_CHANGE | OCCUPANCY | SIGMA | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y);
+#endif
     my_time_in = wxDateTime::Now( );
     output_star_file.AddCommentToHeader("# Refine2D run date and time:              " + my_time_in.FormatISOCombined(' '));
     output_star_file.AddCommentToHeader("# Input particle images:                   " + input_particle_images);

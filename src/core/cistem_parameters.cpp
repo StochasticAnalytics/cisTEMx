@@ -136,6 +136,7 @@ Add your variable to TestStarToBinaryFileConversion, setting it to some random v
 
 */
 
+#ifndef EXPERIMENTAL_CISTEMPARAMS
 cisTEMParameterLine::cisTEMParameterLine( ) {
     SetAllToZero( );
 }
@@ -143,7 +144,15 @@ cisTEMParameterLine::cisTEMParameterLine( ) {
 cisTEMParameterMask::cisTEMParameterMask( ) {
     SetAllToTrue( );
 }
+#endif
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+void cisTEMParameterMask::SetAllToTrue( ) {
+    for ( auto& param : this->is_active ) {
+        param = true;
+    }
+}
+#else
 void cisTEMParameterMask::SetAllToTrue( ) {
     position_in_stack                  = true;
     image_is_active                    = true;
@@ -179,7 +188,15 @@ void cisTEMParameterMask::SetAllToTrue( ) {
     pre_exposure                       = true;
     total_exposure                     = true;
 }
+#endif
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+void cisTEMParameterMask::SetAllToFalse( ) {
+    for ( auto& param : this->is_active ) {
+        param = false;
+    }
+}
+#else
 void cisTEMParameterMask::SetAllToFalse( ) {
     position_in_stack                  = false;
     image_is_active                    = false;
@@ -215,7 +232,17 @@ void cisTEMParameterMask::SetAllToFalse( ) {
     pre_exposure                       = false;
     total_exposure                     = false;
 }
+#endif
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+void cisTEMParameterMask::SetActiveParameters(std::vector<cistem::parameter_names::Enum>& wanted_active_parameters) {
+    // Set all to false
+    SetAllToFalse( );
+    for ( auto& param : wanted_active_parameters ) {
+        this->is_active.at(param) = true;
+    }
+}
+#else
 void cisTEMParameterMask::SetActiveParameters(long parameters_to_set) {
     position_in_stack                  = ((parameters_to_set & POSITION_IN_STACK) == POSITION_IN_STACK);
     image_is_active                    = ((parameters_to_set & IMAGE_IS_ACTIVE) == IMAGE_IS_ACTIVE);
@@ -251,6 +278,7 @@ void cisTEMParameterMask::SetActiveParameters(long parameters_to_set) {
     pre_exposure                       = ((parameters_to_set & PRE_EXPOSURE) == PRE_EXPOSURE);
     total_exposure                     = ((parameters_to_set & TOTAL_EXPOSURE) == TOTAL_EXPOSURE);
 }
+#endif
 
 /* Should never be needed actually
 void cisTEMParameterLine::SwapPsiAndPhi()
@@ -259,7 +287,18 @@ void cisTEMParameterLine::SwapPsiAndPhi()
 	psi = phi;
 	phi = temp_float;
 }*/
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
+    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
+        if ( std::is_arithmetic_v<decltype(std::tuple_element_t < counter, values)> )> ) {
+                std::get<counter>(values) += std::get<counter>(line_to_add.values);
+            }
+        else {
+            MyDebugAssertTrue(false, "Cannot add a non-arithmetic parameter " + cistem::parameter_names::get(counter) + " to a cisTEMParameterLine"
+        }
+    }
+}
+#else
 void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
     position_in_stack += line_to_add.position_in_stack;
     image_is_active += line_to_add.image_is_active;
@@ -293,7 +332,20 @@ void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
 
     // not adding filenames or groups as it doesn't make sense
 }
+#endif
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
+    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
+        if constexpr ( std::is_arithmetic_v<decltype(values.get(counter))> ) {
+            values.get(counter) -= line_to_add.get(counter);
+        }
+        else {
+            MyDebugAssertTrue(false, "Cannot subtract a non-arithmetic parameter " + cistem::parameter_names::get(counter) + " to a cisTEMParameterLine"
+        }
+    }
+}
+#else
 void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
     position_in_stack -= line_to_add.position_in_stack;
     image_is_active -= line_to_add.image_is_active;
@@ -327,7 +379,20 @@ void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
 
     // not adding filenames or groups as it doesn't make sense
 }
+#endif
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
+    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
+        if constexpr ( std::is_arithmetic_v<decltype(values.get(counter))> ) {
+            values.get(counter) += powf(line_to_add.get(counter), 2);
+        }
+        else {
+            MyDebugAssertTrue(false, "Cannot square a non-arithmetic parameter " + cistem::parameter_names::get(counter) + " to a cisTEMParameterLine"
+        }
+    }
+}
+#else
 void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
     position_in_stack += powf(line_to_add.position_in_stack, 2);
     image_is_active += powf(line_to_add.image_is_active, 2);
@@ -361,7 +426,26 @@ void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
 
     // not adding filenames or groups as it doesn't make sense
 }
+#endif
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+void cisTEMParameterLine::SetAllToZero( ) {
+    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
+        if constexpr ( std::is_integral_v<decltype(values.get(counter))> ) {
+            values.get(counter) = 0;
+        }
+        else if constexpr ( std::is_floating_point_v<decltype(values.get(counter))> ) {
+            values.get(counter) = 0.0f;
+        }
+        else if constexpr ( std::is_same_v<decltype(values.get(counter)), wxString> ) {
+            values.get(counter) = wxEmptyString;
+        }
+        else {
+            MyDebugAssertTrue(false, "cisTEMParameterLine::SetAllToZero() - Unknown type for parameter %s\n", cistem::parameter_names::names[counter]);
+        }
+    }
+}
+#else
 void cisTEMParameterLine::SetAllToZero( ) {
     position_in_stack                  = 0;
     image_is_active                    = 0;
@@ -397,7 +481,22 @@ void cisTEMParameterLine::SetAllToZero( ) {
     pre_exposure                       = 0.0f;
     total_exposure                     = 0.0f;
 }
+#endif
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+// NOTE: couldn't we just use ! isfinite() ?
+void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
+    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
+        if constexpr ( std::is_arithmetic_v<decltype(values.get(counter))> ) {
+            if ( isnan(values.get(counter)) || isinf(values.get(counter)) )
+                values.get(counter) = other_params.values.get(counter);
+        }
+        else {
+            MyDebugAssertTrue(false, "cisTEMParameterLine::ReplaceNanAndInfWithOther() - Unknown type for parameter %s\n", cistem::parameter_names::names[counter]);
+        }
+    }
+}
+#else
 void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
     if ( isnan(psi) || isinf(psi) )
         psi = other_params.psi;
@@ -454,6 +553,7 @@ void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_p
     if ( isnan(total_exposure) || isinf(total_exposure) )
         total_exposure = other_params.total_exposure;
 }
+#endif
 
 cisTEMParameterLine::~cisTEMParameterLine( ) {
 }

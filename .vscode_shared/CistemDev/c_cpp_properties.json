@@ -58,7 +58,7 @@
                 "DEBUG",
                 "ENABLEGPU",
                 "SHOW_CISTEM_GPU_OPTIONS",
-                "EXPERIMENTAL_PARAMS"
+                "EXPERIMENTAL_CISTEMPARAMS"
             ],
             "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
             "cStandard": "c17",

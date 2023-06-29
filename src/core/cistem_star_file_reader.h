@@ -2,9 +2,14 @@
 // ----------------------
 // See top of cistem_parameters.cpp for documentation describing how to add a new column
 
+#ifndef SRC_CORE_CISTEM_STAR_FILE_READER_H
+#define SRC_CORE_CISTEM_STAR_FILE_READER_H
+
 class cisTEMStarFileReader {
 
   private:
+    using param_t = cistem::parameter_names::Enum;
+
     int current_position_in_stack;
     int current_column;
 
@@ -171,67 +176,69 @@ class cisTEMStarFileReader {
     void Reset( );
     void ResetColumnPositions( );
 
-    inline int ReturnPositionInStack(int line_number) { return cached_parameters->Item(line_number).position_in_stack; }
+    inline int ReturnPositionInStack(int line_number) { return std::get<param_t::position_in_stack>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnImageIsActive(int line_number) { return cached_parameters->Item(line_number).image_is_active; }
+    inline int ReturnImageIsActive(int line_number) { return std::get<param_t::image_is_active>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnPhi(int line_number) { return cached_parameters->Item(line_number).phi; }
+    inline float ReturnPhi(int line_number) { return std::get<param_t::phi>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnTheta(int line_number) { return cached_parameters->Item(line_number).theta; }
+    inline float ReturnTheta(int line_number) { return std::get<param_t::theta>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnPsi(int line_number) { return cached_parameters->Item(line_number).psi; }
+    inline float ReturnPsi(int line_number) { return std::get<param_t::psi>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnXShift(int line_number) { return cached_parameters->Item(line_number).x_shift; }
+    inline float ReturnXShift(int line_number) { return std::get<param_t::x_shift>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnYShift(int line_number) { return cached_parameters->Item(line_number).y_shift; }
+    inline float ReturnYShift(int line_number) { return std::get<param_t::y_shift>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnDefocus1(int line_number) { return cached_parameters->Item(line_number).defocus_1; }
+    inline float ReturnDefocus1(int line_number) { return std::get<param_t::defocus_1>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnDefocus2(int line_number) { return cached_parameters->Item(line_number).defocus_2; }
+    inline float ReturnDefocus2(int line_number) { return std::get<param_t::defocus_2>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnDefocusAngle(int line_number) { return cached_parameters->Item(line_number).defocus_angle; }
+    inline float ReturnDefocusAngle(int line_number) { return std::get<param_t::defocus_angle>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnPhaseShift(int line_number) { return cached_parameters->Item(line_number).phase_shift; }
+    inline float ReturnPhaseShift(int line_number) { return std::get<param_t::phase_shift>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnLogP(int line_number) { return cached_parameters->Item(line_number).logp; }
+    inline int ReturnLogP(int line_number) { return std::get<param_t::logp>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnSigma(int line_number) { return cached_parameters->Item(line_number).sigma; }
+    inline float ReturnSigma(int line_number) { return std::get<param_t::sigma>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnScore(int line_number) { return cached_parameters->Item(line_number).score; }
+    inline float ReturnScore(int line_number) { return std::get<param_t::score>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnScoreChange(int line_number) { return cached_parameters->Item(line_number).score_change; }
+    inline float ReturnScoreChange(int line_number) { return std::get<param_t::score_change>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnPixelSize(int line_number) { return cached_parameters->Item(line_number).pixel_size; }
+    inline float ReturnPixelSize(int line_number) { return std::get<param_t::pixel_size>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnMicroscopekV(int line_number) { return cached_parameters->Item(line_number).microscope_voltage_kv; }
+    inline float ReturnMicroscopekV(int line_number) { return std::get<param_t::microscope_voltage_kv>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnMicroscopeCs(int line_number) { return cached_parameters->Item(line_number).microscope_spherical_aberration_mm; }
+    inline float ReturnMicroscopeCs(int line_number) { return std::get<param_t::microscope_spherical_aberration_mm>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnAmplitudeContrast(int line_number) { return cached_parameters->Item(line_number).amplitude_contrast; }
+    inline float ReturnAmplitudeContrast(int line_number) { return std::get<param_t::amplitude_contrast>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnBeamTiltX(int line_number) { return cached_parameters->Item(line_number).beam_tilt_x; }
+    inline float ReturnBeamTiltX(int line_number) { return std::get<param_t::beam_tilt_x>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnBeamTiltY(int line_number) { return cached_parameters->Item(line_number).beam_tilt_y; }
+    inline float ReturnBeamTiltY(int line_number) { return std::get<param_t::beam_tilt_y>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnImageShiftX(int line_number) { return cached_parameters->Item(line_number).image_shift_x; }
+    inline float ReturnImageShiftX(int line_number) { return std::get<param_t::image_shift_x>(cached_parameters->Item(line_number).values); }
 
-    inline float ReturnImageShiftY(int line_number) { return cached_parameters->Item(line_number).image_shift_y; }
+    inline float ReturnImageShiftY(int line_number) { return std::get<param_t::image_shift_y>(cached_parameters->Item(line_number).values); }
 
-    inline wxString ReturnStackFilename(int line_number) { return cached_parameters->Item(line_number).stack_filename; }
+    inline wxString ReturnStackFilename(int line_number) { return std::get<param_t::stack_filename>(cached_parameters->Item(line_number).values); }
 
-    inline wxString ReturnOriginalImageFilename(int line_number) { return cached_parameters->Item(line_number).original_image_filename; }
+    inline wxString ReturnOriginalImageFilename(int line_number) { return std::get<param_t::original_image_filename>(cached_parameters->Item(line_number).values); }
 
-    inline wxString ReturnReference3DFilename(int line_number) { return cached_parameters->Item(line_number).reference_3d_filename; }
+    inline wxString ReturnReference3DFilename(int line_number) { return std::get<param_t::reference_3d_filename>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnBest2DClass(int line_number) { return cached_parameters->Item(line_number).best_2d_class; }
+    inline int ReturnBest2DClass(int line_number) { return std::get<param_t::best_2d_class>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnBeamTiltGroup(int line_number) { return cached_parameters->Item(line_number).beam_tilt_group; }
+    inline int ReturnBeamTiltGroup(int line_number) { return std::get<param_t::beam_tilt_group>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnParticleGroup(int line_number) { return cached_parameters->Item(line_number).particle_group; }
+    inline int ReturnParticleGroup(int line_number) { return std::get<param_t::particle_group>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnAssignedSubset(int line_number) { return cached_parameters->Item(line_number).assigned_subset; }
+    inline int ReturnAssignedSubset(int line_number) { return std::get<param_t::assigned_subset>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnPreExposure(int line_number) { return cached_parameters->Item(line_number).pre_exposure; }
+    inline int ReturnPreExposure(int line_number) { return std::get<param_t::pre_exposure>(cached_parameters->Item(line_number).values); }
 
-    inline int ReturnTotalExpsosure(int line_number) { return cached_parameters->Item(line_number).total_exposure; }
+    inline int ReturnTotalExpsosure(int line_number) { return std::get<param_t::total_exposure>(cached_parameters->Item(line_number).values); }
 };
+
+#endif

@@ -102,9 +102,59 @@ wxString Classification::WritecisTEMStarFile(wxString base_filename, RefinementP
     long particle_counter;
 
     cisTEMParameters output_params;
+// List the set of wanted active parameters
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    using param_t = cistem::parameter_names::Enum;
+
+    std::vector<param_t> wanted_active_parameters = {param_t::position_in_stack,
+                                                     param_t::best_2d_class,
+                                                     param_t::psi,
+                                                     param_t::x_shift,
+                                                     param_t::y_shift,
+                                                     param_t::defocus_1,
+                                                     param_t::defocus_2,
+                                                     param_t::defocus_angle,
+                                                     param_t::phase_shift,
+                                                     param_t::logp,
+                                                     param_t::sigma,
+                                                     param_t::pixel_size,
+                                                     param_t::microscope_voltage_kv,
+                                                     param_t::microscope_spherical_aberration_mm,
+                                                     param_t::amplitude_contrast,
+                                                     param_t::beam_tilt_x,
+                                                     param_t::beam_tilt_y,
+                                                     param_t::image_shift_x,
+                                                     param_t::image_shift_y};
+    output_params.parameters_to_write.SetActiveParameters(wanted_active_parameters);
+#else
     output_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | BEST_2D_CLASS | PSI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | LOGP | SIGMA | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y);
+#endif
     output_params.PreallocateMemoryAndBlank(number_of_particles);
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( particle_counter = 0; particle_counter < number_of_particles; particle_counter++ ) {
+        output_params.all_parameters[particle_counter].position_in_stack(classification_results[particle_counter].position_in_stack);
+        output_params.all_parameters[particle_counter].best_2d_class(classification_results[particle_counter].best_class);
+        output_params.all_parameters[particle_counter].psi(classification_results[particle_counter].psi);
+        output_params.all_parameters[particle_counter].x_shift(classification_results[particle_counter].xshift);
+        output_params.all_parameters[particle_counter].y_shift(classification_results[particle_counter].yshift);
+        output_params.all_parameters[particle_counter].defocus_1(parent_refinement_package->ReturnParticleInfoByPositionInStack(classification_results[particle_counter].position_in_stack).defocus_1);
+        output_params.all_parameters[particle_counter].defocus_2(parent_refinement_package->ReturnParticleInfoByPositionInStack(classification_results[particle_counter].position_in_stack).defocus_2);
+        output_params.all_parameters[particle_counter].defocus_angle(parent_refinement_package->ReturnParticleInfoByPositionInStack(classification_results[particle_counter].position_in_stack).defocus_angle);
+        output_params.all_parameters[particle_counter].phase_shift(parent_refinement_package->ReturnParticleInfoByPositionInStack(classification_results[particle_counter].position_in_stack).phase_shift);
+        output_params.all_parameters[particle_counter].logp(classification_results[particle_counter].logp);
+        output_params.all_parameters[particle_counter].sigma(classification_results[particle_counter].sigma);
+        output_params.all_parameters[particle_counter].pixel_size(classification_results[particle_counter].pixel_size);
+        output_params.all_parameters[particle_counter].microscope_voltage_kv(classification_results[particle_counter].microscope_voltage_kv);
+        output_params.all_parameters[particle_counter].microscope_spherical_aberration_mm(classification_results[particle_counter].microscope_spherical_aberration_mm);
+        output_params.all_parameters[particle_counter].amplitude_contrast(classification_results[particle_counter].amplitude_contrast);
+        output_params.all_parameters[particle_counter].beam_tilt_x(classification_results[particle_counter].beam_tilt_x);
+        output_params.all_parameters[particle_counter].beam_tilt_y(classification_results[particle_counter].beam_tilt_y);
+        output_params.all_parameters[particle_counter].image_shift_x(classification_results[particle_counter].image_shift_x);
+        output_params.all_parameters[particle_counter].image_shift_y(classification_results[particle_counter].image_shift_y);
+    }
+
+#else
     for ( particle_counter = 0; particle_counter < number_of_particles; particle_counter++ ) {
         output_params.all_parameters[particle_counter].position_in_stack                  = classification_results[particle_counter].position_in_stack;
         output_params.all_parameters[particle_counter].best_2d_class                      = classification_results[particle_counter].best_class;
@@ -126,7 +176,7 @@ wxString Classification::WritecisTEMStarFile(wxString base_filename, RefinementP
         output_params.all_parameters[particle_counter].image_shift_x                      = classification_results[particle_counter].image_shift_x;
         output_params.all_parameters[particle_counter].image_shift_y                      = classification_results[particle_counter].image_shift_y;
     }
-
+#endif
     if ( write_as_cistem_binary_file == false )
         output_params.WriteTocisTEMStarFile(output_filename);
     else

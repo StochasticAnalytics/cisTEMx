@@ -133,8 +133,12 @@ constexpr std::array<std::string_view, 17> cufft_error_types = {
         "CUFFT_NOT_SUPPORTED"};
 } // namespace gpu
 
-#ifdef EXPERIMENTAL_PARAMS
-namespace paramter_names {
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+namespace parameter_names {
+
+constexpr int count = 33;
+
+// Be careful to keep this in sync with the enum below. There is a static_assert that should catch it if you don't in cistem_parameters.h
 enum Enum : int {
     position_in_stack,
     image_is_active,
@@ -151,8 +155,8 @@ enum Enum : int {
     score,
     score_change,
     pixel_size,
-    microscope_voltage,
-    microscope_cs,
+    microscope_voltage_kv,
+    microscope_spherical_aberration_mm,
     amplitude_contrast,
     beam_tilt_x,
     beam_tilt_y,
@@ -169,7 +173,9 @@ enum Enum : int {
     pre_exposure,
     total_exposure,
     assigned_subset
-} // namespace paramter_names
+}; // namespace paramter_names
+
+} // namespace parameter_names
 #endif
 
 } // namespace cistem

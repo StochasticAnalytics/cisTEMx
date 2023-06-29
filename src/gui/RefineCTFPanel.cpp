@@ -1228,8 +1228,38 @@ void CTFRefinementManager::SetupRefinementJob( ) {
 
     cisTEMParameters output_parameters;
     output_parameters.PreallocateMemoryAndBlank(input_refinement->number_of_particles);
-    output_parameters.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | REFERENCE_3D_FILENAME);
+// List the set of wanted active parameters
+#ifdef EXPERIMENTAL_PARAMS
+    using param_t = cistem::parameter_names::Enum;
 
+    std::vector<param_t> wanted_active_parameters = {param_t::position_in_stack,
+                                                     param_t::image_is_active,
+                                                     param_t::psi,
+                                                     param_t::theta,
+                                                     param_t::phi,
+                                                     param_t::x_shift,
+                                                     param_t::y_shift,
+                                                     param_t::defocus_1,
+                                                     param_t::defocus_2,
+                                                     param_t::defocus_angle,
+                                                     param_t::phase_shift,
+                                                     param_t::occupancy,
+                                                     param_t::logp,
+                                                     param_t::sigma,
+                                                     param_t::score,
+                                                     param_t::pixel_size,
+                                                     param_t::microscope_voltage_kv,
+                                                     param_t::microscope_spherical_aberration_mm,
+                                                     param_t::amplitude_contrast,
+                                                     param_t::beam_tilt_x,
+                                                     param_t::beam_tilt_y,
+                                                     param_t::image_shift_x,
+                                                     param_t::image_shift_y,
+                                                     param_t::reference_3d_filename};
+    output_parameters.parameters_to_write.SetActiveParameters(wanted_active_parameters);
+#else
+    output_parameters.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | REFERENCE_3D_FILENAME);
+#endif
     for ( counter = 0; counter < input_refinement->number_of_particles; counter++ ) {
         highest_occupancy = -FLT_MAX;
         for ( class_counter = 0; class_counter < input_refinement->number_of_classes; class_counter++ ) {

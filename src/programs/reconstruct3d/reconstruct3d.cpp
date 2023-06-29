@@ -461,22 +461,21 @@ bool Reconstruct3DApp::DoCalculation( ) {
 
     // Read whole parameter file to work out average image_sigma_noise and average score
     for ( current_image = 0; current_image < input_star_file.ReturnNumberofLines( ); current_image++ ) {
-        //input_par_file.ReadLine(input_parameters);
+#ifdef EXPERIMENTAL_CISTEMPARAMS
         input_parameters = input_star_file.ReturnLine(current_image);
-        //temp_float = input_parameters.psi; input_parameters[1] = input_parameters[3]; input_parameters[3] = temp_float;
 
-        //	input_parameters.SwapPsiAndPhi();
-
-        /*	for (i = 0; i < input_particle.number_of_parameters; i++)
-		{
-			parameter_average[i] += input_parameters[i];
-			parameter_variance[i] += powf(input_parameters[i],2);
-		}*/
+        if ( input_parameters.position_in_stack( ) >= first_particle && input_parameters.position_in_stack( ) <= last_particle && input_parameters.occupancy( ) != 0.0 && input_parameters.score( ) >= score_threshold && input_parameters.image_is_active( ) >= 0.0 )
+            images_to_process++;
+        if ( input_parameters.position_in_stack( ) >= first_particle && input_parameters.position_in_stack( ) <= last_particle )
+            images_for_noise_power++;
+#else
+        input_parameters = input_star_file.ReturnLine(current_image);
 
         if ( input_parameters.position_in_stack >= first_particle && input_parameters.position_in_stack <= last_particle && input_parameters.occupancy != 0.0 && input_parameters.score >= score_threshold && input_parameters.image_is_active >= 0.0 )
             images_to_process++;
         if ( input_parameters.position_in_stack >= first_particle && input_parameters.position_in_stack <= last_particle )
             images_for_noise_power++;
+#endif
     }
 
     /*	for (i = 0; i < input_particle.number_of_parameters; i++)

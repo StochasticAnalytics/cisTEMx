@@ -105,7 +105,18 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
         return 1;
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnThetaAngle( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnThetaAngle( ) - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
         return 1;
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( isnan(comparison_object->particle->temp_parameters.x_shift( )) || fabsf(comparison_object->particle->temp_parameters.x_shift( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
+        return 1;
+    if ( isnan(comparison_object->particle->temp_parameters.y_shift( )) || fabsf(comparison_object->particle->temp_parameters.y_shift( ) - comparison_object->initial_y_shift) > comparison_object->y_shift_limit )
+        return 1;
+    if ( isnan(comparison_object->particle->temp_parameters.psi( )) || fabsf(comparison_object->particle->temp_parameters.psi( ) - comparison_object->initial_psi_angle) > comparison_object->angle_change_limit )
+        return 1;
+    if ( isnan(comparison_object->particle->temp_parameters.phi( )) || fabsf(comparison_object->particle->temp_parameters.phi( ) - comparison_object->initial_phi_angle) > comparison_object->angle_change_limit )
+        return 1;
+    if ( isnan(comparison_object->particle->temp_parameters.theta( )) || fabsf(comparison_object->particle->temp_parameters.theta( ) - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
+        return 1;
+#else
     if ( isnan(comparison_object->particle->temp_parameters.x_shift) || fabsf(comparison_object->particle->temp_parameters.x_shift - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
         return 1;
     if ( isnan(comparison_object->particle->temp_parameters.y_shift) || fabsf(comparison_object->particle->temp_parameters.y_shift - comparison_object->initial_y_shift) > comparison_object->y_shift_limit )
@@ -116,6 +127,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
         return 1;
     if ( isnan(comparison_object->particle->temp_parameters.theta) || fabsf(comparison_object->particle->temp_parameters.theta - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
         return 1;
+#endif
     /*
 	 *
 	float additional_penalty = 0;
@@ -342,7 +354,7 @@ void Refine3DApp::DoInteractiveUserInput( ) {
 #ifdef _OPENMP
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "When threading, what is the max threads to run", "1", 1);
 #else
-    max_threads = 1;
+    max_threads         = 1;
 #endif
 
     delete my_input;
@@ -570,8 +582,13 @@ bool Refine3DApp::DoCalculation( ) {
     parameter_average  = input_star_file.ReturnParameterAverages( );
     parameter_variance = input_star_file.ReturnParameterVariances( );
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    defocus_lower_limit = 15000.0 * sqrtf(parameter_average.microscope_voltage_kv( ) / 300.0);
+    defocus_upper_limit = 25000.0 * sqrtf(parameter_average.microscope_voltage_kv( ) / 300.0);
+#else
     defocus_lower_limit = 15000.0 * sqrtf(parameter_average.microscope_voltage_kv / 300.0);
     defocus_upper_limit = 25000.0 * sqrtf(parameter_average.microscope_voltage_kv / 300.0);
+#endif
     defocus_range_mean2 = defocus_upper_limit + defocus_lower_limit;
     defocus_range_std   = 0.5 * (defocus_upper_limit - defocus_lower_limit);
 
@@ -840,6 +857,18 @@ bool Refine3DApp::DoCalculation( ) {
     //	if (ctf_refinement) binned_image.Allocate(input_3d.density_map->logical_x_dimension, input_3d.density_map->logical_y_dimension, false);
     //	final_image.Allocate(input_file.ReturnXSize(), input_file.ReturnYSize(), true);
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( parameter_variance.phi( ) < 0.001 )
+        refine_particle.constraints_used.phi = false;
+    if ( parameter_variance.theta( ) < 0.001 )
+        refine_particle.constraints_used.theta = false;
+    if ( parameter_variance.psi( ) < 0.001 )
+        refine_particle.constraints_used.psi = false;
+    if ( parameter_variance.x_shift( ) < 0.001 )
+        refine_particle.constraints_used.x_shift = false;
+    if ( parameter_variance.y_shift( ) < 0.001 )
+        refine_particle.constraints_used.y_shift = false;
+#else
     if ( parameter_variance.phi < 0.001 )
         refine_particle.constraints_used.phi = false;
     if ( parameter_variance.theta < 0.001 )
@@ -850,6 +879,7 @@ bool Refine3DApp::DoCalculation( ) {
         refine_particle.constraints_used.x_shift = false;
     if ( parameter_variance.y_shift < 0.001 )
         refine_particle.constraints_used.y_shift = false;
+#endif
 
     refine_particle.SetParameterStatistics(parameter_average, parameter_variance);
 
@@ -880,6 +910,57 @@ bool Refine3DApp::DoCalculation( ) {
             file_read = false;
 
 #pragma omp for schedule(static, 1)
+
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+            for ( current_line_local = 0; current_line_local < input_star_file.ReturnNumberofLines( ); current_line_local++ ) {
+#pragma omp critical
+                {
+                    input_parameters = input_star_file.ReturnLine(current_line);
+
+                    current_line++;
+                    if ( input_parameters.position_in_stack( ) >= first_particle && input_parameters.position_in_stack( ) <= last_particle ) {
+                        file_read = false;
+                        if ( random_reset_counter == 0 )
+                            temp_float = global_random_number_generator.GetUniformRandom( );
+                        if ( (temp_float >= 1.0 - 2.0f * percentage) || (random_reset_counter != 0) ) {
+                            random_reset_counter++;
+                            if ( random_reset_counter == random_reset_count )
+                                random_reset_counter = 0;
+                            //						wxPrintf("reading %i\n", int(input_parameters[0] + 0.5f));
+                            input_image_local.ReadSlice(&input_stack, input_parameters.position_in_stack( ));
+                            file_read = true;
+                        }
+                    }
+                }
+                if ( input_parameters.position_in_stack( ) < first_particle || input_parameters.position_in_stack( ) > last_particle )
+                    continue;
+                image_counter++;
+                if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
+                    my_progress->Update(image_counter);
+                if ( ! file_read )
+                    continue;
+                //			if ((temp_float < 1.0 - 2.0f * percentage) && (random_reset_counter == 0)) continue;
+                //			if ((global_random_number_generator.GetUniformRandom() < 1.0 - 2.0f * percentage)) continue;
+                //			input_image_local.ReadSlice(&input_stack, int(input_parameters[0] + 0.5f));
+                mask_radius_for_noise = outer_mask_radius / input_parameters.pixel_size( );
+                if ( 2.0 * mask_radius_for_noise + mask_falloff / input_parameters.pixel_size( ) > 0.95f * input_stack.ReturnXSize( ) ) {
+                    mask_radius_for_noise = 0.95f * input_stack.ReturnXSize( ) / 2.0f - mask_falloff / 2.0f / input_parameters.pixel_size( );
+                }
+                if ( exclude_blank_edges && input_image_local.ContainsBlankEdges(mask_radius_for_noise) ) {
+                    number_of_blank_edges_local++;
+                    continue;
+                }
+                variance = input_image_local.ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0f, 0.0f, 0.0f, true);
+                if ( variance == 0.0f )
+                    continue;
+                input_image_local.MultiplyByConstant(1.0f / sqrtf(variance));
+                input_image_local.CosineMask(mask_radius_for_noise, mask_falloff / input_parameters.pixel_size( ), true);
+                input_image_local.ForwardFFT( );
+                temp_image_local.CopyFrom(&input_image_local);
+                temp_image_local.ConjugateMultiplyPixelWise(input_image_local);
+                sum_power_local.AddImage(&temp_image_local);
+            }
+#else
             for ( current_line_local = 0; current_line_local < input_star_file.ReturnNumberofLines( ); current_line_local++ ) {
 #pragma omp critical
                 {
@@ -928,6 +1009,7 @@ bool Refine3DApp::DoCalculation( ) {
                 temp_image_local.ConjugateMultiplyPixelWise(input_image_local);
                 sum_power_local.AddImage(&temp_image_local);
             }
+#endif
 
 #pragma omp critical
             {

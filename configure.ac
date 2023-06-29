@@ -93,7 +93,7 @@ AC_ARG_ENABLE([disable-warnings], AS_HELP_STRING([--disable compiler warnings], 
 		fi	
 ])
 
-
+AC_DEFINE([EXPERIMENTAL_CISTEMPARAMS], [], [Define the experimental cistem parameters])
 # AC_DEFINE_UNQUOTED([_FILE_OFFSET_BITS], [64], [Define the file offset bits])
 # AC_DEFINE([_LARGEFILE_SOURCE], [], [Define the large file source])
 if test "x$CXX" = "xicpc"; then		

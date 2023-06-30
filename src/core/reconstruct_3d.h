@@ -1,8 +1,17 @@
 /*  \brief  Reconstruct3D class (derived from Frealign Pinsert) */
 
+#ifndef _SRC_CORE_RECONSTRUCT_3D_H_
+#define _SRC_CORE_RECONSTRUCT_3D_H_
+
 class Particle;
 
 class Reconstruct3D {
+
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+  private:
+    using cp_t = cistem::parameter_names::Enum;
+#endif
 
   public:
     float          pixel_size;
@@ -50,3 +59,5 @@ class Reconstruct3D {
     Reconstruct3D& operator+=(const Reconstruct3D& other);
     Reconstruct3D& operator+=(const Reconstruct3D* other);
 };
+
+#endif // _SRC_CORE_RECONSTRUCT_3D_H_

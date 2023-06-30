@@ -148,7 +148,7 @@ cisTEMParameterMask::cisTEMParameterMask( ) {
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterMask::SetAllToTrue( ) {
-    for ( auto& param : this->is_active ) {
+    for ( auto& param : is_active ) {
         param = true;
     }
 }
@@ -192,7 +192,7 @@ void cisTEMParameterMask::SetAllToTrue( ) {
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterMask::SetAllToFalse( ) {
-    for ( auto& param : this->is_active ) {
+    for ( auto& param : is_active ) {
         param = false;
     }
 }
@@ -239,7 +239,7 @@ void cisTEMParameterMask::SetActiveParameters(std::vector<cistem::parameter_name
     // Set all to false
     SetAllToFalse( );
     for ( auto& param : wanted_active_parameters ) {
-        this->is_active.at(param) = true;
+        is_active.at(param) = true;
     }
 }
 #else
@@ -288,16 +288,7 @@ void cisTEMParameterLine::SwapPsiAndPhi()
 	phi = temp_float;
 }*/
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
-    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
-        if ( std::is_arithmetic_v<decltype(std::tuple_element_t < counter, values)> )> ) {
-                std::get<counter>(values) += std::get<counter>(line_to_add.values);
-            }
-        else {
-            MyDebugAssertTrue(false, "Cannot add a non-arithmetic parameter " + cistem::parameter_names::get(counter) + " to a cisTEMParameterLine"
-        }
-    }
-}
+
 #else
 void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
     position_in_stack += line_to_add.position_in_stack;
@@ -335,15 +326,8 @@ void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
 #endif
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
-    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
-        if constexpr ( std::is_arithmetic_v<decltype(values.get(counter))> ) {
-            values.get(counter) -= line_to_add.get(counter);
-        }
-        else {
-            MyDebugAssertTrue(false, "Cannot subtract a non-arithmetic parameter " + cistem::parameter_names::get(counter) + " to a cisTEMParameterLine"
-        }
-    }
+void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
+    For_Tuple_BinaryOp<cistem::tuple_ops::Enum::SUBTRACT>(values, line_to_add.values);
 }
 #else
 void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
@@ -382,15 +366,8 @@ void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
 #endif
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
-    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
-        if constexpr ( std::is_arithmetic_v<decltype(values.get(counter))> ) {
-            values.get(counter) += powf(line_to_add.get(counter), 2);
-        }
-        else {
-            MyDebugAssertTrue(false, "Cannot square a non-arithmetic parameter " + cistem::parameter_names::get(counter) + " to a cisTEMParameterLine"
-        }
-    }
+void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
+    For_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADDSQUARE>(values, line_to_add.values);
 }
 #else
 void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
@@ -429,21 +406,92 @@ void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
 #endif
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
+
+void cisTEMParameterLine::SetAllToDefault( ) {
+    std::array<int, cistem::parameter_names::count> dummy;
+    dummy.fill(-1);
+    SetAllToDefault(dummy);
+}
+
+void cisTEMParameterLine::SetAllToDefault(std::array<int, cistem::parameter_names::count>& column_positions) {
+
+    // Set any column position with -1 to the default value
+
+    // I originally took these values from those that are assigned in cisTEMStarFileReader::ExtractParametersFromLine
+
+    // Rather than using some template magic, here just simple ifs.
+    if ( column_positions.at(cp_t::image_is_active) == -1 )
+        set<cp_t::image_is_active>(1);
+    if ( column_positions.at(cp_t::position_in_stack) == -1 )
+        set<cp_t::position_in_stack>(-1);
+    if ( column_positions.at(cp_t::psi) == -1 )
+        set<cp_t::psi>(0.0f);
+    if ( column_positions.at(cp_t::theta) == -1 )
+        set<cp_t::theta>(0.0f);
+    if ( column_positions.at(cp_t::phi) == -1 )
+        set<cp_t::phi>(0.0f);
+    if ( column_positions.at(cp_t::x_shift) == -1 )
+        set<cp_t::x_shift>(0.0f);
+    if ( column_positions.at(cp_t::y_shift) == -1 )
+        set<cp_t::y_shift>(0.0f);
+    if ( column_positions.at(cp_t::defocus_1) == -1 )
+        set<cp_t::defocus_1>(0.0f);
+    if ( column_positions.at(cp_t::defocus_2) == -1 )
+        set<cp_t::defocus_2>(0.0f);
+    if ( column_positions.at(cp_t::defocus_angle) == -1 )
+        set<cp_t::defocus_angle>(0.0f);
+    if ( column_positions.at(cp_t::phase_shift) == -1 )
+        set<cp_t::phase_shift>(0.0f);
+    if ( column_positions.at(cp_t::occupancy) == -1 )
+        set<cp_t::occupancy>(100.0f);
+    if ( column_positions.at(cp_t::logp) == -1 )
+        set<cp_t::logp>(100.0f);
+    if ( column_positions.at(cp_t::sigma) == -1 )
+        set<cp_t::sigma>(10.0f);
+    if ( column_positions.at(cp_t::score) == -1 )
+        set<cp_t::score>(0.0f);
+    if ( column_positions.at(cp_t::score_change) == -1 )
+        set<cp_t::score_change>(0.0f);
+    if ( column_positions.at(cp_t::pixel_size) == -1 )
+        set<cp_t::pixel_size>(0.0f);
+    if ( column_positions.at(cp_t::microscope_voltage_kv) == -1 )
+        set<cp_t::microscope_voltage_kv>(0.0f);
+    if ( column_positions.at(cp_t::microscope_spherical_aberration_mm) == -1 )
+        set<cp_t::microscope_spherical_aberration_mm>(0.0f);
+    if ( column_positions.at(cp_t::amplitude_contrast) == -1 )
+        set<cp_t::amplitude_contrast>(0.07f); // I"m not sure why amp contrast has a default and the other microscope params are 0.0
+    if ( column_positions.at(cp_t::beam_tilt_x) == -1 )
+        set<cp_t::beam_tilt_x>(0.0f);
+    if ( column_positions.at(cp_t::beam_tilt_y) == -1 )
+        set<cp_t::beam_tilt_y>(0.0f);
+    if ( column_positions.at(cp_t::image_shift_x) == -1 )
+        set<cp_t::image_shift_x>(0.0f);
+    if ( column_positions.at(cp_t::image_shift_y) == -1 )
+        set<cp_t::image_shift_y>(0.0f);
+    if ( column_positions.at(cp_t::best_2d_class) == -1 )
+        set<cp_t::best_2d_class>(0);
+    if ( column_positions.at(cp_t::beam_tilt_group) == -1 )
+        set<cp_t::beam_tilt_group>(0);
+    if ( column_positions.at(cp_t::particle_group) == -1 )
+        set<cp_t::particle_group>(0);
+    if ( column_positions.at(cp_t::assigned_subset) == -1 )
+        set<cp_t::assigned_subset>(0);
+    if ( column_positions.at(cp_t::pre_exposure) == -1 )
+        set<cp_t::pre_exposure>(0.0f);
+    if ( column_positions.at(cp_t::total_exposure) == -1 )
+        set<cp_t::total_exposure>(0.0f);
+    if ( column_positions.at(cp_t::stack_filename) == -1 )
+        set<cp_t::stack_filename>(wxEmptyString);
+    if ( column_positions.at(cp_t::original_image_filename) == -1 )
+        set<cp_t::original_image_filename>(wxEmptyString);
+    if ( column_positions.at(cp_t::reference_3d_filename) == -1 )
+        set<cp_t::reference_3d_filename>(wxEmptyString);
+}
+
+#endif
+#ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::SetAllToZero( ) {
-    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
-        if constexpr ( std::is_integral_v<decltype(values.get(counter))> ) {
-            values.get(counter) = 0;
-        }
-        else if constexpr ( std::is_floating_point_v<decltype(values.get(counter))> ) {
-            values.get(counter) = 0.0f;
-        }
-        else if constexpr ( std::is_same_v<decltype(values.get(counter)), wxString> ) {
-            values.get(counter) = wxEmptyString;
-        }
-        else {
-            MyDebugAssertTrue(false, "cisTEMParameterLine::SetAllToZero() - Unknown type for parameter %s\n", cistem::parameter_names::names[counter]);
-        }
-    }
+    For_Each_Tuple_UnaryOp<cistem::tuple_ops::SET_TO_ZERO>(values);
 }
 #else
 void cisTEMParameterLine::SetAllToZero( ) {
@@ -486,15 +534,8 @@ void cisTEMParameterLine::SetAllToZero( ) {
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 // NOTE: couldn't we just use ! isfinite() ?
 void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
-    for ( int counter = 0; counter < cistem::parameter_names::count; counter++ ) {
-        if constexpr ( std::is_arithmetic_v<decltype(values.get(counter))> ) {
-            if ( isnan(values.get(counter)) || isinf(values.get(counter)) )
-                values.get(counter) = other_params.values.get(counter);
-        }
-        else {
-            MyDebugAssertTrue(false, "cisTEMParameterLine::ReplaceNanAndInfWithOther() - Unknown type for parameter %s\n", cistem::parameter_names::names[counter]);
-        }
-    }
+    // FIXME: swapping the order of the template params would make type deduction easier and then I wouldn't need to use decltype
+    For_Tuple_BinaryOp<cistem::tuple_ops::REPLACE_NAN_AND_INF>(values, other_params.values);
 }
 #else
 void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
@@ -555,8 +596,10 @@ void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_p
 }
 #endif
 
+#ifndef EXPERIMENTAL_CISTEMPARAMS
 cisTEMParameterLine::~cisTEMParameterLine( ) {
 }
+#endif
 
 cisTEMParameters::cisTEMParameters( ) {
     parameters_that_were_read.SetAllToFalse( );
@@ -603,6 +646,36 @@ void cisTEMParameters::ReadFromFrealignParFile(wxString wanted_filename,
     for ( long counter = 0; counter < input_par_file.number_of_lines; counter++ ) {
         input_par_file.ReadLine(input_parameters);
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+        set<cp_t::position_in_stack>(counter, input_parameters[0]);
+        set<cp_t::psi>(counter, input_parameters[1]);
+        set<cp_t::theta>(counter, input_parameters[2]);
+        set<cp_t::phi>(counter, input_parameters[3]);
+        set<cp_t::x_shift>(counter, input_parameters[4]);
+        set<cp_t::y_shift>(counter, input_parameters[5]);
+        set<cp_t::image_is_active>(counter, int(input_parameters[7]));
+        set<cp_t::defocus_1>(counter, input_parameters[8]);
+        set<cp_t::defocus_2>(counter, input_parameters[9]);
+        set<cp_t::defocus_angle>(counter, input_parameters[10]);
+        set<cp_t::phase_shift>(counter, input_parameters[11]);
+        set<cp_t::occupancy>(counter, input_parameters[12]);
+        set<cp_t::logp>(counter, input_parameters[13]);
+        set<cp_t::sigma>(counter, input_parameters[14]);
+        set<cp_t::score>(counter, input_parameters[15]);
+        set<cp_t::score_change>(counter, input_parameters[16]);
+        set<cp_t::pixel_size>(counter, wanted_pixel_size); // not there
+        set<cp_t::microscope_voltage_kv>(counter, wanted_microscope_voltage); // not there
+        set<cp_t::microscope_spherical_aberration_mm>(counter, wanted_microscope_cs); // not there
+        set<cp_t::amplitude_contrast>(counter, wanted_amplitude_contrast); // not there
+        set<cp_t::beam_tilt_x>(counter, wanted_beam_tilt_x); // not there
+        set<cp_t::beam_tilt_y>(counter, wanted_beam_tilt_y); // not there
+        set<cp_t::image_shift_x>(counter, wanted_image_shift_x); // not there
+        set<cp_t::image_shift_y>(counter, wanted_image_shift_y); // not there
+        set<cp_t::particle_group>(counter, wanted_particle_group); // not there
+        set<cp_t::pre_exposure>(counter, wanted_pre_exposure); // not there
+        set<cp_t::total_exposure>(counter, wanted_total_exposure); // not there
+#else
         all_parameters[counter].position_in_stack                  = input_parameters[0];
         all_parameters[counter].psi                                = input_parameters[1];
         all_parameters[counter].theta                              = input_parameters[2];
@@ -630,6 +703,7 @@ void cisTEMParameters::ReadFromFrealignParFile(wxString wanted_filename,
         all_parameters[counter].particle_group                     = wanted_particle_group; // not there
         all_parameters[counter].pre_exposure                       = wanted_pre_exposure; // not there
         all_parameters[counter].total_exposure                     = wanted_total_exposure; // not there
+#endif
     }
 }
 
@@ -667,9 +741,15 @@ void cisTEMParameters::ClearAll( ) {
 }
 
 void cisTEMParameters::SetAllReference3DFilename(wxString wanted_filename) {
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        set<cp_t::reference_3d_filename>(counter, wanted_filename);
+    }
+#else
     for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
         all_parameters[counter].reference_3d_filename = wanted_filename;
     }
+#endif
 }
 
 int cisTEMParameters::ReturnNumberOfLinesToWrite(int first_image_to_write, int last_image_to_write) {
@@ -680,16 +760,26 @@ int cisTEMParameters::ReturnNumberOfLinesToWrite(int first_image_to_write, int l
 
     int line_counter = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( int particle_counter = 0; particle_counter < all_parameters.GetCount( ); particle_counter++ ) {
+        if ( get<cp_t::position_in_stack>(particle_counter) >= first_image_to_write && get<cp_t::position_in_stack>(particle_counter) <= last_image_to_write )
+            line_counter++;
+    }
+#else
     for ( int particle_counter = 0; particle_counter < all_parameters.GetCount( ); particle_counter++ ) {
         if ( all_parameters[particle_counter].position_in_stack >= first_image_to_write && all_parameters[particle_counter].position_in_stack <= last_image_to_write )
             line_counter++;
     }
+#endif
 
     return line_counter;
 }
 
 int cisTEMParameters::ReturnNumberOfParametersToWrite( ) {
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    return parameters_to_write.ReturnNumberOfActiveParameters( );
+#else
     int column_counter = 0;
 
     if ( parameters_to_write.position_in_stack == true ) {
@@ -824,8 +914,9 @@ int cisTEMParameters::ReturnNumberOfParametersToWrite( ) {
     if ( parameters_to_write.total_exposure == true ) {
         column_counter++;
     }
-
     return column_counter;
+
+#endif
 }
 
 void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int first_image_to_write, int last_image_to_write) {
@@ -872,6 +963,10 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     if ( last_image_to_write == -1 )
         last_image_to_write = INT_MAX;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    // Just grabbing the first parameter to so we can loop over the tuple
+    For_Each_Tuple_Write_Param_Header(all_parameters.Item(0).values, parameters_to_write.is_active, cisTEM_bin_file);
+#else
     if ( parameters_to_write.position_in_stack == true ) {
         bitmask_identifier = POSITION_IN_STACK;
         data_type          = INTEGER_UNSIGNED;
@@ -1104,9 +1199,17 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
         fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
     }
-
+#endif
     // now write the data..
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( int particle_counter = 0; particle_counter < all_parameters.GetCount( ); particle_counter++ ) {
+        if ( get<cp_t::position_in_stack>(particle_counter) < first_image_to_write || get<cp_t::position_in_stack>(particle_counter) > last_image_to_write )
+            continue;
+
+        For_Each_Tuple_Write_Param_To_Binary(all_parameters[particle_counter], parameters_to_write, cisTEM_bin_file);
+    }
+#else
     for ( int particle_counter = 0; particle_counter < all_parameters.GetCount( ); particle_counter++ ) {
         if ( all_parameters[particle_counter].position_in_stack < first_image_to_write || all_parameters[particle_counter].position_in_stack > last_image_to_write )
             continue;
@@ -1191,7 +1294,7 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
         if ( parameters_to_write.total_exposure == true )
             fwrite(&all_parameters[particle_counter].total_exposure, sizeof(float), 1, cisTEM_bin_file);
     }
-
+#endif
     fclose(cisTEM_bin_file);
     delete[] output_buffer;
 }
@@ -1239,7 +1342,173 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
     fprintf(cisTEM_star_file, " \ndata_\n \nloop_\n");
 
     // write headers depending on parameter mask...
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( parameters_to_write.get<cp_t::position_in_stack>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMPositionInStack #%i\n", column_counter);
+        column_counter++;
+    }
 
+    if ( parameters_to_write.get<cp_t::psi>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMAnglePsi #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::theta>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMAngleTheta #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::phi>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMAnglePhi #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::x_shift>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMXShift #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::y_shift>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMYShift #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::defocus_1>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMDefocus1 #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::defocus_2>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMDefocus2 #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::defocus_angle>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMDefocusAngle #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::phase_shift>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMPhaseShift #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::image_is_active>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMImageActivity #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::occupancy>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMOccupancy #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::logp>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMLogP #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::sigma>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMSigma #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::score>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMScore #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::score_change>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMScoreChange #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::pixel_size>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMPixelSize #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::microscope_voltage_kv>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMMicroscopeVoltagekV #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::microscope_spherical_aberration_mm>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMMicroscopeCsMM #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::amplitude_contrast>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMAmplitudeContrast #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::beam_tilt_x>( ) ) {
+
+        fprintf(cisTEM_star_file, "_cisTEMBeamTiltX #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::beam_tilt_y>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMBeamTiltY #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::image_shift_x>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMImageShiftX #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::image_shift_y>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMImageShiftY #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::best_2d_class>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMBest2DClass #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::beam_tilt_group>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMBeamTiltGroup #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::stack_filename>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMStackFilename #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::original_image_filename>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMOriginalImageFilename #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::reference_3d_filename>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMReference3DFilename #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::particle_group>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMParticleGroup #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::assigned_subset>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMAssignedSubset #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::pre_exposure>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMPreExposure #%i\n", column_counter);
+        column_counter++;
+    }
+
+    if ( parameters_to_write.get<cp_t::total_exposure>( ) ) {
+        fprintf(cisTEM_star_file, "_cisTEMTotalExposure #%i\n", column_counter);
+        column_counter++;
+    }
+#else
     if ( parameters_to_write.position_in_stack == true ) {
         fprintf(cisTEM_star_file, "_cisTEMPositionInStack #%i\n", column_counter);
         column_counter++;
@@ -1405,11 +1674,78 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
         fprintf(cisTEM_star_file, "_cisTEMTotalExposure #%i\n", column_counter);
         column_counter++;
     }
-
+#endif
     wxString data_line = "";
 
     // header...
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( parameters_to_write.get<position_in_stack>( ) )
+        data_line += "     POS ";
+    if ( parameters_to_write.get<psi>( ) )
+        data_line += "    PSI ";
+    if ( parameters_to_write.get<theta>( ) )
+        data_line += "  THETA ";
+    if ( parameters_to_write.get<phi>( ) )
+        data_line += "    PHI ";
+    if ( parameters_to_write.get<x_shift>( ) )
+        data_line += "      SHX ";
+    if ( parameters_to_write.get<y_shift>( ) )
+        data_line += "      SHY ";
+    if ( parameters_to_write.get<defocus_1>( ) )
+        data_line += "     DF1 ";
+    if ( parameters_to_write.get<defocus_2>( ) )
+        data_line += "     DF2 ";
+    if ( parameters_to_write.get<defocus_angle>( ) )
+        data_line += " ANGAST ";
+    if ( parameters_to_write.get<phase_shift>( ) )
+        data_line += " PSHIFT ";
+    if ( parameters_to_write.get<image_is_active>( ) )
+        data_line += " STAT ";
+    if ( parameters_to_write.get<occupancy>( ) )
+        data_line += "    OCC ";
+    if ( parameters_to_write.get<logp>( ) )
+        data_line += "     LogP ";
+    if ( parameters_to_write.get<sigma>( ) )
+        data_line += "     SIGMA ";
+    if ( parameters_to_write.get<score>( ) )
+        data_line += "  SCORE ";
+    if ( parameters_to_write.get<score_change>( ) )
+        data_line += " CHANGE ";
+    if ( parameters_to_write.get<pixel_size>( ) )
+        data_line += "   PSIZE ";
+    if ( parameters_to_write.get<microscope_voltage_kv>( ) )
+        data_line += "   VOLT ";
+    if ( parameters_to_write.get<microscope_spherical_aberration_mm>( ) )
+        data_line += "     Cs ";
+    if ( parameters_to_write.get<amplitude_contrast>( ) )
+        data_line += "   AmpC ";
+    if ( parameters_to_write.get<beam_tilt_x>( ) )
+        data_line += " BTILTX ";
+    if ( parameters_to_write.get<beam_tilt_y>( ) )
+        data_line += " BTILTY ";
+    if ( parameters_to_write.get<image_shift_x>( ) )
+        data_line += " ISHFTX ";
+    if ( parameters_to_write.get<image_shift_y>( ) )
+        data_line += " ISHFTY ";
+    if ( parameters_to_write.get<best_2d_class>( ) )
+        data_line += "2DCLS ";
+    if ( parameters_to_write.get<beam_tilt_group>( ) )
+        data_line += " TGRP ";
+    if ( parameters_to_write.get<stack_filename>( ) )
+        data_line += "                                     STACK_FILENAME ";
+    if ( parameters_to_write.get<original_image_filename>( ) )
+        data_line += "                            ORIGINAL_IMAGE_FILENAME ";
+    if ( parameters_to_write.get<reference_3d_filename>( ) )
+        data_line += "                              REFERENCE_3D_FILENAME ";
+    if ( parameters_to_write.get<particle_group>( ) )
+        data_line += "   PaGRP ";
+    if ( parameters_to_write.get<assigned_subset>( ) )
+        data_line += " SUBSET ";
+    if ( parameters_to_write.get<pre_exposure>( ) )
+        data_line += " PREEXP ";
+    if ( parameters_to_write.get<total_exposure>( ) )
+        data_line += " TOTEXP ";
+#else
     if ( parameters_to_write.position_in_stack == true )
         data_line += "     POS ";
     if ( parameters_to_write.psi == true )
@@ -1477,6 +1813,7 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
     if ( parameters_to_write.total_exposure == true )
         data_line += " TOTEXP ";
 
+#endif
     data_line += "\n";
     data_line[0] = '#';
 
@@ -1489,6 +1826,74 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
             continue;
         data_line = "";
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        if ( parameters_to_write.get < cp_t::position_in_stack ) )
+            data_line += wxString::Format("%8u ", get<cp_t::position_in_stack>(particle_counter);
+        if ( parameters_to_write.get<cp_t::psi) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::psi>(particle_counter);
+        if ( parameters_to_write.get<cp_t::theta) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::theta>(particle_counter);
+        if ( parameters_to_write.get<cp_t::phi) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::phi>(particle_counter);
+        if ( parameters_to_write.get<cp_t::x_shift) )
+            data_line += wxString::Format("%9.2f ", get<cp_t::x_shift>(particle_counter);
+        if ( parameters_to_write.get<cp_t::y_shift) )
+            data_line += wxString::Format("%9.2f ", get<cp_t::y_shift>(particle_counter);
+        if ( parameters_to_write.get<cp_t::defocus_1) )
+            data_line += wxString::Format("%8.1f ", get<cp_t::defocus_1>(particle_counter);
+        if ( parameters_to_write.get<cp_t::defocus_2) )
+            data_line += wxString::Format("%8.1f ", get<cp_t::defocus_2>(particle_counter);
+        if ( parameters_to_write.get<cp_t::defocus_angle) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::defocus_angle>(particle_counter);
+        if ( parameters_to_write.get<cp_t::phase_shift) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::phase_shift>(particle_counter);
+        if ( parameters_to_write.get<cp_t::image_is_active) )
+            data_line += wxString::Format("%5i ", get<cp_t::image_is_active>(particle_counter);
+        if ( parameters_to_write.get<cp_t::occupancy) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::occupancy>(particle_counter);
+        if ( parameters_to_write.get<cp_t::logp) )
+            data_line += wxString::Format("%9i ", myroundint(get<cp_t::logp>(particle_counter));
+        if ( parameters_to_write.get<cp_t::sigma) )
+            data_line += wxString::Format("%10.4f ", get<cp_t::sigma>(particle_counter);
+        if ( parameters_to_write.get<cp_t::score) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::score>(particle_counter);
+        if ( parameters_to_write.get<cp_t::score_change) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::score_change>(particle_counter);
+        if ( parameters_to_write.get<cp_t::pixel_size) )
+            data_line += wxString::Format("%8.5f ", get<cp_t::pixel_size>(particle_counter);
+        if ( parameters_to_write.get<cp_t::microscope_voltage_kv) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::microscope_voltage_kv>(particle_counter);
+        if ( parameters_to_write.get<cp_t::microscope_spherical_aberration_mm) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::microscope_spherical_aberration_mm>(particle_counter);
+        if ( parameters_to_write.get<cp_t::amplitude_contrast) )
+            data_line += wxString::Format("%7.4f ", get<cp_t::amplitude_contrast>(particle_counter);
+        if ( parameters_to_write.get<cp_t::beam_tilt_x) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_x>(particle_counter);
+        if ( parameters_to_write.get<cp_t::beam_tilt_y) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_y>(particle_counter);
+        if ( parameters_to_write.get<cp_t::image_shift_x) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_x>(particle_counter);
+        if ( parameters_to_write.get<cp_t::image_shift_y) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_y>(particle_counter);
+        if ( parameters_to_write.get<cp_t::best_2d_class) )
+            data_line += wxString::Format("%5i ", get<cp_t::best_2d_class>(particle_counter);
+        if ( parameters_to_write.get<cp_t::beam_tilt_group) )
+            data_line += wxString::Format("%5i ", get<cp_t::beam_tilt_group>(particle_counter);
+        if ( parameters_to_write.get<cp_t::stack_filename) )
+            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::stack_filename>(particle_counter));
+        if ( parameters_to_write.get<cp_t::original_image_filename) )
+            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::original_image_filename>(particle_counter));
+        if ( parameters_to_write.get<cp_t::reference_3d_filename) )
+            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::reference_3d_filename>(particle_counter));
+        if ( parameters_to_write.get<cp_t::particle_group) )
+            data_line += wxString::Format("%8u ", get<cp_t::particle_group>(particle_counter);
+        if ( parameters_to_write.get<cp_t::assigned_subset) )
+            data_line += wxString::Format("%8i ", get<cp_t::assigned_subset>(particle_counter);
+        if ( parameters_to_write.get<cp_t::pre_exposure) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::pre_exposure>(particle_counter);
+        if ( parameters_to_write.get<cp_t::total_exposure) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::total_exposure>(particle_counter);
+#else
         if ( parameters_to_write.position_in_stack == true )
             data_line += wxString::Format("%8u ", all_parameters[particle_counter].position_in_stack);
         if ( parameters_to_write.psi == true )
@@ -1555,7 +1960,7 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
             data_line += wxString::Format("%7.2f ", all_parameters[particle_counter].pre_exposure);
         if ( parameters_to_write.total_exposure == true )
             data_line += wxString::Format("%7.2f ", all_parameters[particle_counter].total_exposure);
-
+#endif
         data_line += "\n";
 
         fprintf(cisTEM_star_file, "%s", data_line.ToStdString( ).c_str( ));
@@ -1564,8 +1969,15 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
     fclose(cisTEM_star_file);
 }
 
+// FIXME replace with template version
 cisTEMParameterLine cisTEMParameters::ReturnParameterAverages(bool only_average_active) {
     cisTEMParameterLine average_values;
+
+    // For experimental approach, make three fixed arrays, length cistem::number_of_parameters, and fill them with the values
+    // for unsigned long, long and double. This way, we don't actually need all these parameters and can just use the arrays.
+    // Pass a reference of each of these arrays to the function that calculates that loops over each parameter line
+    // Will also need three counters, one for each array, to keep track of the number of values in each array
+    // Then, at the end, divide each value in the array by the number of values in that array to get the average and return a cisTEMParameterLine
 
     long   average_position_in_stack                  = 0;
     long   average_image_is_active                    = 0;
@@ -1594,6 +2006,38 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterAverages(bool only_average_
 
     long number_summed = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        if ( get<cp_t::image_is_active>(counter) >= 0 || only_average_active == false ) {
+            average_position_in_stack += get<cp_t::position_in_stack>(counter);
+            average_image_is_active += get<cp_t::image_is_active>(counter);
+            average_psi += get<cp_t::psi>(counter);
+            average_theta += get<cp_t::theta>(counter);
+            average_phi += get<cp_t::phi>(counter);
+            average_x_shift += get<cp_t::x_shift>(counter);
+            average_y_shift += get<cp_t::y_shift>(counter);
+            average_defocus_1 += get<cp_t::defocus_1>(counter);
+            average_defocus_2 += get<cp_t::defocus_2>(counter);
+            average_defocus_angle += get<cp_t::defocus_angle>(counter);
+            average_phase_shift += get<cp_t::phase_shift>(counter);
+            average_occupancy += get<cp_t::occupancy>(counter);
+            average_logp += get<cp_t::logp>(counter);
+            average_sigma += get<cp_t::sigma>(counter);
+            average_score += get<cp_t::score>(counter);
+            average_score_change += get<cp_t::score_change>(counter);
+            average_pixel_size += get<cp_t::pixel_size>(counter);
+            average_microscope_voltage_kv += get<cp_t::microscope_voltage_kv>(counter);
+            average_microscope_spherical_aberration_mm += get<cp_t::microscope_spherical_aberration_mm>(counter);
+            average_amplitude_contrast += get<cp_t::amplitude_contrast>(counter);
+            average_beam_tilt_x += get<cp_t::beam_tilt_x>(counter);
+            average_beam_tilt_y += get<cp_t::beam_tilt_y>(counter);
+            average_image_shift_x += get<cp_t::image_shift_x>(counter);
+            average_image_shift_y += get<cp_t::image_shift_y>(counter);
+
+            number_summed++;
+        }
+    }
+#else
     for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
         if ( ReturnImageIsActive(counter) >= 0 || only_average_active == false ) {
             average_position_in_stack += ReturnPositionInStack(counter);
@@ -1624,6 +2068,36 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterAverages(bool only_average_
             number_summed++;
         }
     }
+#endif
+
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( number_summed > 0 ) {
+        average_values.set<cp_t::position_in_stack>(average_position_in_stack / double(number_summed));
+        average_values.set<cp_t::image_is_active>(average_image_is_active / double(number_summed));
+        average_values.set<cp_t::psi>(average_psi / double(number_summed));
+        average_values.set<cp_t::theta>(average_theta / double(number_summed));
+        average_values.set<cp_t::phi>(average_phi / double(number_summed));
+        average_values.set<cp_t::x_shift>(average_x_shift / double(number_summed));
+        average_values.set<cp_t::y_shift>(average_y_shift / double(number_summed));
+        average_values.set<cp_t::defocus_1>(average_defocus_1 / double(number_summed));
+        average_values.set<cp_t::defocus_2>(average_defocus_2 / double(number_summed));
+        average_values.set<cp_t::defocus_angle>(average_defocus_angle / double(number_summed));
+        average_values.set<cp_t::phase_shift>(average_phase_shift / double(number_summed));
+        average_values.set<cp_t::occupancy>(average_occupancy / double(number_summed));
+        average_values.set<cp_t::logp>(average_logp / double(number_summed));
+        average_values.set<cp_t::sigma>(average_sigma / double(number_summed));
+        average_values.set<cp_t::score>(average_score / double(number_summed));
+        average_values.set<cp_t::score_change>(average_score_change / double(number_summed));
+        average_values.set<cp_t::pixel_size>(average_pixel_size / double(number_summed));
+        average_values.set<cp_t::microscope_voltage_kv>(average_microscope_voltage_kv / double(number_summed));
+        average_values.set<cp_t::microscope_spherical_aberration_mm>(average_microscope_spherical_aberration_mm / double(number_summed));
+        average_values.set<cp_t::amplitude_contrast>(average_amplitude_contrast / double(number_summed));
+        average_values.set<cp_t::beam_tilt_x>(average_beam_tilt_x / double(number_summed));
+        average_values.set<cp_t::beam_tilt_y>(average_beam_tilt_y / double(number_summed));
+        average_values.set<cp_t::image_shift_x>(average_image_shift_x / double(number_summed));
+        average_values.set<cp_t::image_shift_y>(average_image_shift_y / double(number_summed));
+    }
+#else
 
     if ( number_summed > 0 ) {
         average_values.position_in_stack                  = average_position_in_stack / double(number_summed);
@@ -1651,7 +2125,7 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterAverages(bool only_average_
         average_values.image_shift_x                      = average_image_shift_x / double(number_summed);
         average_values.image_shift_y                      = average_image_shift_y / double(number_summed);
     }
-
+#endif
     return average_values;
 }
 
@@ -1689,6 +2163,90 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterVariances(bool only_average
 
     long number_summed = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        if ( get<cp_t::image_is_active>(counter) >= 0 || only_average_active == false ) {
+            variance_position_in_stack += powf(get<cp_t::position_in_stack>(counter), 2);
+            variance_image_is_active += powf(get<cp_t::image_is_active>(counter), 2);
+            variance_psi += powf(get<cp_t::psi>(counter), 2);
+            variance_theta += powf(get<cp_t::theta>(counter), 2);
+            variance_phi += powf(get<cp_t::phi>(counter), 2);
+            variance_x_shift += powf(get<cp_t::x_shift>(counter), 2);
+            variance_y_shift += powf(get<cp_t::y_shift>(counter), 2);
+            variance_defocus_1 += powf(get<cp_t::defocus_1>(counter), 2);
+            variance_defocus_2 += powf(get<cp_t::defocus_2>(counter), 2);
+            variance_defocus_angle += powf(get<cp_t::defocus_angle>(counter), 2);
+            variance_phase_shift += powf(get<cp_t::phase_shift>(counter), 2);
+            variance_occupancy += powf(get<cp_t::occupancy>(counter), 2);
+            variance_logp += powf(get<cp_t::logp>(counter), 2);
+            variance_sigma += powf(get<cp_t::sigma>(counter), 2);
+            variance_score += powf(get<cp_t::score>(counter), 2);
+            variance_score_change += powf(get<cp_t::score_change>(counter), 2);
+            variance_pixel_size += powf(get<cp_t::pixel_size>(counter), 2);
+            variance_microscope_voltage_kv += powf(get<cp_t::microscope_voltage_kv>(counter), 2);
+            variance_microscope_spherical_aberration_mm += powf(get<cp_t::microscope_spherical_aberration_mm>(counter), 2);
+            variance_amplitude_contrast += powf(get<cp_t::amplitude_contrast>(counter), 2);
+            variance_beam_tilt_x += powf(get<cp_t::beam_tilt_x>(counter), 2);
+            variance_beam_tilt_y += powf(get<cp_t::beam_tilt_y>(counter), 2);
+            variance_image_shift_x += powf(get<cp_t::image_shift_x>(counter), 2);
+            variance_image_shift_y += powf(get<cp_t::image_shift_y>(counter), 2);
+
+            number_summed++;
+        }
+    }
+
+    if ( number_summed > 0 ) {
+        variance_values.set<cp_t::position_in_stack>(variance_position_in_stack / double(number_summed));
+        variance_values.set<cp_t::image_is_active>(variance_image_is_active / double(number_summed));
+        variance_values.set<cp_t::psi>(variance_psi / double(number_summed));
+        variance_values.set<cp_t::theta>(variance_theta / double(number_summed));
+        variance_values.set<cp_t::phi>(variance_phi / double(number_summed));
+        variance_values.set<cp_t::x_shift>(variance_x_shift / double(number_summed));
+        variance_values.set<cp_t::y_shift>(variance_y_shift / double(number_summed));
+        variance_values.set<cp_t::defocus_1>(variance_defocus_1 / double(number_summed));
+        variance_values.set<cp_t::defocus_2>(variance_defocus_2 / double(number_summed));
+        variance_values.set<cp_t::defocus_angle>(variance_defocus_angle / double(number_summed));
+        variance_values.set<cp_t::phase_shift>(variance_phase_shift / double(number_summed));
+        variance_values.set<cp_t::occupancy>(variance_occupancy / double(number_summed));
+        variance_values.set<cp_t::logp>(variance_logp / double(number_summed));
+        variance_values.set<cp_t::sigma>(variance_sigma / double(number_summed));
+        variance_values.set<cp_t::score>(variance_score / double(number_summed));
+        variance_values.set<cp_t::score_change>(variance_score_change / double(number_summed));
+        variance_values.set<cp_t::pixel_size>(variance_pixel_size / double(number_summed));
+        variance_values.set<cp_t::microscope_voltage_kv>(variance_microscope_voltage_kv / double(number_summed));
+        variance_values.set<cp_t::microscope_spherical_aberration_mm>(variance_microscope_spherical_aberration_mm / double(number_summed));
+        variance_values.set<cp_t::amplitude_contrast>(variance_amplitude_contrast / double(number_summed));
+        variance_values.set<cp_t::beam_tilt_x>(variance_beam_tilt_x / double(number_summed));
+        variance_values.set<cp_t::beam_tilt_y>(variance_beam_tilt_y / double(number_summed));
+        variance_values.set<cp_t::image_shift_x>(variance_image_shift_x / double(number_summed));
+        variance_values.set<cp_t::image_shift_y>(variance_image_shift_y / double(number_summed));
+    }
+
+    variance_values.set<cp_t::position_in_stack>(variance_values.get<cp_t::position_in_stack> - powf(average_values.position_in_stack, 2));
+    variance_values.set<cp_t::image_is_active>(variance_values.get<cp_t::image_is_active> - powf(average_values.image_is_active, 2));
+    variance_values.set<cp_t::psi>(variance_values.get<cp_t::psi> - powf(average_values.psi, 2));
+    variance_values.set<cp_t::theta>(variance_values.get<cp_t::> - powf(average_values.theta, 2));
+    variance_values.set<cp_t::phi>(variance_values.get<cp_t::> - powf(average_values.phi, 2));
+    variance_values.set<cp_t::x_shift>(variance_values.get<cp_t::> - powf(average_values.x_shift, 2));
+    variance_values.set<cp_t::y_shift>(variance_values.get<cp_t::> - powf(average_values.y_shift, 2));
+    variance_values.set<cp_t::defocus_1>(variance_values.get<cp_t::> - powf(average_values.defocus_1, 2));
+    variance_values.set<cp_t::defocus_2>(variance_values.get<cp_t::> - powf(average_values.defocus_2, 2));
+    variance_values.set<cp_t::defocus_angle>(variance_values.get<cp_t::> - powf(average_values.defocus_angle, 2));
+    variance_values.set<cp_t::phase_shift>(variance_values.get<cp_t::> - powf(average_values.phase_shift, 2));
+    variance_values.set<cp_t::occupancy>(variance_values.get<cp_t::> - powf(average_values.occupancy, 2));
+    variance_values.set<cp_t::logp>(variance_values.get<cp_t::> - powf(average_values.logp, 2));
+    variance_values.set<cp_t::sigma>(variance_values.get<cp_t::> - powf(average_values.sigma, 2));
+    variance_values.set<cp_t::score>(variance_values.get<cp_t::> - powf(average_values.score, 2));
+    variance_values.set<cp_t::score_change>(variance_values.get<cp_t::> - powf(average_values.score_change, 2));
+    variance_values.set<cp_t::pixel_size>(variance_values.get<cp_t::> - powf(average_values.pixel_size, 2));
+    variance_values.set<cp_t::microscope_voltage_kv>(variance_values.get<cp_t::> - powf(average_values.microscope_voltage_kv, 2));
+    variance_values.set<cp_t::microscope_spherical_aberration_mm>(variance_values.get<cp_t::> - powf(average_values.microscope_spherical_aberration_mm, 2));
+    variance_values.set<cp_t::amplitude_contrast>(variance_values.get<cp_t::> - powf(average_values.amplitude_contrast, 2));
+    variance_values.set<cp_t::beam_tilt_x>(variance_values.get<cp_t::> - powf(average_values.beam_tilt_x, 2));
+    variance_values.set<cp_t::beam_tilt_y>(variance_values.get<cp_t::> - powf(average_values.beam_tilt_y, 2));
+    variance_values.set<cp_t::image_shift_x>(variance_values.get<cp_t::> - powf(average_values.image_shift_x, 2));
+    variance_values.set<cp_t::image_shift_y>(variance_values.get<cp_t::> - powf(average_values.image_shift_y, 2));
+#else
     for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
         if ( ReturnImageIsActive(counter) >= 0 || only_average_active == false ) {
             variance_position_in_stack += powf(ReturnPositionInStack(counter), 2);
@@ -1771,7 +2329,7 @@ cisTEMParameterLine cisTEMParameters::ReturnParameterVariances(bool only_average
     variance_values.beam_tilt_y -= powf(average_values.beam_tilt_y, 2);
     variance_values.image_shift_x -= powf(average_values.image_shift_x, 2);
     variance_values.image_shift_y -= powf(average_values.image_shift_y, 2);
-
+#endif
     return variance_values;
 }
 

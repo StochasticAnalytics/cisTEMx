@@ -492,9 +492,13 @@ bool Reconstruct3DApp::DoCalculation( ) {
     input_particle.mask_radius  = outer_mask_radius;
     input_particle.mask_falloff = mask_falloff;
     //input_par_file.Rewind();
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    Reconstruct3D my_reconstruction_1(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score( ), score_weight_conversion, my_symmetry, correct_ewald_sphere);
+    Reconstruct3D my_reconstruction_2(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score( ), score_weight_conversion, my_symmetry, correct_ewald_sphere);
+#else
     Reconstruct3D my_reconstruction_1(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
     Reconstruct3D my_reconstruction_2(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
+#endif
     my_reconstruction_1.original_x_dimension = original_box_size;
     my_reconstruction_1.original_y_dimension = original_box_size;
     my_reconstruction_1.original_z_dimension = original_box_size;
@@ -506,7 +510,11 @@ bool Reconstruct3DApp::DoCalculation( ) {
     my_reconstruction_2.original_pixel_size  = original_pixel_size;
     my_reconstruction_2.center_mass          = center_mass;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    wxPrintf("\nNumber of particles to reconstruct = %i\n\nAverage sigma noise = %f, average score = %f\n", images_to_process, parameter_averages.sigma( ), parameter_averages.score( ));
+#else
     wxPrintf("\nNumber of particles to reconstruct = %i\n\nAverage sigma noise = %f, average score = %f\n", images_to_process, parameter_averages.sigma, parameter_averages.score);
+#endif
     wxPrintf("Box size for reconstruction = %i, binning factor = %f\n", box_size, binning_factor);
     if ( rotational_blurring )
         wxPrintf("Memory required for calculation = %g GB\n", ((3.0f * max_threads + 4.0f) * 4.0f * box_size * box_size * box_size + (12.0f + 360.0 / std::max(2.0f * rad_2_deg(pixel_size / outer_mask_radius), 5.0f)) * 4.0f * box_size * box_size) / 1024.0f / 1024.0f / 1024.0f);

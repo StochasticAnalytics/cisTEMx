@@ -353,48 +353,48 @@ void Refinement::WriteSingleClasscisTEMStarFile(wxString filename, int wanted_cl
 
     for ( particle_counter = 0; particle_counter < number_of_particles; particle_counter++ ) {
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-        output_params.all_parameters[particle_counter].position_in_stack(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].position_in_stack);
+        output_params.set<cp_t::position_in_stack>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].position_in_stack);
 
         if ( percent_used_overide < 1.0 ) {
             temp_float = global_random_number_generator.GetUniformRandom( );
             if ( temp_float < 1.0 - 2.0 * percent_used_overide ) {
-                output_params.all_parameters[particle_counter].image_is_active(-1);
+                output_params.all_parameters[particle_counter].set<cp_t::image_is_active>(-1);
             }
             else {
-                output_params.all_parameters[particle_counter].image_is_active(1);
+                output_params.all_parameters[particle_counter].set<cp_t::image_is_active>(1);
             }
         }
         else {
-            output_params.all_parameters[particle_counter].image_is_active(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].image_is_active);
+            output_params.set<cp_t::image_is_active>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].image_is_active);
         }
 
-        output_params.all_parameters[particle_counter].psi(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].psi);
-        output_params.all_parameters[particle_counter].theta(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].theta);
-        output_params.all_parameters[particle_counter].phi(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].phi);
-        output_params.all_parameters[particle_counter].x_shift(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].xshift);
-        output_params.all_parameters[particle_counter].y_shift(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].yshift);
-        output_params.all_parameters[particle_counter].defocus_1(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].defocus1);
-        output_params.all_parameters[particle_counter].defocus_2(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].defocus2);
-        output_params.all_parameters[particle_counter].defocus_angle(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].defocus_angle);
-        output_params.all_parameters[particle_counter].phase_shift(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].phase_shift);
-        output_params.all_parameters[particle_counter].occupancy(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].occupancy);
-        output_params.all_parameters[particle_counter].logp(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].logp);
+        output_params.set<cp_t::psi>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].psi);
+        output_params.set<cp_t::theta>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].theta);
+        output_params.set<cp_t::phi>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].phi);
+        output_params.set<cp_t::x_shift>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].xshift);
+        output_params.set<cp_t::y_shift>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].yshift);
+        output_params.set<cp_t::defocus_1>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].defocus1);
+        output_params.set<cp_t::defocus_2>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].defocus2);
+        output_params.set<cp_t::defocus_angle>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].defocus_angle);
+        output_params.set<cp_t::phase_shift>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].phase_shift);
+        output_params.set<cp_t::occupancy>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].occupancy);
+        output_params.set<cp_t::logp>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].logp);
 
         if ( sigma_override > 0.0 )
-            output_params.all_parameters[particle_counter].sigma(sigma_override);
+            output_params.set<cp_t::sigma>(particle_counter, sigma_override);
         else
-            output_params.all_parameters[particle_counter].sigma(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].sigma);
+            output_params.set<cp_t::sigma>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].sigma);
 
-        output_params.all_parameters[particle_counter].score(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].score);
-        output_params.all_parameters[particle_counter].score_change(0.0f);
-        output_params.all_parameters[particle_counter].pixel_size(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].pixel_size);
-        output_params.all_parameters[particle_counter].microscope_voltage_kv(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].microscope_voltage_kv);
-        output_params.all_parameters[particle_counter].microscope_spherical_aberration_mm(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].microscope_spherical_aberration_mm);
-        output_params.all_parameters[particle_counter].amplitude_contrast(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].amplitude_contrast);
-        output_params.all_parameters[particle_counter].beam_tilt_x(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_x);
-        output_params.all_parameters[particle_counter].beam_tilt_y(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_y);
-        output_params.all_parameters[particle_counter].image_shift_x(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].image_shift_x);
-        output_params.all_parameters[particle_counter].image_shift_y(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].image_shift_y);
+        output_params.set<cp_t::score>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].score);
+        output_params.set<cp_t::score_change>(particle_counter, 0.0f);
+        output_params.set<cp_t::pixel_size>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].pixel_size);
+        output_params.set<cp_t::microscope_voltage_kv>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].microscope_voltage_kv);
+        output_params.set<cp_t::microscope_spherical_aberration_mm>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].microscope_spherical_aberration_mm);
+        output_params.set<cp_t::amplitude_contrast>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].amplitude_contrast);
+        output_params.set<cp_t::beam_tilt_x>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_x);
+        output_params.set<cp_t::beam_tilt_y>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_y);
+        output_params.set<cp_t::image_shift_x>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].image_shift_x);
+        output_params.set<cp_t::image_shift_y>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].image_shift_y);
 
         // Filenames and the best 2D class are not part of RefinementResults for now - do we want to make them part of it? Until then, the four lines below need to be commented out
         // TODO - clarify whether we want to track these thigns as part of results, or perhaps work them out on the fly?
@@ -405,11 +405,11 @@ void Refinement::WriteSingleClasscisTEMStarFile(wxString filename, int wanted_cl
 		output_params.all_parameters[particle_counter].best_2d_class = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].best_2d_class;
 		*/
 
-        output_params.all_parameters[particle_counter].beam_tilt_group(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_group);
-        output_params.all_parameters[particle_counter].particle_group(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].particle_group);
-        output_params.all_parameters[particle_counter].assigned_subset(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].assigned_subset);
-        output_params.all_parameters[particle_counter].pre_exposure(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].pre_exposure);
-        output_params.all_parameters[particle_counter].total_exposure(class_refinement_results[wanted_class].particle_refinement_results[particle_counter].total_exposure);
+        output_params.set<cp_t::beam_tilt_group>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_group);
+        output_params.set<cp_t::particle_group>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].particle_group);
+        output_params.set<cp_t::assigned_subset>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].assigned_subset);
+        output_params.set<cp_t::pre_exposure>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].pre_exposure);
+        output_params.set<cp_t::total_exposure>(particle_counter, class_refinement_results[wanted_class].particle_refinement_results[particle_counter].total_exposure);
 #else
         output_params.all_parameters[particle_counter].position_in_stack = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].position_in_stack;
 

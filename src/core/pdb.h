@@ -86,6 +86,7 @@ class PDB {
     wxTextInputStream*  input_text_stream;
     wxFileOutputStream* output_file_stream;
     wxTextOutputStream* output_text_stream;
+    using cp_t = cistem::parameter_names::Enum;
 
   public:
     ArrayOfAtoms                my_atoms;

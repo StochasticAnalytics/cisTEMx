@@ -444,28 +444,20 @@ void PDB::Init( ) {
             // If particle group is 0 it is written improperly, but safe to assume there is only one frame per particle.
             // Otherwise, we increment the frame numbers until the number reduces again.
             if ( iParticle > 0 ) {
-                if ( star_file_parameters.ReturnParticleGroup(iParticle - 1) != 0 && star_file_parameters.ReturnParticleGroup(iParticle - 1) < current_frame_number ) {
+                if ( star_file_parameters.get<cp_t::particle_group>(iParticle - 1) != 0 && star_file_parameters.get<cp_t::particle_group>(iParticle - 1) < current_frame_number ) {
                     current_frame_number++;
                 }
                 else
                     current_frame_number = 1;
             }
-            TransformBaseCoordinates(star_file_parameters.ReturnXShift(iParticle),
-                                     star_file_parameters.ReturnYShift(iParticle),
-                                     (0.5f * (star_file_parameters.ReturnDefocus1(iParticle) + star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,
-                                     -star_file_parameters.ReturnPsi(iParticle),
-                                     -star_file_parameters.ReturnTheta(iParticle),
-                                     -star_file_parameters.ReturnPhi(iParticle),
+            TransformBaseCoordinates(star_file_parameters.et<cp_t::x_shift>(iParticle),
+                                     star_file_parameters.et<cp_t::y_shift>(iParticle),
+                                     (0.5f * (star_file_parameters.et<cp_t::defocus_1>(iParticle) + star_file_parameters.et<cp_t::defocus_2>(iParticle))) - star_file_parameters.average_defocus,
+                                     -star_file_parameters.et<cp_t::psi>(iParticle),
+                                     -star_file_parameters.et<cp_t::theta>(iParticle),
+                                     -star_file_parameters.et<cp_t::phi>(iParticle),
                                      iParticle,
                                      current_frame_number - 1);
-            // wxPrintf("x,y,z (%f,%f,%f) psi/theta/phi (%f,%f,%f), ipart/frame %d %d\n", star_file_parameters.ReturnXShift(iParticle),
-            //                              star_file_parameters.ReturnYShift(iParticle),
-            //                              (0.5f * (star_file_parameters.ReturnDefocus1(iParticle)+star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,
-            //                              star_file_parameters.ReturnPsi(iParticle),
-            //                              star_file_parameters.ReturnTheta(iParticle),
-            //                              star_file_parameters.ReturnPhi(iParticle),
-            //                              iParticle,
-            //                              current_frame_number);
         }
     }
     else {

@@ -134,12 +134,24 @@ constexpr std::array<std::string_view, 17> cufft_error_types = {
 } // namespace gpu
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
+
+namespace tuple_ops {
+enum Enum : int {
+    ADD,
+    SUBTRACT,
+    ADDSQUARE,
+    SET_TO_ZERO,
+    REPLACE_NAN_AND_INF
+};
+}
+
 namespace parameter_names {
 
 constexpr int count = 33;
 
 // Be careful to keep this in sync with the enum below. There is a static_assert that should catch it if you don't in cistem_parameters.h
-enum Enum : int {
+// These are type long to be compatible with existing infrastructure to handle binary cistem starfiles.
+enum Enum : long {
     position_in_stack,
     image_is_active,
     psi,

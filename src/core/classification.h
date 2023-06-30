@@ -1,3 +1,6 @@
+#ifndef _SRC_CORE_CLASSIFICATION_H_
+#define _SRC_CORE_CLASSIFICATION_H_
+
 class ClassificationResult {
 
   public:
@@ -27,6 +30,12 @@ class ClassificationResult {
 WX_DECLARE_OBJARRAY(ClassificationResult, ArrayofClassificationResults);
 
 class Classification {
+
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+  private:
+    using cp_t = cistem::parameter_names::Enum;
+#endif
 
   public:
     Classification( );
@@ -82,3 +91,5 @@ class ShortClassificationInfo {
 };
 
 WX_DECLARE_OBJARRAY(ShortClassificationInfo, ArrayofShortClassificationInfos);
+
+#endif // _SRC_CORE_CLASSIFICATION_H_

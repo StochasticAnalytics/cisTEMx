@@ -1,5 +1,8 @@
 /*  \brief  ReconstructedVolume class */
 
+#ifndef _SRC_CORE_PARTICLE_H_
+#define _SRC_CORE_PARTICLE_H_
+
 class ReconstructedVolume;
 
 /*
@@ -46,6 +49,12 @@ class ParameterMap {
 };
 
 class Particle {
+
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+  private:
+    using cp_t = cistem::parameter_names::Enum;
+#endif
 
   public:
     int             origin_micrograph;
@@ -157,3 +166,5 @@ class Particle {
                  Image* image_to_blur = NULL, Image* diff_image_to_blur = NULL, float max_shift_in_angstroms = FLT_MAX);
     void  EstimateSigmaNoise( );
 };
+
+#endif // _SRC_CORE_PARTICLE_H_

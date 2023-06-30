@@ -622,3 +622,93 @@ double cisTEM_erfcinv(double x);
 bool StripEnclosingSingleQuotesFromString(wxString& string_to_strip); // returns true if it was done, false if first and last characters are not '
 
 void ActivateMKLDebugForNonIntelCPU( ); // will activate MKL debug environment variable if running on an AMD that supports high level features.  This works on my version on intel MKL - it is disabled in the released MKL (although setting it should not break anything)
+
+// To work with Tuples.
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+template <typename T, cistem::tuple_ops::Enum Op>
+void _BinaryTupleOp(T& val, const T& other_val) {
+    static_assert(std::is_same_v<Op, cistem::tuple_ops::ADD> ||
+                          std::is_same_v<Op, cistem::tuple_ops::SUBTRACT> ||
+                          std::is_same_v<Op, cistem::tuple_ops::ADDSQUARE> ||
+                          std::is_same_v<Op, cistem::tuple_ops::REPLACE_NAN_AND_INF>,
+                  "Unknown operation for arithmetic type");
+    static_assert(std::is_arithmetic_v<T>, "BinaryTupleOp only works with arithmetic types");
+
+    if constexpr ( std::is_same_v<Op, cistem::tuple_ops::ADD> ) {
+        val += other_val;
+    }
+    else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::SUBTRACT> ) {
+        val -= other_val;
+    }
+    else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::ADDSQUARE> ) {
+        val += other_val * other_val;
+    }
+    else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::REPLACE_NAN_AND_INF> ) {
+        if constexpr ( std::is_arithmetic_v<decltype(val)> ) {
+            if ( ! std::isfinite(val) ) )
+                val = other_val;
+        }
+        else {
+            MyDebugAssertTrue(false, "cisTEMParameterLine::ReplaceNanAndInfWithOther() - Unknown type for parameter %s\n", cistem::parameter_names::names[counter]);
+        }
+    }
+    else {
+        MyDebugAssertTrue(false, "Unknown operation for arithmetic type")
+    }
+};
+
+template <cistem::tuple_ops::Enum Op, typename TupleT, std::size_t... Is>
+void _For_Tuple_BinaryOp_impl(TupleT& tp, const TupleT& other_tp, std::index_sequence<Is...>) {
+    // Use a fold expression to call the tuple Op on each element of the tuple pair
+    (_BinaryTupleOp<Op>(std::get<Is>(tp), std::get<Is>(other_tp)), ...);
+}
+
+// This is the driver function called by the user, it gets the tuple size which is needed to "loop"
+// over all members at compile time. This method expects two tuples of the same time and applies a binary op
+// which must have a type in cistem_contants.h:cistem::tuple_ops::Enum
+template <cistem::tuple_ops::Enum Op, typename TupleT, std::size_t TupSize = std::tuple_size_v<TupleT>>
+void For_Tuple_BinaryOp(TupleT& tp, const TupleT& other_tp) {
+    _For_Tuple_BinaryOp_impl<Op>(tp, other_tp, std::make_index_sequence<TupSize>{ });
+}
+
+template <typename T, cistem::tuple_ops::Enum Op>
+void _UnaryTupleOp(T& val) {
+    static_assert(std::is_same_v<Op, cistem::tuple_ops::SET_TO_ZERO> >, "Unknown operation for Unary op type");
+
+    if constexpr ( std::is_same_v<Op, cistem::tuple_ops::SET_TO_ZERO> ) {
+        if constexpr ( std::is_integral_v<T> ) {
+            std::get<counter>(values) = 0;
+        }
+        else if constexpr ( std::is_floating_point_v < T )> ) {
+                std::get<counter>(values) = 0.0f;
+            }
+        else if constexpr ( std::is_same_v<T, wxString> || std::is_same_v<T, std::string> ) {
+            std::get<counter>(values) = "";
+        }
+        else {
+            MyDebugAssertTrue(false, "cisTEMParameterLine::SetAllToZero() - Unknown type for parameter %s\n", cistem::parameter_names::names[counter]);
+        }
+    }
+    else {
+        MyDebugAssertTrue(false, "Unknown operation for arithmetic type")
+    }
+};
+
+template <cistem::tuple_ops::Enum Op, typename TupleT, std::size_t... Is>
+void _For_Each_Tuple_UnaryOp_impl(TupleT& tp, std::index_sequence<Is...>) {
+    // Use a fold expression to call the tuple Op on each element of the tuple pair
+    (_UnaryTupleOp<Op>(std::get<Is>(tp)), ...);
+}
+
+// This is the driver function called by the user, it gets the tuple size which is needed to "loop"
+// over all members at compile time. This method expects two tuples of the same time and applies a binary op
+// which must have a type in cistem_contants.h:cistem::tuple_ops::Enum
+template <cistem::tuple_ops::Enum Op, typename TupleT, std::size_t TupSize = std::tuple_size_v<TupleT>>
+void For_Each_Tuple_UnaryOp(TupleT& tp) {
+    _For_Each_Tuple_UnaryOp_impl<Op>(tp, std::make_index_sequence<TupSize>{ });
+}
+
+///////////////////////////////////////
+
+#endif

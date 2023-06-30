@@ -1,3 +1,6 @@
+#ifndef _SRC_CORE_REFINEMENT_H_
+#define _SRC_CORE_REFINEMENT_H_
+
 class RefinementResult {
 
   public:
@@ -84,6 +87,12 @@ WX_DECLARE_OBJARRAY(ClassRefinementResults, ArrayofClassRefinementResults);
 
 class Refinement {
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+  private:
+    using cp_t = cistem::parameter_names::Enum;
+#endif
+
   public:
     Refinement( );
     ~Refinement( );
@@ -156,3 +165,5 @@ class ShortRefinementInfo {
 };
 
 WX_DECLARE_OBJARRAY(ShortRefinementInfo, ArrayofShortRefinementInfos);
+
+#endif // _SRC_CORE_REFINEMENT_H_

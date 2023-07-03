@@ -289,7 +289,7 @@ void cisTEMParameterLine::SwapPsiAndPhi()
 }*/
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
-    For_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADD>(values, line_to_add.values);
+    For_Each_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADD>(values, line_to_add.values);
 }
 #else
 void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
@@ -329,7 +329,7 @@ void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
-    For_Tuple_BinaryOp<cistem::tuple_ops::Enum::SUBTRACT>(values, line_to_add.values);
+    For_Each_Tuple_BinaryOp<cistem::tuple_ops::Enum::SUBTRACT>(values, line_to_add.values);
 }
 #else
 void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
@@ -369,7 +369,7 @@ void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
-    For_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADDSQUARE>(values, line_to_add.values);
+    For_Each_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADDSQUARE>(values, line_to_add.values);
 }
 #else
 void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
@@ -502,11 +502,11 @@ void cisTEMParameterLine::DivideByConstant(const float constant_value) {
 }
 
 void cisTEMParameterLine::Multiply(const cisTEMParameterLine& other_line) {
-    For_Tuple_BinaryOp(cistem::tuple_ops::MULTIPLY, values, other_line.values);
+    For_Each_Tuple_BinaryOp<cistem::tuple_ops::MULTIPLY>(values, other_line.values);
 }
 
 void cisTEMParameterLine::Divide(const cisTEMParameterLine& other_line) {
-    For_Tuple_BinaryOp(cistem::tuple_ops::DIVIDE, values, other_line.values);
+    For_Each_Tuple_BinaryOp<cistem::tuple_ops::DIVIDE>(values, other_line.values);
 }
 #endif
 
@@ -556,7 +556,7 @@ void cisTEMParameterLine::SetAllToZero( ) {
 // NOTE: couldn't we just use ! isfinite() ?
 void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
     // FIXME: swapping the order of the template params would make type deduction easier and then I wouldn't need to use decltype
-    For_Tuple_BinaryOp<cistem::tuple_ops::REPLACE_NAN_AND_INF>(values, other_params.values);
+    For_Each_Tuple_BinaryOp<cistem::tuple_ops::REPLACE_NAN_AND_INF>(values, other_params.values);
 }
 #else
 void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
@@ -1856,69 +1856,69 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
 #ifdef EXPERIMENTAL_CISTEMPARAMS
         if ( parameters_to_write.get<cp_t::position_in_stack>( ) )
             data_line += wxString::Format("%8u ", get<cp_t::position_in_stack>(particle_counter);
-        if ( parameters_to_write.get<cp_t::psi) )
+        if ( parameters_to_write.get<cp_t::psi>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::psi>(particle_counter);
-        if ( parameters_to_write.get<cp_t::theta) )
+        if ( parameters_to_write.get<cp_t::theta>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::theta>(particle_counter);
-        if ( parameters_to_write.get<cp_t::phi) )
+        if ( parameters_to_write.get<cp_t::phi>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::phi>(particle_counter);
-        if ( parameters_to_write.get<cp_t::x_shift) )
+        if ( parameters_to_write.get<cp_t::x_shift>() )
             data_line += wxString::Format("%9.2f ", get<cp_t::x_shift>(particle_counter);
-        if ( parameters_to_write.get<cp_t::y_shift) )
+        if ( parameters_to_write.get<cp_t::y_shift>() )
             data_line += wxString::Format("%9.2f ", get<cp_t::y_shift>(particle_counter);
-        if ( parameters_to_write.get<cp_t::defocus_1) )
+        if ( parameters_to_write.get<cp_t::defocus_1>() )
             data_line += wxString::Format("%8.1f ", get<cp_t::defocus_1>(particle_counter);
-        if ( parameters_to_write.get<cp_t::defocus_2) )
+        if ( parameters_to_write.get<cp_t::defocus_2>() )
             data_line += wxString::Format("%8.1f ", get<cp_t::defocus_2>(particle_counter);
-        if ( parameters_to_write.get<cp_t::defocus_angle) )
+        if ( parameters_to_write.get<cp_t::defocus_angle>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::defocus_angle>(particle_counter);
-        if ( parameters_to_write.get<cp_t::phase_shift) )
+        if ( parameters_to_write.get<cp_t::phase_shift>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::phase_shift>(particle_counter);
-        if ( parameters_to_write.get<cp_t::image_is_active) )
+        if ( parameters_to_write.get<cp_t::image_is_active>() )
             data_line += wxString::Format("%5i ", get<cp_t::image_is_active>(particle_counter);
-        if ( parameters_to_write.get<cp_t::occupancy) )
+        if ( parameters_to_write.get<cp_t::occupancy>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::occupancy>(particle_counter);
-        if ( parameters_to_write.get<cp_t::logp) )
+        if ( parameters_to_write.get<cp_t::logp>() )
             data_line += wxString::Format("%9i ", myroundint(get<cp_t::logp>(particle_counter));
-        if ( parameters_to_write.get<cp_t::sigma) )
+        if ( parameters_to_write.get<cp_t::sigma>() )
             data_line += wxString::Format("%10.4f ", get<cp_t::sigma>(particle_counter);
-        if ( parameters_to_write.get<cp_t::score) )
+        if ( parameters_to_write.get<cp_t::score>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::score>(particle_counter);
-        if ( parameters_to_write.get<cp_t::score_change) )
+        if ( parameters_to_write.get<cp_t::score_change>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::score_change>(particle_counter);
-        if ( parameters_to_write.get<cp_t::pixel_size) )
+        if ( parameters_to_write.get<cp_t::pixel_size>() )
             data_line += wxString::Format("%8.5f ", get<cp_t::pixel_size>(particle_counter);
-        if ( parameters_to_write.get<cp_t::microscope_voltage_kv) )
+        if ( parameters_to_write.get<cp_t::microscope_voltage_kv>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::microscope_voltage_kv>(particle_counter);
-        if ( parameters_to_write.get<cp_t::microscope_spherical_aberration_mm) )
+        if ( parameters_to_write.get<cp_t::microscope_spherical_aberration_mm>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::microscope_spherical_aberration_mm>(particle_counter);
-        if ( parameters_to_write.get<cp_t::amplitude_contrast) )
+        if ( parameters_to_write.get<cp_t::amplitude_contrast>() )
             data_line += wxString::Format("%7.4f ", get<cp_t::amplitude_contrast>(particle_counter);
-        if ( parameters_to_write.get<cp_t::beam_tilt_x) )
+        if ( parameters_to_write.get<cp_t::beam_tilt_x>() )
             data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_x>(particle_counter);
-        if ( parameters_to_write.get<cp_t::beam_tilt_y) )
+        if ( parameters_to_write.get<cp_t::beam_tilt_y>() )
             data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_y>(particle_counter);
-        if ( parameters_to_write.get<cp_t::image_shift_x) )
+        if ( parameters_to_write.get<cp_t::image_shift_x>() )
             data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_x>(particle_counter);
-        if ( parameters_to_write.get<cp_t::image_shift_y) )
+        if ( parameters_to_write.get<cp_t::image_shift_y>() )
             data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_y>(particle_counter);
-        if ( parameters_to_write.get<cp_t::best_2d_class) )
+        if ( parameters_to_write.get<cp_t::best_2d_class>() )
             data_line += wxString::Format("%5i ", get<cp_t::best_2d_class>(particle_counter);
-        if ( parameters_to_write.get<cp_t::beam_tilt_group) )
+        if ( parameters_to_write.get<cp_t::beam_tilt_group>() )
             data_line += wxString::Format("%5i ", get<cp_t::beam_tilt_group>(particle_counter);
-        if ( parameters_to_write.get<cp_t::stack_filename) )
+        if ( parameters_to_write.get<cp_t::stack_filename>() )
             data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::stack_filename>(particle_counter));
-        if ( parameters_to_write.get<cp_t::original_image_filename) )
+        if ( parameters_to_write.get<cp_t::original_image_filename>() )
             data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::original_image_filename>(particle_counter));
-        if ( parameters_to_write.get<cp_t::reference_3d_filename) )
+        if ( parameters_to_write.get<cp_t::reference_3d_filename>() )
             data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::reference_3d_filename>(particle_counter));
-        if ( parameters_to_write.get<cp_t::particle_group) )
+        if ( parameters_to_write.get<cp_t::particle_group>() )
             data_line += wxString::Format("%8u ", get<cp_t::particle_group>(particle_counter);
-        if ( parameters_to_write.get<cp_t::assigned_subset) )
+        if ( parameters_to_write.get<cp_t::assigned_subset>() )
             data_line += wxString::Format("%8i ", get<cp_t::assigned_subset>(particle_counter);
-        if ( parameters_to_write.get<cp_t::pre_exposure) )
+        if ( parameters_to_write.get<cp_t::pre_exposure>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::pre_exposure>(particle_counter);
-        if ( parameters_to_write.get<cp_t::total_exposure) )
+        if ( parameters_to_write.get<cp_t::total_exposure>() )
             data_line += wxString::Format("%7.2f ", get<cp_t::total_exposure>(particle_counter);
 #else
         if ( parameters_to_write.position_in_stack == true )

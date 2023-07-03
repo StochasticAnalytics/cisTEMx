@@ -5,6 +5,7 @@
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 #include "../constants/constants.h"
+#include "tuple_helpers.h"
 #else
 #define POSITION_IN_STACK 1
 #define IMAGE_IS_ACTIVE 2
@@ -133,42 +134,6 @@ class cisTEMParameterLine {
                float // total_exposure
                >
             values;
-
-    // This is a little annoying, but ensures that the order of the tuples is the same as the order of the array of names
-    std::array<std::string_view, cistem::parameter_names::count> names;
-    names[cp_t::position_in_stack]                  = "_cisTEMPositionInStack";
-    names[cp_t::image_is_active]                    = "_cisTEMImageActivity";
-    names[cp_t::psi]                                = "_cisTEMAnglePsi";
-    names[cp_t::theta]                              = "_cisTEMAngleTheta";
-    names[cp_t::phi]                                = "_cisTEMAnglePhi";
-    names[cp_t::x_shift]                            = "_cisTEMXShift";
-    names[cp_t::y_shift]                            = "_cisTEMYShift";
-    names[cp_t::defocus_1]                          = "_cisTEMDefocus1";
-    names[cp_t::defocus_2]                          = "_cisTEMDefocus2";
-    names[cp_t::defocus_angle]                      = "_cisTEMDefocusAngle";
-    names[cp_t::phase_shift]                        = "_cisTEMPhaseShift";
-    names[cp_t::occupancy]                          = "_cisTEMOccupancy";
-    names[cp_t::logp]                               = "_cisTEMLogP";
-    names[cp_t::sigma]                              = "_cisTEMSigma";
-    names[cp_t::score]                              = "_cisTEMScore";
-    names[cp_t::score_change]                       = "_cisTEMScoreChange";
-    names[cp_t::pixel_size]                         = "_cisTEMPixelSize";
-    names[cp_t::microscope_voltage_kv]              = "_cisTEMMicroscopeVoltagekV";
-    names[cp_t::microscope_spherical_aberration_mm] = "_cisTEMMicroscopeCsMM";
-    names[cp_t::amplitude_contrast]                 = "_cisTEMAmplitudeContrast";
-    names[cp_t::beam_tilt_x]                        = "_cisTEMBeamTiltX";
-    names[cp_t::beam_tilt_y]                        = "_cisTEMBeamTiltY";
-    names[cp_t::image_shift_x]                      = "_cisTEMImageShiftX";
-    names[cp_t::image_shift_y]                      = "_cisTEMImageShiftY";
-    names[cp_t::stack_filename]                     = "_cisTEMStackFilename";
-    names[cp_t::original_image_filename]            = "_cisTEMOriginalImageFilename";
-    names[cp_t::reference_3d_filename]              = "_cisTEMReference3DFilename";
-    names[cp_t::best_2d_class]                      = "_cisTEMBest2DClass";
-    names[cp_t::beam_tilt_group]                    = "_cisTEMBeamTiltGroup";
-    names[cp_t::particle_group]                     = "_cisTEMParticleGroup";
-    names[cp_t::assigned_subset]                    = "_cisTEMAssignedSubset";
-    names[cp_t::pre_exposure]                       = "_cisTEMPreExposure";
-    names[cp_t::total_exposure]                     = "_cisTEMTotalExposure";
 
     cisTEMParameterLine( )  = default;
     ~cisTEMParameterLine( ) = default;

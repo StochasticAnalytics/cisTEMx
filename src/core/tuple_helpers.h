@@ -83,7 +83,7 @@ void _For_Tuple_BinaryOp_impl(TupleT& tp, const TupleT& other_tp, std::index_seq
 // over all members at compile time. This method expects two tuples of the same time and applies a binary op
 // which must have a type in cistem_contants.h:cistem::tuple_ops::Enum
 template <cistem::tuple_ops::Enum Op, typename TupleT, std::size_t TupSize = std::tuple_size_v<TupleT>>
-void For_Tuple_BinaryOp(TupleT& tp, const TupleT& other_tp) {
+void For_Each_Tuple_BinaryOp(TupleT& tp, const TupleT& other_tp) {
     _For_Tuple_BinaryOp_impl<Op>(tp, other_tp, std::make_index_sequence<TupSize>{ });
 }
 
@@ -138,4 +138,5 @@ void For_Each_Tuple_UnaryOp(TupleT& tp, const float constant_value = 0.f) {
 
 ///////////////////////////////////////
 
-#endif
+#endif // EXPERIMENTAL_CISTEMPARAMS
+#endif // _SRC_CORE_TUPLE_HELPERS_H_

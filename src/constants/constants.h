@@ -189,7 +189,44 @@ enum Enum : long {
     pre_exposure,
     total_exposure,
     assigned_subset
-}; // namespace paramter_names
+};
+
+// NOTE 1: The order of these names must match the order of the enum above. This is checked in console tests.
+// NOTE 2: the names (all except is_active_image) follow the convention _cisTEM + enum_name_converted (where converted replaces _ with camel case)
+constexpr std::array<std::string_view, count> star_file_parameter_names =
+        {"_cisTEMPositionInStack",
+         "_cisTEMImageActivity",
+         "_cisTEMAnglePsi",
+         "_cisTEMAngleTheta",
+         "_cisTEMAnglePhi",
+         "_cisTEMXShift",
+         "_cisTEMYShift",
+         "_cisTEMDefocus1",
+         "_cisTEMDefocus2",
+         "_cisTEMDefocusAngle",
+         "_cisTEMPhaseShift",
+         "_cisTEMOccupancy",
+         "_cisTEMLogP",
+         "_cisTEMSigma",
+         "_cisTEMScore",
+         "_cisTEMScoreChange",
+         "_cisTEMPixelSize",
+         "_cisTEMMicroscopeVoltagekV",
+         "_cisTEMMicroscopeCsMM",
+         "_cisTEMAmplitudeContrast",
+         "_cisTEMBeamTiltX",
+         "_cisTEMBeamTiltY",
+         "_cisTEMImageShiftX",
+         "_cisTEMImageShiftY",
+         "_cisTEMStackFilename",
+         "_cisTEMOriginalImageFilename",
+         "_cisTEMReference3DFilename",
+         "_cisTEMBest2DClass",
+         "_cisTEMBeamTiltGroup",
+         "_cisTEMParticleGroup",
+         "_cisTEMAssignedSubset",
+         "_cisTEMPreExposure",
+         "_cisTEMTotalExposure"};
 
 } // namespace parameter_names
 #endif

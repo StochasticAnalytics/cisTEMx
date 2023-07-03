@@ -450,12 +450,12 @@ void PDB::Init( ) {
                 else
                     current_frame_number = 1;
             }
-            TransformBaseCoordinates(star_file_parameters.et<cp_t::x_shift>(iParticle),
-                                     star_file_parameters.et<cp_t::y_shift>(iParticle),
-                                     (0.5f * (star_file_parameters.et<cp_t::defocus_1>(iParticle) + star_file_parameters.et<cp_t::defocus_2>(iParticle))) - star_file_parameters.average_defocus,
-                                     -star_file_parameters.et<cp_t::psi>(iParticle),
-                                     -star_file_parameters.et<cp_t::theta>(iParticle),
-                                     -star_file_parameters.et<cp_t::phi>(iParticle),
+            TransformBaseCoordinates(star_file_parameters.get<cp_t::x_shift>(iParticle),
+                                     star_file_parameters.get<cp_t::y_shift>(iParticle),
+                                     (0.5f * (star_file_parameters.get<cp_t::defocus_1>(iParticle) + star_file_parameters.get<cp_t::defocus_2>(iParticle))) - star_file_parameters.average_defocus,
+                                     -star_file_parameters.get<cp_t::psi>(iParticle),
+                                     -star_file_parameters.get<cp_t::theta>(iParticle),
+                                     -star_file_parameters.get<cp_t::phi>(iParticle),
                                      iParticle,
                                      current_frame_number - 1);
         }

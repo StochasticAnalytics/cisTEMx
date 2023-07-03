@@ -628,12 +628,14 @@ void ActivateMKLDebugForNonIntelCPU( ); // will activate MKL debug environment v
 
 template <typename T, cistem::tuple_ops::Enum Op>
 void _BinaryTupleOp(T& val, const T& other_val) {
+    static_assert(std::is_arithmetic_v<T>, "BinaryTupleOp only works with arithmetic types");
     static_assert(std::is_same_v<Op, cistem::tuple_ops::ADD> ||
                           std::is_same_v<Op, cistem::tuple_ops::SUBTRACT> ||
                           std::is_same_v<Op, cistem::tuple_ops::ADDSQUARE> ||
-                          std::is_same_v<Op, cistem::tuple_ops::REPLACE_NAN_AND_INF>,
+                          std::is_same_v<Op, cistem::tuple_ops::REPLACE_NAN_AND_INF> ||
+                          std::is_same_v<Op, cistem::tuple_ops::MULTIPLY> ||
+                          std::is_same_v<Op, cistem::tuple_ops::DIVIDE>,
                   "Unknown operation for arithmetic type");
-    static_assert(std::is_arithmetic_v<T>, "BinaryTupleOp only works with arithmetic types");
 
     if constexpr ( std::is_same_v<Op, cistem::tuple_ops::ADD> ) {
         val += other_val;
@@ -643,6 +645,12 @@ void _BinaryTupleOp(T& val, const T& other_val) {
     }
     else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::ADDSQUARE> ) {
         val += other_val * other_val;
+    }
+    else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::MULTIPLY> ) {
+        val *= other_val;
+    }
+    else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::DIVIDE> ) {
+        val /= other_val;
     }
     else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::REPLACE_NAN_AND_INF> ) {
         if constexpr ( std::is_arithmetic_v<decltype(val)> ) {
@@ -673,22 +681,34 @@ void For_Tuple_BinaryOp(TupleT& tp, const TupleT& other_tp) {
 }
 
 template <typename T, cistem::tuple_ops::Enum Op>
-void _UnaryTupleOp(T& val) {
-    static_assert(std::is_same_v<Op, cistem::tuple_ops::SET_TO_ZERO> >, "Unknown operation for Unary op type");
+void _UnaryTupleOp(T& val, const float constant_value) {
+    static_assert(std::is_arithmetic_v<T>, "UnaryTupleOp only works with arithmetic types");
+    static_assert(std::is_same_v<Op, cistem::tuple_ops::SET_TO_ZERO> ||
+                          std::is_same_v<Op, cistem::tuple_ops::MULTIPLY_BY_CONSTANT> ||
+                          std::is_same_v<Op, cistem::tuple_ops::DIVIDE_BY_CONSTANT>,
+                  "Unknown operation for arithmetic type");
 
     if constexpr ( std::is_same_v<Op, cistem::tuple_ops::SET_TO_ZERO> ) {
         if constexpr ( std::is_integral_v<T> ) {
-            std::get<counter>(values) = 0;
+            val = 0;
         }
-        else if constexpr ( std::is_floating_point_v < T )> ) {
-                std::get<counter>(values) = 0.0f;
-            }
+        else if constexpr ( std::is_floating_point_v<T> ) {
+            val = 0.0f;
+        }
         else if constexpr ( std::is_same_v<T, wxString> || std::is_same_v<T, std::string> ) {
-            std::get<counter>(values) = "";
+            val = "";
         }
         else {
             MyDebugAssertTrue(false, "cisTEMParameterLine::SetAllToZero() - Unknown type for parameter %s\n", cistem::parameter_names::names[counter]);
         }
+    }
+    else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::MULTIPLY_BY_CONSTANT> ) {
+
+        val = static_cast<decltype(val)>(static_cast<float>(val) * constant_value);
+    }
+    else if constexpr ( std::is_same_v<Op, cistem::tuple_ops::DIVIDE_BY_CONSTANT> ) {
+        // Leaving it up to the caller to decide what to do about zero division (probably check and skip before calling this method)
+        val = static_cast<decltype(val)>(static_cast<float>(val) / constant_value);
     }
     else {
         MyDebugAssertTrue(false, "Unknown operation for arithmetic type")
@@ -696,17 +716,17 @@ void _UnaryTupleOp(T& val) {
 };
 
 template <cistem::tuple_ops::Enum Op, typename TupleT, std::size_t... Is>
-void _For_Each_Tuple_UnaryOp_impl(TupleT& tp, std::index_sequence<Is...>) {
+void _For_Each_Tuple_UnaryOp_impl(TupleT& tp, const float constant_value, std::index_sequence<Is...>) {
     // Use a fold expression to call the tuple Op on each element of the tuple pair
-    (_UnaryTupleOp<Op>(std::get<Is>(tp)), ...);
+    (_UnaryTupleOp<Op>(std::get<Is>(tp), constant_value), ...);
 }
 
 // This is the driver function called by the user, it gets the tuple size which is needed to "loop"
 // over all members at compile time. This method expects two tuples of the same time and applies a binary op
 // which must have a type in cistem_contants.h:cistem::tuple_ops::Enum
 template <cistem::tuple_ops::Enum Op, typename TupleT, std::size_t TupSize = std::tuple_size_v<TupleT>>
-void For_Each_Tuple_UnaryOp(TupleT& tp) {
-    _For_Each_Tuple_UnaryOp_impl<Op>(tp, std::make_index_sequence<TupSize>{ });
+void For_Each_Tuple_UnaryOp(TupleT& tp, const float constant_value = 0.f) {
+    _For_Each_Tuple_UnaryOp_impl<Op>(tp, constant_value, std::make_index_sequence<TupSize>{ });
 }
 
 ///////////////////////////////////////

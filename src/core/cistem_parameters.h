@@ -60,6 +60,44 @@ class cisTEMParameterLine {
     using cp_t = cistem::parameter_names::Enum;
 
   public:
+    // TODO: could instead set default values and infer types from that
+    /*
+    auto values = std::make_tuple(
+        (unsigned int)0, // position_in_stack
+        int(0), // image_is_active
+        0.0f, // psi
+        0.0f, // theta
+        0.0f, // phi
+        0.0f, // x_shift
+        0.0f, // y_shift
+        0.0f, // defocus_1
+        0.0f, // defocus_2
+        0.0f, // defocus_angle
+        0.0f, // phase_shift
+        0.0f, // occupancy
+        0.0f, // logp
+        0.0f, // sigma
+        0.0f, // score
+        0.0f, // score_change
+        0.0f, // pixel_size
+        0.0f, // microscope_voltage_kv
+        0.0f, // microscope_spherical_aberration_mm
+        0.0f, // amplitude_contrast
+        0.0f, // beam_tilt_x
+        0.0f, // beam_tilt_y
+        0.0f, // image_shift_x
+        0.0f, // image_shift_y
+        wxEmptyString, // stack_filename
+        wxEmptyString, // original_image_filename
+        wxEmptyString, // reference_3d_filename
+        int(0), // best_2d_class
+        int(0), // beam_tilt_group
+        int(0), // particle_group
+        int(0), // assigned_subset
+        0.0f, // pre_exposure
+        0.0f // total_exposure
+    );
+    */
     std::tuple<unsigned int, // position_in_stack
                int, // image_is_active
                float, // psi
@@ -96,7 +134,42 @@ class cisTEMParameterLine {
                >
             values;
 
-  public:
+    // This is a little annoying, but ensures that the order of the tuples is the same as the order of the array of names
+    std::array<std::string_view, cistem::parameter_names::count> names;
+    names[cp_t::position_in_stack]                  = "_cisTEMPositionInStack";
+    names[cp_t::image_is_active]                    = "_cisTEMImageActivity";
+    names[cp_t::psi]                                = "_cisTEMAnglePsi";
+    names[cp_t::theta]                              = "_cisTEMAngleTheta";
+    names[cp_t::phi]                                = "_cisTEMAnglePhi";
+    names[cp_t::x_shift]                            = "_cisTEMXShift";
+    names[cp_t::y_shift]                            = "_cisTEMYShift";
+    names[cp_t::defocus_1]                          = "_cisTEMDefocus1";
+    names[cp_t::defocus_2]                          = "_cisTEMDefocus2";
+    names[cp_t::defocus_angle]                      = "_cisTEMDefocusAngle";
+    names[cp_t::phase_shift]                        = "_cisTEMPhaseShift";
+    names[cp_t::occupancy]                          = "_cisTEMOccupancy";
+    names[cp_t::logp]                               = "_cisTEMLogP";
+    names[cp_t::sigma]                              = "_cisTEMSigma";
+    names[cp_t::score]                              = "_cisTEMScore";
+    names[cp_t::score_change]                       = "_cisTEMScoreChange";
+    names[cp_t::pixel_size]                         = "_cisTEMPixelSize";
+    names[cp_t::microscope_voltage_kv]              = "_cisTEMMicroscopeVoltagekV";
+    names[cp_t::microscope_spherical_aberration_mm] = "_cisTEMMicroscopeCsMM";
+    names[cp_t::amplitude_contrast]                 = "_cisTEMAmplitudeContrast";
+    names[cp_t::beam_tilt_x]                        = "_cisTEMBeamTiltX";
+    names[cp_t::beam_tilt_y]                        = "_cisTEMBeamTiltY";
+    names[cp_t::image_shift_x]                      = "_cisTEMImageShiftX";
+    names[cp_t::image_shift_y]                      = "_cisTEMImageShiftY";
+    names[cp_t::stack_filename]                     = "_cisTEMStackFilename";
+    names[cp_t::original_image_filename]            = "_cisTEMOriginalImageFilename";
+    names[cp_t::reference_3d_filename]              = "_cisTEMReference3DFilename";
+    names[cp_t::best_2d_class]                      = "_cisTEMBest2DClass";
+    names[cp_t::beam_tilt_group]                    = "_cisTEMBeamTiltGroup";
+    names[cp_t::particle_group]                     = "_cisTEMParticleGroup";
+    names[cp_t::assigned_subset]                    = "_cisTEMAssignedSubset";
+    names[cp_t::pre_exposure]                       = "_cisTEMPreExposure";
+    names[cp_t::total_exposure]                     = "_cisTEMTotalExposure";
+
     cisTEMParameterLine( )  = default;
     ~cisTEMParameterLine( ) = default;
 
@@ -159,7 +232,13 @@ class cisTEMParameterLine {
 
     void SetAllToZero( );
     void SetAllToDefault( );
+#ifdef EXPERIMENTAL_CISTEMPARAMS
     void SetAllToDefault(std::array<int, cistem::parameter_names::count>& column_positions);
+    void MultiplyByConstant(const float constant_value);
+    void DivideByConstant(const float constant_value);
+    void Multiply(const cisTEMParameterLine& line_to_multiply);
+    void Divide(const cisTEMParameterLine& line_to_divide);
+#endif
 
     void ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params);
 };
@@ -178,7 +257,7 @@ class cisTEMParameterMask {
     inline bool get( ) const { return is_active.at[E]; }
 
     template <cp_t E>
-    inline void set(bool wanted_bool) { is_active.at(E) = wanted_bool; }
+    inline void set(const bool wanted_bool) { is_active.at(E) = wanted_bool; }
 
     void SetAllToTrue( );
     void SetAllToFalse( );

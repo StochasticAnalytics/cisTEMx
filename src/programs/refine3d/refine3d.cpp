@@ -7,6 +7,8 @@ class
     void DoInteractiveUserInput( );
 
   private:
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    using cp_t = cistem::parameter_names::Enum;
 };
 
 //float		beam_tilt_x = 0.0f;
@@ -106,15 +108,15 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnThetaAngle( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnThetaAngle( ) - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
         return 1;
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-    if ( isnan(comparison_object->particle->temp_parameters.x_shift( )) || fabsf(comparison_object->particle->temp_parameters.x_shift( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
+    if ( isnan(comparison_object->particle->temp_parameters.get<cp_t::x_shift>( )) || fabsf(comparison_object->particle->temp_parameters.get<cp_t::x_shift>( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
         return 1;
-    if ( isnan(comparison_object->particle->temp_parameters.y_shift( )) || fabsf(comparison_object->particle->temp_parameters.y_shift( ) - comparison_object->initial_y_shift) > comparison_object->y_shift_limit )
+    if ( isnan(comparison_object->particle->temp_parameters.get<cp_t::y_shift>( )) || fabsf(comparison_object->particle->temp_parameters.get<cp_t::y_shift>( ) - comparison_object->initial_y_shift) > comparison_object->y_shift_limit )
         return 1;
-    if ( isnan(comparison_object->particle->temp_parameters.psi( )) || fabsf(comparison_object->particle->temp_parameters.psi( ) - comparison_object->initial_psi_angle) > comparison_object->angle_change_limit )
+    if ( isnan(comparison_object->particle->temp_parameters.get<cp_t::psi>( )) || fabsf(comparison_object->particle->temp_parameters.get<cp_t::psi>( ) - comparison_object->initial_psi_angle) > comparison_object->angle_change_limit )
         return 1;
-    if ( isnan(comparison_object->particle->temp_parameters.phi( )) || fabsf(comparison_object->particle->temp_parameters.phi( ) - comparison_object->initial_phi_angle) > comparison_object->angle_change_limit )
+    if ( isnan(comparison_object->particle->temp_parameters.get<cp_t::phi>( )) || fabsf(comparison_object->particle->temp_parameters.get<cp_t::phi>( ) - comparison_object->initial_phi_angle) > comparison_object->angle_change_limit )
         return 1;
-    if ( isnan(comparison_object->particle->temp_parameters.theta( )) || fabsf(comparison_object->particle->temp_parameters.theta( ) - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
+    if ( isnan(comparison_object->particle->temp_parameters.get<cp_t::theta>( )) || fabsf(comparison_object->particle->temp_parameters.get<cp_t::theta>( ) - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
         return 1;
 #else
     if ( isnan(comparison_object->particle->temp_parameters.x_shift) || fabsf(comparison_object->particle->temp_parameters.x_shift - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
@@ -583,8 +585,8 @@ bool Refine3DApp::DoCalculation( ) {
     parameter_variance = input_star_file.ReturnParameterVariances( );
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-    defocus_lower_limit = 15000.0 * sqrtf(parameter_average.microscope_voltage_kv( ) / 300.0);
-    defocus_upper_limit = 25000.0 * sqrtf(parameter_average.microscope_voltage_kv( ) / 300.0);
+    defocus_lower_limit = 15000.0 * sqrtf(parameter_average.get<cp_t::microscope_voltage_kv>( ) / 300.0);
+    defocus_upper_limit = 25000.0 * sqrtf(parameter_average.get<cp_t::microscope_voltage_kv>( ) / 300.0);
 #else
     defocus_lower_limit = 15000.0 * sqrtf(parameter_average.microscope_voltage_kv / 300.0);
     defocus_upper_limit = 25000.0 * sqrtf(parameter_average.microscope_voltage_kv / 300.0);
@@ -601,20 +603,32 @@ bool Refine3DApp::DoCalculation( ) {
     if ( last_particle > input_stack.ReturnZSize( ) )
         last_particle = input_stack.ReturnZSize( );
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
+        if ( input_star_file.get<cp_t::position_in_stack>(current_line) >= first_particle && input_star_file.get<cp_t::position_in_stack>(current_line) <= last_particle )
+            images_to_process++;
+    }
+#else
     for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
         if ( input_star_file.ReturnPositionInStack(current_line) >= first_particle && input_star_file.ReturnPositionInStack(current_line) <= last_particle )
             images_to_process++;
     }
-
+#endif
     //input_par_file.ReadFile(false, input_stack.ReturnZSize());
     random_particle.SetSeed(int(10000.0 * fabsf(input_star_file.ReturnAverageSigma(true))) % 10000);
     if ( defocus_bias ) {
         float* buffer_array = new float[input_star_file.ReturnNumberofLines( )];
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
+            buffer_array[current_line] = expf(-powf(0.25 * (fabsf(input_star_file.get<cp_t::defocus_1>(current_line)) + fabsf(input_star_file.get<cp_t::defocus_2>(current_line)) - defocus_range_mean2) / defocus_range_std, 2.0));
+        }
+#else
         for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
             buffer_array[current_line] = expf(-powf(0.25 * (fabsf(input_star_file.ReturnDefocus1(current_line)) + fabsf(input_star_file.ReturnDefocus2(current_line)) - defocus_range_mean2) / defocus_range_std, 2.0));
             //			defocus_mean_score += expf(- powf(0.25 * (fabsf(input_par_file.ReadParameter(current_line, 8)) + fabsf(input_par_file.ReadParameter(current_line, 9)) - defocus_range_mean2) / defocus_range_std, 2.0));
             //			wxPrintf("df, score = %i %g %g\n", current_line, input_par_file.ReadParameter(current_line, 8), buffer_array[current_line]);
         }
+#endif
         std::sort(buffer_array, buffer_array + input_star_file.ReturnNumberofLines( ) - 1);
         defocus_mean_score = buffer_array[input_star_file.ReturnNumberofLines( ) / 2];
         //		wxPrintf("median = %g\n", defocus_mean_score);
@@ -858,15 +872,15 @@ bool Refine3DApp::DoCalculation( ) {
     //	final_image.Allocate(input_file.ReturnXSize(), input_file.ReturnYSize(), true);
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-    if ( parameter_variance.phi( ) < 0.001 )
+    if ( parameter_variance.get<cp_t::phi>( ) < 0.001 )
         refine_particle.constraints_used.phi = false;
-    if ( parameter_variance.theta( ) < 0.001 )
+    if ( parameter_variance.get<cp_t::theta>( ) < 0.001 )
         refine_particle.constraints_used.theta = false;
-    if ( parameter_variance.psi( ) < 0.001 )
+    if ( parameter_variance.get<cp_t::psi>( ) < 0.001 )
         refine_particle.constraints_used.psi = false;
-    if ( parameter_variance.x_shift( ) < 0.001 )
+    if ( parameter_variance.get<cp_t::x_shift>( ) < 0.001 )
         refine_particle.constraints_used.x_shift = false;
-    if ( parameter_variance.y_shift( ) < 0.001 )
+    if ( parameter_variance.get<cp_t::y_shift>( ) < 0.001 )
         refine_particle.constraints_used.y_shift = false;
 #else
     if ( parameter_variance.phi < 0.001 )
@@ -918,6 +932,21 @@ bool Refine3DApp::DoCalculation( ) {
                     input_parameters = input_star_file.ReturnLine(current_line);
 
                     current_line++;
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+                    if ( input_parameters.get<cp_t::position_in_stack>( ) >= first_particle && input_parameters.get<cp_t::position_in_stack>( ) <= last_particle ) {
+                        file_read = false;
+                        if ( random_reset_counter == 0 )
+                            temp_float = global_random_number_generator.GetUniformRandom( );
+                        if ( (temp_float >= 1.0 - 2.0f * percentage) || (random_reset_counter != 0) ) {
+                            random_reset_counter++;
+                            if ( random_reset_counter == random_reset_count )
+                                random_reset_counter = 0;
+                            //						wxPrintf("reading %i\n", int(input_parameters[0] + 0.5f));
+                            input_image_local.ReadSlice(&input_stack, input_parameters.get<cp_t::position_in_stack>( ));
+                            file_read = true;
+                        }
+                    }
+#else
                     if ( input_parameters.position_in_stack( ) >= first_particle && input_parameters.position_in_stack( ) <= last_particle ) {
                         file_read = false;
                         if ( random_reset_counter == 0 )
@@ -931,6 +960,7 @@ bool Refine3DApp::DoCalculation( ) {
                             file_read = true;
                         }
                     }
+#endif
                 }
                 if ( input_parameters.position_in_stack( ) < first_particle || input_parameters.position_in_stack( ) > last_particle )
                     continue;

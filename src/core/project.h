@@ -1,6 +1,15 @@
+#ifndef _SRC_CORE_PROJECT_H_
+#define _SRC_CORE_PROJECT_H_
+
 #include "../constants/constants.h"
 
 class Project {
+
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+  private:
+    using cp_t = cistem::parameter_names::Enum;
+#endif
 
   public:
     Database database;
@@ -40,3 +49,5 @@ class Project {
 
     inline bool RecordCurrentWorkflowInDB(cistem::workflow::Enum workflow) { return database.RecordCurrentWorkflowInDB(workflow); }
 };
+
+#endif // _SRC_CORE_PROJECT_H_

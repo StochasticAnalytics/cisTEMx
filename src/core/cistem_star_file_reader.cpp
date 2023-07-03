@@ -743,237 +743,203 @@ bool cisTEMStarFileReader::ReadTextFile(wxString wanted_filename, wxString* erro
             // otherwise it is a label, is it a label we want though?
 #ifdef EXPERIMENTAL_CISTEMPARAMS
         // Note: we could iterate over these if we defined
-        int current_param;
         if ( current_line.StartsWith("_cisTEMPositionInStack ") ) {
-            current_param = cp_t::position_in_stack;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::position_in_stack) != -1 )
                 wxPrintf("Warning :: _cisTEMPositionInStack occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::position_in_stack) = current_column;
+            parameters_that_were_read.set<cp_t::position_in_stack>(true);
         }
         else if ( current_line.StartsWith("_cisTEMAnglePsi ") ) {
-            current_param = cp_t::psi;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::psi) != -1 )
                 wxPrintf("Warning :: _cisTEMAnglePsi occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::psi) = current_column;
+            parameters_that_were_read.set<cp_t::psi>(true);
         }
         else if ( current_line.StartsWith("_cisTEMAngleTheta ") ) {
-            current_param = cp_t::theta;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::theta) != -1 )
                 wxPrintf("Warning :: _cisTEMAngleTheta occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::theta) = current_column;
+            parameters_that_were_read.set<cp_t::theta>(true);
         }
         else if ( current_line.StartsWith("_cisTEMAnglePhi ") ) {
-            current_param = cp_t::phi;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::phi) != -1 )
                 wxPrintf("Warning :: _cisTEMAnglePhi occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::phi) = current_column;
+            parameters_that_were_read.set<cp_t::phi>(true);
         }
         else if ( current_line.StartsWith("_cisTEMXShift ") ) {
-            current_param = cp_t::x_shift;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::x_shift) != -1 )
                 wxPrintf("Warning :: _cisTEMXShift occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::x_shift) = current_column;
+            parameters_that_were_read.set<cp_t::x_shift>(true);
         }
         else if ( current_line.StartsWith("_cisTEMYShift ") ) {
-            current_param = cp_t::y_shift;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::y_shift) != -1 )
                 wxPrintf("Warning :: _cisTEMYShift occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::y_shift) = current_column;
+            parameters_that_were_read.set<cp_t::y_shift>(true);
         }
         else if ( current_line.StartsWith("_cisTEMDefocus1 ") ) {
-            current_param = cp_t::defocus_1;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::defocus_1) != -1 )
                 wxPrintf("Warning :: _cisTEMDefocus1 occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::defocus_1) = current_column;
+            parameters_that_were_read.set<cp_t::defocus_1>(true);
         }
         else if ( current_line.StartsWith("_cisTEMDefocus2 ") ) {
-            current_param = cp_t::defocus_2;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::defocus_2) != -1 )
                 wxPrintf("Warning :: _cisTEMDefocus2 occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::defocus_2) = current_column;
+            parameters_that_were_read.set<cp_t::defocus_2>(true);
         }
         else if ( current_line.StartsWith("_cisTEMDefocusAngle ") ) {
-            current_param = cp_t::defocus_angle;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::defocus_angle) != -1 )
                 wxPrintf("Warning :: _cisTEMDefocusAngle occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::defocus_angle) = current_column;
+            parameters_that_were_read.set<cp_t::defocus_angle>(true);
         }
         else if ( current_line.StartsWith("_cisTEMPhaseShift ") ) {
-            current_param = cp_t::phase_shift;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::phase_shift) != -1 )
                 wxPrintf("Warning :: _cisTEMPhaseShift occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::phase_shift) = current_column;
+            parameters_that_were_read.set<cp_t::phase_shift>(true);
         }
         else if ( current_line.StartsWith("_cisTEMImageActivity ") ) {
-            current_param = cp_t::image_is_active;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::image_is_active) != -1 )
                 wxPrintf("Warning :: _cisTEMImageActivity occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::image_is_active) = current_column;
+            parameters_that_were_read.set<cp_t::image_is_active>(true);
         }
         else if ( current_line.StartsWith("_cisTEMOccupancy ") ) {
-            current_param = cp_t::occupancy;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::occupancy) != -1 )
                 wxPrintf("Warning :: _cisTEMOccupancy occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::occupancy) = current_column;
+            parameters_that_were_read.set<cp_t::occupancy>(true);
         }
         else if ( current_line.StartsWith("_cisTEMLogP ") ) {
-            current_param = cp_t::logp;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::logp) != -1 )
                 wxPrintf("Warning :: _cisTEMLogP occurs more than once. I will take the last occurrence\n");
-            logp_colcolumn_positions.at(current_param) mn   = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::logp) = current_column;
+            parameters_that_were_read.set<cp_t::logp>(true);
         }
         else if ( current_line.StartsWith("_cisTEMSigma ") ) {
-            current_param = cp_t::sigma;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::sigma) != -1 )
                 wxPrintf("Warning :: _cisTEMSigma occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::sigma) = current_column;
+            parameters_that_were_read.set<cp_t::sigma>(true);
         }
         else if ( current_line.StartsWith("_cisTEMScore ") ) {
-            current_param = cp_t::score;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::score) != -1 )
                 wxPrintf("Warning :: _cisTEMScore occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::score) = current_column;
+            parameters_that_were_read.set<cp_t::score>(true);
         }
         else if ( current_line.StartsWith("_cisTEMScoreChange ") ) {
-            current_param = cp_t::score_change;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::score_change) != -1 )
                 wxPrintf("Warning :: _cisTEMScoreChange occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::score_change) = current_column;
+            parameters_that_were_read.set<cp_t::score_change>(true);
         }
         else if ( current_line.StartsWith("_cisTEMPixelSize ") ) {
-            current_param = cp_t::pixel_size;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::pixel_size) != -1 )
                 wxPrintf("Warning :: _cisTEMPixelSize occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::pixel_size) = current_column;
+            parameters_that_were_read.set<cp_t::pixel_size>(true);
         }
         else if ( current_line.StartsWith("_cisTEMMicroscopeVoltagekV ") ) {
-            current_param = cp_t::microscope_voltage_kv;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::microscope_voltage_kv) != -1 )
                 wxPrintf("Warning :: _cisTEMMicroscopeVoltagekV occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::microscope_voltage_kv) = current_column;
+            parameters_that_were_read.set<cp_t::microscope_voltage_kv>(true);
         }
         else if ( current_line.StartsWith("_cisTEMMicroscopeCsMM ") ) {
-            current_param = cp_t::microscope_spherical_aberration_mm;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::microscope_spherical_aberration_mm) != -1 )
                 wxPrintf("Warning :: _cisTEMMicroscopeCsMM occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::microscope_spherical_aberration_mm) = current_column;
+            parameters_that_were_read.set<cp_t::microscope_spherical_aberration_mm>(true);
         }
         else if ( current_line.StartsWith("_cisTEMAmplitudeContrast ") ) {
-            current_param = cp_t::amplitude_contrast;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::amplitude_contrast) != -1 )
                 wxPrintf("Warning :: _cisTEMAmplitudeContrast occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::amplitude_contrast) = current_column;
+            parameters_that_were_read.set<cp_t::amplitude_contrast>(true);
         }
         else if ( current_line.StartsWith("_cisTEMBeamTiltX ") ) {
-            current_param = cp_t::beam_tilt_x;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::beam_tilt_x) != -1 )
                 wxPrintf("Warning :: _cisTEMBeamTiltX occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::beam_tilt_x) = current_column;
+            parameters_that_were_read.set<cp_t::beam_tilt_x>(true);
         }
         else if ( current_line.StartsWith("_cisTEMBeamTiltY ") ) {
-            current_param = cp_t::beam_tilt_y;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::beam_tilt_y) != -1 )
                 wxPrintf("Warning :: _cisTEMBeamTiltY occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::beam_tilt_y) = current_column;
+            parameters_that_were_read.set<cp_t::beam_tilt_y>(true);
         }
         else if ( current_line.StartsWith("_cisTEMImageShiftX ") ) {
-            current_param = cp_t::image_shift_x;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::image_shift_x) != -1 )
                 wxPrintf("Warning :: _cisTEMImageShiftX occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::image_shift_x) = current_column;
+            parameters_that_were_read.set<cp_t::image_shift_x>(true);
         }
         else if ( current_line.StartsWith("_cisTEMImageShiftY ") ) {
-            current_param = cp_t::image_shift_y;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::image_shift_y) != -1 )
                 wxPrintf("Warning :: _cisTEMImageShiftY occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::image_shift_y) = current_column;
+            parameters_that_were_read.set<cp_t::image_shift_y>(true);
         }
         else if ( current_line.StartsWith("_cisTEMBest2DClass ") ) {
-            current_param = cp_t::best_2d_class;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::best_2d_class) != -1 )
                 wxPrintf("Warning :: _cisTEMBest2DClass occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::best_2d_class) = current_column;
+            parameters_that_were_read.set<cp_t::best_2d_class>(true);
         }
         else if ( current_line.StartsWith("_cisTEMBeamTiltGroup ") ) {
-            current_param = cp_t::beam_tilt_group;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::beam_tilt_group) != -1 )
                 wxPrintf("Warning :: _cisTEMBeamTiltGroup occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::beam_tilt_group) = current_column;
+            parameters_that_were_read.set<cp_t::beam_tilt_group>(true);
         }
         else if ( current_line.StartsWith("_cisTEMParticleGroup ") ) {
-            current_param = cp_t::particle_group;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::particle_group) != -1 )
                 wxPrintf("Warning :: _cisTEMParticleGroup occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::particle_group) = current_column;
+            parameters_that_were_read.set<cp_t::particle_group>(true);
         }
         else if ( current_line.StartsWith("_cisTEMAssignedSubset ") ) {
-            current_param = cp_t::assigned_subset;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::assigned_subset) != -1 )
                 wxPrintf("Warning :: _cisTEMAssignedSubset occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::assigned_subset) = current_column;
+            parameters_that_were_read.set<cp_t::assigned_subset>(true);
         }
         else if ( current_line.StartsWith("_cisTEMPreExposure ") ) {
-            current_param = cp_t::pre_exposure;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::pre_exposure) != -1 )
                 wxPrintf("Warning :: _cisTEMPreExposure occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::pre_exposure) = current_column;
+            parameters_that_were_read.set<cp_t::pre_exposure>(true);
         }
         else if ( current_line.StartsWith("_cisTEMTotalExposure ") ) {
-            current_param = cp_t::total_exposure;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::total_exposure) != -1 )
                 wxPrintf("Warning :: _cisTEMTotalExposure occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::total_exposure) = current_column;
+            parameters_that_were_read.set<cp_t::total_exposure>(true);
         }
         else if ( current_line.StartsWith("_cisTEMReference3DFilename ") ) {
-            current_param = cp_t::reference_3d_filename;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::reference_3d_filename) != -1 )
                 wxPrintf("Warning :: _cisTEMReference3DFilename occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::reference_3d_filename) = current_column;
+            parameters_that_were_read.set<cp_t::reference_3d_filename>(true);
         }
         else if ( current_line.StartsWith("_cisTEMOriginalImageFilename ") ) {
-            current_param = cp_t::original_image_filename;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::original_image_filename) != -1 )
                 wxPrintf("Warning :: _cisTEMOriginalImageFilename occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::original_image_filename) = current_column;
+            parameters_that_were_read.set<cp_t::original_image_filename>(true);
         }
         else if ( current_line.StartsWith("_cisTEMStackFilename ") ) {
-            current_param = cp_t::stack_filename;
-            if ( column_positions.at(current_param) != -1 )
+            if ( column_positions.at(cp_t::stack_filename) != -1 )
                 wxPrintf("Warning :: _cisTEMStackFilename occurs more than once. I will take the last occurrence\n");
-            column_positions.at(current_param)              = current_column;
-            parameters_that_were_read.get<current_param>( ) = true;
+            column_positions.at(cp_t::stack_filename) = current_column;
+            parameters_that_were_read.set<cp_t::stack_filename>(true);
         }
 #else
         if ( current_line.StartsWith("_cisTEMPositionInStack ") == true ) {
@@ -1302,6 +1268,31 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
     char column_data_types[number_of_columns]; // in case we don't recognize a column - see cistem_paramters for more details
 
     ResetColumnPositions( );
+    // occupancy
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    temp_parameters.SetAllToDefault(column_positions);
+    bool return_value = For_Each_Tuple_Parse_Column(temp_parameters.values, column_positions, all_tokens, error_string);
+    cached_parameters->Add(temp_parameters);
+    // FIXME I do not capture this behavior in the ne code
+
+    // if ( temp_parameters.image_is_active < 0 && exclude_negative_film_numbers == true )
+    //     return true;
+
+    return return_value;
+#else
+    if ( occupancy_column == -1 )
+        temp_parameters.occupancy = 100.0f;
+    else {
+        if ( all_tokens[occupancy_column].ToDouble(&temp_double) == false ) {
+            MyPrintWithDetails("Error: Converting to a number (%s)\n", all_tokens[occupancy_column]);
+            if ( error_string != NULL )
+                *error_string = wxString::Format("Error: Converting to a number (%s)\n", all_tokens[occupancy_column]);
+            return false;
+        }
+
+        temp_parameters.occupancy = float(temp_double);
+    }
+#endif
 
     for ( current_column = 0; current_column < number_of_columns; current_column++ ) {
         if ( SafelyReadFromBinaryBufferIntoLong(column_order_buffer[current_column]) == false )

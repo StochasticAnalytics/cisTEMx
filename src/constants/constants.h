@@ -140,7 +140,11 @@ enum Enum : int {
     ADD,
     SUBTRACT,
     ADDSQUARE,
+    MULTIPLY,
+    DIVIDE,
     SET_TO_ZERO,
+    MULTIPLY_BY_CONSTANT,
+    DIVIDE_BY_CONSTANT,
     REPLACE_NAN_AND_INF
 };
 }

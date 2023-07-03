@@ -8,6 +8,9 @@ class
     void DoInteractiveUserInput( );
 
   private:
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    using cp_t = cistem::parameter_names::Enum;
+#endif
 };
 
 IMPLEMENT_APP(Project3DApp)
@@ -204,7 +207,24 @@ bool Project3DApp::DoCalculation( ) {
     //	}
 
     // Read whole parameter file to work out average image_sigma_noise and average score
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( project_based_on_star == true ) {
+        average_sigma = input_star_file.ReturnAverageSigma( );
+        average_score = input_star_file.ReturnAverageScore( );
+        if ( first_particle == 0 )
+            first_particle = 1;
+        if ( last_particle == 0 )
+            last_particle = input_star_file.ReturnMaxPositionInStack( );
 
+        for ( current_image = 0; current_image < input_star_file.ReturnNumberofLines( ); current_image++ ) {
+            if ( input_star_file.get<cp_t::position_in_stack>(current_image) >= first_particle && input_star_file.get<cp_t::position_in_stack>(current_image) <= last_particle ) {
+                lines_to_process.Add(current_image);
+            }
+        }
+
+        wxPrintf("\nAverage sigma noise = %f, average score = %f\nNumber of projections to calculate = %li\n\n", average_sigma, average_score, lines_to_process.GetCount( ));
+    }
+#else
     if ( project_based_on_star == true ) {
         average_sigma = input_star_file.ReturnAverageSigma( );
         average_score = input_star_file.ReturnAverageScore( );
@@ -221,7 +241,7 @@ bool Project3DApp::DoCalculation( ) {
 
         wxPrintf("\nAverage sigma noise = %f, average score = %f\nNumber of projections to calculate = %li\n\n", average_sigma, average_score, lines_to_process.GetCount( ));
     }
-
+#endif
     if ( project_based_on_star == true )
         number_of_projections_to_calculate = lines_to_process.GetCount( );
     else
@@ -239,6 +259,47 @@ bool Project3DApp::DoCalculation( ) {
         RandomNumberGenerator local_random_generator(int(fabsf(global_random_number_generator.GetUniformRandom( ) * 50000)), true);
 
 #pragma omp for ordered schedule(static, 1)
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        for ( current_image = 0; current_image < number_of_projections_to_calculate; current_image++ ) {
+
+            if ( project_based_on_star == true ) {
+                input_parameters = input_star_file.ReturnLine(lines_to_process[current_image]);
+                my_parameters.Init(input_parameters.get<cp_t::phi>( ), input_parameters.get<cp_t::theta>( ), input_parameters.get<cp_t::psi>( ),
+                                   input_parameters.get<cp_t::x_shift>( ), input_parameters.get<cp_t::y_shift>( ));
+                my_ctf.Init(input_parameters.get<cp_t::microscope_voltage_kv>( ), input_parameters.get<cp_t::microscope_spherical_aberration_mm>( ), input_parameters.get<cp_t::amplitude_contrast>( ),
+                            input_parameters.get<cp_t::defocus_1>( ), input_parameters.get<cp_t::defocus_2>( ), input_parameters.get<cp_t::defocus_angle>( ),
+                            0.0, 0.0, 0.0, pixel_size, input_parameters.get<cp_t::phase_shift>( ),
+                            -input_parameters.get<cp_t::beam_tilt_x>( ) / 1000.0f, -input_parameters.get<cp_t::beam_tilt_y>( ) / 1000.0f,
+                            -input_parameters.get<cp_t::image_shift_x>( ), -input_parameters.get<cp_t::image_shift_y>( ));
+            }
+            else {
+                my_parameters.Init(global_euler_search.list_of_search_parameters[current_image][0], global_euler_search.list_of_search_parameters[current_image][1], 0.0, 0.0, 0.0f);
+            }
+
+            projection_3d.ExtractSlice(projection_image, my_parameters);
+            projection_image.complex_values[0] = projection_3d.complex_values[0];
+
+            if ( apply_CTF )
+                projection_image.ApplyCTF(my_ctf, false, true);
+            if ( apply_shifts )
+                projection_image.PhaseShift(input_parameters.get<cp_t::x_shift>( ) / pixel_size, input_parameters.get<cp_t::y_shift>( ) / pixel_size);
+
+            projection_image.SwapRealSpaceQuadrants( );
+            projection_image.BackwardFFT( );
+
+            if ( project_based_on_star == true )
+                projection_image.ChangePixelSize(&final_image, input_parameters.get<cp_t::pixel_size>( ) / pixel_size, 0.001f);
+            else
+                final_image.CopyFrom(&projection_image);
+
+            if ( add_noise && wanted_SNR != 0.0 ) {
+                variance = final_image.ReturnVarianceOfRealValues( );
+                final_image.AddGaussianNoise(sqrtf(variance / wanted_SNR), &local_random_generator);
+            }
+
+            if ( apply_mask )
+                final_image.CosineMask(mask_radius / input_parameters.get<cp_t::pixel_size>( ), 6.0);
+#else
         for ( current_image = 0; current_image < number_of_projections_to_calculate; current_image++ ) {
             if ( project_based_on_star == true ) {
                 input_parameters = input_star_file.ReturnLine(lines_to_process[current_image]);
@@ -272,7 +333,7 @@ bool Project3DApp::DoCalculation( ) {
 
             if ( apply_mask )
                 final_image.CosineMask(mask_radius / input_parameters.pixel_size, 6.0);
-
+#endif
 #pragma omp ordered
             final_image.WriteSlice(&output_file, current_image + 1);
 
@@ -283,6 +344,7 @@ bool Project3DApp::DoCalculation( ) {
                 my_progress->Update(image_counter);
         }
     }
+
     // end omp
     delete my_progress;
 

@@ -6,6 +6,9 @@
 #include "wx/socket.h"
 
 #include "../../core/core_headers.h"
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+#include "../../constants/constants.h"
+#endif
 
 // embedded images..
 
@@ -65,9 +68,14 @@ class
     wxString numeric_text_filename;
     wxString temp_directory;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    using cp_t = cistem::parameter_names::Enum;
+#endif
+
   public:
     // We need DoCalculation so we can have a bool return type for automated testing and a noop DoInteractiveUserInput to allow it to run from the console.
-    bool DoCalculation( );
+    bool
+         DoCalculation( );
     void DoInteractiveUserInput( );
 
     bool test_has_passed;
@@ -504,6 +512,44 @@ void MyTestApp::TestStarToBinaryFileConversion( ) {
     cisTEMParameters    test_parameters;
     cisTEMParameterLine temp_line;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( unsigned int counter = 0; counter < 1000; counter++ ) {
+        temp_line.set<cp_t::amplitude_contrast>(global_random_number_generator.GetUniformRandom( ) * 1);
+        temp_line.set<cp_t::assigned_subset>(myroundint(global_random_number_generator.GetUniformRandom( ) * 1) 0);
+        temp_line.set<cp_t::beam_tilt_group>(myroundint(global_random_number_generator.GetUniformRandom( ) * 1) 0);
+        temp_line.set<cp_t::beam_tilt_x>(global_random_number_generator.GetUniformRandom( ) * 10);
+        temp_line.set<cp_t::beam_tilt_y>(global_random_number_generator.GetUniformRandom( ) * 10);
+        temp_line.set<cp_t::best_2d_class>(myroundint(global_random_number_generator.GetUniformRandom( ) * 10) 0);
+        temp_line.set<cp_t::defocus_1>(global_random_number_generator.GetUniformRandom( ) * 30000);
+        temp_line.set<cp_t::defocus_2>(global_random_number_generator.GetUniformRandom( ) * 30000);
+        temp_line.set<cp_t::defocus_angle>(global_random_number_generator.GetUniformRandom( ) * 180);
+        temp_line.set<cp_t::image_is_active>(myroundint(global_random_number_generator.GetUniformRandom( )*) 1);
+        temp_line.set<cp_t::image_shift_x>(global_random_number_generator.GetUniformRandom( ) * 10);
+        temp_line.set<cp_t::image_shift_y>(global_random_number_generator.GetUniformRandom( ) * 10);
+        temp_line.set<cp_t::logp>(global_random_number_generator.GetUniformRandom( ) * 10000);
+        temp_line.set<cp_t::microscope_spherical_aberration_mm>(global_random_number_generator.GetUniformRandom( ) * 2.) 7;
+        temp_line.set<cp_t::microscope_voltage_kv>(global_random_number_generator.GetUniformRandom( ) * 300);
+        temp_line.set<cp_t::occupancy>(global_random_number_generator.GetUniformRandom( ) * 100);
+        temp_line.set<cp_t::original_image_filename>(wxString::Format("This_is_an_original_filename_string_with_a_random_number_:_%)f", global_random_number_generator.GetUniformRandom( ) * 100000));
+        temp_line.set<cp_t::particle_group>(myroundint(global_random_number_generator.GetUniformRandom( ) * 10));
+        temp_line.set<cp_t::phase_shift>(global_random_number_generator.GetUniformRandom( ) * 3.14);
+        temp_line.set<cp_t::phi>(global_random_number_generator.GetUniformRandom( ) * 180);
+        temp_line.set<cp_t::pixel_size>(global_random_number_generator.GetUniformRandom( ) * 2);
+        temp_line.set<cp_t::position_in_stack>(counter + 1);
+        temp_line.set<cp_t::pre_exposure>(global_random_number_generator.GetUniformRandom( ) * 10);
+        temp_line.set<cp_t::psi>(global_random_number_generator.GetUniformRandom( ) * 180);
+        temp_line.set<cp_t::reference_3d_filename>(wxString::Format("This_is_a_reference_3d_filename_string_with_a_random_number_:_%)f", global_random_number_generator.GetUniformRandom( ) * 100000));
+        temp_line.set<cp_t::score>(global_random_number_generator.GetUniformRandom( ) * 100);
+        temp_line.set<cp_t::sigma>(global_random_number_generator.GetUniformRandom( ) * 180);
+        temp_line.set<cp_t::stack_filename>(wxString::Format("This_is_a_stack_filename_string_with_a_random_number_:_%)f", global_random_number_generator.GetUniformRandom( ) * 100000));
+        temp_line.set<cp_t::theta>(global_random_number_generator.GetUniformRandom( ) * 180);
+        temp_line.set<cp_t::total_exposure>(global_random_number_generator.GetUniformRandom( ) * 100);
+        temp_line.set<cp_t::x_shift>(global_random_number_generator.GetUniformRandom( ) * 50);
+        temp_line.set<cp_t::y_shift>(global_random_number_generator.GetUniformRandom( ) * 50);
+
+        test_parameters.all_parameters.Add(temp_line);
+    }
+#else
     for ( unsigned int counter = 0; counter < 1000; counter++ ) {
         temp_line.amplitude_contrast                 = global_random_number_generator.GetUniformRandom( ) * 1;
         temp_line.assigned_subset                    = myroundint(global_random_number_generator.GetUniformRandom( ) * 10);
@@ -540,7 +586,7 @@ void MyTestApp::TestStarToBinaryFileConversion( ) {
 
         test_parameters.all_parameters.Add(temp_line);
     }
-
+#endif
     test_parameters.parameters_to_write.SetAllToTrue( );
 
     temp_directory = wxFileName::GetTempDir( );

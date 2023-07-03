@@ -13,39 +13,39 @@ class cisTEMStarFileReader {
     std::array<int, cistem::parameter_names::count> column_positions;
 #else
 
-    int        position_in_stack_column;
-    int        image_is_active_column;
-    int        psi_column;
-    int        theta_column;
-    int        phi_column;
-    int        x_shift_column;
-    int        y_shift_column;
-    int        defocus_1_column;
-    int        defocus_2_column;
-    int        defocus_angle_column;
-    int        phase_shift_column;
-    int        occupancy_column;
-    int        logp_column;
-    int        sigma_column;
-    int        score_column;
-    int        score_change_column;
-    int        pixel_size_column;
-    int        microscope_voltage_kv_column;
-    int        microscope_spherical_aberration_mm_column;
-    int        amplitude_contrast_column;
-    int        beam_tilt_x_column;
-    int        beam_tilt_y_column;
-    int        image_shift_x_column;
-    int        image_shift_y_column;
-    int        stack_filename_column;
-    int        original_image_filename_column;
-    int        reference_3d_filename_column;
-    int        best_2d_class_column;
-    int        beam_tilt_group_column;
-    int        particle_group_column;
-    int        assigned_subset_column;
-    int        pre_exposure_column;
-    int        total_exposure_column;
+    int         position_in_stack_column;
+    int         image_is_active_column;
+    int         psi_column;
+    int         theta_column;
+    int         phi_column;
+    int         x_shift_column;
+    int         y_shift_column;
+    int         defocus_1_column;
+    int         defocus_2_column;
+    int         defocus_angle_column;
+    int         phase_shift_column;
+    int         occupancy_column;
+    int         logp_column;
+    int         sigma_column;
+    int         score_column;
+    int         score_change_column;
+    int         pixel_size_column;
+    int         microscope_voltage_kv_column;
+    int         microscope_spherical_aberration_mm_column;
+    int         amplitude_contrast_column;
+    int         beam_tilt_x_column;
+    int         beam_tilt_y_column;
+    int         image_shift_x_column;
+    int         image_shift_y_column;
+    int         stack_filename_column;
+    int         original_image_filename_column;
+    int         reference_3d_filename_column;
+    int         best_2d_class_column;
+    int         beam_tilt_group_column;
+    int         particle_group_column;
+    int         assigned_subset_column;
+    int         pre_exposure_column;
+    int         total_exposure_column;
 #endif
     int  current_position_in_stack;
     int  current_column;
@@ -53,6 +53,52 @@ class cisTEMStarFileReader {
 
     // The following "Safely" functions are to read data from the buffer with error checking to make sure there is no segfault
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
+    template <typename T>
+    inline bool SafelyReadFromBinaryBuffer(T& element_to_read_into) {
+
+        if constexpr ( ! std::is_same_v<T, wxString> ) {
+            if ( binary_buffer_position + sizeof(T) - 1 >= binary_file_size ) {
+                MyPrintWithDetails("Error: Binary file is too short");
+                return false;
+            }
+
+            // FIXME: could this be a safer (static?) cast
+            T* temp_ptr          = reinterpret_cast<T*>(&binary_file_read_buffer[binary_buffer_position]);
+            element_to_read_into = *temp_ptr;
+            binary_buffer_position += sizeof(T);
+            return true;
+        }
+        else {
+            int length_of_string;
+            if ( SafelyReadFromBinaryBufferIntoInteger(length_of_string) == false )
+                return false;
+
+            if ( length_of_string < 0 ) {
+                MyPrintWithDetails("Error Reading string, length is %i", length_of_string);
+            }
+
+            if ( binary_buffer_position + length_of_string * sizeof(char) - 1 >= binary_file_size ) {
+                MyPrintWithDetails("Error: Binary file is too short\n");
+                return false;
+            }
+
+            char string_buffer[length_of_string + 1];
+
+            for ( int array_counter = 0; array_counter < length_of_string; array_counter++ ) {
+                string_buffer[array_counter] = binary_file_read_buffer[binary_buffer_position + array_counter];
+            }
+
+            string_buffer[length_of_string] = 0;
+            element_to_read_into            = string_buffer;
+
+            binary_buffer_position += sizeof(char) * length_of_string;
+            return true;
+        }
+    };
+
+#else
     inline bool SafelyReadFromBinaryBufferIntoInteger(int& integer_to_read_into) {
         if ( binary_buffer_position + sizeof(int) - 1 >= binary_file_size ) {
             MyPrintWithDetails("Error: Binary file is too short");
@@ -151,6 +197,7 @@ class cisTEMStarFileReader {
         binary_buffer_position += sizeof(char) * length_of_string;
         return true;
     }
+#endif
 
   public:
     wxString    filename;

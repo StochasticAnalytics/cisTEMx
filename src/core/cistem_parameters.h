@@ -281,8 +281,11 @@ WX_DECLARE_OBJARRAY(cisTEMParameterLine, ArrayOfcisTEMParameterLines);
 
 class cisTEMParameters {
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+
   private:
     using cp_t = cistem::parameter_names::Enum;
+#endif
 
   public:
     wxArrayString               header_comments;

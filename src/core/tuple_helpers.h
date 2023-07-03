@@ -23,7 +23,14 @@ template <typename Tuple, typename Func>
 void for_each(Tuple&& t, Func&& f) {
     constexpr auto n          = std::tuple_size<std::decay_t<Tuple>>::value;
     auto           dispatcher = make_index_dispatcher<n>( );
-    dispatcher([&f, &t](auto idx) { f(std::get<idx>(std::forward<Tuple>(t))); });
+    dispatcher([&f, &t](auto idx) { f(std::get<idx>(std::forward<Tuple>(t)), idx); });
+}
+
+template <typename Tuple, typename Func>
+void for_each(Tuple&& t, Tuple&& t2, Func&& f) {
+    constexpr auto n          = std::tuple_size<std::decay_t<Tuple>>::value;
+    auto           dispatcher = make_index_dispatcher<n>( );
+    dispatcher([&f, &t, &t2](auto idx) { f(std::get<idx>(std::forward<Tuple>(t)), std::get<idx>(std::forward<Tuple>(t2)), idx); });
 }
 
 } // namespace cistem

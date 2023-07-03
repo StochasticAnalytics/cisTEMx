@@ -3,6 +3,7 @@
 // TODO : Switch to new parameter file format (star) properly and remove hacks
 class
         Refine2DApp : public MyApp {
+
   public:
     bool DoCalculation( );
     void DoInteractiveUserInput( );
@@ -287,7 +288,7 @@ bool Refine2DApp::DoCalculation( ) {
     log_range         = 20.0;
     //	image_counter = 0;
     for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
-        if ( input_star_file.ReturnPositionInStack(current_line) >= first_particle && input_star_file.ReturnPositionInStack(current_line) <= last_particle )
+        if ( input_star_file.get < cp_t::position(current_line) >= first_particle && input_star_file.ReturnPositionInStack(current_line) <= last_particle )
             images_to_process++;
     }
     //	for (current_line = 1; current_line <= input_par_file.number_of_lines; current_line++)

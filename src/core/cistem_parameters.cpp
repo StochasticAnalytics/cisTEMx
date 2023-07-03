@@ -289,7 +289,8 @@ void cisTEMParameterLine::SwapPsiAndPhi()
 }*/
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
-    For_Each_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADD>(values, line_to_add.values);
+    cistem::for_each(values, line_to_add.values, [](auto&& val1, auto&& val2, auto&& idx) { val1 += val2; });
+    // For_Each_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADD>(values, line_to_add.values);
 }
 #else
 void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
@@ -1224,11 +1225,25 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     // now write the data..
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
+    auto& temp_ref = parameters_to_write.is_active;
+
     for ( int particle_counter = 0; particle_counter < all_parameters.GetCount( ); particle_counter++ ) {
         if ( get<cp_t::position_in_stack>(particle_counter) < first_image_to_write || get<cp_t::position_in_stack>(particle_counter) > last_image_to_write )
             continue;
 
-        For_Each_Tuple_Write_Param_To_Binary(all_parameters[particle_counter], parameters_to_write.is_active, cisTEM_bin_file);
+        cistem::for_each(all_parameters[particle_counter], [temp_ref, cisTEM_bin_file](auto&& parameter_value, auto&& parameter_name) {
+            if ( temp_ref.at(parameter_name) ) {
+                if constexpr ( std::is_same_v<decltype(parameter_value), wxString> ) {
+                    size_t length_of_string = parameter_value.Length( );
+                    fwrite(&length_of_string, sizeof(size_t), 1, cisTEM_bin_file);
+                    fwrite(parameter_value.ToStdString( ).c_str( ), length_of_string * sizeof(char), 1, cisTEM_bin_file);
+                }
+                else {
+                    fwrite(&parameter_value, sizeof(parameter_value), 1, cisTEM_bin_file);
+                }
+            }
+        });
+        // For_Each_Tuple_Write_Param_To_Binary(all_parameters[particle_counter], parameters_to_write.is_active, cisTEM_bin_file);
     }
 #else
     for ( int particle_counter = 0; particle_counter < all_parameters.GetCount( ); particle_counter++ ) {
@@ -1855,71 +1870,71 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
         if ( parameters_to_write.get<cp_t::position_in_stack>( ) )
-            data_line += wxString::Format("%8u ", get<cp_t::position_in_stack>(particle_counter);
-        if ( parameters_to_write.get<cp_t::psi>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::psi>(particle_counter);
-        if ( parameters_to_write.get<cp_t::theta>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::theta>(particle_counter);
-        if ( parameters_to_write.get<cp_t::phi>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::phi>(particle_counter);
-        if ( parameters_to_write.get<cp_t::x_shift>() )
-            data_line += wxString::Format("%9.2f ", get<cp_t::x_shift>(particle_counter);
-        if ( parameters_to_write.get<cp_t::y_shift>() )
-            data_line += wxString::Format("%9.2f ", get<cp_t::y_shift>(particle_counter);
-        if ( parameters_to_write.get<cp_t::defocus_1>() )
-            data_line += wxString::Format("%8.1f ", get<cp_t::defocus_1>(particle_counter);
-        if ( parameters_to_write.get<cp_t::defocus_2>() )
-            data_line += wxString::Format("%8.1f ", get<cp_t::defocus_2>(particle_counter);
-        if ( parameters_to_write.get<cp_t::defocus_angle>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::defocus_angle>(particle_counter);
-        if ( parameters_to_write.get<cp_t::phase_shift>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::phase_shift>(particle_counter);
-        if ( parameters_to_write.get<cp_t::image_is_active>() )
-            data_line += wxString::Format("%5i ", get<cp_t::image_is_active>(particle_counter);
-        if ( parameters_to_write.get<cp_t::occupancy>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::occupancy>(particle_counter);
-        if ( parameters_to_write.get<cp_t::logp>() )
-            data_line += wxString::Format("%9i ", myroundint(get<cp_t::logp>(particle_counter));
-        if ( parameters_to_write.get<cp_t::sigma>() )
-            data_line += wxString::Format("%10.4f ", get<cp_t::sigma>(particle_counter);
-        if ( parameters_to_write.get<cp_t::score>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::score>(particle_counter);
-        if ( parameters_to_write.get<cp_t::score_change>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::score_change>(particle_counter);
-        if ( parameters_to_write.get<cp_t::pixel_size>() )
-            data_line += wxString::Format("%8.5f ", get<cp_t::pixel_size>(particle_counter);
-        if ( parameters_to_write.get<cp_t::microscope_voltage_kv>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::microscope_voltage_kv>(particle_counter);
-        if ( parameters_to_write.get<cp_t::microscope_spherical_aberration_mm>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::microscope_spherical_aberration_mm>(particle_counter);
-        if ( parameters_to_write.get<cp_t::amplitude_contrast>() )
-            data_line += wxString::Format("%7.4f ", get<cp_t::amplitude_contrast>(particle_counter);
-        if ( parameters_to_write.get<cp_t::beam_tilt_x>() )
-            data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_x>(particle_counter);
-        if ( parameters_to_write.get<cp_t::beam_tilt_y>() )
-            data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_y>(particle_counter);
-        if ( parameters_to_write.get<cp_t::image_shift_x>() )
-            data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_x>(particle_counter);
-        if ( parameters_to_write.get<cp_t::image_shift_y>() )
-            data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_y>(particle_counter);
-        if ( parameters_to_write.get<cp_t::best_2d_class>() )
-            data_line += wxString::Format("%5i ", get<cp_t::best_2d_class>(particle_counter);
-        if ( parameters_to_write.get<cp_t::beam_tilt_group>() )
-            data_line += wxString::Format("%5i ", get<cp_t::beam_tilt_group>(particle_counter);
-        if ( parameters_to_write.get<cp_t::stack_filename>() )
-            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::stack_filename>(particle_counter));
-        if ( parameters_to_write.get<cp_t::original_image_filename>() )
-            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::original_image_filename>(particle_counter));
-        if ( parameters_to_write.get<cp_t::reference_3d_filename>() )
-            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::reference_3d_filename>(particle_counter));
-        if ( parameters_to_write.get<cp_t::particle_group>() )
-            data_line += wxString::Format("%8u ", get<cp_t::particle_group>(particle_counter);
-        if ( parameters_to_write.get<cp_t::assigned_subset>() )
-            data_line += wxString::Format("%8i ", get<cp_t::assigned_subset>(particle_counter);
-        if ( parameters_to_write.get<cp_t::pre_exposure>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::pre_exposure>(particle_counter);
-        if ( parameters_to_write.get<cp_t::total_exposure>() )
-            data_line += wxString::Format("%7.2f ", get<cp_t::total_exposure>(particle_counter);
+            data_line += wxString::Format("%8u ", get<cp_t::position_in_stack>(particle_counter));
+        if ( parameters_to_write.get<cp_t::psi>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::psi>(particle_counter));
+        if ( parameters_to_write.get<cp_t::theta>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::theta>(particle_counter));
+        if ( parameters_to_write.get<cp_t::phi>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::phi>(particle_counter));
+        if ( parameters_to_write.get<cp_t::x_shift>( ) )
+            data_line += wxString::Format("%9.2f ", get<cp_t::x_shift>(particle_counter));
+        if ( parameters_to_write.get<cp_t::y_shift>( ) )
+            data_line += wxString::Format("%9.2f ", get<cp_t::y_shift>(particle_counter));
+        if ( parameters_to_write.get<cp_t::defocus_1>( ) )
+            data_line += wxString::Format("%8.1f ", get<cp_t::defocus_1>(particle_counter));
+        if ( parameters_to_write.get<cp_t::defocus_2>( ) )
+            data_line += wxString::Format("%8.1f ", get<cp_t::defocus_2>(particle_counter));
+        if ( parameters_to_write.get<cp_t::defocus_angle>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::defocus_angle>(particle_counter));
+        if ( parameters_to_write.get<cp_t::phase_shift>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::phase_shift>(particle_counter));
+        if ( parameters_to_write.get<cp_t::image_is_active>( ) )
+            data_line += wxString::Format("%5i ", get<cp_t::image_is_active>(particle_counter));
+        if ( parameters_to_write.get<cp_t::occupancy>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::occupancy>(particle_counter));
+        if ( parameters_to_write.get<cp_t::logp>( ) )
+            data_line += wxString::Format("%9i ", myroundint(get<cp_t::logp>(particle_counter)));
+        if ( parameters_to_write.get<cp_t::sigma>( ) )
+            data_line += wxString::Format("%10.4f ", get<cp_t::sigma>(particle_counter));
+        if ( parameters_to_write.get<cp_t::score>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::score>(particle_counter));
+        if ( parameters_to_write.get<cp_t::score_change>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::score_change>(particle_counter));
+        if ( parameters_to_write.get<cp_t::pixel_size>( ) )
+            data_line += wxString::Format("%8.5f ", get<cp_t::pixel_size>(particle_counter));
+        if ( parameters_to_write.get<cp_t::microscope_voltage_kv>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::microscope_voltage_kv>(particle_counter));
+        if ( parameters_to_write.get<cp_t::microscope_spherical_aberration_mm>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::microscope_spherical_aberration_mm>(particle_counter));
+        if ( parameters_to_write.get<cp_t::amplitude_contrast>( ) )
+            data_line += wxString::Format("%7.4f ", get<cp_t::amplitude_contrast>(particle_counter));
+        if ( parameters_to_write.get<cp_t::beam_tilt_x>( ) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_x>(particle_counter));
+        if ( parameters_to_write.get<cp_t::beam_tilt_y>( ) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::beam_tilt_y>(particle_counter));
+        if ( parameters_to_write.get<cp_t::image_shift_x>( ) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_x>(particle_counter));
+        if ( parameters_to_write.get<cp_t::image_shift_y>( ) )
+            data_line += wxString::Format("%7.3f ", get<cp_t::image_shift_y>(particle_counter));
+        if ( parameters_to_write.get<cp_t::best_2d_class>( ) )
+            data_line += wxString::Format("%5i ", get<cp_t::best_2d_class>(particle_counter));
+        if ( parameters_to_write.get<cp_t::beam_tilt_group>( ) )
+            data_line += wxString::Format("%5i ", get<cp_t::beam_tilt_group>(particle_counter));
+        if ( parameters_to_write.get<cp_t::stack_filename>( ) )
+            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::stack_filename>(particle_counter)));
+        if ( parameters_to_write.get<cp_t::original_image_filename>( ) )
+            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::original_image_filename>(particle_counter)));
+        if ( parameters_to_write.get<cp_t::reference_3d_filename>( ) )
+            data_line += wxString::Format("%50s ", wxString::Format("'%s'", get<cp_t::reference_3d_filename>(particle_counter)));
+        if ( parameters_to_write.get<cp_t::particle_group>( ) )
+            data_line += wxString::Format("%8u ", get<cp_t::particle_group>(particle_counter));
+        if ( parameters_to_write.get<cp_t::assigned_subset>( ) )
+            data_line += wxString::Format("%8i ", get<cp_t::assigned_subset>(particle_counter));
+        if ( parameters_to_write.get<cp_t::pre_exposure>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::pre_exposure>(particle_counter));
+        if ( parameters_to_write.get<cp_t::total_exposure>( ) )
+            data_line += wxString::Format("%7.2f ", get<cp_t::total_exposure>(particle_counter));
 #else
         if ( parameters_to_write.position_in_stack == true )
             data_line += wxString::Format("%8u ", all_parameters[particle_counter].position_in_stack);
@@ -2307,13 +2322,22 @@ float cisTEMParameters::ReturnAverageSigma(bool exclude_negative_film_numbers) {
     double sum           = 0;
     long   number_summed = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        if ( get<cp_t::image_is_active>(counter) >= 0 || ! exclude_negative_film_numbers ) {
+            sum += get<cp_t::sigma>(counter);
+            number_summed++;
+        }
+    }
+
+#else
     for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
         if ( ReturnImageIsActive(counter) >= 0 || ! exclude_negative_film_numbers ) {
             sum += ReturnSigma(counter);
             number_summed++;
         }
     }
-
+#endif
     if ( number_summed > 0 )
         return sum / double(number_summed);
     else
@@ -2324,12 +2348,21 @@ float cisTEMParameters::ReturnAverageOccupancy(bool exclude_negative_film_number
     double sum           = 0;
     long   number_summed = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        if ( get<cp_t::image_is_active>(counter) >= 0 || ! exclude_negative_film_numbers ) {
+            sum += get<cp_t::occupancy>(counter);
+            number_summed++;
+        }
+    }
+#else
     for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
         if ( ReturnImageIsActive(counter) >= 0 || ! exclude_negative_film_numbers ) {
             sum += ReturnOccupancy(counter);
             number_summed++;
         }
     }
+#endif
 
     if ( number_summed > 0 )
         return float(sum / double(number_summed));
@@ -2341,13 +2374,21 @@ float cisTEMParameters::ReturnAverageScore(bool exclude_negative_film_numbers) {
     double sum           = 0;
     long   number_summed = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
+        if ( get<cp_t::image_is_active>(counter) >= 0 || ! exclude_negative_film_numbers ) {
+            sum += get<cp_t::score>(counter);
+            number_summed++;
+        }
+    }
+#else
     for ( long counter = 0; counter < all_parameters.GetCount( ); counter++ ) {
         if ( ReturnImageIsActive(counter) >= 0 || ! exclude_negative_film_numbers ) {
             sum += ReturnScore(counter);
             number_summed++;
         }
     }
-
+#endif
     if ( number_summed > 0 )
         return sum / double(number_summed);
     else
@@ -2359,6 +2400,26 @@ bool cisTEMParameters::ContainsMultipleParticleGroups( ) {
     bool particle_group_to_compare_to_is_set = false; // use to record the first active particle group
     int  particle_group_to_compare_to; // all other groups are compared to this
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    // First, check to see if the particle_group field is even set.
+    if ( parameters_that_were_read.get<cp_t::particle_group>( ) ) {
+        // Scan the particle group if present. if any are different from the first, there are multiple particle groups.
+        for ( int line = 0; line < all_parameters.GetCount( ); line++ ) {
+            if ( get<cp_t::image_is_active>(line) >= 0 ) {
+                if ( particle_group_to_compare_to_is_set ) {
+                    if ( get<cp_t::particle_group>(line) != particle_group_to_compare_to ) {
+                        particle_group_different_from_first = true;
+                        break;
+                    }
+                }
+                else {
+                    particle_group_to_compare_to_is_set = true;
+                    particle_group_to_compare_to        = get<cp_t::particle_group>(line);
+                }
+            }
+        }
+    }
+#else
     // First, check to see if the particle_group field is even set.
     if ( parameters_that_were_read.particle_group ) {
         // Scan the particle group if present. if any are different from the first, there are multiple particle groups.
@@ -2377,6 +2438,7 @@ bool cisTEMParameters::ContainsMultipleParticleGroups( ) {
             }
         }
     }
+#endif
 
     return particle_group_different_from_first;
 }
@@ -2393,6 +2455,18 @@ void cisTEMParameters::RemoveSigmaOutliers(float wanted_standard_deviation, bool
     float  lower_threshold;
     float  temp_float;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            temp_float = get<cp_t::sigma>(line);
+            if ( reciprocal_square && temp_float > 0.0 )
+                temp_float = 1.0 / powf(temp_float, 2);
+            average += temp_float;
+            sum2 += powf(temp_float, 2);
+            sum_i++;
+        }
+    }
+#else
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
             temp_float = ReturnSigma(line);
@@ -2403,6 +2477,7 @@ void cisTEMParameters::RemoveSigmaOutliers(float wanted_standard_deviation, bool
             sum_i++;
         }
     }
+#endif
 
     if ( sum_i > 0 ) {
         average /= sum_i;
@@ -2419,6 +2494,20 @@ void cisTEMParameters::RemoveSigmaOutliers(float wanted_standard_deviation, bool
         sum2    = 0.0;
         sum_i   = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+            if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+                temp_float = get<cp_t::sigma>(line);
+                if ( reciprocal_square && temp_float > 0.0 )
+                    temp_float = 1.0 / powf(temp_float, 2);
+                if ( temp_float <= upper_threshold && temp_float >= lower_threshold ) {
+                    average += temp_float;
+                    sum2 += powf(temp_float, 2);
+                    sum_i++;
+                }
+            }
+        }
+#else
         for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
             if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
                 temp_float = ReturnSigma(line);
@@ -2431,7 +2520,7 @@ void cisTEMParameters::RemoveSigmaOutliers(float wanted_standard_deviation, bool
                 }
             }
         }
-
+#endif
         if ( sum_i > 0 ) {
             average /= sum_i;
             std = sum2 / sum_i - powf(average / sum_i, 2);
@@ -2444,6 +2533,33 @@ void cisTEMParameters::RemoveSigmaOutliers(float wanted_standard_deviation, bool
         lower_threshold = average - wanted_standard_deviation * std;
         //		wxPrintf("1: average, std, upper, lower = %g %g %g %g\n", float(average), std, upper_threshold, lower_threshold);
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+            if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+                temp_float = get<cp_t::sigma>(line);
+
+                if ( reciprocal_square ) {
+                    if ( temp_float > 0.0 )
+                        temp_float = 1.0 / powf(temp_float, 2);
+                    else
+                        temp_float = average;
+                    if ( temp_float > upper_threshold )
+                        temp_float = upper_threshold;
+                    if ( temp_float < lower_threshold )
+                        temp_float = lower_threshold;
+                    temp_float = sqrtf(1.0 / temp_float);
+                }
+                else {
+                    if ( temp_float > upper_threshold )
+                        temp_float = upper_threshold;
+                    if ( temp_float < lower_threshold )
+                        temp_float = lower_threshold;
+                }
+
+                set<cp_t::sigma>(line, temp_float);
+            }
+        }
+#else
         for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
             if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
                 temp_float = ReturnSigma(line);
@@ -2469,6 +2585,7 @@ void cisTEMParameters::RemoveSigmaOutliers(float wanted_standard_deviation, bool
                 all_parameters[line].sigma = temp_float;
             }
         }
+#endif
     }
 }
 
@@ -2485,6 +2602,16 @@ void cisTEMParameters::RemoveScoreOutliers(float wanted_standard_deviation, bool
     float  temp_float;
 
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            temp_float = get<cp_t::score>(line);
+            if ( reciprocal_square && temp_float > 0.0 )
+                temp_float = 1.0 / powf(temp_float, 2);
+            average += temp_float;
+            sum2 += powf(temp_float, 2);
+            sum_i++;
+        }
+#else
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
             temp_float = ReturnScore(line);
             if ( reciprocal_square && temp_float > 0.0 )
@@ -2493,6 +2620,7 @@ void cisTEMParameters::RemoveScoreOutliers(float wanted_standard_deviation, bool
             sum2 += powf(temp_float, 2);
             sum_i++;
         }
+#endif
     }
 
     if ( sum_i > 0 ) {
@@ -2510,6 +2638,20 @@ void cisTEMParameters::RemoveScoreOutliers(float wanted_standard_deviation, bool
         sum2    = 0.0;
         sum_i   = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+            if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+                temp_float = get<cp_t::score>(line);
+                if ( reciprocal_square && temp_float > 0.0 )
+                    temp_float = 1.0 / powf(temp_float, 2);
+                if ( temp_float <= upper_threshold && temp_float >= lower_threshold ) {
+                    average += temp_float;
+                    sum2 += powf(temp_float, 2);
+                    sum_i++;
+                }
+            }
+        }
+#else
         for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
             if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
                 temp_float = ReturnScore(line);
@@ -2522,6 +2664,7 @@ void cisTEMParameters::RemoveScoreOutliers(float wanted_standard_deviation, bool
                 }
             }
         }
+#endif
 
         if ( sum_i > 0 ) {
             average /= sum_i;
@@ -2536,9 +2679,13 @@ void cisTEMParameters::RemoveScoreOutliers(float wanted_standard_deviation, bool
         //		wxPrintf("1: average, std, upper, lower = %g %g %g %g\n", float(average), std, upper_threshold, lower_threshold);
 
         for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+            if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+                temp_float = get<cp_t::score>(line);
+#else
             if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
-                temp_float = ReturnScore(line);
-
+                temp_float                 = ReturnScore(line);
+#endif
                 if ( reciprocal_square ) {
                     if ( temp_float > 0.0 )
                         temp_float = 1.0 / powf(temp_float, 2);
@@ -2556,8 +2703,11 @@ void cisTEMParameters::RemoveScoreOutliers(float wanted_standard_deviation, bool
                     if ( temp_float < lower_threshold )
                         temp_float = lower_threshold;
                 }
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+                set<cp_t::score>(line, temp_float);
+#else
                 all_parameters[line].score = temp_float;
+#endif
             }
         }
     }
@@ -2568,6 +2718,18 @@ void cisTEMParameters::CalculateDefocusDependence(bool exclude_negative_film_num
     double s = 0.0, sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0;
     double delta;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            average_defocus = (get<cp_t::defocus_2>(line) + get<cp_t::defocus_2>(line)) / 2.0;
+            s += get<cp_t::occupancy>(line);
+            sx += average_defocus * get<cp_t::occupancy>(line);
+            sy += get<cp_t::score>(line) * get<cp_t::occupancy>(line);
+            sxx += powf(average_defocus, 2) * get<cp_t::occupancy>(line);
+            sxy += average_defocus * get<cp_t::score>(line) * get<cp_t::occupancy>(line);
+        }
+    }
+#else
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
             average_defocus = (ReturnDefocus1(line) + ReturnDefocus2(line)) / 2.0;
@@ -2578,6 +2740,7 @@ void cisTEMParameters::CalculateDefocusDependence(bool exclude_negative_film_num
             sxy += average_defocus * ReturnScore(line) * ReturnOccupancy(line);
         }
     }
+#endif
     average_defocus = sx / s;
     delta           = s * sxx - powf(sx, 2);
     defocus_coeff_a = (sxx * sy - sx * sxy) / delta;
@@ -2588,7 +2751,16 @@ void cisTEMParameters::CalculateDefocusDependence(bool exclude_negative_film_num
 void cisTEMParameters::AdjustScores(bool exclude_negative_film_numbers) {
     int   line;
     float defocus;
+#ifdef EXPERIMENTAL_CISTEMPARAMS
 
+    for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            defocus = (get<cp_t::defocus_1>(line) + get<cp_t::defocus_2>(line)) / 2.0;
+            if ( defocus != 0.0f )
+                set<cp_t::score>(line, get<cp_t::score>(line) - ReturnScoreAdjustment(defocus)); // added 0 check for defocus sweep
+        }
+    }
+#else
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
             defocus = (ReturnDefocus1(line) + ReturnDefocus2(line)) / 2.0;
@@ -2596,6 +2768,7 @@ void cisTEMParameters::AdjustScores(bool exclude_negative_film_numbers) {
                 all_parameters[line].score -= ReturnScoreAdjustment(defocus); // added 0 check for defocus sweep
         }
     }
+#endif
 }
 
 float cisTEMParameters::ReturnScoreAdjustment(float defocus) {
@@ -2628,13 +2801,22 @@ float cisTEMParameters::ReturnScoreThreshold(float wanted_percentage, bool exclu
     for ( i = 0; i < number_of_bins; i++ ) {
         sum_occ   = 0.0;
         threshold = float(i) * increment + max;
+#ifdef EXPERIMENTAL_CISTEMPARAMS
 
+        for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+            if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+                if ( get<cp_t::score>(line) >= threshold )
+                    sum_occ += get<cp_t::occupancy>(line);
+            }
+        }
+#else
         for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
             if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
                 if ( ReturnScore(line) >= threshold )
                     sum_occ += ReturnOccupancy(line);
             }
         }
+#endif
         percentage = sum_occ / all_parameters.GetCount( ) / average_occ;
 
         //	wxPrintf("sum_occ = %f : threshold = %f\n", sum_occ, threshold);
@@ -2657,6 +2839,15 @@ float cisTEMParameters::ReturnMinScore(bool exclude_negative_film_numbers) {
 
     min = std::numeric_limits<float>::max( );
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            temp_float = get<cp_t::score>(line);
+            if ( min > temp_float )
+                min = temp_float;
+        }
+    }
+#else
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
             temp_float = ReturnScore(line);
@@ -2664,6 +2855,7 @@ float cisTEMParameters::ReturnMinScore(bool exclude_negative_film_numbers) {
                 min = temp_float;
         }
     }
+#endif
 
     return min;
 }
@@ -2674,7 +2866,15 @@ float cisTEMParameters::ReturnMaxScore(bool exclude_negative_film_numbers) {
     float temp_float;
 
     max = std::numeric_limits<float>::min( );
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            temp_float = get<cp_t::score>(line);
+            if ( max < temp_float )
+                max = temp_float;
+        }
+    }
+#else
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
             temp_float = ReturnScore(line);
@@ -2682,7 +2882,7 @@ float cisTEMParameters::ReturnMaxScore(bool exclude_negative_film_numbers) {
                 max = temp_float;
         }
     }
-
+#endif
     return max;
 }
 
@@ -2692,7 +2892,15 @@ int cisTEMParameters::ReturnMinPositionInStack(bool exclude_negative_film_number
     int temp_int;
 
     min = std::numeric_limits<int>::max( );
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            temp_int = get<cp_t::position_in_stack>(line);
+            if ( min > temp_int )
+                min = temp_int;
+        }
+    }
+#else
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
             temp_int = ReturnPositionInStack(line);
@@ -2700,6 +2908,7 @@ int cisTEMParameters::ReturnMinPositionInStack(bool exclude_negative_film_number
                 min = temp_int;
         }
     }
+#endif
 
     return min;
 }
@@ -2710,6 +2919,15 @@ int cisTEMParameters::ReturnMaxPositionInStack(bool exclude_negative_film_number
     int temp_int;
 
     max = std::numeric_limits<int>::min( );
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
+        if ( get<cp_t::image_is_active>(line) >= 0 || ! exclude_negative_film_numbers ) {
+            temp_int = get<cp_t::position_in_stack>(line);
+            if ( max < temp_int )
+                max = temp_int;
+        }
+    }
+#else
 
     for ( line = 0; line < all_parameters.GetCount( ); line++ ) {
         if ( ReturnImageIsActive(line) >= 0 || ! exclude_negative_film_numbers ) {
@@ -2719,16 +2937,26 @@ int cisTEMParameters::ReturnMaxPositionInStack(bool exclude_negative_film_number
         }
     }
 
+#endif
     return max;
 }
 
 static int wxCMPFUNC_CONV SortByReference3DFilenameCompareFunction(cisTEMParameterLine** a, cisTEMParameterLine** b) // function for sorting the classum selections by parent_image_id - this makes cutting them out more efficient
 {
-    // NOTE: this may actually be a GTK_VERSION = 3 need, however, wx > 3.0.5 is assumed to be build on gtk3 not gtk2
+// NOTE: this may actually be a GTK_VERSION = 3 need, however, wx > 3.0.5 is assumed to be build on gtk3 not gtk2
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    using cp_t = cistem::parameter_names::Enum;
+#ifdef WXWIDGETS_3_DEV
+    return wxStringSortAscending((*a)->get<cp_t::reference_3d_filename>( ), (*b)->get<cp_t::reference_3d_filename>( ));
+#else
+    return wxStringSortAscending(&(*a)->get<cp_t::reference_3d_filename>( ), &(*b)->get<cp_t::reference_3d_filename>( ));
+#endif
+#else
 #ifdef WXWIDGETS_3_DEV
     return wxStringSortAscending((*a)->reference_3d_filename, (*b)->reference_3d_filename);
 #else
     return wxStringSortAscending(&(*a)->reference_3d_filename, &(*b)->reference_3d_filename);
+#endif
 #endif
 };
 

@@ -1236,7 +1236,37 @@ bool cisTEMStarFileReader::ReadTextFile(wxString wanted_filename, wxString* erro
     return true;
 }
 
-// FIXME: rename if it works
+// // FIXME: rename if it works
+// #ifdef EXPERIMENTAL_CISTEMPARAMS
+
+// template <class ArrayType>
+// class _read_binary_file_functor {
+
+//     constexpr decltype(cistem::parameter_names::star_file_parameter_names) _star_file_parameter_names = cistem::parameter_names::star_file_parameter_names;
+
+//     cisTEMParameterLine _dummy_params;
+//     long*               _column_order_buffer;
+//     long                _current_column;
+//     ArrayType&          _parameters_that_were_read;
+
+//   public:
+//     // We need a dummy cistemParameterLine to iterate over
+
+//     _read_binary_file_functor(ArrayType& parameters_that_were_read, column_order_buffer, parameters_that_were_read) : _parameters_that_were_read(parameters_that_were_read),
+//                                                                                                                       _column_order_buffer(column_order_buffer),
+//                                                                                                                       _current_column(0){ };
+
+//     template <typename T>
+//     auto operator( )(T&& val) {
+//         if ( column_positions.at(idx) != -1 )
+//             wxPrintf("Warning ::" + cistem::parameter_names::star_file_parameter_names.at(idx) + "occurs more than once. I will take the last occurrence\n");
+//         column_positions.at(idx) = current_column;
+//         parameters_that_were_read.set<idx>(true);
+//         break;
+//     };
+// };
+
+// #endif
 
 bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTEMParameterLines* alternate_cached_parameters_pointer, bool exclude_negative_film_numbers) {
     Open(wanted_filename, alternate_cached_parameters_pointer, true);
@@ -1252,11 +1282,17 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
 
     // get the number of columns and line
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( SafelyReadFromBinaryBuffer(number_of_columns) == false )
+        return false;
+    if ( SafelyReadFromBinaryBuffer(number_of_lines) == false )
+        return false;
+#else
     if ( SafelyReadFromBinaryBufferIntoInteger(number_of_columns) == false )
         return false;
     if ( SafelyReadFromBinaryBufferIntoInteger(number_of_lines) == false )
         return false;
-
+#endif
     if ( number_of_columns < 1 || number_of_lines < 1 ) {
         MyPrintWithDetails("Format Error %i columns and %i lines", number_of_columns, number_of_lines);
     }
@@ -1274,25 +1310,29 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 
+    cisTEMParameterLine _dummy_params;
     for ( current_column = 0; current_column < number_of_columns; current_column++ ) {
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        if ( SafelyReadFromBinaryBuffer(column_order_buffer[current_column]) == false )
+            return false;
+        if ( SafelyReadFromBinaryBuffer(column_data_types[current_column]) == false )
+            return false;
+#else
         if ( SafelyReadFromBinaryBufferIntoLong(column_order_buffer[current_column]) == false )
             return false;
         if ( SafelyReadFromBinaryBufferIntoChar(column_data_types[current_column]) == false )
             return false;
+#endif
 
-        // We need a dummy cistemParameterLine to iterate over
-        cisTEMParameterLine dummy_params;
-        cistem::for_each(dummy_params.values,
-                         // column order buffer, number_of_columns, parameters_that_were_read, column_positions
-                         [&column_order_buffer, current_column, this->parameters_that_were_read, &column_positions]( ) {
-                             constexpr decltype(cistem::parameter_names::star_file_parameter_names) _star_file_parameter_names = cistem::parameter_names::star_file_parameter_names;
-
-                             if ( column_positions.at(idx) != -1 )
-                                 wxPrintf("Warning ::" + cistem::parameter_names::star_file_parameter_names.at(idx) + "occurs more than once. I will take the last occurrence\n");
-                             column_positions.at(idx) = current_column;
-                             parameters_that_were_read.set<idx>(true);
-                             break;
-                         });
+        // MOve this all into a functor
+        if ( column_positions.at(column_order_buffer[current_column]) != -1 )
+            wxPrintf("Warning :: %s occurs more than once. I will take the last occurrence\n", cistem::parameter_names::star_file_parameter_names.at(column_order_buffer[current_column]));
+        column_positions.at(column_order_buffer[current_column]) = current_column;
+        auto& temp_ref                                           = parameters_that_were_read;
+        cistem::for_each(_dummy_params.values, [temp_ref, current_column](auto&& parameter_val, auto&& parameter_name) {
+            if ( current_column == parameter_name )
+                temp_ref.set<parameter_name>(true);
+        });
     }
 #else
     for ( current_column = 0; current_column < number_of_columns; current_column++ ) {
@@ -1568,7 +1608,72 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
  	 */
 
     // extract the data..
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    // FIXME: double check the logic is sound here.
+    cisTEMParameterLine temp_parameters;
 
+    for ( current_line = 0; current_line < number_of_lines; current_line++ ) {
+        temp_parameters.SetAllToZero( );
+        bool column_not_found;
+
+        for ( current_column = 0; current_column < number_of_columns; current_column++ ) {
+
+            auto& temp_column = column_order_buffer[current_column];
+            column_not_found  = true;
+            cistem::for_each(temp_parameters.values, [this, temp_column, &column_not_found](auto&& parameter_val, auto&& parameter_name) {
+                if ( temp_column == parameter_name )
+                    if ( ! SafelyReadFromBinaryBuffer(parameter_val) )
+                        return false;
+                    else
+                        column_not_found = false;
+            });
+            if ( column_not_found ) {
+                if ( current_line == 0 )
+                    wxPrintf("Unknown Column Type in Binary File (%li) - it will be ignored.\n");
+            }
+        }
+
+        if ( column_data_types[current_column] == INTEGER ) {
+            int buffer_int;
+            if ( SafelyReadFromBinaryBuffer(buffer_int) == false )
+                return false;
+        }
+        else if ( column_data_types[current_column] == INTEGER_UNSIGNED ) {
+            unsigned int buffer_int;
+            if ( SafelyReadFromBinaryBuffer(buffer_int) == false )
+                return false;
+        }
+        else if ( column_data_types[current_column] == FLOAT ) {
+            float buffer_float;
+            if ( SafelyReadFromBinaryBuffer(buffer_float) == false )
+                return false;
+        }
+        else if ( column_data_types[current_column] == LONG ) {
+            long buffer_long;
+            if ( SafelyReadFromBinaryBuffer(buffer_long) == false )
+                return false;
+        }
+        else if ( column_data_types[current_column] == DOUBLE ) {
+            double buffer_double;
+            if ( SafelyReadFromBinaryBuffer(buffer_double) == false )
+                return false;
+        }
+        else if ( column_data_types[current_column] == CHAR ) {
+            char buffer_char;
+            if ( SafelyReadFromBinaryBuffer(buffer_char) == false )
+                return false;
+        }
+        else if ( column_data_types[current_column] == VARIABLE_LENGTH ) {
+            wxString buffer_string;
+            if ( SafelyReadFromBinaryBuffer(buffer_string) == false )
+                return false;
+        }
+    }
+
+    if ( temp_parameters.get<cp_t::image_is_active>( ) >= 0 || exclude_negative_film_numbers == false )
+        cached_parameters->Add(temp_parameters);
+
+#else
     cisTEMParameterLine temp_parameters;
 
     for ( current_line = 0; current_line < number_of_lines; current_line++ ) {
@@ -1753,6 +1858,6 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
         if ( temp_parameters.image_is_active >= 0 || exclude_negative_film_numbers == false )
             cached_parameters->Add(temp_parameters);
     }
-
+#endif
     return true;
 }

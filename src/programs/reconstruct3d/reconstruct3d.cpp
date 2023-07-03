@@ -468,7 +468,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
         input_parameters = input_star_file.ReturnLine(current_image);
 
         if ( input_parameters.get<cp_t::position_in_stack>( ) >= first_particle && input_parameters.get<cp_t::position_in_stack>( ) <= last_particle &&
-             input_parameters.get<cp_t::occupancy( )>( ) != 0.0 && input_parameters.get<cp_t::score( )>( ) >= score_threshold && input_parameters.get<cp_t::image_is_active( )>( ) >= 0.0 ) {
+             input_parameters.get<cp_t::occupancy>( ) != 0.0 && input_parameters.get<cp_t::score>( ) >= score_threshold && input_parameters.get<cp_t::image_is_active>( ) >= 0.0 ) {
             images_to_process++;
         }
         if ( input_parameters.get<cp_t::position_in_stack>( ) >= first_particle && input_parameters.get<cp_t::position_in_stack>( ) <= last_particle )
@@ -591,7 +591,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                             random_reset_counter++;
                             if ( random_reset_counter == random_reset_count )
                                 random_reset_counter = 0;
-                            input_image_local.ReadSlice(&input_stack, input_parameters.get < cp_t::position_in_stack( ));
+                            input_image_local.ReadSlice(&input_stack, input_parameters.get<cp_t::position_in_stack>( ));
                             file_read = true;
                         }
                     }
@@ -799,11 +799,19 @@ bool Reconstruct3DApp::DoCalculation( ) {
         current_ctf_image.Allocate(original_box_size, original_box_size, false);
         current_beamtilt_image.Allocate(original_box_size, original_box_size, false);
         input_particle.Allocate(box_size, box_size);
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+        input_particle.SetParameterStatistics(parameter_averages, parameter_variances);
+        input_particle.mask_radius  = outer_mask_radius;
+        input_particle.mask_falloff = mask_falloff;
+        Reconstruct3D my_reconstruction_1_local(box_size, box_size, box_size, pixel_size, parameter_averages.get<cp_t::occupancy>( ), parameter_averages.get<cp_t::score>( ), score_weight_conversion, my_symmetry, correct_ewald_sphere);
+        Reconstruct3D my_reconstruction_2_local(box_size, box_size, box_size, pixel_size, parameter_averages.get<cp_t::occupancy>( ), parameter_averages.get<cp_t::score>( ), score_weight_conversion, my_symmetry, correct_ewald_sphere);
+#else
         input_particle.SetParameterStatistics(parameter_averages, parameter_variances);
         input_particle.mask_radius  = outer_mask_radius;
         input_particle.mask_falloff = mask_falloff;
         Reconstruct3D my_reconstruction_1_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
         Reconstruct3D my_reconstruction_2_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
+#endif
         my_reconstruction_1_local.original_x_dimension = original_box_size;
         my_reconstruction_1_local.original_y_dimension = original_box_size;
         my_reconstruction_1_local.original_z_dimension = original_box_size;
@@ -817,6 +825,490 @@ bool Reconstruct3DApp::DoCalculation( ) {
 
         image_counter = 0;
 
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+#pragma omp for schedule(dynamic, 1)
+        for ( current_image_local = 0; current_image_local < input_star_file.ReturnNumberofLines( ); current_image_local++ ) {
+#pragma omp critical
+            {
+                //input_par_file.ReadLine(input_parameters, current_image);
+                input_parameters = input_star_file.ReturnLine(current_image);
+
+                // swap the sign of the image shifts (I don't know why we need to do this)
+
+                //input_parameters.get<cp_t::image_shift_x = -input_parameters.get<cp_t::image_shift_x;
+                //input_parameters.get<cp_t::image_shift_y = -input_parameters.get<cp_t::image_shift_y;
+
+                current_image++;
+                if ( input_parameters.get<cp_t::position_in_stack>( ) >= first_particle && input_parameters.get<cp_t::position_in_stack>( ) <= last_particle ) {
+                    input_image_local.ReadSlice(&input_stack, input_parameters.get<cp_t::position_in_stack>( ));
+                    input_image_local.ChangePixelSize(&input_image_local, original_pixel_size / input_parameters.get<cp_t::pixel_size>( ), 0.001f);
+                }
+            }
+
+            if ( input_parameters.get<cp_t::position_in_stack>( ) < first_particle || input_parameters.get<cp_t::position_in_stack>( ) > last_particle )
+                continue;
+
+            if ( apply_exposure_filter_during_reconstruction && input_parameters.get<cp_t::beam_tilt_group>( ) == 0 )
+                continue;
+
+            if ( input_parameters.get<cp_t::occupancy>( ) == 0.0f || input_parameters.get<cp_t::score>( ) < score_threshold || input_parameters.get<cp_t::image_is_active>( ) < 0.0 ) {
+                if ( is_running_locally == false ) {
+                    temp_float             = input_parameters.get<cp_t::position_in_stack>( );
+                    JobResult* temp_result = new JobResult;
+                    temp_result->SetResult(1, &temp_float);
+                    AddJobToResultQueue(temp_result);
+                    //wxPrintf("Refine3D : Adding job to job queue..\n");
+                }
+
+                continue;
+            }
+
+            image_counter++;
+            //temp_float = input_parameters[1]; input_parameters[1] = input_parameters[3]; input_parameters[3] = temp_float;
+            //	input_parameters.get<cp_t::SwapPsiAndPhi();
+            input_particle.location_in_stack = input_parameters.get<cp_t::position_in_stack>( );
+            input_particle.pixel_size        = pixel_size;
+            input_particle.is_masked         = false;
+
+            input_particle.InitCTFImage(input_parameters.get<cp_t::microscope_voltage_kv>( ), input_parameters.get<cp_t::microscope_spherical_aberration_mm>( ), std::max(input_parameters.get<cp_t::amplitude_contrast>( ), 0.001f),
+                                        input_parameters.get<cp_t::defocus_1>( ), input_parameters.get<cp_t::defocus_2>( ), input_parameters.get<cp_t::defocus_angle>( ), input_parameters.get<cp_t::phase_shift>( ),
+                                        input_parameters.get<cp_t::beam_tilt_x>( ) / 1000.0f, input_parameters.get<cp_t::beam_tilt_y>( ) / 1000.0f,
+                                        input_parameters.get<cp_t::image_shift_x>( ), input_parameters.get<cp_t::image_shift_y>( ), calculate_complex_ctf);
+            if ( apply_exposure_filter_during_reconstruction ) {
+                ElectronDose my_electron_dose(input_parameters.get<cp_t::microscope_voltage_kv>( ), input_parameters.get<cp_t::pixel_size>( ));
+                float        dose_filter[input_particle.ctf_image->real_memory_allocated / 2];
+
+                ZeroFloatArray(dose_filter, input_particle.ctf_image->real_memory_allocated / 2);
+                my_electron_dose.CalculateDoseFilterAs1DArray(&input_image_local, dose_filter, input_parameters.get<cp_t::pre_exposure>( ), input_parameters.get<cp_t::total_exposure>( ));
+
+                for ( int pixel_counter = 0; pixel_counter < input_particle.ctf_image->real_memory_allocated / 2; pixel_counter++ ) {
+                    input_particle.ctf_image->complex_values[pixel_counter] *= dose_filter[pixel_counter];
+                }
+            }
+            if ( use_input_reconstruction ) {
+                input_particle.alignment_parameters.Init(input_parameters.get<cp_t::phi>( ), input_parameters.get<cp_t::theta>( ), input_parameters.get<cp_t::psi>( ), 0.0, 0.0);
+                if ( padding != 1.0 ) {
+                    input_3d.density_map->ExtractSlice(padded_projection_image, input_particle.alignment_parameters);
+                    padded_projection_image.SwapRealSpaceQuadrants( );
+                    padded_projection_image.BackwardFFT( );
+                    padded_projection_image.ClipInto(&projection_image);
+                    projection_image.ForwardFFT( );
+                    if ( ! crop_images )
+                        projection_image.SwapRealSpaceQuadrants( );
+                }
+                else {
+                    input_3d.density_map->ExtractSlice(projection_image, input_particle.alignment_parameters);
+                    if ( crop_images )
+                        projection_image.SwapRealSpaceQuadrants( );
+                }
+            }
+            else {
+                input_particle.alignment_parameters.Init(input_parameters.get<cp_t::phi>( ), input_parameters.get<cp_t::theta>( ), input_parameters.get<cp_t::psi>( ),
+                                                         input_parameters.get<cp_t::x_shift>( ), input_parameters.get<cp_t::y_shift>( ));
+            }
+
+            //		if (crop_images || binning_factor != 1.0)
+            if ( use_input_reconstruction ) {
+                input_ctf.Init(input_parameters.get<cp_t::microscope_voltage_kv>( ), input_parameters.get<cp_t::microscope_spherical_aberration_mm>( ),
+                               std::max(input_parameters.get<cp_t::amplitude_contrast>( ), 0.001f), input_parameters.get<cp_t::defocus_1>( ), input_parameters.get<cp_t::defocus_2>( ), input_parameters.get<cp_t::defocus_angle>( ),
+                               0.0, 0.0, 0.0, original_pixel_size, input_parameters.get<cp_t::phase_shift>( ),
+                               input_parameters.get<cp_t::beam_tilt_x>( ) / 1000.0f, input_parameters.get<cp_t::beam_tilt_y>( ) / 1000.0f,
+                               input_parameters.get<cp_t::image_shift_x>( ), input_parameters.get<cp_t::image_shift_y>( ));
+
+                if ( input_ctf.IsAlmostEqualTo(&current_ctf, 40.0 / original_pixel_size) == false )
+                // Need to calculate current_ctf_image to be inserted into ctf_reconstruction
+                {
+                    current_ctf = input_ctf;
+                    current_ctf_image.CalculateCTFImage(current_ctf, calculate_complex_ctf);
+                }
+                if ( input_ctf.BeamTiltIsAlmostEqualTo(&current_ctf) == false )
+                // Need to calculate current_beamtilt_image to correct input image for beam tilt
+                {
+                    current_beamtilt_image.CalculateBeamTiltImage(current_ctf);
+                }
+            }
+            // Assume square images
+            if ( crop_images ) {
+                //			temp_image_local.ReadSlice(&input_stack, input_particle.location_in_stack);
+                temp_image_local.CopyFrom(&input_image_local);
+                if ( invert_contrast )
+                    temp_image_local.InvertRealValues( );
+                if ( normalize_particles ) {
+                    temp_image_local.ForwardFFT( );
+                    temp_image_local.ApplyCurveFilter(&noise_power_spectrum_local);
+                    if ( use_input_reconstruction ) {
+                        temp_image_local.PhaseShift(-input_parameters.get<cp_t::x_shift>( ) / original_pixel_size, -input_parameters.get<cp_t::y_shift>( ) / original_pixel_size);
+                        temp_image_local.PhaseFlipPixelWise(current_ctf_image);
+                        temp_image_local.MultiplyPixelWise(current_beamtilt_image);
+                    }
+                    temp_image_local.BackwardFFT( );
+                    // Normalize background variance and average
+                    variance = temp_image_local.ReturnVarianceOfRealValues(temp_image_local.physical_address_of_box_center_x - mask_falloff / original_pixel_size, 0.0, 0.0, 0.0, true);
+                    average  = temp_image_local.ReturnAverageOfRealValues(temp_image_local.physical_address_of_box_center_x - mask_falloff / original_pixel_size, true);
+
+                    if ( variance == 0.0f )
+                        temp_image_local.SetToConstant(0.0f);
+                    else
+                        temp_image_local.AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
+                }
+                else if ( use_input_reconstruction ) {
+                    temp_image_local.ForwardFFT( );
+                    temp_image_local.PhaseShift(-input_parameters.get<cp_t::x_shift>( ) / -original_pixel_size, -input_parameters.get<cp_t::y_shift>( ) / -original_pixel_size);
+                    temp_image_local.PhaseFlipPixelWise(current_ctf_image);
+                    temp_image_local.MultiplyPixelWise(current_beamtilt_image);
+                    if ( binning_factor == 1.0 )
+                        temp_image_local.BackwardFFT( );
+                }
+                if ( binning_factor != 1.0 ) {
+                    if ( use_input_reconstruction ) {
+                        if ( normalize_particles )
+                            temp_image_local.ForwardFFT( );
+                        temp_image_local.ClipInto(&temp2_image_local);
+                        temp2_image_local.BackwardFFT( );
+                        temp2_image_local.ClipInto(input_particle.particle_image);
+                        unmasked_image.CopyFrom(input_particle.particle_image);
+                        input_particle.CosineMask(false, true, 0.0);
+                        input_particle.ForwardFFT( );
+                        unmasked_image.ForwardFFT( );
+                        projection_image.ClipInto(&temp2_image_local);
+                        temp2_image_local.BackwardFFT( );
+                        temp2_image_local.ClipInto(&cropped_projection_image);
+                        cropped_projection_image.ForwardFFT( );
+                        cropped_projection_image.SwapRealSpaceQuadrants( );
+                        cropped_projection_image.MultiplyPixelWiseReal(*input_particle.ctf_image, true);
+                        // Multiply by binning_factor to scale noise variance to 1 in binned image
+                        input_particle.particle_image->MultiplyByConstant(binning_factor);
+                        ssq_X      = input_particle.particle_image->ReturnSumOfSquares( );
+                        temp_float = -std::numeric_limits<float>::max( );
+                        if ( rotational_blurring ) {
+                            input_particle.particle_image->ClipInto(&padded_image);
+                            // Pre-correct for real-space interpolation errors
+                            padded_image.CorrectSinc( );
+                            padded_image.BackwardFFT( );
+                            variance = input_particle.particle_image->ReturnSumOfSquares( );
+                            j        = 0;
+                            for ( i = 0; i < number_of_rotations; i++ ) {
+                                psi = i * psi_step + psi_start;
+                                if ( fabsf(psi) < psi_step / 2.0 )
+                                    rotation_cache[0].CopyFrom(input_particle.particle_image);
+                                else {
+                                    j++;
+                                    rotation_angle.GenerateRotationMatrix2D(psi);
+                                    padded_image.Rotate2DSample(rotation_cache[j], rotation_angle);
+                                    rotation_cache[j].ForwardFFT( );
+                                    // Correct variance for interpolation.
+                                    temp_float = rotation_cache[j].ReturnSumOfSquares( );
+                                    rotation_cache[j].MultiplyByConstant(sqrtf(variance / temp_float));
+                                }
+                            }
+                            input_particle.MLBlur(&cropped_projection_image, ssq_X, cropped_projection_image, rotation_cache, *input_particle.particle_image, 0,
+                                                  number_of_rotations, psi_step, psi_start, smoothing_factor, temp_float, -1, 0.0, cropped_projection_image, false, false, false, &unmasked_image);
+                        }
+                        else {
+                            input_particle.MLBlur(&cropped_projection_image, ssq_X, cropped_projection_image, input_particle.particle_image, *input_particle.particle_image, 0, 1, 0.0, 0.0,
+                                                  smoothing_factor, temp_float, -1, 0.0, cropped_projection_image, false, false, false, &unmasked_image);
+                        }
+                        input_particle.particle_image->object_is_centred_in_box = false;
+                    }
+                    else {
+                        if ( normalize_particles )
+                            temp_image_local.ForwardFFT( );
+                        temp_image_local.ClipInto(&temp2_image_local);
+                        temp2_image_local.BackwardFFT( );
+                        temp2_image_local.ClipInto(input_particle.particle_image);
+                        input_particle.ForwardFFT( );
+                        input_particle.PhaseFlipImage( );
+                        input_particle.BeamTiltMultiplyImage( );
+                    }
+                }
+                else {
+                    if ( use_input_reconstruction ) {
+                        temp_image_local.ClipInto(input_particle.particle_image);
+                        unmasked_image.CopyFrom(input_particle.particle_image);
+                        input_particle.CosineMask(false, true, 0.0);
+                        input_particle.ForwardFFT( );
+                        unmasked_image.ForwardFFT( );
+                        projection_image.BackwardFFT( );
+                        projection_image.ClipInto(&cropped_projection_image);
+                        cropped_projection_image.ForwardFFT( );
+                        cropped_projection_image.SwapRealSpaceQuadrants( );
+                        cropped_projection_image.MultiplyPixelWiseReal(*input_particle.ctf_image, true);
+                        ssq_X      = input_particle.particle_image->ReturnSumOfSquares( );
+                        temp_float = -std::numeric_limits<float>::max( );
+                        if ( rotational_blurring ) {
+                            input_particle.particle_image->ClipInto(&padded_image);
+                            // Pre-correct for real-space interpolation errors
+                            padded_image.CorrectSinc( );
+                            padded_image.BackwardFFT( );
+                            variance = input_particle.particle_image->ReturnSumOfSquares( );
+                            j        = 0;
+                            for ( i = 0; i < number_of_rotations; i++ ) {
+                                psi = i * psi_step + psi_start;
+                                if ( fabsf(psi) < psi_step / 2.0 )
+                                    rotation_cache[0].CopyFrom(input_particle.particle_image);
+                                else {
+                                    j++;
+                                    rotation_angle.GenerateRotationMatrix2D(psi);
+                                    padded_image.Rotate2DSample(rotation_cache[j], rotation_angle);
+                                    rotation_cache[j].ForwardFFT( );
+                                    // Correct variance for interpolation.
+                                    temp_float = rotation_cache[j].ReturnSumOfSquares( );
+                                    rotation_cache[j].MultiplyByConstant(sqrtf(variance / temp_float));
+                                }
+                            }
+                            input_particle.MLBlur(&cropped_projection_image, ssq_X, cropped_projection_image, rotation_cache, *input_particle.particle_image, 0,
+                                                  number_of_rotations, psi_step, psi_start, smoothing_factor, temp_float, -1, 0.0, cropped_projection_image, false, false, false, &unmasked_image);
+                        }
+                        else {
+                            input_particle.MLBlur(&cropped_projection_image, ssq_X, cropped_projection_image, input_particle.particle_image, *input_particle.particle_image, 0, 1, 0.0, 0.0,
+                                                  smoothing_factor, temp_float, -1, 0.0, cropped_projection_image, false, false, false, &unmasked_image);
+                        }
+                        input_particle.particle_image->object_is_centred_in_box = false;
+                    }
+                    else {
+                        temp_image_local.ClipInto(input_particle.particle_image);
+                        input_particle.ForwardFFT( );
+                        input_particle.PhaseFlipImage( );
+                        input_particle.BeamTiltMultiplyImage( );
+                    }
+                }
+            }
+            else // no cropping
+            {
+                if ( binning_factor != 1.0 ) {
+                    //				temp_image_local.ReadSlice(&input_stack, input_particle.location_in_stack);
+                    temp_image_local.CopyFrom(&input_image_local);
+                    if ( invert_contrast )
+                        temp_image_local.InvertRealValues( );
+                    if ( normalize_particles ) {
+                        temp_image_local.ForwardFFT( );
+                        temp_image_local.ApplyCurveFilter(&noise_power_spectrum_local);
+                        if ( use_input_reconstruction ) {
+                            temp_image_local.PhaseShift(-input_parameters.get<cp_t::x_shift>( ) / original_pixel_size, -input_parameters.get<cp_t::y_shift>( ) / original_pixel_size);
+                            temp_image_local.PhaseFlipPixelWise(current_ctf_image);
+                            temp_image_local.MultiplyPixelWise(current_beamtilt_image);
+                        }
+                        temp_image_local.BackwardFFT( );
+                        // Normalize background variance and average
+                        variance = temp_image_local.ReturnVarianceOfRealValues(temp_image_local.physical_address_of_box_center_x - mask_falloff / original_pixel_size, 0.0, 0.0, 0.0, true);
+                        average  = temp_image_local.ReturnAverageOfRealValues(temp_image_local.physical_address_of_box_center_x - mask_falloff / original_pixel_size, true);
+
+                        if ( variance == 0.0f )
+                            temp_image_local.SetToConstant(0.0f);
+                        else
+                            temp_image_local.AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
+                    }
+                    else if ( use_input_reconstruction ) {
+                        temp_image_local.ForwardFFT( );
+                        temp_image_local.PhaseShift(-input_parameters.get<cp_t::x_shift>( ) / -original_pixel_size, -input_parameters.get<cp_t::y_shift>( ) / -original_pixel_size);
+                        temp_image_local.PhaseFlipPixelWise(current_ctf_image);
+                        temp_image_local.MultiplyPixelWise(current_beamtilt_image);
+                        temp_image_local.BackwardFFT( );
+                    }
+                    if ( use_input_reconstruction ) {
+                        temp3_image_local.CopyFrom(&temp_image_local);
+                        temp_image_local.CosineMask(outer_mask_radius / original_pixel_size, mask_falloff / original_pixel_size, false, true, 0.0);
+                        temp_image_local.ForwardFFT( );
+                        temp3_image_local.ForwardFFT( );
+                        temp_image_local.ClipInto(input_particle.particle_image);
+                        temp3_image_local.ClipInto(&unmasked_image);
+                        projection_image.ClipInto(&cropped_projection_image);
+                        cropped_projection_image.MultiplyPixelWiseReal(*input_particle.ctf_image, true);
+                        // Multiply by binning_factor to scale noise variance to 1 in binned image
+                        input_particle.particle_image->MultiplyByConstant(binning_factor);
+                        ssq_X      = input_particle.particle_image->ReturnSumOfSquares( );
+                        temp_float = -std::numeric_limits<float>::max( );
+                        if ( rotational_blurring ) {
+                            input_particle.particle_image->ClipInto(&padded_image);
+                            // Pre-correct for real-space interpolation errors
+                            padded_image.CorrectSinc( );
+                            padded_image.BackwardFFT( );
+                            variance = input_particle.particle_image->ReturnSumOfSquares( );
+                            j        = 0;
+                            for ( i = 0; i < number_of_rotations; i++ ) {
+                                psi = i * psi_step + psi_start;
+                                if ( fabsf(psi) < psi_step / 2.0 )
+                                    rotation_cache[0].CopyFrom(input_particle.particle_image);
+                                else {
+                                    j++;
+                                    rotation_angle.GenerateRotationMatrix2D(psi);
+                                    padded_image.Rotate2DSample(rotation_cache[j], rotation_angle);
+                                    rotation_cache[j].ForwardFFT( );
+                                    // Correct variance for interpolation.
+                                    temp_float = rotation_cache[j].ReturnSumOfSquares( );
+                                    rotation_cache[j].MultiplyByConstant(sqrtf(variance / temp_float));
+                                }
+                            }
+                            input_particle.MLBlur(&cropped_projection_image, ssq_X, cropped_projection_image, rotation_cache, *input_particle.particle_image, 0,
+                                                  number_of_rotations, psi_step, psi_start, smoothing_factor, temp_float, -1, 0.0, cropped_projection_image, false, false, false, &unmasked_image);
+                        }
+                        else {
+                            input_particle.MLBlur(&cropped_projection_image, ssq_X, cropped_projection_image, input_particle.particle_image, *input_particle.particle_image, 0, 1, 0.0, 0.0,
+                                                  smoothing_factor, temp_float, -1, 0.0, cropped_projection_image, false, false, false, &unmasked_image);
+                        }
+                        input_particle.particle_image->object_is_centred_in_box = false;
+                    }
+                    else {
+                        temp_image_local.ForwardFFT( );
+                        temp_image_local.ClipInto(input_particle.particle_image);
+                        input_particle.PhaseFlipImage( );
+                        input_particle.BeamTiltMultiplyImage( );
+                    }
+                }
+                else {
+                    //				input_particle.particle_image->ReadSlice(&input_stack, input_particle.location_in_stack);
+                    input_particle.particle_image->CopyFrom(&input_image_local);
+                    if ( invert_contrast )
+                        input_particle.particle_image->InvertRealValues( );
+                    if ( normalize_particles ) {
+                        input_particle.ForwardFFT( );
+                        input_particle.particle_image->ApplyCurveFilter(&noise_power_spectrum_local);
+
+                        if ( use_input_reconstruction ) {
+                            input_particle.particle_image->PhaseShift(-input_parameters.get<cp_t::x_shift>( ) / original_pixel_size, -input_parameters.get<cp_t::y_shift>( ) / original_pixel_size);
+                            input_particle.PhaseFlipImage( );
+                            input_particle.BeamTiltMultiplyImage( );
+                        }
+                        input_particle.BackwardFFT( );
+                        // Normalize background variance and average
+                        variance = input_particle.particle_image->ReturnVarianceOfRealValues(input_particle.particle_image->physical_address_of_box_center_x - mask_falloff / original_pixel_size, 0.0, 0.0, 0.0, true);
+                        average  = input_particle.particle_image->ReturnAverageOfRealValues(input_particle.particle_image->physical_address_of_box_center_x - mask_falloff / original_pixel_size, true);
+
+                        if ( variance == 0.0f )
+                            input_particle.particle_image->SetToConstant(0.0f);
+                        else
+                            input_particle.particle_image->AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
+                    }
+                    else if ( use_input_reconstruction ) {
+                        input_particle.ForwardFFT( );
+                        input_particle.particle_image->PhaseShift(-input_parameters.get<cp_t::x_shift>( ) / original_pixel_size, -input_parameters.get<cp_t::y_shift>( ) / original_pixel_size);
+                        input_particle.PhaseFlipImage( );
+                        input_particle.BeamTiltMultiplyImage( );
+                        input_particle.BackwardFFT( );
+                    }
+                    if ( use_input_reconstruction ) {
+                        unmasked_image.CopyFrom(input_particle.particle_image);
+                        input_particle.CosineMask(false, true, 0.0);
+                        input_particle.ForwardFFT( );
+                        unmasked_image.ForwardFFT( );
+                        projection_image.MultiplyPixelWiseReal(*input_particle.ctf_image, true);
+                        ssq_X      = input_particle.particle_image->ReturnSumOfSquares( );
+                        temp_float = -std::numeric_limits<float>::max( );
+                        if ( rotational_blurring ) {
+                            input_particle.particle_image->ClipInto(&padded_image);
+                            // Pre-correct for real-space interpolation errors
+                            padded_image.CorrectSinc( );
+                            padded_image.BackwardFFT( );
+                            variance = input_particle.particle_image->ReturnSumOfSquares( );
+                            j        = 0;
+                            for ( i = 0; i < number_of_rotations; i++ ) {
+                                psi = i * psi_step + psi_start;
+                                if ( fabsf(psi) < psi_step / 2.0 )
+                                    rotation_cache[0].CopyFrom(input_particle.particle_image);
+                                else {
+                                    j++;
+                                    rotation_angle.GenerateRotationMatrix2D(psi);
+                                    padded_image.Rotate2DSample(rotation_cache[j], rotation_angle);
+                                    rotation_cache[j].ForwardFFT( );
+                                    // Correct variance for interpolation.
+                                    temp_float = rotation_cache[j].ReturnSumOfSquares( );
+                                    rotation_cache[j].MultiplyByConstant(sqrtf(variance / temp_float));
+                                }
+                            }
+                            input_particle.MLBlur(&projection_image, ssq_X, projection_image, rotation_cache, *input_particle.particle_image, 0,
+                                                  number_of_rotations, psi_step, psi_start, smoothing_factor, temp_float, -1, 0.0, projection_image, false, false, false, &unmasked_image);
+                        }
+                        else {
+                            input_particle.MLBlur(&projection_image, ssq_X, projection_image, input_particle.particle_image, *input_particle.particle_image, 0,
+                                                  1, 0.0, 0.0, smoothing_factor, temp_float, -1, 0.0, projection_image, false, false, false, &unmasked_image);
+                        }
+                        input_particle.particle_image->object_is_centred_in_box = false;
+                    }
+                    else {
+                        input_particle.ForwardFFT( );
+                        input_particle.PhaseFlipImage( );
+                        input_particle.BeamTiltMultiplyImage( );
+                    }
+                }
+            }
+            if ( ! use_input_reconstruction )
+                input_particle.particle_image->SwapRealSpaceQuadrants( );
+
+            input_particle.particle_score     = input_parameters.get<cp_t::score>( );
+            input_particle.particle_occupancy = input_parameters.get<cp_t::occupancy>( );
+            input_particle.sigma_noise        = input_parameters.get<cp_t::sigma>( );
+            if ( input_particle.sigma_noise <= 0.0 )
+                input_particle.sigma_noise = parameter_averages.get<cp_t::sigma>( );
+
+            /*
+		 * Assign each particle to one of the two half-maps for later FSC
+		 */
+            if ( apply_exposure_filter_during_reconstruction ) // TODO - remove this branch - this was a hack for going from emClarity to cisTEM before particle_group and assigned_subset were available
+            {
+                if ( input_parameters.get<cp_t::beam_tilt_group>( ) == 1 )
+                    input_particle.insert_even = false;
+                else if ( input_parameters.get<cp_t::beam_tilt_group>( ) == 2 )
+                    input_particle.insert_even = true;
+                else {
+                    wxPrintf("\nReconstruct subtomogram average is temporarily using the beam_tilt_group to specify odd/even (1/2) or ignore (0), found %d\n", input_parameters.get<cp_t::beam_tilt_group>( ));
+                    exit(-1);
+                }
+            }
+            else {
+                if ( input_parameters.get<cp_t::assigned_subset>( ) < 1 ) {
+                    // This particle has not yet been assigned to a subset. Let's do so now
+                    if ( current_image_local == 0 )
+                        SendInfo("Warning: No assigned subset for FSC. This should not happen. Will use even/odd assignment.");
+                    if ( input_parameters.get<cp_t::position_in_stack>( ) % fsc_particle_repeat < fsc_particle_repeat / 2 ) {
+                        input_parameters.set<cp_t::assigned_subset>(2);
+                    }
+                    else {
+                        input_parameters.set<cp_t::assigned_subset>(1);
+                    }
+                }
+                if ( input_parameters.get<cp_t::assigned_subset>( ) == 2 ) {
+                    input_particle.insert_even = true;
+                }
+                else {
+                    input_particle.insert_even = false;
+                }
+            }
+
+            //		input_particle.particle_image->BackwardFFT();
+            //		input_particle.particle_image->AddGaussianNoise(input_particle.particle_image->ReturnSumOfSquares());
+            //		input_particle.particle_image->AddGaussianNoise(100.0 * FLT_MIN);
+            //		input_particle.particle_image->ForwardFFT();
+            //		input_particle.particle_image->QuickAndDirtyWriteSlice("blurred.mrc", image_counter);
+
+            /*
+		 * Insert the particle image into one of the two half maps
+		 */
+            if ( input_particle.insert_even ) {
+                my_reconstruction_2_local.InsertSliceWithCTF(input_particle, symmetry_weight);
+            }
+            else {
+                //			for (i = 0; i < input_particle.particle_image->real_memory_allocated / 2; i++) input_particle.particle_image->complex_values[i] = 1.0f + I * 0.0f;
+                //			for (i = 0; i < input_particle.ctf_image->real_memory_allocated / 2; i++) input_particle.ctf_image->complex_values[i] = 1.0f + I * 0.0f;
+                //			wxPrintf("2D central pixel = %g\n", std::abs(input_particle.particle_image->complex_values[0]));
+                //			wxPrintf("2D central CTF   = %g\n", std::abs(input_particle.ctf_image->complex_values[0]));
+                my_reconstruction_1_local.InsertSliceWithCTF(input_particle, symmetry_weight);
+                //			wxPrintf("3D central pixel = %g ratio = %g\n", std::abs(my_reconstruction_1.image_reconstruction.complex_values[0]), std::abs(my_reconstruction_1.image_reconstruction.complex_values[0])/std::abs(input_particle.particle_image->complex_values[0]));
+                //			wxPrintf("3D central CTF   = %g\n", std::abs(my_reconstruction_1.ctf_reconstruction[0]));
+            }
+
+            if ( is_running_locally == false ) {
+                temp_float             = input_particle.location_in_stack;
+                JobResult* temp_result = new JobResult;
+                temp_result->SetResult(1, &temp_float);
+                AddJobToResultQueue(temp_result);
+                //wxPrintf("Refine3D : Adding job to job queue..\n");
+            }
+
+            if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
+                my_progress->Update(std::min(images_to_process_per_thread, image_counter));
+        }
+
+#else
 #pragma omp for schedule(dynamic, 1)
         for ( current_image_local = 0; current_image_local < input_star_file.ReturnNumberofLines( ); current_image_local++ ) {
 #pragma omp critical
@@ -1290,6 +1782,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
             if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
                 my_progress->Update(std::min(images_to_process_per_thread, image_counter));
         }
+#endif
 
 #pragma omp critical
         {

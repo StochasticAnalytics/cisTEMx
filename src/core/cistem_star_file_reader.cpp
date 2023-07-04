@@ -1331,7 +1331,7 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
         auto& temp_ref                                           = parameters_that_were_read;
         cistem::for_each(_dummy_params.values, [temp_ref, current_column](auto&& parameter_val, auto&& parameter_name) {
             if ( current_column == parameter_name )
-                temp_ref.set<parameter_name>(true);
+                temp_ref.set<static_cast<cistem::parameter_names::Enum>(parameter_name)>(true);
         });
     }
 #else

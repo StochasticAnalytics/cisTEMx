@@ -330,7 +330,7 @@ void cisTEMParameterLine::Add(cisTEMParameterLine& line_to_add) {
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
-    For_Each_Tuple_BinaryOp<cistem::tuple_ops::Enum::SUBTRACT>(values, line_to_add.values);
+    cistem::for_each(values, line_to_add.values, [](auto&& val1, auto&& val2, auto&& idx) { val1 -= val2; });
 }
 #else
 void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
@@ -370,7 +370,7 @@ void cisTEMParameterLine::Subtract(cisTEMParameterLine& line_to_add) {
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
-    For_Each_Tuple_BinaryOp<cistem::tuple_ops::Enum::ADDSQUARE>(values, line_to_add.values);
+    cistem::for_each(values, line_to_add.values, [](auto&& val1, auto&& val2, auto&& idx) { val1 += val2 * val2; });
 }
 #else
 void cisTEMParameterLine::AddSquare(cisTEMParameterLine& line_to_add) {
@@ -495,25 +495,44 @@ void cisTEMParameterLine::SetAllToDefault(std::array<int, cistem::parameter_name
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::MultiplyByConstant(const float constant_value) {
-    For_Each_Tuple_UnaryOp<cistem::tuple_ops::Enum::MULTIPLY_BY_CONSTANT>(values, constant_value);
+    cistem::for_each(values, [constant_value](auto&& val1, auto&& idx) {
+        if constexpr ( std::is_arithmetic_v<decltype(val1)> )
+            val1 *= constant_value;
+    });
 }
 
 void cisTEMParameterLine::DivideByConstant(const float constant_value) {
-    For_Each_Tuple_UnaryOp<cistem::tuple_ops::Enum::DIVIDE_BY_CONSTANT>(values, constant_value);
+    cistem::for_each(values, [constant_value](auto&& val1, auto&& idx) {
+        if constexpr ( std::is_arithmetic_v<decltype(val1)> )
+            val1 /= constant_value;
+    });
 }
 
 void cisTEMParameterLine::Multiply(const cisTEMParameterLine& other_line) {
-    For_Each_Tuple_BinaryOp<cistem::tuple_ops::MULTIPLY>(values, other_line.values);
+    cistem::for_each(values, other_line.values, [](auto&& val1, auto&& val2, auto&& idx) {
+        if constexpr ( std::is_arithmetic_v<decltype(val1)> )
+            val1 *= val2;
+    });
 }
 
 void cisTEMParameterLine::Divide(const cisTEMParameterLine& other_line) {
-    For_Each_Tuple_BinaryOp<cistem::tuple_ops::DIVIDE>(values, other_line.values);
+    cistem::for_each(values, other_line.values, [](auto&& val1, auto&& val2, auto&& idx) {
+        if constexpr ( std::is_arithmetic_v<decltype(val1)> )
+            val1 /= val2;
+    });
 }
 #endif
 
 #ifdef EXPERIMENTAL_CISTEMPARAMS
 void cisTEMParameterLine::SetAllToZero( ) {
-    For_Each_Tuple_UnaryOp<cistem::tuple_ops::SET_TO_ZERO>(values);
+    cistem::for_each(values, [](auto&& val1, auto&& idx) {
+        if constexpr ( std::is_arithmetic_v<decltype(val1)> )
+            val1 = static_cast<decltype(val1)>(0);
+        else if constexpr ( std::is_same_v<decltype(val1), wxString> )
+            val1 = wxEmptyString;
+        else
+            MyDebugAssertTrue(false, "Unhandled type in cisTEMParameterLine::SetAllToZero( )");
+    });
 }
 #else
 void cisTEMParameterLine::SetAllToZero( ) {
@@ -557,8 +576,17 @@ void cisTEMParameterLine::SetAllToZero( ) {
 // NOTE: couldn't we just use ! isfinite() ?
 void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
     // FIXME: swapping the order of the template params would make type deduction easier and then I wouldn't need to use decltype
-    For_Each_Tuple_BinaryOp<cistem::tuple_ops::REPLACE_NAN_AND_INF>(values, other_params.values);
+    cistem::for_each(values, other_params.values, [](auto&& val1, auto&& val2, auto&& idx) {
+        if constexpr ( std::is_arithmetic_v<decltype(val1)> ) {
+            if ( ! std::isfinite(val1) )
+                val1 = val2;
+        }
+        else {
+            MyDebugAssertTrue(false, "cisTEMParameterLine::ReplaceNanAndInfWithOther() - Unknown type for parameter");
+        }
+    });
 }
+
 #else
 void cisTEMParameterLine::ReplaceNanAndInfWithOther(cisTEMParameterLine& other_params) {
     if ( isnan(psi) || isinf(psi) )

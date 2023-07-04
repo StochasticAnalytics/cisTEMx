@@ -1,8 +1,15 @@
 #include "../../core/core_headers.h"
-
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+#include "../../constants/constants.h"
+#endif
 // TODO : Switch to new parameter file format (star) properly and remove hacks
 class
         Refine2DApp : public MyApp {
+
+  private:
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    using cp_t = cistem::parameter_names::Enum;
+#endif
 
   public:
     bool DoCalculation( );
@@ -286,57 +293,42 @@ bool Refine2DApp::DoCalculation( ) {
     images_to_process = 0;
     mask_falloff      = 20.0;
     log_range         = 20.0;
-    //	image_counter = 0;
+//	image_counter = 0;
+#ifdef EXPERIMENTAL_CISTEMPARAMS
     for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
-        if ( input_star_file.get < cp_t::position(current_line) >= first_particle && input_star_file.ReturnPositionInStack(current_line) <= last_particle )
+        if ( input_star_file.get<cp_t::position_in_stack>(current_line) >= first_particle && input_star_file.get<cp_t::position_in_stack>(current_line) <= last_particle )
             images_to_process++;
     }
-    //	for (current_line = 1; current_line <= input_par_file.number_of_lines; current_line++)
-    //	{
-    //		input_par_file.ReadLine(input_parameters); temp_float = input_parameters[1]; input_parameters[1] = input_parameters[3]; input_parameters[3] = temp_float;
-    //		if (input_parameters[7] > 0.0)
-    //		{
-    //			for (i = 0; i < 17; i++)
-    //			{
-    //					parameter_average[i] += input_parameters[i];
-    //					parameter_variance[i] += powf(input_parameters[i],2);
-    //			}
-    //			image_counter++;
-    //		}
-    //		if (input_parameters[0] >= first_particle && input_parameters[0] <= last_particle) images_to_process++;
-    //	}
+#else
+    for ( current_line = 0; current_line < input_star_file.ReturnNumberofLines( ); current_line++ ) {
+        if ( input_star_file.ReturnPositionInStack(current_line) >= first_particle && input_star_file.ReturnPositionInStack(current_line) <= last_particle )
+            images_to_process++;
+    }
+#endif
 
-    //	if (image_counter > 0)
-    //	{
-    //		for (i = 0; i < 17; i++)
-    //		{
-    //			parameter_average[i] /= image_counter;
-    //			parameter_variance[i] /= image_counter;
-    //			parameter_variance[i] -= powf(parameter_average[i],2);
-    //
-    //			// nasty hack for new file format support in other programs
-    //
-    //			if (parameter_variance[i] < 0.001 && i == 1) input_particle.constraints_used.phi = false;
-    //			if (parameter_variance[i] < 0.001 && i == 2) input_particle.constraints_used.theta = false;
-    //			if (parameter_variance[i] < 0.001 && i == 3) input_particle.constraints_used.psi = false;
-    //			if (parameter_variance[i] < 0.001 && i == 4) input_particle.constraints_used.x_shift = false;
-    //			if (parameter_variance[i] < 0.001 && i == 5) input_particle.constraints_used.y_shift = false;
-    //		}
-    //	}
-    //	else
-    //	{
-    //		input_particle.constraints_used.psi 	= false;
-    //		input_particle.constraints_used.theta 	= false;
-    //		input_particle.constraints_used.phi 	= false;
-    //		input_particle.constraints_used.x_shift = false;
-    //		input_particle.constraints_used.y_shift = false;
-    //
-    //		/*for (i = 0; i < 17; i++)
-    //		{
-    //			input_particle.constraints_used[i] = false;
-    //		}*/
-    //	}
+#ifdef EXPERIMENTAL_CISTEMPARAMS
+    if ( parameter_variance.get<cp_t::phi>( ) < 0.001 )
+        input_particle.constraints_used.phi = false;
+    if ( parameter_variance.get<cp_t::theta>( ) < 0.001 )
+        input_particle.constraints_used.theta = false;
+    if ( parameter_variance.get<cp_t::psi>( ) < 0.001 )
+        input_particle.constraints_used.psi = false;
+    if ( parameter_variance.get<cp_t::x_shift>( ) < 0.001 )
+        input_particle.constraints_used.x_shift = false;
+    if ( parameter_variance.get<cp_t::y_shift>( ) < 0.001 )
+        input_particle.constraints_used.y_shift = false;
 
+    xy_dimensions = input_stack.ReturnXSize( );
+    if ( parameter_average.get<cp_t::sigma>( ) < 0.01 )
+        parameter_average.set<cp_t::sigma>(10.0f);
+    average_snr = 1.0 / powf(parameter_average.get<cp_t::sigma>( ), 2);
+    // *****
+    //	average_snr = 0.002;
+    wxPrintf("\nShift averages x, y = %g, %g, shift std x, y = %g, %g, average SNR = %g\n", parameter_average.get<cp_t::x_shift>( ), parameter_average.get<cp_t::y_shift>( ),
+             sqrtf(parameter_variance.get<cp_t::x_shift>( )), sqrtf(parameter_variance.get<cp_t::y_shift>( )), average_snr);
+
+    input_particle.SetParameterStatistics(parameter_average, parameter_variance);
+#else
     if ( parameter_variance.phi < 0.001 )
         input_particle.constraints_used.phi = false;
     if ( parameter_variance.theta < 0.001 )
@@ -358,6 +350,7 @@ bool Refine2DApp::DoCalculation( ) {
              sqrtf(parameter_variance.x_shift), sqrtf(parameter_variance.y_shift), average_snr);
 
     input_particle.SetParameterStatistics(parameter_average, parameter_variance);
+#endif
     //	input_par_file.Rewind();
 
     if ( max_search_range == 0.0 )
@@ -370,30 +363,29 @@ bool Refine2DApp::DoCalculation( ) {
     output_star_file.PreallocateMemoryAndBlank(input_star_file.ReturnNumberofLines( ));
     // List the set of wanted active parameters
 #ifdef EXPERIMENTAL_CISTEMPARAMS
-    using param_t = cistem::parameter_names::Enum;
 
-    std::vector<param_t> wanted_active_parameters = {param_t::position_in_stack,
-                                                     param_t::best_2d_class,
-                                                     param_t::psi,
-                                                     param_t::x_shift,
-                                                     param_t::y_shift,
-                                                     param_t::defocus_1,
-                                                     param_t::defocus_2,
-                                                     param_t::defocus_angle,
-                                                     param_t::phase_shift,
-                                                     param_t::logp,
-                                                     param_t::score,
-                                                     param_t::score_change,
-                                                     param_t::occupancy,
-                                                     param_t::sigma,
-                                                     param_t::pixel_size,
-                                                     param_t::microscope_voltage_kv,
-                                                     param_t::microscope_spherical_aberration_mm,
-                                                     param_t::amplitude_contrast,
-                                                     param_t::beam_tilt_x,
-                                                     param_t::beam_tilt_y,
-                                                     param_t::image_shift_x,
-                                                     param_t::image_shift_y};
+    std::vector<cp_t> wanted_active_parameters = {cp_t::position_in_stack,
+                                                  cp_t::best_2d_class,
+                                                  cp_t::psi,
+                                                  cp_t::x_shift,
+                                                  cp_t::y_shift,
+                                                  cp_t::defocus_1,
+                                                  cp_t::defocus_2,
+                                                  cp_t::defocus_angle,
+                                                  cp_t::phase_shift,
+                                                  cp_t::logp,
+                                                  cp_t::score,
+                                                  cp_t::score_change,
+                                                  cp_t::occupancy,
+                                                  cp_t::sigma,
+                                                  cp_t::pixel_size,
+                                                  cp_t::microscope_voltage_kv,
+                                                  cp_t::microscope_spherical_aberration_mm,
+                                                  cp_t::amplitude_contrast,
+                                                  cp_t::beam_tilt_x,
+                                                  cp_t::beam_tilt_y,
+                                                  cp_t::image_shift_x,
+                                                  cp_t::image_shift_y};
     output_star_file.parameters_to_write.SetActiveParameters(wanted_active_parameters);
 #else
     output_star_file.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | BEST_2D_CLASS | PSI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | LOGP | SCORE | SCORE_CHANGE | OCCUPANCY | SIGMA | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y);
@@ -495,9 +487,8 @@ bool Refine2DApp::DoCalculation( ) {
     float* class_variance_correction = new float[number_of_rotations * number_of_nonzero_classes + 1];
     float* class_variance            = new float[number_of_nonzero_classes];
     class_averages                   = new Image[number_of_nonzero_classes];
-    CTF_sums                         = new Image[number_of_nonzero_classes];
-    //	blurred_images = new Image [number_of_nonzero_classes];
-    for ( i = 0; i < number_of_nonzero_classes; i++ ) {
+    / cistem_params.h "    //	blurred_images = new Image [number_of_nonzero_classes];
+            for ( i = 0; i < number_of_nonzero_classes; i++ ) {
         class_averages[i].Allocate(input_stack.ReturnXSize( ), input_stack.ReturnYSize( ), true);
         CTF_sums[i].Allocate(input_stack.ReturnXSize( ), input_stack.ReturnYSize( ), false);
         //		blurred_images[i].Allocate(input_stack.ReturnXSize(), input_stack.ReturnYSize(), true);
@@ -897,7 +888,6 @@ bool Refine2DApp::DoCalculation( ) {
                                                                                                                                                                                                                output_parameters, input_ctf, average, ctf_input_image_local, cropped_input_image_local, psi, i, rotation_angle, current_class, best_class, ssq_X, best_correlation_map, \
                                                                                                                                                                                                                images_processed_local, padded_image, input_particle_local, sum_logp_particle_local, max_logp_particle, sum_logp_total_local, sum_snr_local, mask_radius_for_noise)
     {
-
         image_counter               = 0;
         number_of_blank_edges_local = 0;
         images_processed_local      = 0;

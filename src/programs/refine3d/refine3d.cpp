@@ -1605,7 +1605,7 @@ bool Refine3DApp::DoCalculation( ) {
                         if ( ! search_particle_local.parameter_map.x_shift )
                             search_parameters.set<cp_t::x_shift>(input_parameters.get<cp_t::x_shift>( ));
                         if ( ! search_particle_local.parameter_map.y_shift )
-                            search_parameters.set < cp_t::y_shift < (input_parameters.get<cp_t::y_shift>( ));
+                            search_parameters.set<cp_t::y_shift>(input_parameters.get<cp_t::y_shift>( ));
                         search_particle_local.SetParameters(search_parameters);
                         search_particle_local.MapParameters(cg_starting_point);
 
@@ -1637,7 +1637,7 @@ bool Refine3DApp::DoCalculation( ) {
                             search_particle_local.MapParameters(cg_starting_point);
                             search_parameters.set<cp_t::score>(-100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, search_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy));
                             if ( i == istart ) {
-                                output_parameters.set<cp_t::score>(search_parameters.score);
+                                output_parameters.set<cp_t::score>(search_parameters.get<cp_t::score>( ));
                                 if ( ! local_refinement_local )
                                     input_parameters.set<cp_t::score>(output_parameters.get<cp_t::score>( ));
                             }
@@ -1683,7 +1683,7 @@ bool Refine3DApp::DoCalculation( ) {
 
                     temp_float = -100.0 * conjugate_gradient_minimizer.Init(&FrealignObjectiveFunction, &comparison_object, refine_particle_local.number_of_search_dimensions, cg_starting_point, cg_accuracy);
                     //???				if (! global_search) input_parameters[15] = temp_float;
-                    output_parameters.get<cp_t::score>(-100.0 * conjugate_gradient_minimizer.Run(50));
+                    output_parameters.set<cp_t::score>(-100.0 * conjugate_gradient_minimizer.Run(50));
 
                     refine_particle_local.UnmapParametersToExternal(output_parameters, conjugate_gradient_minimizer.GetPointerToBestValues( ));
 
@@ -1785,8 +1785,8 @@ bool Refine3DApp::DoCalculation( ) {
             //for (i = 1; i < refine_particle_local.number_of_parameters; i++) {output_parameters[i] -= input_parameters[i];}
             output_parameters.Subtract(input_parameters);
             output_parameters.set<cp_t::position_in_stack>(input_parameters.get<cp_t::position_in_stack>( ));
-            output_shifts_file.all_parameters[current_line_local]              = output_parameters;
-            output_shifts_file.all_parameters[current_line_local].score_change = 0.0f;
+            output_shifts_file.all_parameters[current_line_local] = output_parameters;
+            output_shifts_file.set<cp_t::score_change>(current_line_local, 0.0f);
 
             //my_output_par_shifts_file.WriteLine(output_parameters);
 

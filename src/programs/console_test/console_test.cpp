@@ -515,19 +515,19 @@ void MyTestApp::TestStarToBinaryFileConversion( ) {
 #ifdef EXPERIMENTAL_CISTEMPARAMS
     for ( unsigned int counter = 0; counter < 1000; counter++ ) {
         temp_line.set<cp_t::amplitude_contrast>(global_random_number_generator.GetUniformRandom( ) * 1);
-        temp_line.set<cp_t::assigned_subset>(myroundint(global_random_number_generator.GetUniformRandom( ) * 1) 0);
-        temp_line.set<cp_t::beam_tilt_group>(myroundint(global_random_number_generator.GetUniformRandom( ) * 1) 0);
+        temp_line.set<cp_t::assigned_subset>(myroundint(global_random_number_generator.GetUniformRandom( ) * 10));
+        temp_line.set<cp_t::beam_tilt_group>(myroundint(global_random_number_generator.GetUniformRandom( ) * 10));
         temp_line.set<cp_t::beam_tilt_x>(global_random_number_generator.GetUniformRandom( ) * 10);
         temp_line.set<cp_t::beam_tilt_y>(global_random_number_generator.GetUniformRandom( ) * 10);
-        temp_line.set<cp_t::best_2d_class>(myroundint(global_random_number_generator.GetUniformRandom( ) * 10) 0);
+        temp_line.set<cp_t::best_2d_class>(myroundint(global_random_number_generator.GetUniformRandom( ) * 10));
         temp_line.set<cp_t::defocus_1>(global_random_number_generator.GetUniformRandom( ) * 30000);
         temp_line.set<cp_t::defocus_2>(global_random_number_generator.GetUniformRandom( ) * 30000);
         temp_line.set<cp_t::defocus_angle>(global_random_number_generator.GetUniformRandom( ) * 180);
-        temp_line.set<cp_t::image_is_active>(myroundint(global_random_number_generator.GetUniformRandom( )*) 1);
+        temp_line.set<cp_t::image_is_active>(myroundint(global_random_number_generator.GetUniformRandom( ) * 1));
         temp_line.set<cp_t::image_shift_x>(global_random_number_generator.GetUniformRandom( ) * 10);
         temp_line.set<cp_t::image_shift_y>(global_random_number_generator.GetUniformRandom( ) * 10);
         temp_line.set<cp_t::logp>(global_random_number_generator.GetUniformRandom( ) * 10000);
-        temp_line.set<cp_t::microscope_spherical_aberration_mm>(global_random_number_generator.GetUniformRandom( ) * 2.) 7;
+        temp_line.set<cp_t::microscope_spherical_aberration_mm>(global_random_number_generator.GetUniformRandom( ) * 2.7);
         temp_line.set<cp_t::microscope_voltage_kv>(global_random_number_generator.GetUniformRandom( ) * 300);
         temp_line.set<cp_t::occupancy>(global_random_number_generator.GetUniformRandom( ) * 100);
         temp_line.set<cp_t::original_image_filename>(wxString::Format("This_is_an_original_filename_string_with_a_random_number_:_%)f", global_random_number_generator.GetUniformRandom( ) * 100000));

@@ -72,7 +72,7 @@ class cisTEMStarFileReader {
         }
         else {
             int length_of_string;
-            if ( SafelyReadFromBinaryBufferIntoInteger(length_of_string) == false )
+            if ( SafelyReadFromBinaryBuffer(length_of_string) == false )
                 return false;
 
             if ( length_of_string < 0 ) {
@@ -316,9 +316,9 @@ class cisTEMStarFileReader {
             else if constexpr ( std::is_floating_point_v<T> ) {
                 double temp_double;
                 if ( all_tokens[column_position].ToDouble(&temp_double) == false ) {
-                    MyPrintWithDetails("Error: Converting to a number (%s)\n", all_tokens[wanted_column]);
+                    MyPrintWithDetails("Error: Converting to a number (%s)\n", all_tokens[column_position]);
                     if ( error_string != NULL )
-                        *error_string = wxString::Format("Error: Converting to a number (%s)\n", all_tokens[wanted_column]);
+                        *error_string = wxString::Format("Error: Converting to a number (%s)\n", all_tokens[column_position]);
                     ret_val = false;
                     return;
                 }

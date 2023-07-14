@@ -1,4 +1,4 @@
-AC_INIT(cisTEM, [2.0.0-alpha])
+AC_INIT([cisTEM],[2.0.0-alpha])
 AM_INIT_AUTOMAKE([subdir-objects])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -15,8 +15,11 @@ AC_PROG_CXX([icpc g++ clang++])
 AM_PROG_CC_C_O
 
 AC_PROG_INSTALL
-AC_LIBTOOL_DLOPEN
-AC_PROG_LIBTOOL
+_LT_SET_OPTION([LT_INIT],[dlopen])
+m4_warn([obsolete],[AC_LIBTOOL_DLOPEN: Remove this warning and the call to _LT_SET_OPTION when you
+put the 'dlopen' option into LT_INIT's first parameter.])
+
+LT_INIT
 AC_LANG(C++)
 
 # Set this for the gpu makefile hack

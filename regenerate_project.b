@@ -1,3 +1,5 @@
+git update-index --skip-worktree .vscode
+git update-index --skip-worktree .devcontainer.json
 rm -fr m4
 mkdir m4
 cd m4

@@ -261,9 +261,12 @@ noinst_LIBRARIES += libgpucore.a
 libgpucore_a_SOURCES =       gpu/Histogram.cu \
                              gpu/TemplateMatchingCore.cu \
                              gpu/DeviceManager.cu \
-                             gpu/GpuImage.cu
-                            
-libgpucore_OBJECTS=$(libgpucore_a_SOURCES:.cu=.o)
+                             gpu/GpuImage.cu 
+if ENABLE_FASTFFT_AM
+    libgpucore_a_SOURCES += ext/FastFFT/src/fastfft/FastFFT.cu
+endif
+
+libgpucore_OBJECTS=$(libgpucore_a_SOURCES:.cu=.o)                                                   
 
 libgpucore_a_CFLAGS = $(CUDA_CPPFLAGS) $(WX_CPPFLAGS_BASE)
 libgpucore_a_CXXFLAGS = $(CUDA_CXXFLAGS) $(WX_CXXFLAGS_BASE)
@@ -377,7 +380,16 @@ cisTEM_job_control_LDADD = libcore.a $(WX_LIBS_BASE)
 console_test_SOURCES = programs/console_test/console_test.cpp 
 console_test_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 console_test_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-console_test_LDADD = libcore.a $(WX_LIBS_BASE)
+
+# TODO: this implies ENABLEGPU_AM but should it be enforced somewhere?
+console_test_LDSTRING=
+if ENABLE_FASTFFT_AM
+    console_test_LDSTRING += libgpucore.a
+endif
+
+console_test_LDADD = $(console_test_LDSTRING) libcore.a $(WX_LIBS_BASE) $(CUDA_LIBS)
+
+
 
 unblur_SOURCES = programs/unblur/unblur.cpp
 unblur_CXXFLAGS = $(WX_CPPFLAGS_BASE)

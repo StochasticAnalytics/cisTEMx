@@ -65,6 +65,30 @@
             "browse": {
                 "limitSymbolsToIncludedHeaders": true
             }
+        },
+        {
+            "name": "GPU debug Linux fastfft",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/WX/intel-dynamic/include/wx-3.0/",
+                "/usr/local/cuda/include",
+                "/opt/cuTensor/include"
+            ],
+            "defines": [
+                "_FILE_OFFSET_BITS=64",
+                "WXUSINGDLL",
+                "__WXGTK__",
+                "DEBUG",
+                "ENABLEGPU",
+                "ENABLE_FastFFT",
+                "SHOW_CISTEM_GPU_OPTIONS"
+            ],
+            "compilerPath": "/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true
+            }
         }
     ],
     "version": 4

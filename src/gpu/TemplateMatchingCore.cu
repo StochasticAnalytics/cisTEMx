@@ -1,5 +1,9 @@
 #include "gpu_core_headers.h"
 
+#ifdef ENABLE_FastFFT
+#include <FastFFT.h>
+#endif
+
 #define DO_HISTOGRAM true
 
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,

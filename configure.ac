@@ -217,35 +217,41 @@ AC_ARG_ENABLE(debugmode, AS_HELP_STRING([--enable-debugmode],[Compile in debug m
 # BEGIN CUDA CHECKS AND SETS
 ###############################
 
-  	
+# submodules
+
+
+FastFFT_INCLUDES=""
+use_FastFFT="no"
 if test "$want_cuda" = "yes" ; then
 
-	# ~Runtime about 85% with K3 images, but mips are different - total detection is ~the same. 
-  # Determined this is likely just numerical error. Enabling by default.
-  #  --disable-feature is equivalent to --enable-feature=no. 
-  use_rotated_tm=1
-	AC_ARG_ENABLE(rotated-tm, AS_HELP_STRING([--disable-rotated-tm],[Place power of 2 sized axis on X by rotating 90 deg in template matching for speed [default=no]]),[
-	  if test "$enableval" = no; then
-      use_rotated_tm=0
-	  fi
-	  ])
+    # Call the m4 macro to check and setup for FastFFT if present and requested
+    submodule_FastFFT
 
-  if test "x$use_rotated_tm" = "x1"; then
-    AC_DEFINE([ROTATEFORSPEED], [], [Rotate image for faster FFT in template matching])
-    AC_MSG_NOTICE([Enabling rotated-tm]);
-  fi
+    # ~Runtime about 85% with K3 images, but mips are different - total detection is ~the same. 
+    # Determined this is likely just numerical error. Enabling by default.
+    #    --disable-feature is equivalent to --enable-feature=no. 
+    use_rotated_tm=1
+    AC_ARG_ENABLE(rotated-tm, AS_HELP_STRING([--disable-rotated-tm],[Place power of 2 sized axis on X by rotating 90 deg in template matching for speed [default=no]]),[
+        if test "$enableval" = no; then
+            use_rotated_tm=0
+        fi
+    ])
 
-  AC_MSG_NOTICE([Adding the CUDA includes Setting up NVCC initial flags])
-  CUDA_CPPFLAGS="$CUDA_CFLAGS $NVCCFLAGS"
-  CUDA_CXXFLAGS="$CUDA_CFLAGS $NVCCFLAGS"
-  
-  CXXFLAGS="$CXXFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
-  CPPFLAGS="$CPPFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
-  AC_MSG_NOTICE([Using CUDA_CXXFLAGS=$CUDA_CXXFLAGS])
-  AC_MSG_NOTICE([Using CUDA_LIBS=$CUDA_LIBS])
+    if test "x$use_rotated_tm" = "x1"; then
+        AC_DEFINE([ROTATEFORSPEED], [], [Rotate image for faster FFT in template matching])
+        AC_MSG_NOTICE([Enabling rotated-tm]);
+    fi
 
-  AC_DEFINE([ENABLEGPU], [], [Enable gpu codepath])
+    AC_MSG_NOTICE([Adding the CUDA includes Setting up NVCC initial flags])
+    CUDA_CPPFLAGS="$CUDA_CFLAGS $NVCCFLAGS $FastFFT_FLAGS"
+    CUDA_CXXFLAGS="$CUDA_CFLAGS $NVCCFLAGS $FastFFT_FLAGS"
+    
+    CXXFLAGS="$CXXFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
+    CPPFLAGS="$CPPFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
+    AC_MSG_NOTICE([Using CUDA_CXXFLAGS=$CUDA_CXXFLAGS])
+    AC_MSG_NOTICE([Using CUDA_LIBS=$CUDA_LIBS])
 
+    AC_DEFINE([ENABLEGPU], [], [Enable gpu codepath])
 fi
 
 ##############################
@@ -253,6 +259,7 @@ fi
 ##############################  
 
 AM_CONDITIONAL([ENABLEGPU_AM], [test "$want_cuda" = "yes"])
+AM_CONDITIONAL([ENABLE_FASTFFT_AM], [test "x$use_FastFFT" = "xyes"])
 
 # fftw
 
@@ -294,6 +301,7 @@ AC_ARG_ENABLE(gpu-debug, AS_HELP_STRING([--enable-gpu-debug],[Compile heavy sync
   if test "$enableval" = yes; then
     AC_DEFINE([ENABLE_GPU_DEBUG],[], [use the gpu or not])
   	AC_MSG_NOTICE([Compiling with synchronizing debug checks for GPU code])	
+    # TODO: check this and modify the FastFFT flags with HEAVYERRORCHECKING
   fi
   ]) 
   
@@ -516,16 +524,16 @@ AC_CHECK_FILE("$TOPSRCDIR/.git/HEAD",
 fi
 
 
-CXXFLAGS="$CXXFLAGS -I$CISTEM_CONFIG_DIR"
-CPPFLAGS="$CPPFLAGS -I$CISTEM_CONFIG_DIR"
+CXXFLAGS="$CXXFLAGS -I$CISTEM_CONFIG_DIR $FastFFT_INCLUDES"
+CPPFLAGS="$CPPFLAGS -I$CISTEM_CONFIG_DIR $FastFFT_INCLUDES"
 WX_CPPFLAGS="$WX_CPPFLAGS -I$CISTEM_CONFIG_DIR"
 WX_CPPFLAGS_BASE="$WX_CPPFLAGS_BASE -I$CISTEM_CONFIG_DIR"
 
 # Make sure the host compiler gets all flags when called from nvcc
 CUDA_TO_CPP="`echo $CPPFLAGS $WX_CPPFLAGS | sed -e 's/\s\+/,/g' | awk '{print "-Xcompiler " $0}'`"
 CUDA_TO_CXX="`echo $CXXFLAGS $WX_CXXFLAGS | sed -e 's/\s\+/,/g' | awk '{print "-Xcompiler " $0}'`"
-CUDA_CPPFLAGS="$CUDA_CPPFLAGS $CUDA_TO_CPP "
-CUDA_CXXFLAGS="$CUDA_CXXFLAGS $CUDA_TO_CXX "
+CUDA_CPPFLAGS="$CUDA_CPPFLAGS $FastFFT_CUDA_FLAGS $CUDA_TO_CPP "
+CUDA_CXXFLAGS="$CUDA_CXXFLAGS $FastFFT_CUDA_FLAGS $CUDA_TO_CXX "
 
 AC_SUBST(WX_LIBS)
 AC_SUBST(WX_CPPFLAGS)

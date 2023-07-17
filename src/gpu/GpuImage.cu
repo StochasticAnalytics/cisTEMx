@@ -300,7 +300,7 @@ void GpuImage::SetupInitialValues( ) {
 
     cudaErr(cudaEventCreateWithFlags(&nppCalcEvent, cudaEventDisableTiming));
 
-            cudaErr(cudaGetDevice(&device_idx));
+    cudaErr(cudaGetDevice(&device_idx));
     cudaErr(cudaDeviceGetAttribute(&number_of_streaming_multiprocessors, cudaDevAttrMultiProcessorCount, device_idx));
     limit_SMs_by_threads = 1;
 
@@ -2305,7 +2305,10 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
 
     BufferInit(b_16f);
 
-    precheck if ( is_in_real_space ) {
+    MyAssertTrue(is_allocated_16f_buffer, "16f buffer is not allocated!");
+
+    precheck;
+    if ( is_in_real_space ) {
         ReturnLaunchParamters(dims, true);
         ConvertToHalfPrecisionKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values_gpu, real_values_16f, this->dims);
     }
@@ -2313,9 +2316,9 @@ void GpuImage::ConvertToHalfPrecision(bool deallocate_single_precision) {
         ReturnLaunchParamters(dims, false);
         ConvertToHalfPrecisionKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values_gpu, complex_values_16f, this->dims, this->physical_upper_bound_complex);
     }
-    postcheck
+    postcheck;
 
-            if ( deallocate_single_precision ) {
+    if ( deallocate_single_precision ) {
         cudaErr(cudaFree(real_values_gpu));
         is_in_memory_gpu = false;
     }

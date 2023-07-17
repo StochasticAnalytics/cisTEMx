@@ -565,6 +565,11 @@ bool MatchTemplateApp::DoCalculation( ) {
 #endif
     }
 
+#ifdef ENABLE_FastFFT
+    // We pad from the corner not the middle, so shift the input image
+    input_image.PhaseShift(input_reconstruction.physical_address_of_box_center_x - input_image.physical_address_of_box_center_x,
+                           input_reconstruction.physical_address_of_box_center_y - input_image.physical_address_of_box_center_y, 0.0f);
+#endif
     padded_reference.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
     max_intensity_projection.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
     best_psi.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
@@ -1086,6 +1091,21 @@ bool MatchTemplateApp::DoCalculation( ) {
         correlation_pixel_sum_image.real_values[pixel_counter]            = (float)correlation_pixel_sum[pixel_counter];
         correlation_pixel_sum_of_squares_image.real_values[pixel_counter] = (float)correlation_pixel_sum_of_squares[pixel_counter];
     }
+
+#ifdef ENABLE_FastFFT
+    // We pad from the corner not the middle, so shift the input image
+    // FIXME this should happen just once at the very end of all workers.
+    float padding_shift_x = input_image.physical_address_of_box_center_x - input_reconstruction.physical_address_of_box_center_x;
+    float padding_shift_y = input_image.physical_address_of_box_center_y - input_reconstruction.physical_address_of_box_center_y;
+    max_intensity_projection.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+    best_psi.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+    best_theta.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+    best_phi.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+    best_defocus.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+    best_pixel_size.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+    correlation_pixel_sum_image.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+    correlation_pixel_sum_of_squares_image.PhaseShift(padding_shift_x, padding_shift_y, 0.0f);
+#endif
 
     if ( is_rotated_by_90 ) {
         // swap back all the images prior to re-sizing

@@ -1,6 +1,6 @@
 {
     "name": "cisTEMdev-wxSTABLE-static",
-    "image": "bhimesbhimes/cistem_build_env:v2.0.3-dynamic",
+    "image": "bhimesbhimes/cistem_build_env:v2.0.4-static",
     "remoteUser": "cisTEMdev",
     "runArgs": [
         "--rm",

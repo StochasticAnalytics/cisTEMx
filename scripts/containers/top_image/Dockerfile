@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1
-FROM bhimesbhimes/cistem_build_env:base_image_v2.0.2
+# NOTE: this line is overwritten when this file is copied to a temp dir for building based on CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
+FROM fake_repo
 
 # To allow a variety of common options, arguments may be passed to the build_container script, 
 # which have the side-effect that this top-level layer is rebuilt without cache every time.
@@ -22,7 +22,8 @@ ARG build_type="static"
 ARG build_compiler="icpc"
 ARG build_wx_version="stable"
 ARG build_npm="false"
-ARG build_ref_images="false"
+ARG build_ref_images="true"
+
 
 SHELL ["/bin/bash", "-c"]
 # some rebuild comment
@@ -30,14 +31,12 @@ ENV CISTEM_REF_IMAGES /cisTEMdev/cistem_reference_images
 ENV LD_RUN_PATH=/opt/WX/intel-dynamic/lib:${LD_RUN_PATH}
 
 # Install wxWidgets
-COPY install_wx_3.0.5_static.sh /tmp/install_wx_3.0.5_static.sh
-COPY install_wx_3.0.5_dynamic.sh /tmp/install_wx_3.0.5_dynamic.sh
+COPY install_wx_3.0.5.sh /tmp/install_wx_3.0.5.sh
 COPY install_wx_3.1.5.sh /tmp/install_wx_3.1.5.sh
 COPY install_node_16.sh /tmp/install_node_16.sh
 
 # NOTE: if working on setting up dynamic linking, we will need to add a step to install wxWidgets. The script is already at top_image/install_wx_3.0.5_dynamic.sh
-RUN echo "install wxWidgets 3.05" && /tmp/install_wx_3.0.5_static.sh && /tmp/install_wx_3.0.5_dynamic.sh
-RUN 
+RUN echo "install wxWidgets 3.05" && /tmp/install_wx_3.0.5.sh ${build_compiler}
 
 # If we do not do this, we want to link the static or dynamic libs from /opt/WX to /usr/bin so we don't need to set it on configure lines and also so that wxformbuilder can find them
 RUN echo "checking for wxWidgets 3.1.5" && if [[ "x${build_wx_version}" == "xdev" ]]; then /tmp/install_wx_3.1.5.sh  ; else echo "linking the (${build_type}) wx-config system wide"  && ln -sf /opt/WX/intel-${build_type}/bin/wx-config /usr/bin/wx-config ; fi

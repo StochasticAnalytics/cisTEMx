@@ -1,6 +1,10 @@
 #include "gpu_core_headers.h"
 #include "TemplateMatchingCore.h"
 
+#ifdef ENABLE_FastFFT
+#include "../ext/FastFFT/include/FastFFT.cuh"
+#endif
+
 #define DO_HISTOGRAM true
 
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
@@ -155,6 +159,26 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaEventCreateWithFlags(&projection_is_free_Event, cudaEventDisableTiming));
     cudaErr(cudaEventCreateWithFlags(&gpu_work_is_done_Event, cudaEventDisableTiming));
 
+// TODO: This will probably be a member variable
+#ifdef ENABLE_FastFFT
+    FastFFT::FourierTransformer<float, float, float, 2> FT;
+    // TODO: overload that takes and short4's int4's instead of the individual values
+    FT.SetForwardFFTPlan(d_current_projection.dims.x, d_current_projection.dims.y, d_current_projection.dims.z, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true, true);
+    FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
+    short4 fwd_dims_in  = FT.ReturnFwdInputDimensions( );
+    short4 fwd_dims_out = FT.ReturnFwdOutputDimensions( );
+    short4 inv_dims_in  = FT.ReturnInvInputDimensions( );
+    short4 inv_dims_out = FT.ReturnInvOutputDimensions( );
+    FT.SetInputPointer(d_current_projection.real_values, true);
+    FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NOOP>     noop;
+    FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::CONJ_MUL> conj_mul;
+
+    Image buffer;
+    buffer.CopyFrom(&input_image);
+    GpuImage d_buffer(buffer);
+
+#endif
+
     int   ccc_counter = 0;
     int   current_search_position;
     float average_on_edge;
@@ -201,18 +225,37 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
 
             d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+
+#ifdef ENABLE_FastFFT
+            // TODO: here we would call the FastFFT version
+            FT.Generic_Fwd_Image_Inv((float2*)d_input_image.complex_values, noop, conj_mul, noop);
+            // FIXME: remove the copy
+            FT.CopyDeviceToHost(buffer.real_values, false, true);
+            d_buffer.CopyHostToDevice( );
+            d_padded_reference.CopyFrom(&d_buffer);
+
+            d_padded_reference.is_in_real_space = true;
+            d_padded_reference.CopyFP32toFP16buffer(false);
+            // For testing purposes this is not using the converted fp16 buffer we normally use
+            // TODO: probably better to pin this pointer once rather than using this method that does it every iteration
+
+#else
             d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
+#endif
             cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+
+#ifndef ENABLE_FastFFT
 
             // For the cpu code (MKL and FFTW) the image is multiplied by N on the forward xform, and subsequently normalized by 1/N
             // cuFFT multiplies by 1/root(N) forward and then 1/root(N) on the inverse. The input image is done on the cpu, and so has no scaling.
             // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
             d_padded_reference.ForwardFFT(false);
-            //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
-            d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
 
+            //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
+            d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_16f, true);
+#endif
             //			d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_gpu, false);
-            //			d_padded_reference.CopyFP32toFP16buffer(false);
+            //			d_padded_reference.ConvertToHalfPrecision(false);
 
             if ( DO_HISTOGRAM ) {
                 if ( ! histogram.is_allocated_histogram ) {

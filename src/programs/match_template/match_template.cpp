@@ -10,8 +10,8 @@
 
 #include "../../constants/constants.h"
 
-#ifdef ENABLE_FastFFT
-#include <FastFFT.h>
+#if defined(ENABLE_FastFFT) && defined(ENABLEGPU)
+#include "../../ext/FastFFT/include/FastFFT.h"
 #endif
 
 class AggregatedTemplateResult {

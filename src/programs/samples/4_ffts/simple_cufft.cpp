@@ -228,7 +228,11 @@ bool DoInPlaceR2CandC2RBatched(const wxString& hiv_image_80x80x1_filename, wxStr
 
     SamplesBeginTest("Batched 2d ffts (performance)", passed);
 
+#ifdef ENABLE_GPU_DEBUG
+    passed = passed && ratio_seq_to_batched > 4.f;
+#else
     passed = passed && ratio_seq_to_batched > 10.f;
+#endif
     if ( ! passed )
         wxPrintf("\n Ratio seq to batched %f\n", ratio_seq_to_batched);
 

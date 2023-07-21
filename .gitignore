@@ -28,3 +28,4 @@ cistem_config.in*
 scripts/testing/post_format_test.cpp
 src/ext/
 configure~
+*.mrc

@@ -83,7 +83,10 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     d_input_image.Init(this->input_image);
     d_input_image.CopyHostToDevice( );
 
+#ifndef ENABLE_FastFFT
+    // We want FastFFT to pin the host memory
     d_current_projection.Init(this->current_projection);
+#endif
 
     d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
     d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
@@ -163,19 +166,17 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 #ifdef ENABLE_FastFFT
     FastFFT::FourierTransformer<float, float, float, 2> FT;
     // TODO: overload that takes and short4's int4's instead of the individual values
-    FT.SetForwardFFTPlan(d_current_projection.dims.x, d_current_projection.dims.y, d_current_projection.dims.z, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true, true);
+    FT.SetForwardFFTPlan(current_projection.logical_x_dimension, current_projection.logical_y_dimension, current_projection.logical_z_dimension, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true, true);
     FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
     short4 fwd_dims_in  = FT.ReturnFwdInputDimensions( );
     short4 fwd_dims_out = FT.ReturnFwdOutputDimensions( );
     short4 inv_dims_in  = FT.ReturnInvInputDimensions( );
     short4 inv_dims_out = FT.ReturnInvOutputDimensions( );
-    FT.SetInputPointer(d_current_projection.real_values, true);
+
+    FT.SetInputPointer(current_projection.real_values, false);
+
     FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NOOP>     noop;
     FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::CONJ_MUL> conj_mul;
-
-    Image buffer;
-    buffer.CopyFrom(&input_image);
-    GpuImage d_buffer(buffer);
 
 #endif
 
@@ -216,23 +217,36 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // Make sure the device has moved on to the padded projection
             cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
 
+            // FIXME: For current TM test hack, need to leave these ops on the CPU until sorting out
+            // association with non-owned GPU memory.
             //// TO THE GPU ////
-            d_current_projection.CopyHostToDevice( );
+            // d_current_projection.CopyHostToDevice( );
 
-            d_current_projection.AddConstant(-average_on_edge);
+            // d_current_projection.AddConstant(-average_on_edge);
+
+            // // The average in the full padded image will be different;
+            // average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+
+            // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+            ////////////////////////
+
+            current_projection.AddConstant(-average_on_edge);
 
             // The average in the full padded image will be different;
-            average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+            average_of_reals *= ((float)current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
 
-            d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+            current_projection.MultiplyByConstant(rsqrtf(current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 
 #ifdef ENABLE_FastFFT
+            FT.CopyHostToDevice( );
+            FT.CopyDeviceToDevice(d_padded_reference.real_values_gpu, false, d_padded_reference.real_memory_allocated);
+            d_padded_reference.QuickAndDirtyWriteSlice("/tmp/padded_reference.mrc", 1);
+            exit(0);
+
             // TODO: here we would call the FastFFT version
             FT.Generic_Fwd_Image_Inv((float2*)d_input_image.complex_values, noop, conj_mul, noop);
             // FIXME: remove the copy
-            FT.CopyDeviceToHost(buffer.real_values, false, true);
-            d_buffer.CopyHostToDevice( );
-            d_padded_reference.CopyFrom(&d_buffer);
+            FT.CopyDeviceToDevice(d_padded_reference.real_values_gpu, false, false);
 
             d_padded_reference.is_in_real_space = true;
             d_padded_reference.CopyFP32toFP16buffer(false);
@@ -240,7 +254,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // TODO: probably better to pin this pointer once rather than using this method that does it every iteration
 
 #else
+            d_current_projection.CopyHostToDevice( );
             d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
+
 #endif
             cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
 

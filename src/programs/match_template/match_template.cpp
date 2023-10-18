@@ -486,6 +486,11 @@ bool MatchTemplateApp::DoCalculation( ) {
     ZeroDoubleArray(correlation_pixel_sum_of_squares, input_image.real_memory_allocated);
 
     sqrt_input_pixels = sqrt((double)(input_image.logical_x_dimension * input_image.logical_y_dimension));
+    // The CCC calculated is properly normalized when using FastFFT so the additional scaling is not needed.
+#ifdef ENABLE_FastFFT
+    if ( use_fast_fft )
+        sqrt_input_pixels = 1.0;
+#endif
 
     // setup curve
     histogram_step        = (histogram_max - histogram_min) / float(histogram_number_of_points);

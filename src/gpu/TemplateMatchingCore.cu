@@ -10,7 +10,7 @@
 #define DO_HISTOGRAM true
 
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
+                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks, const bool use_fast_fft);
 
 TemplateMatchingCore::TemplateMatchingCore( ){
 
@@ -159,8 +159,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         // d_input_image.SwapRealSpaceQuadrants( );
 
         d_input_image.BackwardFFT( );
-        // FIXME: Add a pre_op scaling functions
-        d_input_image.MultiplyByConstant(1.f / d_input_image.number_of_real_space_pixels);
+
         FastFFT::FourierTransformer<float, float, float, 2> FT;
 
         // TODO: overload that takes and short4's int4's instead of the individual values
@@ -172,6 +171,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         FT.CopyDeviceToDeviceFromNonOwningAddress(d_input_image.real_values, d_input_image.real_memory_allocated);
         FT.FwdFFT( );
         FT.CopyDeviceToDeviceAndSynchronize(d_input_image.real_values, false, d_input_image.real_memory_allocated);
+
+        // We've done a round trip iFFT/FFT since the input image was normalized to STD 1.0, so re-normalize by 1/n
+        d_input_image.is_in_real_space = false;
+        d_input_image.MultiplyByConstant(sqrtf(1.f / d_input_image.number_of_real_space_pixels));
     }
 
 #endif
@@ -285,7 +288,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
                 d_padded_reference.ForwardFFT(false);
 
-                //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
+                // FFT of template is loaded
+                // FFT of target image is loaded from fp16 buffer
+                // Value is converted to fp32, conjugate multiplied then scaled by 1/N
+                // iFFT is then calculated by inverse cuFFT plan
+                // prior to writing, this value converted fp32 back to fp16
                 d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
             }
 
@@ -386,12 +393,12 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
 
     MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,
-                                                                                                                    psi, theta, phi, my_stats, my_new_peaks);
+                                                                                                                    psi, theta, phi, my_stats, my_new_peaks, use_fast_fft);
     postcheck;
 }
 
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
+                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks, const bool use_fast_fft) {
 
     for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
 
@@ -405,26 +412,26 @@ __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks
         const __half half_val = correlation_output[i];
 #endif
 
-        const __half2 input  = __half2half2(half_val * __half(10000.0));
-        const __half2 mulVal = __halves2half2((__half)1.0, half_val);
-        //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
-        //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
-        //    	tmp_peak = my_peaks[i];
-        //		const __half half_val = __float2half_rn(val);
+        if ( use_fast_fft ) {
+            my_stats[i] += __halves2half2(half_val, half_val * half_val);
+        }
+        else {
 
-        //			tmp_peak.psi = psi;
-        //			tmp_peak.theta = theta;
-        //			tmp_peak.phi = phi;
+            const __half2 input  = __half2half2(half_val * __half(10000.0));
+            const __half2 mulVal = __halves2half2((__half)1.0, half_val);
+            //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
+            //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
+            my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
+        }
+
+        // We are always reading the mip value
+        // And likely often writing both that value and the updated angles.
+        // If we had some minimum threshold, (5?) we could skip all these memory ops while still collecting
+        // the full set of image statistics as well as histogram values.
         if ( half_val > __low2half(my_peaks[i]) ) {
             //				tmp_peak.mip = half_val;
             my_peaks[i]     = __halves2half2(half_val, psi);
             my_new_peaks[i] = __halves2half2(theta, phi);
-
-            //				my_peaks[i].mip = correlation_output[i];
-            //				my_peaks[i].psi = psi;
-            //				my_peaks[i].theta = theta;
-            //				my_peaks[i].phi = phi;
         }
     }
     //
@@ -555,7 +562,7 @@ void TemplateMatchingCore::MipToImage( ) {
     postcheck;
 }
 
-__global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftReal* sum, cufftReal* sq_sum);
+__global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftReal* sum, cufftReal* sq_sum, const bool use_fast_fft);
 
 void TemplateMatchingCore::AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum) {
 
@@ -563,17 +570,22 @@ void TemplateMatchingCore::AccumulateSums(__half2* my_stats, GpuImage& sum, GpuI
     dim3 threadsPerBlock = dim3(1024, 1, 1);
     dim3 gridDims        = dim3((sum.real_memory_allocated + threadsPerBlock.x - 1) / threadsPerBlock.x, 1, 1);
 
-    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(my_stats, sum.real_memory_allocated, sum.real_values, sq_sum.real_values);
+    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(my_stats, sum.real_memory_allocated, sum.real_values, sq_sum.real_values, use_fast_fft);
     postcheck;
 }
 
-__global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftReal* sum, cufftReal* sq_sum) {
+__global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftReal* sum, cufftReal* sq_sum, const bool use_fast_fft) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x < numel ) {
-
-        sum[x]    = __fmaf_rn(0.0001f, __low2float(my_stats[x]), sum[x]);
-        sq_sum[x] = __fmaf_rn(0.0001f, __high2float(my_stats[x]), sq_sum[x]);
+        if ( use_fast_fft ) {
+            sum[x] += __low2float(my_stats[x]);
+            sq_sum[x] += __high2float(my_stats[x]);
+        }
+        else {
+            sum[x]    = __fmaf_rn(0.0001f, __low2float(my_stats[x]), sum[x]);
+            sq_sum[x] = __fmaf_rn(0.0001f, __high2float(my_stats[x]), sq_sum[x]);
+        }
 
         my_stats[x] = __halves2half2((__half)0., (__half)0.);
     }

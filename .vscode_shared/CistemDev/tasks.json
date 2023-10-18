@@ -24,6 +24,16 @@
             "command": "cd ${build_dir}/intel-gpu-static && make -j${input:compile_cores}"
         },
         {
+            "label": "Configure cisTEM build profiling",
+            "type": "shell",
+            "command": "mkdir -p ${build_dir}/intel-gpu-static && cd ${build_dir}/intel-gpu-static && CC=icc CXX=icpc ../../configure --with-wx-config=/opt/WX/intel-static/bin/wx-config --enable-profiling --enable-staticmode --with-cuda=${cuda_dir} ${experimental_algo_flags} ${common_optional_programs}  ${common_flags} "
+        },
+        {
+            "label": "BUILD cisTEM profiling",
+            "type": "shell",
+            "command": "cd ${build_dir}/intel-gpu-static && make -j${input:compile_cores}"
+        },
+        {
             "label": "Configure cisTEM DEBUG build",
             "type": "shell",
             "command": "mkdir -p ${build_dir}/intel-gpu-debug-static && cd ${build_dir}/intel-gpu-debug-static && CC=icc CXX=icpc ../../configure --enable-debugmode --enable-gpu-debug --with-wx-config=/opt/WX/intel-static/bin/wx-config --enable-staticmode --with-cuda=${cuda_dir} ${experimental_algo_flags} ${common_optional_programs}  ${common_flags} "

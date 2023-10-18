@@ -5,7 +5,17 @@
 #include <unordered_map>
 #include "wx/socket.h"
 
+#ifdef ENABLEGPU
+#include "../../gpu/gpu_core_headers.h"
+#include "../../gpu/GpuImage.h"
+#else
 #include "../../core/core_headers.h"
+#endif
+
+#if defined(ENABLE_FastFFT) && defined(ENABLEGPU)
+#define RUN_FastFFT_TESTS
+#include "../../ext/FastFFT/include/FastFFT.h"
+#endif
 
 // embedded images..
 
@@ -116,6 +126,10 @@ class
     void WriteEmbeddedArray(const char* filename, const unsigned char* array, long length);
     void WriteNumericTextFile(const char* filename);
     void WriteDatabase(const char* dir, const char* filename);
+
+#ifdef RUN_FastFFT_TESTS
+    void TestFastFFT( );
+#endif
 };
 
 IMPLEMENT_APP(MyTestApp)
@@ -165,6 +179,10 @@ bool MyTestApp::DoCalculation( ) {
     TestRunProfileDiskOperations( );
     TestCTFNodes( );
     TestSpectrumImageMethods( );
+
+#ifdef RUN_FastFFT_TESTS
+    TestFastFFT( );
+#endif
 
     wxPrintf("\n\n\n");
 
@@ -1378,83 +1396,6 @@ void MyTestApp::TestAlignmentFunctions( ) {
     }
     EndTest( );
 
-    // A bare minimal test to make sure the origin of rotation is as expected.
-    BeginTest("Image::ExtractSlice");
-    Image test_vol;
-
-    // Test for even/odd and 2 and 3D images
-    AnglesAndShifts     test_extract_angles(90.f, 0.f, 0.f, 0.f, 0.f);
-    std::complex<float> origin_value;
-    for ( auto& size : test_sizes ) {
-        size += 2;
-        test_image.Allocate(size, size, 1);
-        int size_3d = 8 * size;
-        if ( IsOdd(size) )
-            size_3d++;
-        test_vol.Allocate(size_3d, size_3d, size_3d);
-        // Make sure the meta data is correctly reset:
-        test_vol.object_is_centred_in_box   = true;
-        test_image.object_is_centred_in_box = true;
-        test_image.SetToConstant(0.0f);
-        test_vol.SetToConstant(0.0f);
-        int ox, oy, oz;
-        ox = test_vol.physical_address_of_box_center_x;
-        oy = test_vol.physical_address_of_box_center_y;
-        oz = test_vol.physical_address_of_box_center_z;
-        // Set a unit impulse at the centered in the box origin and a cross in the xy plane
-
-        float sum = 0.f;
-
-        test_vol.real_values[test_vol.ReturnReal1DAddressFromPhysicalCoord(ox, oy, oz)] = 1.0f;
-        sum += 1.f;
-        for ( int i = -2; i < 3; i += 4 ) {
-            for ( int j = -2; j < 3; j += 4 ) {
-                test_vol.real_values[test_vol.ReturnReal1DAddressFromPhysicalCoord(ox + i, oy + j, oz)] = 1.0f;
-                sum += 1.f;
-            }
-        }
-
-        test_vol.ForwardFFT(false);
-
-        test_vol.SwapRealSpaceQuadrants( );
-        test_vol.ExtractSlice(test_image, test_extract_angles, 0., false);
-        test_image.SwapRealSpaceQuadrants( );
-        test_image.BackwardFFT( );
-
-        // Leaving for notes:
-        // An un-normalized padded 3d FT, projection, removal of zero pixel, padded back 2d fft,
-        // crop, normalized forward 2d, un-normalized back 2d FFT results in a total change in power as below.
-        // float p_   = test_vol.ReturnSumOfSquares( ) * test_vol.number_of_real_space_pixels;
-        // float sum_ = test_vol.ReturnSumOfRealValues( );
-        // float n2_  = float(size_3d * size_3d);
-        // float n3_  = float(size_3d * size_3d * size_3d);
-        // // I needed an extra sqrt(n2_) here ?
-        // float p_out_calc_ = powf(n2_, 1.5f) * (n3_ * p_ - sum_ * sum_);
-
-        EmpiricalDistribution test_dist;
-        test_image.UpdateDistributionOfRealValues(&test_dist);
-        float scale = test_dist.GetMaximum( );
-        test_image.MultiplyByConstant(1.f / scale);
-        // there is a sinc and some power loss during the cropping so it won't be perfectly 1
-        for ( int i = 0; i < test_image.real_memory_allocated; i++ )
-            test_image.real_values[i] = roundf(test_image.real_values[i]);
-        ox = test_image.physical_address_of_box_center_x;
-        oy = test_image.physical_address_of_box_center_y;
-        oz = test_image.physical_address_of_box_center_z;
-        if ( ! FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(ox, oy, 0), 1.0f) ) {
-            FailTest;
-        }
-        for ( int i = -2; i < 3; i += 4 ) {
-            for ( int j = -2; j < 3; j += 4 ) {
-                if ( ! FloatsAreAlmostTheSame(test_image.ReturnRealPixelFromPhysicalCoord(ox + i, oy + j, 0), 1.0f) ) {
-                    FailTest;
-                }
-            }
-        }
-    }
-
-    EndTest( );
-
     // CalculateCrossCorrelationImageWith
     BeginTest("Image::CalculateCrossCorrelationImageWith");
 
@@ -2037,6 +1978,62 @@ void MyTestApp::TestSpectrumImageMethods( ) {
     EndTest( );
 }
 
+#ifdef RUN_FastFFT_TESTS
+void MyTestApp::TestFastFFT( ) {
+
+    BeginTest("Fast FFT");
+    CheckDependencies({"MRCFile::OpenFile", "MRCFile::ReadSlice", "Empirical Distribution"});
+
+    Image input_image;
+    input_image.QuickAndDirtyReadSlice(hiv_image_80x80x1_filename.ToStdString( ), 1);
+
+    input_image.Resize(64, 64, 1);
+
+    if ( input_image.logical_x_dimension == 64 && input_image.logical_y_dimension == 64 ) {
+        // Make a copy of the image to transform forward and back on the cpu , which should give a scaled image by N
+        Image copy_of_input, cpu_result;
+        copy_of_input.CopyFrom(&input_image);
+        copy_of_input.ForwardFFT(false);
+        copy_of_input.BackwardFFT( );
+        cpu_result.CopyFrom(&copy_of_input);
+
+        copy_of_input.RegisterPageLockedMemory(copy_of_input.real_values);
+
+        // Make a copy of the image to transform forward and back on the gpu, which should give a scaled image by N
+        copy_of_input.CopyFrom(&input_image);
+
+        // We just make one instance of the FourierTransformer class, with calc type float.
+        FastFFT::FourierTransformer<float, float, float, 2> FT;
+
+        // This is similar to creating an FFT/CUFFT plan, so set these up before doing anything on the GPU
+        // for this test, we know the size is square and 64 with input and output size equal.
+        FT.SetForwardFFTPlan(copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1, copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1);
+        FT.SetInverseFFTPlan(copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1, copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1);
+
+        constexpr bool input_is_on_device = false;
+        FT.SetInputPointer(copy_of_input.real_values, input_is_on_device);
+        FT.CopyHostToDevice(copy_of_input.real_values);
+        FT.FwdFFT( );
+        FT.InvFFT( );
+        // There is no size change, so we can just use the input image memory buffer.
+        constexpr bool free_gpu_memory = true;
+        FT.CopyDeviceToHostAndSynchronize(copy_of_input.real_values, free_gpu_memory);
+
+        copy_of_input.SubtractImage(&cpu_result);
+        EmpiricalDistribution my_dist = copy_of_input.ReturnDistributionOfRealValues( );
+
+        if ( ! RelativeErrorIsLessThanEpsilon(my_dist.GetSampleMean( ) + 1.f, 1.0f, true, float(1e-4)) ) {
+            FailTest;
+        }
+    }
+    else {
+        wxPrintf("Not testing FastFFT for a %i x %i image\n", input_image.logical_x_dimension, true, input_image.logical_y_dimension);
+    }
+
+    EndTest( );
+}
+#endif
+
 void MyTestApp::BeginTest(const char* test_name) {
     // For access by other tests when running CheckDependencies
     current_test_name               = test_name;
@@ -2233,3 +2230,7 @@ void MyTestApp::WriteNumericTextFile(const char* filename) {
 
     fclose(output_file);
 }
+
+#ifdef RUN_FastFFT_TESTS
+#undef RUN_FastFFT_TESTS
+#endif

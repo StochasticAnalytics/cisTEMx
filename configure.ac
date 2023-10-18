@@ -254,8 +254,8 @@ if test "$want_cuda" = "yes" ; then
     fi
 
     AC_MSG_NOTICE([Adding the CUDA includes Setting up NVCC initial flags])
-    CUDA_CPPFLAGS="$CUDA_CFLAGS $NVCCFLAGS $FastFFT_FLAGS"
-    CUDA_CXXFLAGS="$CUDA_CFLAGS $NVCCFLAGS $FastFFT_FLAGS"
+    CUDA_CPPFLAGS="$CUDA_CFLAGS $NVCCFLAGS $FastFFT_CUDA_FLAGS $FastFFT_CXX_FLAGS"
+    CUDA_CXXFLAGS="$CUDA_CFLAGS $NVCCFLAGS $FastFFT_CUDA_FLAGS $FastFFT_CXX_FLAGS"
     
     CXXFLAGS="$CXXFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
     CPPFLAGS="$CPPFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"

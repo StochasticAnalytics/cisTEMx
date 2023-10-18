@@ -241,6 +241,9 @@ class GpuImage {
 
     template <typename StorageTypeBase>
     void CopyDataFrom(GpuImage& other_image);
+    void CopyFP32toFP16buffer(float* real_32f_values, __half* real_16f_values, int n_elements);
+    void CopyFP32toFP16buffer(float2* complex_32f_values, __half2* complex_16f_values, int n_elements);
+
     void CopyFP32toFP16buffer(bool deallocate_single_precision = true);
     void CopyFP16buffertoFP32(bool deallocate_half_precision = true);
 

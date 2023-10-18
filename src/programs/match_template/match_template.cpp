@@ -105,6 +105,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     float    in_plane_angular_step     = 0;
     bool     use_gpu_input             = false;
     int      max_threads               = 1; // Only used for the GPU code
+    bool     use_fast_fft              = false;
 
     UserInput* my_input = new UserInput("MatchTemplate", 1.00);
 
@@ -144,6 +145,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
 #ifdef ENABLEGPU
     use_gpu_input = my_input->GetYesNoFromUser("Use GPU", "Offload expensive calcs to GPU", "No");
     max_threads   = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
+    use_fast_fft  = my_input->GetYesNoFromUser("Use Fast FFT", "Use the Fast FFT library", "No");
 #endif
 
     int   first_search_position           = -1;
@@ -157,7 +159,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbi", input_search_images.ToUTF8( ).data( ),
+    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbib", input_search_images.ToUTF8( ).data( ),
                                       input_reconstruction.ToUTF8( ).data( ),
                                       pixel_size,
                                       voltage_kV,
@@ -198,7 +200,8 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
                                       result_filename.ToUTF8( ).data( ),
                                       min_peak_radius,
                                       use_gpu_input,
-                                      max_threads);
+                                      max_threads,
+                                      use_fast_fft);
 }
 
 // override the do calculation method which will be what is actually run..
@@ -256,6 +259,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     float    min_peak_radius                 = my_current_job.arguments[39].ReturnFloatArgument( );
     bool     use_gpu                         = my_current_job.arguments[40].ReturnBoolArgument( );
     int      max_threads                     = my_current_job.arguments[41].ReturnIntegerArgument( );
+    bool     use_fast_fft                    = my_current_job.arguments[42].ReturnBoolArgument( );
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
@@ -268,6 +272,17 @@ bool MatchTemplateApp::DoCalculation( ) {
         SendInfo("Using more than one thread only works in the GPU implementation\nSet No. of threads per copy to 1 in your Run Profile\n.");
         max_threads = 1;
     }
+
+    if ( use_fast_fft && ! use_gpu ) {
+        SendInfo("Fast FFT is only available in the GPU implementation\n");
+        use_fast_fft = false;
+    }
+#ifndef ENABLE_FastFFT
+    if ( use_fast_fft ) {
+        SendInfo("Fast FFT is not enabled in this build.  Falling back to standard FFT.\n");
+        use_fast_fft = false;
+    }
+#endif
 
     ParameterMap parameter_map; // needed for euler search init
     //for (int i = 0; i < 5; i++) {parameter_map[i] = true;}
@@ -605,6 +620,7 @@ bool MatchTemplateApp::DoCalculation( ) {
         number_of_rotations++;
     }
 
+    std::cerr << "psi start and step " << psi_start << " " << psi_step << std::endl;
     ProgressBar* my_progress;
 
     //Loop over ever search position
@@ -690,14 +706,19 @@ bool MatchTemplateApp::DoCalculation( ) {
                     if ( tIDX == (max_threads - 1) )
                         t_last_search_position = maxPos;
 
-                    GPU[tIDX].Init(this, template_reconstruction, input_image, current_projection,
-                                   pixel_size_search_range, pixel_size_step, pixel_size,
-                                   defocus_search_range, defocus_step, defocus1, defocus2,
-                                   psi_max, psi_start, psi_step,
-                                   angles, global_euler_search,
-                                   histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
-                                   max_padding, t_first_search_position, t_last_search_position,
-                                   my_progress, total_correlation_positions_per_thread, is_running_locally);
+// FIXME: the check on whether the memory is page locked is not threadsafe
+#pragma omp critical
+
+                    {
+                        GPU[tIDX].Init(this, template_reconstruction, input_image, current_projection,
+                                       pixel_size_search_range, pixel_size_step, pixel_size,
+                                       defocus_search_range, defocus_step, defocus1, defocus2,
+                                       psi_max, psi_start, psi_step,
+                                       angles, global_euler_search,
+                                       histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
+                                       max_padding, t_first_search_position, t_last_search_position,
+                                       my_progress, total_correlation_positions_per_thread, is_running_locally, use_fast_fft);
+                    }
 
                     wxPrintf("%d\n", tIDX);
                     wxPrintf("%d\n", t_first_search_position);
@@ -1232,7 +1253,7 @@ bool MatchTemplateApp::DoCalculation( ) {
         delete[] GPU;
     }
 
-    //  gpuDev.ResetGpu();
+//  gpuDev.ResetGpu();
 #endif
 
     if ( is_running_locally == true ) {

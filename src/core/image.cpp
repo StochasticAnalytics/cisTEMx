@@ -56,6 +56,9 @@ void Image::SetupInitialValues( ) {
     real_memory_allocated     = 0;
     real_memory_allocated_16f = 0;
 
+    is_page_locked_real_values     = false;
+    is_page_locked_real_values_16f = false;
+
     plan_fwd = NULL;
     plan_bwd = NULL;
 
@@ -8269,6 +8272,8 @@ void Image::Consume(Image* other_image) // copy the parameters then directly ste
 
     number_of_real_space_pixels = other_image->number_of_real_space_pixels;
     ft_normalization_factor     = other_image->ft_normalization_factor;
+
+    SetIsMemoryPageLocked(real_values, IsMemoryPageLocked(other_image->real_values));
 }
 
 void Image::RealSpaceIntegerShift(int wanted_x_shift, int wanted_y_shift, int wanted_z_shift) {

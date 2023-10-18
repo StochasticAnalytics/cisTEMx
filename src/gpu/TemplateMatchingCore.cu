@@ -1,6 +1,12 @@
 #include "gpu_core_headers.h"
 #include "TemplateMatchingCore.h"
 
+#ifdef ENABLE_FastFFT
+#include "../ext/FastFFT/include/FastFFT.cuh"
+#endif
+
+#define CHECK_FOR_BAD_FLOATS
+
 #define DO_HISTOGRAM true
 
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
@@ -57,6 +63,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
                                 ProgressBar*     my_progress,
                                 long             total_correlation_positions,
                                 bool             is_running_locally,
+                                bool             use_fast_fft,
                                 int              number_of_global_search_images_to_save)
 
 {
@@ -65,6 +72,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->last_search_position           = last_search_position;
     this->angles                         = angles;
     this->global_euler_search            = global_euler_search;
+    this->use_fast_fft                   = use_fast_fft;
     this->n_global_search_images_to_save = number_of_global_search_images_to_save;
 
     this->psi_start = psi_start;
@@ -80,7 +88,6 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     d_input_image.CopyHostToDevice(input_image);
 
     d_current_projection.Init(this->current_projection);
-
     d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
     d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
     d_best_psi.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
@@ -137,6 +144,37 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     // Either do not delete the single precision, or add in a copy here so that each loop over defocus vals
     // have a copy to work with. Otherwise this will not exist on the second loop
+#ifdef ENABLE_FastFFT
+    // FIXME: FastFFT works on transposed 2D xforms so for testing
+
+    if ( use_fast_fft ) {
+        // FastFFT pads from the upper left corner, so we need to shift the image so the origins coinicide
+        // d_input_image.SwapRealSpaceQuadrants( );
+        // d_input_image.PhaseShift((-d_current_projection.physical_address_of_box_center.x),
+        //                          (-d_current_projection.physical_address_of_box_center.y),
+        //                          0);
+        d_input_image.PhaseShift(-(d_input_image.physical_address_of_box_center.x - d_current_projection.physical_address_of_box_center.x),
+                                 -(d_input_image.physical_address_of_box_center.y - d_current_projection.physical_address_of_box_center.y),
+                                 0);
+        // d_input_image.SwapRealSpaceQuadrants( );
+
+        d_input_image.BackwardFFT( );
+        // FIXME: Add a pre_op scaling functions
+        d_input_image.MultiplyByConstant(1.f / d_input_image.number_of_real_space_pixels);
+        FastFFT::FourierTransformer<float, float, float, 2> FT;
+
+        // TODO: overload that takes and short4's int4's instead of the individual values
+        FT.SetForwardFFTPlan(input_image.logical_x_dimension, input_image.logical_y_dimension, d_input_image.logical_z_dimension, d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
+        FT.SetInverseFFTPlan(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
+
+        constexpr bool input_is_on_device = true;
+        FT.SetInputPointer(d_input_image.real_values, input_is_on_device);
+        FT.CopyDeviceToDeviceFromNonOwningAddress(d_input_image.real_values, d_input_image.real_memory_allocated);
+        FT.FwdFFT( );
+        FT.CopyDeviceToDeviceAndSynchronize(d_input_image.real_values, false, d_input_image.real_memory_allocated);
+    }
+
+#endif
     d_input_image.CopyFP32toFP16buffer(false);
     d_padded_reference.CopyFP32toFP16buffer(false);
 
@@ -155,13 +193,30 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaEventCreateWithFlags(&projection_is_free_Event, cudaEventDisableTiming));
     cudaErr(cudaEventCreateWithFlags(&gpu_work_is_done_Event, cudaEventDisableTiming));
 
+// TODO: This will probably be a member variable
+#ifdef ENABLE_FastFFT
+
+    FastFFT::FourierTransformer<float, float, float, 2> FT;
+
+    // TODO: overload that takes and short4's int4's instead of the individual values
+    FT.SetForwardFFTPlan(current_projection.logical_x_dimension, current_projection.logical_y_dimension, current_projection.logical_z_dimension, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
+    FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
+
+    constexpr bool input_is_on_device = true;
+    FT.SetInputPointer(d_current_projection.real_values, input_is_on_device);
+
+    FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NOOP>     noop;
+    FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::CONJ_MUL> conj_mul;
+
+#endif
+
     int   ccc_counter = 0;
     int   current_search_position;
     float average_on_edge;
     float average_of_reals;
     float temp_float;
-
-    int thisDevice;
+    bool  second_loop = false;
+    int   thisDevice;
     cudaGetDevice(&thisDevice);
     wxPrintf("Thread %d is running on device %d\n", threadIDX, thisDevice);
 
@@ -182,7 +237,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             //			current_projection.SetToConstant(0.0f); // This also sets the FFT padding to zero
             template_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
             current_projection.complex_values[0] = 0.0f + I * 0.0f;
-
             current_projection.SwapRealSpaceQuadrants( );
             current_projection.MultiplyPixelWise(projection_filter);
             current_projection.BackwardFFT( );
@@ -192,27 +246,48 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // Make sure the device has moved on to the padded projection
             cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
 
+            // FIXME: For current TM test hack, need to leave these ops on the CPU until sorting out
+            // association with non-owned GPU memory.
             //// TO THE GPU ////
             d_current_projection.CopyHostToDevice(current_projection);
-
-            d_current_projection.AddConstant(-average_on_edge);
 
             // The average in the full padded image will be different;
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
 
             d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
-            d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
-            cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
 
-            // For the cpu code (MKL and FFTW) the image is multiplied by N on the forward xform, and subsequently normalized by 1/N
-            // cuFFT multiplies by 1/root(N) forward and then 1/root(N) on the inverse. The input image is done on the cpu, and so has no scaling.
-            // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
-            d_padded_reference.ForwardFFT(false);
-            //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
-            d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
+#ifdef ENABLE_FastFFT
+            if ( use_fast_fft ) {
+                // FIXME:
+                d_current_projection.MultiplyByConstant(1.f / (float)d_padded_reference.number_of_real_space_pixels);
+                FT.CopyDeviceToDeviceFromNonOwningAddress(d_current_projection.real_values);
+                cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+                FT.Generic_Fwd_Image_Inv((float2*)d_input_image.complex_values, noop, conj_mul, noop);
+            }
+#endif
+            if ( ! use_fast_fft ) {
 
-            //			d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values, false);
-            //			d_padded_reference.CopyFP32toFP16buffer(false);
+                d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
+                cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+            }
+
+#ifdef ENABLE_FastFFT
+            if ( use_fast_fft ) {
+                FT.CopyDeviceToDevice(d_padded_reference.real_values, false, d_padded_reference.real_memory_allocated);
+                d_padded_reference.CopyFP32toFP16buffer(false);
+            }
+
+#endif
+
+            if ( ! use_fast_fft ) {
+                // For the cpu code (MKL and FFTW) the image is multiplied by N on the forward xform, and subsequently normalized by 1/N
+                // cuFFT multiplies by 1/root(N) forward and then 1/root(N) on the inverse. The input image is done on the cpu, and so has no scaling.
+                // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
+                d_padded_reference.ForwardFFT(false);
+
+                //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
+                d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
+            }
 
             if ( DO_HISTOGRAM ) {
                 if ( ! histogram.is_allocated_histogram ) {
@@ -222,33 +297,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 histogram.AddToHistogram(d_padded_reference);
             }
 
-            //			if (make_graph && first_loop_complete)
-            //			{
-            //				wxPrintf("\nBeginning stream capture for creation of graph\n");
-            //				cudaStreamBeginCapture(cudaStreamPerThread, cudaStreamCaptureModeGlobal);
-            //			}
-            //
-            //			if (first_loop_complete && ! make_graph)
-            //			{
-            //				cudaGraphLaunch(graphExec, cudaStreamPerThread);
-            //
-            //			}
-            //			else
-            //			{
             this->MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
                                __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
-            //			this->MipPixelWise(d_padded_reference, float(current_psi) , float(global_euler_search.list_of_search_parameters[current_search_position][1]),
-            //																			 	 float(global_euler_search.list_of_search_parameters[current_search_position][0]));
-            //				this->SumPixelWise(d_padded_reference);
-            //			}
-
-            //			if (make_graph && first_loop_complete)
-            //			{
-            //				wxPrintf("\nEnding stream capture for creation of graph\n");
-            //				cudaStreamEndCapture(cudaStreamPerThread, &graph);
-            //				cudaGraphInstantiate(&graphExec, graph, NULL, NULL, 0);
-            //				make_graph = false;
-            //			}
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
@@ -277,7 +327,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             current_projection.is_in_real_space = false;
             d_padded_reference.is_in_real_space = true;
-            //			d_padded_reference.Zeros();
             cudaEventRecord(gpu_work_is_done_Event, cudaStreamPerThread);
 
             //			first_loop_complete = true;
@@ -296,6 +345,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 temp_result->SetResult(1, &temp_float);
                 parent_pointer->AddJobToResultQueue(temp_result);
             }
+
         } // loop over psi angles
 
         // The current goal is to have only one peak per search position.
@@ -343,13 +393,20 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
                                    __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
 
-    //	Peaks tmp_peak;
-
     for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
 
-        const __half  half_val = correlation_output[i];
-        const __half2 input    = __half2half2(half_val * __half(10000.0));
-        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
+#ifdef CHECK_FOR_BAD_FLOATS
+        __half half_val = correlation_output[i];
+        if ( half_val == CUDART_INF_FP16 )
+            half_val = half(225.0f);
+        else if ( half_val == CUDART_NAN_FP16 )
+            half_val = half(226.0f);
+#else
+        const __half half_val = correlation_output[i];
+#endif
+
+        const __half2 input  = __half2half2(half_val * __half(10000.0));
+        const __half2 mulVal = __halves2half2((__half)1.0, half_val);
         //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
         //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
         my_stats[i] = __hfma2(input, mulVal, my_stats[i]);

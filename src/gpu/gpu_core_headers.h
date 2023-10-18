@@ -82,6 +82,21 @@ void* print_pointer_atrributes(T ptr, const char* ptr_name = nullptr) {
     return attr.hostPointer;
 }
 
+template <typename T>
+bool is_pointer_registered(T ptr, const char* ptr_name = nullptr) {
+    cudaPointerAttributes attr;
+    cudaErr(cudaPointerGetAttributes(&attr, ptr));
+    // attr.type == 1 indicates the host memory is allocated
+    // attr.devicePointer == attr.hostPointer indicates the host memory is registered, i.e.
+    // it is accessible from the device
+    if ( attr.type == 1 && attr.devicePointer == attr.hostPointer ) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
 // Limits for specific kernels
 constexpr int ntds_x_WhitenPS = 32;
 constexpr int ntds_y_WhitenPS = 32;

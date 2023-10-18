@@ -8,6 +8,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=America/New_York
 ARG GCC_VER=11
 
+SHELL ["/bin/bash", "-c"]
+
 RUN apt-get update && apt-get -y install tzdata
 
 
@@ -56,13 +58,25 @@ RUN apt-get update && apt-get install -y intel-oneapi-compiler-dpcpp-cpp-and-cpp
 # NOTE: for now, only building with the intel-compiler. If people still are pushing gnu compiler, we can add those here.
 RUN wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWidgets-3.0.5.tar.bz2 -O /tmp/wxwidgets.tar.bz2 && \
     echo 'Building wxWidgets but deferring install' && \
-    mkdir -p /opt/WX/intel-static && mkdir -p /opt/WX/intel-dynamic && \
-    tar -xf /tmp/wxwidgets.tar.bz2 -C /opt/WX/intel-static && \
-    tar -xf /tmp/wxwidgets.tar.bz2 -C /opt/WX/intel-dynamic && \
+    for compiler in intel gnu; do for linkage in static dynamic ; do mkdir -p /opt/WX/${compiler}-${linkage} ; tar -xf /tmp/wxwidgets.tar.bz2 -C /opt/WX/${compiler}-${linkage}; done ; done && \
     rm -rf /tmp/wxwidgets.tar.bz2 
 
 # Here for the record if you want to build and link static binaries to avoid the cointainerized distribution
 # CXXFLAGS=-fPIC CFLAGS=-fPIC were specified for the static configure line, but I'm not sure that makes any sense?
+RUN cd /opt/WX/gnu-static/wxWidgets-3.0.5 && \
+    CXX=g++ CC=gcc ./configure --disable-precomp-headers --prefix=/opt/WX/gnu-static --with-libnotify=no --disable-shared \
+    --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
+    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
+    make -j$n_threads 
+
+# Now build with out static
+RUN cd /opt/WX/gnu-dynamic/wxWidgets-3.0.5 && \
+    CXX=g++ CC=gcc CXXFLAGS=-fPIC CFLAGS=-fPIC  ./configure --disable-precomp-headers --prefix=/opt/WX/gnu-dynamic --with-libnotify=no  \
+    --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
+    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  && \
+    make -j$n_threads 
+
+
 RUN . /opt/intel/oneapi/setvars.sh && \
     cd /opt/WX/intel-static/wxWidgets-3.0.5 && \
     CXX=icpc CC=icc ./configure --disable-precomp-headers --prefix=/opt/WX/intel-static --with-libnotify=no --disable-shared \
@@ -97,8 +111,8 @@ RUN cd /tmp && wget https://download.pytorch.org/libtorch/cu113/libtorch-cxx11-a
 ENV LD_RUN_PATH=/opt/libtorch/lib:${LD_RUN_PATH}
 
 # Install cuda (when the web is live)
-ARG CUDA_VER=11.7.0
-ARG DRIVER_VER=515.43.04
+ARG CUDA_VER=12.2.2
+ARG DRIVER_VER=535.104.05
 # Install cuda (when the web is live)
 RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run && \
     sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit && \

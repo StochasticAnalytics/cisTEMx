@@ -72,11 +72,11 @@ class Image {
     float*               real_values; // !<  Real array to hold values for REAL images.
     std::complex<float>* complex_values; // !<  Complex array to hold values for COMP images.
     bool                 is_in_memory; // !<  Whether image values are in-memory, in other words whether the image has memory space allocated to its data array. Default = .FALSE.
-    bool                 is_page_locked_real_values = false; // !<  Whether the page-locked memory has been registered with CUDA. Has no impact without DENABLE_GPU. See gpu/core_extensions/image.cu
+    bool                 is_page_locked_real_values; // !<  Whether the page-locked memory has been registered with CUDA. Has no impact without DENABLE_GPU. See gpu/core_extensions/image.cu
 
     half_float::half* real_values_16f;
     bool              is_in_memory_16f;
-    bool              is_page_locked_real_values_16f = false;
+    bool              is_page_locked_real_values_16f;
 
     // By expanding data types, some of the legacy bools used to track state, like is_in_memory, become cumbersome. Use templating to ensure that the correct state is tracked.
 
@@ -84,24 +84,28 @@ class Image {
     // Maybe it would be nice to hide these somewhere else?
     template <typename StorageBaseType>
     bool IsMemoryAllocated(StorageBaseType* ptr) {
+        bool ret_val = false;
         if constexpr ( std::is_same_v<StorageBaseType, float> )
-            return is_in_memory;
+            ret_val = is_in_memory;
         else if constexpr ( std::is_same_v<StorageBaseType, half_float::half> )
-            return is_in_memory_16f;
-        else
-            MyDebugAssertTrue(false, "Unknown StorageBaseType");
-        return false;
+            ret_val = is_in_memory_16f;
+        else {
+            MyAssertTrue(false, "Unknown StorageBaseType");
+        }
+        return ret_val;
     }
 
     template <typename StorageBaseType>
     bool IsMemoryPageLocked(StorageBaseType* ptr) {
+        bool ret_val = false;
         if constexpr ( std::is_same_v<StorageBaseType, float> )
-            return is_page_locked_real_values;
+            ret_val = is_page_locked_real_values;
         else if constexpr ( std::is_same_v<StorageBaseType, half_float::half> )
-            return is_page_locked_real_values_16f;
-        else
-            MyDebugAssertTrue(false, "Unknown StorageBaseType");
-        return false;
+            ret_val = is_page_locked_real_values_16f;
+        else {
+            MyAssertTrue(false, "Unknown StorageBaseType");
+        }
+        return ret_val;
     }
 
     template <typename StorageBaseType>

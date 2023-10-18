@@ -47,8 +47,9 @@ template void Image::AllocatePageLockedMemory<half_float::half>(int wanted_x_siz
 
 template <typename StorageBaseType>
 void Image::RegisterPageLockedMemory(StorageBaseType* ptr) {
-
-    if ( ! IsMemoryPageLocked(ptr) ) {
+    // FIXME: see if there is any real overhead in checking this compared to tracking the bools.
+    // If not, remove other bools and just check.
+    if ( ! is_pointer_registered(ptr) ) {
         wxMutexLocker lock(s_mutexProtectingFFTW); // the mutex will be unlocked when this object is destroyed (when it goes out of scope)
         MyDebugAssertTrue(lock.IsOk( ), "Mute locking failed");
         if constexpr ( std::is_same_v<StorageBaseType, half_float::half> ) {

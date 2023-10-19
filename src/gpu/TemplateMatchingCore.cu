@@ -247,7 +247,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             average_of_reals = current_projection.ReturnAverageOfRealValues( ) - average_on_edge;
 
             // Make sure the device has moved on to the padded projection
-            cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
+            cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, cudaEventWaitDefault));
 
             // FIXME: For current TM test hack, need to leave these ops on the CPU until sorting out
             // association with non-owned GPU memory.
@@ -264,14 +264,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // FIXME:
                 d_current_projection.MultiplyByConstant(1.f / (float)d_padded_reference.number_of_real_space_pixels);
                 FT.CopyDeviceToDeviceFromNonOwningAddress(d_current_projection.real_values);
-                cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+                cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
                 FT.Generic_Fwd_Image_Inv((float2*)d_input_image.complex_values, noop, conj_mul, noop);
             }
 #endif
             if ( ! use_fast_fft ) {
 
                 d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
-                cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+                cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
             }
 
 #ifdef ENABLE_FastFFT

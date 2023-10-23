@@ -10,7 +10,7 @@
 #include "Histogram.h"
 #include "../constants/constants.h"
 
-constexpr int y_grid_divisor = 1;
+constexpr int y_grid_divisor = 16;
 
 __global__ void
 histogram_smem_atomics(const __half* in, int4 dims, float* out, const __half bin_min, const __half bin_inc, const int max_padding);
@@ -34,7 +34,7 @@ __global__ void histogram_smem_atomics(const __half* in, int4 dims, float* out, 
     int pixel_idx;
     // process pixels
     // updates our block's partial histogram in shared memory
-    for ( int row = max_padding + y; row < dims.y * dims.z - max_padding; row += (y_grid_divisor * blockDim.y * gridDim.y) ) {
+    for ( int row = max_padding + y; row < dims.y * dims.z - max_padding; row += blockDim.y * gridDim.y ) {
         for ( int col = max_padding + x; col < dims.x - max_padding; col += blockDim.x * gridDim.x ) {
             pixel_idx = __half2int_rd((in[row * dims.w + col] - bin_min) / bin_inc);
             if ( pixel_idx >= 0 && pixel_idx < cistem::match_template::histogram_number_of_points ) {
@@ -110,7 +110,7 @@ void Histogram::BufferInit(GpuImage& input_image) {
     // Note: threads per block y,z are assume == 1 in the kernels
     threadsPerBlock_img = dim3(cistem::match_template::histogram_number_of_points, 1, 1);
     gridDims_img        = dim3((input_image.dims.x + threadsPerBlock_img.x - 1) / threadsPerBlock_img.x,
-                               (input_image.dims.y + (y_grid_divisor + threadsPerBlock_img.y) - 1) / (y_grid_divisor + threadsPerBlock_img.y), 1);
+                               (input_image.dims.y + (y_grid_divisor + threadsPerBlock_img.y) - 1) / (y_grid_divisor - 1 + threadsPerBlock_img.y), 1);
 
     threadsPerBlock_accum_array = dim3(32, 1, 1);
     gridDims_accum_array        = dim3((cistem::match_template::histogram_number_of_points + threadsPerBlock_accum_array.x - 1) / threadsPerBlock_accum_array.x, 1, 1);

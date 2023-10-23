@@ -211,9 +211,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
             d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
 
-            //			d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values, false);
-            //			d_padded_reference.CopyFP32toFP16buffer(false);
-
             if ( DO_HISTOGRAM ) {
                 if ( ! histogram.is_allocated_histogram ) {
                     d_padded_reference.NppInit( );
@@ -222,33 +219,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 histogram.AddToHistogram(d_padded_reference);
             }
 
-            //			if (make_graph && first_loop_complete)
-            //			{
-            //				wxPrintf("\nBeginning stream capture for creation of graph\n");
-            //				cudaStreamBeginCapture(cudaStreamPerThread, cudaStreamCaptureModeGlobal);
-            //			}
-            //
-            //			if (first_loop_complete && ! make_graph)
-            //			{
-            //				cudaGraphLaunch(graphExec, cudaStreamPerThread);
-            //
-            //			}
-            //			else
-            //			{
             this->MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
                                __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
-            //			this->MipPixelWise(d_padded_reference, float(current_psi) , float(global_euler_search.list_of_search_parameters[current_search_position][1]),
-            //																			 	 float(global_euler_search.list_of_search_parameters[current_search_position][0]));
-            //				this->SumPixelWise(d_padded_reference);
-            //			}
-
-            //			if (make_graph && first_loop_complete)
-            //			{
-            //				wxPrintf("\nEnding stream capture for creation of graph\n");
-            //				cudaStreamEndCapture(cudaStreamPerThread, &graph);
-            //				cudaGraphInstantiate(&graphExec, graph, NULL, NULL, 0);
-            //				make_graph = false;
-            //			}
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
@@ -277,7 +249,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             current_projection.is_in_real_space = false;
             d_padded_reference.is_in_real_space = true;
-            //			d_padded_reference.Zeros();
             cudaEventRecord(gpu_work_is_done_Event, cudaStreamPerThread);
 
             //			first_loop_complete = true;
@@ -347,27 +318,14 @@ __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks
 
     for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
 
-        const __half  half_val = correlation_output[i];
-        const __half2 input    = __half2half2(half_val * __half(10000.0));
-        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
-        //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
-        //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
-        //    	tmp_peak = my_peaks[i];
-        //		const __half half_val = __float2half_rn(val);
+        const __half half_val = correlation_output[i];
 
-        //			tmp_peak.psi = psi;
-        //			tmp_peak.theta = theta;
-        //			tmp_peak.phi = phi;
+        my_stats[i] += __halves2half2(half_val, half_val * half_val);
+
         if ( half_val > __low2half(my_peaks[i]) ) {
             //				tmp_peak.mip = half_val;
             my_peaks[i]     = __halves2half2(half_val, psi);
             my_new_peaks[i] = __halves2half2(theta, phi);
-
-            //				my_peaks[i].mip = correlation_output[i];
-            //				my_peaks[i].psi = psi;
-            //				my_peaks[i].theta = theta;
-            //				my_peaks[i].phi = phi;
         }
     }
     //
@@ -515,8 +473,8 @@ __global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftRe
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x < numel ) {
 
-        sum[x]    = __fmaf_rn(0.0001f, __low2float(my_stats[x]), sum[x]);
-        sq_sum[x] = __fmaf_rn(0.0001f, __high2float(my_stats[x]), sq_sum[x]);
+        sum[x] += __low2float(my_stats[x]);
+        sq_sum[x] += __high2float(my_stats[x]);
 
         my_stats[x] = __halves2half2((__half)0., (__half)0.);
     }

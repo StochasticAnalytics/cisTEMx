@@ -10,7 +10,7 @@
 #include "Histogram.h"
 #include "../constants/constants.h"
 
-constexpr int y_grid_divisor = 16;
+constexpr int y_grid_divisor = 32;
 
 __global__ void
 histogram_smem_atomics(const __half* in, int4 dims, float* out, const __half bin_min, const __half bin_inc, const int max_padding);

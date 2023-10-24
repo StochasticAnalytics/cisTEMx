@@ -75,6 +75,7 @@ class TemplateMatchingCore {
     int n_global_search_images_to_save;
 
     bool is_running_locally;
+    bool use_fast_fft;
 
     Histogram histogram;
 
@@ -94,7 +95,7 @@ class TemplateMatchingCore {
     __half*  secondary_peaks;
 
     void SumPixelWise(GpuImage& image);
-    void MipPixelWise(__half psi, __half theta, __half phi);
+    void MipPixelWise(__half psi, __half2 theta_phi);
     void MipToImage( );
     void AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
 
@@ -127,6 +128,7 @@ class TemplateMatchingCore {
               ProgressBar*     my_progress,
               long             total_correlation_positions,
               bool             is_running_locally,
+              bool             use_fast_fft,
               int              number_of_global_search_images_to_save = 1);
 
     void RunInnerLoop(Image& projection_filter, float pixel_i, float defocus_i, int threadIDX, long& current_correlation_position);

@@ -3,8 +3,8 @@
 
 #define DO_HISTOGRAM true
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
+__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
+                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks);
 
 TemplateMatchingCore::TemplateMatchingCore( ){
 
@@ -57,6 +57,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
                                 ProgressBar*     my_progress,
                                 long             total_correlation_positions,
                                 bool             is_running_locally,
+                                bool             use_fast_fft,
                                 int              number_of_global_search_images_to_save)
 
 {
@@ -103,6 +104,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->my_progress                 = my_progress;
     this->total_correlation_positions = total_correlation_positions;
     this->is_running_locally          = is_running_locally;
+    this->use_fast_fft                = use_fast_fft;
 
     this->parent_pointer = parent_pointer;
 
@@ -219,8 +221,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 histogram.AddToHistogram(d_padded_reference);
             }
 
-            this->MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
-                               __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
+            this->MipPixelWise(__float2half_rn(current_psi), __floats2half2_rn(global_euler_search.list_of_search_parameters[current_search_position][1], global_euler_search.list_of_search_parameters[current_search_position][0]));
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
@@ -299,33 +300,40 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaFree(my_new_peaks));
 }
 
-void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
+void TemplateMatchingCore::MipPixelWise(__half psi, __half2 theta_phi) {
 
     precheck;
     // N
     d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
-    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
+    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half2*)d_padded_reference.real_values_16f, my_peaks,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,
-                                                                                                                    psi, theta, phi, my_stats, my_new_peaks);
+                                                                                                                    psi, theta_phi, my_stats, my_new_peaks);
     postcheck;
 }
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
+__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
+                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks) {
 
     //	Peaks tmp_peak;
 
-    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
+    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel / 2; i += blockDim.x * gridDim.x ) {
 
-        const __half half_val = correlation_output[i];
+        const __half half_low  = __low2half(correlation_output[i]);
+        const __half half_high = __high2half(correlation_output[i]);
 
-        my_stats[i] += __halves2half2(half_val, half_val * half_val);
-
-        if ( half_val > __low2half(my_peaks[i]) ) {
+        int idx = 2 * i;
+        my_stats[idx] += __halves2half2(half_low, half_low * half_low);
+        if ( half_low > CUDART_ZERO_FP16 && half_low > __low2half(my_peaks[idx]) ) {
             //				tmp_peak.mip = half_val;
-            my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = __halves2half2(theta, phi);
+            my_peaks[idx]     = __halves2half2(half_low, psi);
+            my_new_peaks[idx] = theta_phi;
+        }
+        idx += 1;
+        if ( half_high > CUDART_ZERO_FP16 && half_high > __low2half(my_peaks[idx]) ) {
+            //				tmp_peak.mip = half_val;
+            my_peaks[idx]     = __halves2half2(half_low, psi);
+            my_new_peaks[idx] = theta_phi;
         }
     }
     //

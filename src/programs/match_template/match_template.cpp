@@ -104,6 +104,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     wxString my_symmetry               = "C1";
     float    in_plane_angular_step     = 0;
     bool     use_gpu_input             = false;
+    bool     use_fast_fft              = false;
     int      max_threads               = 1; // Only used for the GPU code
 
     UserInput* my_input = new UserInput("MatchTemplate", 1.00);
@@ -143,8 +144,8 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     my_symmetry               = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
 #ifdef ENABLEGPU
     use_gpu_input = my_input->GetYesNoFromUser("Use GPU", "Offload expensive calcs to GPU", "No");
-    max_threads   = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
     use_fast_fft  = my_input->GetYesNoFromUser("Use Fast FFT", "Use the Fast FFT library", "No");
+    max_threads   = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
 #endif
 
     int   first_search_position           = -1;
@@ -158,7 +159,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbib", input_search_images.ToUTF8( ).data( ),
+    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbbi", input_search_images.ToUTF8( ).data( ),
                                       input_reconstruction.ToUTF8( ).data( ),
                                       pixel_size,
                                       voltage_kV,
@@ -199,6 +200,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
                                       result_filename.ToUTF8( ).data( ),
                                       min_peak_radius,
                                       use_gpu_input,
+                                      use_fast_fft,
                                       max_threads);
 }
 
@@ -256,8 +258,8 @@ bool MatchTemplateApp::DoCalculation( ) {
     wxString result_output_filename          = my_current_job.arguments[38].ReturnStringArgument( );
     float    min_peak_radius                 = my_current_job.arguments[39].ReturnFloatArgument( );
     bool     use_gpu                         = my_current_job.arguments[40].ReturnBoolArgument( );
-    int      max_threads                     = my_current_job.arguments[41].ReturnIntegerArgument( );
-    bool     use_fast_fft                    = my_current_job.arguments[42].ReturnBoolArgument( );
+    bool     use_fast_fft                    = my_current_job.arguments[41].ReturnBoolArgument( );
+    int      max_threads                     = my_current_job.arguments[42].ReturnIntegerArgument( );
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...

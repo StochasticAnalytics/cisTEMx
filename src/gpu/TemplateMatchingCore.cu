@@ -76,11 +76,27 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->template_reconstruction.CopyFrom(&template_reconstruction);
     this->input_image.CopyFrom(&input_image);
     this->current_projection.CopyFrom(&current_projection);
+    // FIXME: for intial testing, we want to compare GPU and CPU projections, so make a copy
+    Image tmp_vol = template_reconstruction;
+    if ( ! this->is_gpu_3d_swapped ) {
+        tmp_vol.SwapRealSpaceQuadrants( );
+        tmp_vol.BackwardFFT( );
+        tmp_vol.SwapFourierSpaceQuadrants(true);
+        // this->template_reconstruction.SwapFourierSpaceQuadrants(true);
+        this->is_gpu_3d_swapped = true;
+    }
+    // TODO: confirm you need the real-values allocated
+    // this->template_gpu.InitializeBasedOnCpuImage(this->template_reconstruction, false, true);
+
+    // this->template_gpu.CopyHostToDeviceTextureComplex3d(this->template_reconstruction);
+    this->template_gpu.InitializeBasedOnCpuImage(tmp_vol, false, true);
+    this->template_gpu.CopyHostToDeviceTextureComplex3d(tmp_vol);
 
     d_input_image.Init(this->input_image);
     d_input_image.CopyHostToDevice(input_image);
 
     d_current_projection.Init(this->current_projection);
+    d_current_projection.CopyHostToDevice(this->current_projection, false);
 
     d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
     d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
@@ -167,6 +183,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaGetDevice(&thisDevice);
     wxPrintf("Thread %d is running on device %d\n", threadIDX, thisDevice);
 
+    GpuImage d_projection_filter(projection_filter);
+    d_projection_filter.CopyHostToDevice(projection_filter);
+    // FIXME:
+    d_projection_filter.CopyFP32toFP16buffer(false);
     //	cudaErr(cudaFuncSetCacheConfig(SumPixelWiseKernel, cudaFuncCachePreferL1));
 
     //	bool make_graph = true;
@@ -181,23 +201,33 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         for ( float current_psi = psi_start; current_psi <= psi_max; current_psi += psi_step ) {
 
             angles.Init(global_euler_search.list_of_search_parameters[current_search_position][0], global_euler_search.list_of_search_parameters[current_search_position][1], current_psi, 0.0, 0.0);
-            //			current_projection.SetToConstant(0.0f); // This also sets the FFT padding to zero
-            template_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
-            current_projection.complex_values[0] = 0.0f + I * 0.0f;
 
-            current_projection.SwapRealSpaceQuadrants( );
-            current_projection.MultiplyPixelWise(projection_filter);
-            current_projection.BackwardFFT( );
-            average_on_edge  = current_projection.ReturnAverageOfRealValuesOnEdges( );
-            average_of_reals = current_projection.ReturnAverageOfRealValues( ) - average_on_edge;
+            d_current_projection.is_in_real_space = false;
+            d_current_projection.ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true);
+            average_of_reals = 0.f;
+            d_current_projection.BackwardFFT( );
+
+            // template_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
+            // current_projection.complex_values[0] = 0.0f + I * 0.0f;
+
+            // current_projection.SwapRealSpaceQuadrants( );
+            // current_projection.MultiplyPixelWise(projection_filter);
+            // current_projection.BackwardFFT( );
+
+            // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+            // current_projection.QuickAndDirtyWriteSlice("cpu_prj.mrc", 1);
+            // d_current_projection.QuickAndDirtyWriteSlice("gpu_prj.mrc", 1);
+            // exit(1);
+            // average_on_edge  = current_projection.ReturnAverageOfRealValuesOnEdges( );
+            // average_of_reals = current_projection.ReturnAverageOfRealValues( ) - average_on_edge;
 
             // Make sure the device has moved on to the padded projection
             cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
 
-            //// TO THE GPU ////
-            d_current_projection.CopyHostToDevice(current_projection);
+            // //// TO THE GPU ////
+            // d_current_projection.CopyHostToDevice(current_projection);
 
-            d_current_projection.AddConstant(-average_on_edge);
+            // d_current_projection.AddConstant(-average_on_edge);
 
             // The average in the full padded image will be different;
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);

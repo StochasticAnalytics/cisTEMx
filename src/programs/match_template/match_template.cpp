@@ -680,6 +680,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     for ( size_i = -myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i <= myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i++ ) {
 
         //        template_reconstruction.CopyFrom(&input_reconstruction);
+
         input_reconstruction.ChangePixelSize(&template_reconstruction, (pixel_size + float(size_i) * pixel_size_step) / pixel_size, 0.001f, true);
         //    template_reconstruction.ForwardFFT();
         template_reconstruction.ZeroCentralPixel( );

@@ -21,9 +21,10 @@ class TemplateMatchingCore {
     int number_of_jobs_per_image_in_gui;
 
     // CPU images to be passed in -
-    Image template_reconstruction;
-    Image current_projection;
-    Image input_image; // These will be modified on the host from withing Template Matching Core so Allocate locally
+    Image    template_reconstruction;
+    GpuImage template_gpu;
+    Image    current_projection;
+    Image    input_image; // These will be modified on the host from withing Template Matching Core so Allocate locally
 
     cudaGraph_t     graph;
     cudaGraphExec_t graphExec;
@@ -76,6 +77,8 @@ class TemplateMatchingCore {
 
     bool is_running_locally;
     bool use_fast_fft;
+
+    bool is_gpu_3d_swapped;
 
     Histogram histogram;
 

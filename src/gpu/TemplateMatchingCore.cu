@@ -3,8 +3,11 @@
 
 #define DO_HISTOGRAM true
 
-__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks);
+constexpr bool use_gpu_prj = false;
+
+__global__ void
+MipPixelWiseKernel(const __half2* __restrict__ correlation_output, __half2* my_peaks, const int numel,
+                   const __half psi, const __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks);
 
 TemplateMatchingCore::TemplateMatchingCore( ){
 
@@ -76,21 +79,24 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->template_reconstruction.CopyFrom(&template_reconstruction);
     this->input_image.CopyFrom(&input_image);
     this->current_projection.CopyFrom(&current_projection);
-    // FIXME: for intial testing, we want to compare GPU and CPU projections, so make a copy
-    Image tmp_vol = template_reconstruction;
-    if ( ! this->is_gpu_3d_swapped ) {
-        tmp_vol.SwapRealSpaceQuadrants( );
-        tmp_vol.BackwardFFT( );
-        tmp_vol.SwapFourierSpaceQuadrants(true);
-        // this->template_reconstruction.SwapFourierSpaceQuadrants(true);
-        this->is_gpu_3d_swapped = true;
-    }
-    // TODO: confirm you need the real-values allocated
-    // this->template_gpu.InitializeBasedOnCpuImage(this->template_reconstruction, false, true);
 
-    // this->template_gpu.CopyHostToDeviceTextureComplex3d(this->template_reconstruction);
-    this->template_gpu.InitializeBasedOnCpuImage(tmp_vol, false, true);
-    this->template_gpu.CopyHostToDeviceTextureComplex3d(tmp_vol);
+    if ( use_gpu_prj ) {
+        // FIXME: for intial testing, we want to compare GPU and CPU projections, so make a copy
+        Image tmp_vol = template_reconstruction;
+        if ( ! this->is_gpu_3d_swapped ) {
+            tmp_vol.SwapRealSpaceQuadrants( );
+            tmp_vol.BackwardFFT( );
+            tmp_vol.SwapFourierSpaceQuadrants(true);
+            // this->template_reconstruction.SwapFourierSpaceQuadrants(true);
+            this->is_gpu_3d_swapped = true;
+        }
+        // TODO: confirm you need the real-values allocated
+        // this->template_gpu.InitializeBasedOnCpuImage(this->template_reconstruction, false, true);
+
+        // this->template_gpu.CopyHostToDeviceTextureComplex3d(this->template_reconstruction);
+        this->template_gpu.InitializeBasedOnCpuImage(tmp_vol, false, true);
+        this->template_gpu.CopyHostToDeviceTextureComplex3d(tmp_vol);
+    }
 
     d_input_image.Init(this->input_image);
     d_input_image.CopyHostToDevice(input_image);
@@ -184,13 +190,13 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     wxPrintf("Thread %d is running on device %d\n", threadIDX, thisDevice);
 
     GpuImage d_projection_filter(projection_filter);
-    d_projection_filter.CopyHostToDevice(projection_filter);
-    // FIXME:
-    d_projection_filter.CopyFP32toFP16buffer(false);
-    //	cudaErr(cudaFuncSetCacheConfig(SumPixelWiseKernel, cudaFuncCachePreferL1));
+    if ( use_gpu_prj ) {
+        d_projection_filter.CopyHostToDevice(projection_filter);
+        // FIXME:
+        d_projection_filter.CopyFP32toFP16buffer(false);
+    }
 
-    //	bool make_graph = true;
-    //	bool first_loop_complete = false;
+    bool projection_is_from_cpu = false;
 
     for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
 
@@ -202,30 +208,29 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             angles.Init(global_euler_search.list_of_search_parameters[current_search_position][0], global_euler_search.list_of_search_parameters[current_search_position][1], current_psi, 0.0, 0.0);
 
-            d_current_projection.is_in_real_space = false;
-            d_current_projection.ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true);
-            average_of_reals = 0.f;
-            d_current_projection.BackwardFFT( );
+            if ( ! use_gpu_prj || cudaEventQuery(gpu_work_is_done_Event) == cudaErrorNotReady ) {
+                // do the projection on the CPU
+                template_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
+                current_projection.complex_values[0] = 0.0f + I * 0.0f;
 
-            // template_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
-            // current_projection.complex_values[0] = 0.0f + I * 0.0f;
+                current_projection.SwapRealSpaceQuadrants( );
+                current_projection.MultiplyPixelWise(projection_filter);
+                current_projection.BackwardFFT( );
+                average_on_edge  = 0.f; //current_projection.ReturnAverageOfRealValuesOnEdges( );
+                average_of_reals = current_projection.ReturnAverageOfRealValues( ) - average_on_edge;
 
-            // current_projection.SwapRealSpaceQuadrants( );
-            // current_projection.MultiplyPixelWise(projection_filter);
-            // current_projection.BackwardFFT( );
-
-            // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-            // current_projection.QuickAndDirtyWriteSlice("cpu_prj.mrc", 1);
-            // d_current_projection.QuickAndDirtyWriteSlice("gpu_prj.mrc", 1);
-            // exit(1);
-            // average_on_edge  = current_projection.ReturnAverageOfRealValuesOnEdges( );
-            // average_of_reals = current_projection.ReturnAverageOfRealValues( ) - average_on_edge;
-
-            // Make sure the device has moved on to the padded projection
-            cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
-
-            // //// TO THE GPU ////
-            // d_current_projection.CopyHostToDevice(current_projection);
+                // Make sure the device has moved on to the padded projection
+                cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
+                //// TO THE GPU ////
+                d_current_projection.CopyHostToDevice(current_projection);
+            }
+            else {
+                cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
+                d_current_projection.is_in_real_space = false;
+                d_current_projection.ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true);
+                average_of_reals = 0.f;
+                d_current_projection.BackwardFFT( );
+            }
 
             // d_current_projection.AddConstant(-average_on_edge);
 
@@ -334,7 +339,7 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half2 theta_phi) {
 
     precheck;
     // N
-    d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
+    d_padded_reference.ReturnLaunchParametersLimitSMs(0.5f, 512);
 
     MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half2*)d_padded_reference.real_values_16f, my_peaks,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,
@@ -342,8 +347,8 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half2 theta_phi) {
     postcheck;
 }
 
-__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks) {
+__global__ void MipPixelWiseKernel(const __half2* __restrict__ correlation_output, __half2* my_peaks, const int numel,
+                                   const __half psi, const __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks) {
 
     //	Peaks tmp_peak;
 

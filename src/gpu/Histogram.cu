@@ -13,9 +13,9 @@
 constexpr int y_grid_divisor = 32;
 
 __global__ void
-histogram_smem_atomics(const __half* in, int4 dims, float* out, const __half bin_min, const __half bin_inc, const int max_padding);
+histogram_smem_atomics(const __half* __restrict__ in, int4 dims, float* out, const __half bin_min, const __half bin_inc, const int max_padding);
 
-__global__ void histogram_smem_atomics(const __half* in, int4 dims, float* out, const __half bin_min, const __half bin_inc, const int max_padding) {
+__global__ void histogram_smem_atomics(const __half* __restrict__ in, int4 dims, float* out, const __half bin_min, const __half bin_inc, const int max_padding) {
     // pixel coordinates assuming a 2d image
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;

@@ -545,6 +545,10 @@ bool MatchTemplateApp::DoCalculation( ) {
     wxDateTime my_time_out;
     wxDateTime my_time_in;
 
+    Image image_mask = input_image;
+    image_mask.SetToConstant(1.0f);
+    image_mask.ForwardFFT( );
+
     // remove outliers
     // This won't work for movie frames (13.0 is used in unblur) TODO use poisson stats
     input_image.ReplaceOutliersWithMean(5.0f);
@@ -559,10 +563,10 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     input_image.ApplyCurveFilter(&whitening_filter);
     input_image.ZeroCentralPixel( );
-    // Note: we are dividing by the sqrt of the sum of squares, so the variance in the images 1/N, not 1. This is where the need to multiply the mips by sqrt(N) comes from.
-    // Dividing by sqrt(input_image.ReturnSumOfSquares() / N) would result in a properly normalized CCC value.
+    // Note: we are dividing by the sqrt of the sum of squares, so the variance in the FFT(image) is 1/N, not 1.
     input_image.DivideByConstant(sqrtf(input_image.ReturnSumOfSquares( )));
     //input_image.QuickAndDirtyWriteSlice("/tmp/white.mrc", 1);
+
     //exit(-1);
 
     // count total searches (lazy)
@@ -673,6 +677,43 @@ bool MatchTemplateApp::DoCalculation( ) {
         template_reconstruction.SwapRealSpaceQuadrants( );
 
         //        wxPrintf("First search last search position %d/ %d\n",first_search_position, last_search_position);
+
+        Image tmp_vol = template_reconstruction;
+        tmp_vol.SwapRealSpaceQuadrants( );
+        tmp_vol.BackwardFFT( );
+        tmp_vol.AverageRadially( );
+        Image avg_mask;
+        avg_mask.Allocate(template_reconstruction.logical_x_dimension, template_reconstruction.logical_y_dimension, 1, false);
+        tmp_vol.ForwardFFT( );
+        tmp_vol.SwapRealSpaceQuadrants( );
+        tmp_vol.ExtractSlice(avg_mask, angles);
+        avg_mask.SwapRealSpaceQuadrants( );
+        avg_mask.ZeroCentralPixel( );
+        avg_mask.MultiplyByConstant(sqrtf(1.f / avg_mask.ReturnSumOfSquares( )));
+        avg_mask.BackwardFFT( );
+        avg_mask.QuickAndDirtyWriteSlice("avg_mask.mrc", 1);
+        avg_mask.Binarise(1.0f);
+        avg_mask.QuickAndDirtyWriteSlice("avg_mask_bin.mrc", 1);
+        padded_reference.SetToConstant(0.0f);
+        avg_mask.ClipIntoLargerRealSpace2D(&padded_reference);
+        std::cerr << "average before " << avg_mask.ReturnAverageOfRealValues( ) << std::endl;
+        std::cerr << " variance before " << avg_mask.ReturnSumOfSquares( ) / avg_mask.number_of_real_space_pixels << std::endl;
+
+        avg_mask.ForwardFFT( );
+#ifdef MKL
+        // Use the MKL
+        vmcMulByConj(avg_mask.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(image_mask.complex_values), reinterpret_cast<MKL_Complex8*>(avg_mask.complex_values), reinterpret_cast<MKL_Complex8*>(avg_mask.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
+#else
+        for ( pixel_counter = 0; pixel_counter < avg_mask.real_memory_allocated / 2; pixel_counter++ ) {
+            avg_mask.complex_values[pixel_counter] = conj(avg_mask.complex_values[pixel_counter]) * image_mask.complex_values[pixel_counter];
+        }
+#endif
+        avg_mask.BackwardFFT( );
+        avg_mask.QuickAndDirtyWriteSlice("avg_mask_x.mrc", 1);
+        std::cerr << "average after " << avg_mask.ReturnAverageOfRealValues( ) << std::endl;
+        std::cerr << " variance before " << avg_mask.ReturnSumOfSquares( ) << std::endl;
+
+        exit(0);
 
         if ( use_gpu ) {
 #ifdef ENABLEGPU
@@ -804,11 +845,17 @@ bool MatchTemplateApp::DoCalculation( ) {
                     current_projection.MultiplyPixelWise(projection_filter);
 
                     current_projection.BackwardFFT( );
+
+                    current_projection.QuickAndDirtyWriteSlices("test.mrc", 1, 1, true, 1.0);
+                    exit(0);
                     //current_projection.ReplaceOutliersWithMean(6.0f);
 
                     current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges( ));
 
                     // We want a variance of 1 in the padded FFT. Scale the small SumOfSquares (which is already divided by n) and then re-divide by N.
+                    // If we were to now calculate the variance in the non-zero region of the real-valued reference, it would be size(image)/size(input_vol) = N/n
+                    // This second value is important because the convolution of two gaussians will have a variance that is scaled by min(n,N)*var(image)*var(ref), so in our case
+                    // n * (N/n) * 1. All that is to say the convolution operation itself scales the variance by N independent of the FFT operation scaling.
                     variance = current_projection.ReturnSumOfSquares( ) * current_projection.number_of_real_space_pixels / padded_reference.number_of_real_space_pixels - powf(current_projection.ReturnAverageOfRealValues( ) * current_projection.number_of_real_space_pixels / padded_reference.number_of_real_space_pixels, 2);
                     current_projection.DivideByConstant(sqrtf(variance));
                     current_projection.ClipIntoLargerRealSpace2D(&padded_reference);
@@ -828,8 +875,13 @@ bool MatchTemplateApp::DoCalculation( ) {
                     }
 #endif
 
-                    // Note: the cross correlation will have variance 1/N (the product of variance of the two FFTs assuming the means are both zero and the distributions independent.)
-                    // Taking the inverse FFT scales this variance by N resulting in a MIP with variance 1
+                    // Note: output will have variance 1/N^2 (the product of variance of the two FFTs assuming the means are both zero and the distributions independent.)
+                    // Taking the inverse FFT scales this variance by N resulting in a MIP with variance 1/N. Here we have implicitly made the circular convolution into a cross-correlation.
+                    // i.e. with mean centered and variance one with all FFT norm correct, the MIP would currently be a convolution with variance N.
+                    // The implicit scaling by 1/N comes from two places. Standardization of the input image (1/root(N))
+                    // 1/N*convolution = correlation with variance N/N^2 = 1/N. Now to get SNR values ccc / sigma(noise) then take the mip / sqrt(1/N) = mip *sqrt(N)
+                    // of course the variance in cross-correlation would only be 1/N if we have two gaussians perfectly standardized.
+                    // It would be better to just used the sampled variance from the sum/sum2 images
                     padded_reference.BackwardFFT( );
 
                     // update mip, and histogram..
@@ -1529,7 +1581,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 #ifdef MKL
         vdErfcInv(1, &erf_input, &temp_threshold);
 #else
-        temp_threshold = cisTEM_erfcinv(erf_input);
+        temp_threshold       = cisTEM_erfcinv(erf_input);
 #endif
         expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
 

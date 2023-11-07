@@ -4,8 +4,8 @@ const double SOLVENT_DENSITY = 0.94; // 0.94 +/- 0.02 Ghormley JA, Hochanadel CJ
 const double CARBON_DENSITY  = 1.75; // 2.0; // NIST and Holography paper TODO add cite (using the lower density to match the Holography paper)
 const double MW_WATER        = 18.01528;
 const double MW_CARBON       = 12.0107;
-const double CARBON_X_ANG    = 384.0;
-const double CARBON_Y_ANG    = 384.0;
+const double CARBON_X_ANG    = 768.0;
+const double CARBON_Y_ANG    = 768.0;
 
 Water::Water(bool do_carbon) {
     this->simulate_phase_plate = do_carbon;
@@ -123,14 +123,19 @@ void Water::SeedWaters3d( ) {
 
     // Volume in Ang / (ang^3/nm^3 * nm^3/nWaters) buffer by 10%
 
-    double waters_per_angstrom_cubed;
-
+    double   waters_per_angstrom_cubed;
+    AtomType wanted_atom_type;
+    // FIXME: will this also affect the selected bfactor in projected_water in simulate?
     if ( this->simulate_phase_plate ) {
         // g/cm^3 * molecules/mole * mole/grams * 1cm^3/10^24 angstrom^3
+        std::cerr << "Adding carbon atoms" << std::endl;
         waters_per_angstrom_cubed = CARBON_DENSITY * 0.6022140857 / MW_CARBON;
+        wanted_atom_type          = AtomType::carbon;
     }
     else {
+        std::cerr << "Adding water atoms" << std::endl;
         waters_per_angstrom_cubed = SOLVENT_DENSITY * 0.6022140857 / MW_WATER;
+        wanted_atom_type          = AtomType::water;
     }
 
     wxPrintf("Atoms per nm^3 %3.3f, vol (in Ang^3) %2.2f %2.2f %2.2f\n", waters_per_angstrom_cubed * 1000, this->vol_angX, this->vol_angY, this->vol_angZ);
@@ -151,7 +156,7 @@ void Water::SeedWaters3d( ) {
 
     std::cerr << "probablity_of_water_in_voxel_octent " << probablity_of_water_in_voxel_octent << std::endl;
 
-    water_coords.reserve(n_waters_possible);
+    water_coords.reserve(n_waters_possible * 4);
     is_allocated_water_coords = true;
 
     //  There are millions to billions of waters. We want to schedule the threads in a way that avoids atomic collisions
@@ -169,6 +174,8 @@ void Water::SeedWaters3d( ) {
 
     // The outer two loops are over the blocks in x/y that should be handled by each thread.
     // This logic falls apart as the specimen is tilted. FIXME
+    // TODO: This can be slow for large volumes, consider creating one for each thread then merging, since you are
+    // also shrinking the main vector anyway.
     for ( int i = 0; i < nThreads; i++ ) {
         iLower = i * incX;
         iUpper = iLower + incX;
@@ -186,14 +193,14 @@ void Water::SeedWaters3d( ) {
                             for ( float qy = -0.5f; qy <= 0.5f; qy += 1.f ) {
                                 for ( float qx = -0.5f; qx <= 0.5f; qx += 1.f ) {
                                     if ( my_rand.GetUniformRandomSTD(0.0, 1.0) > probablity_of_water_in_voxel_octent )
-                                        water_coords.emplace_back(AtomType::water, float(iInner) + qx, float(jInner) + qy, float(k) + qz);
+                                        water_coords.emplace_back(wanted_atom_type, float(iInner) + qx, float(jInner) + qy, float(k) + qz);
                                 }
+                            }
                         }
                     }
                 }
             }
         }
-    }
     }
 
     // We won't add any more waters, so free up the extra memory

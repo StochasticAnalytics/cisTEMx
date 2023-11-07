@@ -1,7 +1,148 @@
 #include "../../core/core_headers.h"
 
+#define TEST_COMPLEX_PRJ
+
+#ifdef TEST_COMPLEX_PRJ
+// want to see if using a complex CTF better matches the data
+class ComplexProjector {
+
+    CTF                my_ctf;
+    std::array<CTF, 2> complex_ctf;
+
+    Image                aperture;
+    std::array<Image, 2> complex_potential;
+    std::array<Image, 2> buffer_img;
+    int                  size_x, size_y;
+    const float          objective_lens_focal_length = 3.5f; // mm for C-twin (FEI scopes in practice)
+    const float          wanted_falloff_for_aperture = 7.f;
+    const float          pixel_size;
+    float                wave_length;
+    bool                 objective_aperture_is_set;
+
+    void ResetAperture(Image& img) {
+        for ( int i = 0; i < img.real_memory_allocated / 2; i += 2 ) {
+            aperture.real_values[2 * i]     = 1.f;
+            aperture.real_values[2 * i + 1] = 0.f;
+        }
+        img.is_in_real_space = false;
+    }
+
+    void SetComplexCTF(CTF& real_ctf) {
+        complex_ctf[0] = real_ctf;
+        complex_ctf[1] = real_ctf;
+
+        // There is currently no method to modify the amplitude contrast in a CTF object, but the precomputed phase shift is calculated and added to the additional phase shift
+        //SetAdditionalPhaseShift
+        float current_amplitude_contrast = complex_ctf[0].GetAmplitudeContrast( );
+        float total_phase_shift;
+
+        // The conversiont to phase shift from amplitude contrast as in ctf.cpp
+        // gcc catches the zero division somehow, but intel returns a nan. Needed for handling the real and complex terms of the CTF separately.
+        if ( fabs(current_amplitude_contrast - 1.0) < 1e-3 )
+            total_phase_shift = pi_v<float> / 2.0f;
+        else
+            total_phase_shift = atanf(current_amplitude_contrast / sqrtf(1.0 - powf(current_amplitude_contrast, 2)));
+
+        // the imag ctf will have amplitude contrast = 0 (phase shift of 0)
+        complex_ctf[1].SetAdditionalPhaseShift(-total_phase_shift);
+        // The real ctf will have amplitude contrast = 1 (phase shift of pi/2)
+        complex_ctf[0].SetAdditionalPhaseShift(pi_v<float> / 2.f - total_phase_shift);
+        objective_aperture_is_set = false;
+    }
+
+  public:
+    ComplexProjector(CTF input_ctf, int size_x, int size_y, const float pixel_size) : my_ctf(input_ctf),
+                                                                                      size_x(size_x),
+                                                                                      size_y(size_y),
+                                                                                      pixel_size(pixel_size) {
+
+        aperture.Allocate(size_x, size_y, false);
+        ResetAperture(aperture);
+        SetComplexCTF(my_ctf);
+        wave_length = input_ctf.GetWavelength( ) * pixel_size;
+    }
+
+    void SetObjectiveAperture(const float wanted_aperture_diameter_micron) {
+        float objective_lens_frequency_cutoff = (wave_length * objective_lens_focal_length * 1e7) / (wanted_aperture_diameter_micron / 2.0f * 1e4);
+        float wanted_falloff                  = wanted_falloff_for_aperture;
+        ResetAperture(aperture);
+        aperture.ReturnCosineMaskBandpassResolution(pixel_size, objective_lens_frequency_cutoff, wanted_falloff);
+        std::cerr << " aperture cutoff ang, and falloff " << pixel_size / objective_lens_frequency_cutoff << " " << wanted_falloff << std::endl;
+
+        aperture.CosineRingMask(-1.0f, objective_lens_frequency_cutoff, wanted_falloff);
+    };
+
+    void UpdateDefocus(float defocus1, float defocus2, float defocus_angle) {
+        complex_ctf[0].SetDefocus(defocus1, defocus2, defocus_angle);
+        complex_ctf[1].SetDefocus(defocus1, defocus2, defocus_angle);
+    };
+
+    void ProjectImage(Image& input_prj) {
+        if ( ! complex_potential[0].is_in_memory ) {
+            for ( auto& img : complex_potential ) {
+                img.Allocate(size_x, size_y, true);
+            }
+            for ( auto& img : buffer_img ) {
+                img.Allocate(size_x, size_y, false);
+            }
+        }
+
+        bool input_was_in_real_space = true;
+        if ( ! input_prj.is_in_real_space ) {
+            input_prj.BackwardFFT( );
+            input_was_in_real_space = false;
+        }
+        // Form the product (P_R + i*P_I) of input_wave_function and projected potential.
+        // For the first slice, the input wave function is sqrt(Dose) + 0i, but we'll normalize any way so treat as 1 + 0i
+        // Normally there are 4 images to handle the expansion product of the 4 real images acting as 2 complex, but here
+        // with only "1 slice" things are simpler and are just (V_R - V_I) + i(V_R + V_I)
+        for ( int i = 0; i < complex_potential[0].real_memory_allocated; i++ ) {
+            complex_potential[0].real_values[i] = std::cos(input_prj.real_values[i]) - std::sin(input_prj.real_values[i]);
+            complex_potential[1].real_values[i] = std::cos(input_prj.real_values[i]) + std::sin(input_prj.real_values[i]);
+        }
+
+        // Next we need to multiply the FFT of this product by the complex CTF (split into real and imaginary parts)
+        for ( auto& img : complex_potential ) {
+            img.ForwardFFT( );
+        }
+
+        // First we'll get the real part of the output wavefunction = P_R * C_R - P_I * C_I and leave it in buffer_0
+        for ( int real_complex = 0; real_complex < 2; real_complex++ ) {
+            for ( int i = 0; i < complex_potential[0].real_memory_allocated; i++ ) {
+                buffer_img[real_complex].real_values[i] = complex_potential[real_complex].real_values[i];
+            }
+            buffer_img[real_complex].ApplyCTF(complex_ctf[real_complex]);
+        }
+        buffer_img[0].SubtractImage(&buffer_img[1]);
+
+        // Second we'll get the imaginary part of the output wavefunction = P_I * C_R + P_R * C_I and leave it in buffer_1
+        complex_potential[0].ApplyCTF(complex_ctf[1]);
+        complex_potential[1].ApplyCTF(complex_ctf[0]);
+        complex_potential[0].AddImage(&complex_potential[1]);
+
+        // Now apply the aperture prior to taking the inverse FFT
+        buffer_img[0].MultiplyPixelWise(aperture);
+        complex_potential[0].MultiplyPixelWise(aperture);
+
+        // Now take the inverse FFT of the real and imaginary parts of the output wavefunction
+        buffer_img[0].BackwardFFT( );
+        complex_potential[0].BackwardFFT( );
+
+        // Finally compute the squared complex modulus, returning it in the input_prj
+        for ( int i = 0; i < complex_potential[0].real_memory_allocated; i++ ) {
+            input_prj.real_values[i] = std::real(buffer_img[0].real_values[i] * buffer_img[0].real_values[i] + complex_potential[0].real_values[i] * complex_potential[0].real_values[i]);
+        }
+
+        if ( ! input_was_in_real_space ) {
+            input_prj.ForwardFFT( );
+        }
+    };
+};
+
+#endif
 class
         RefineTemplateApp : public MyApp {
+
   public:
     bool DoCalculation( );
     void DoInteractiveUserInput( );
@@ -14,13 +155,20 @@ class TemplateComparisonObject {
     Image *          input_reconstruction, *windowed_particle, *projection_filter;
     AnglesAndShifts* angles;
     float            pixel_size_factor;
+#ifdef TEST_COMPLEX_PRJ
+    Curve* whitening_filter;
+#endif
     //	int							slice = 1;
 };
 
 // This is the function which will be minimized
-Peak TemplateScore(void* scoring_parameters) {
+Peak TemplateScore(void* scoring_parameters, void* complex_projector = nullptr) {
     TemplateComparisonObject* comparison_object = reinterpret_cast<TemplateComparisonObject*>(scoring_parameters);
     Image                     current_projection;
+
+#ifdef TEST_COMPLEX_PRJ
+    ComplexProjector* projector = reinterpret_cast<ComplexProjector*>(complex_projector);
+#endif
     //	Peak box_peak;
 
     current_projection.Allocate(comparison_object->projection_filter->logical_x_dimension, comparison_object->projection_filter->logical_x_dimension, false);
@@ -42,14 +190,16 @@ Peak TemplateScore(void* scoring_parameters) {
         current_projection.ChangePixelSize(&current_projection, comparison_object->pixel_size_factor, 0.001f, true);
     }
 
-    //	current_projection.QuickAndDirtyWriteSlice("projections.mrc", comparison_object->slice);
-    //	comparison_object->slice++;
+#ifdef TEST_COMPLEX_PRJ
+    // Apply the complex CTF and then whiten seperately.
+    projector->ProjectImage(current_projection);
+    current_projection.ApplyCurveFilter(comparison_object->whitening_filter);
+#else
     current_projection.MultiplyPixelWise(*comparison_object->projection_filter);
-    //	current_projection.BackwardFFT();
-    //	current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges());
-    //	current_projection.Resize(comparison_object->windowed_particle->logical_x_dimension, comparison_object->windowed_particle->logical_y_dimension, 1, 0.0f);
-    //	current_projection.ForwardFFT();
+#endif
     current_projection.ZeroCentralPixel( );
+    // The input windowed particle is now normalized to wave variance 1.
+    // Dividing by SS rather than SS / N  gives a variance in the projection of 1 / N, giving the product 1 * 1/N (1/N) s.t. the BackwardFFT scales the output variance b N, giving a properly normalized CCC (no need for sqrtN multiplication)
     current_projection.DivideByConstant(sqrtf(current_projection.ReturnSumOfSquares( )));
 #ifdef MKL
     // Use the MKL
@@ -490,22 +640,11 @@ bool RefineTemplateApp::DoCalculation( ) {
         input_reconstruction.Resize(input_reconstruction.logical_x_dimension * padding, input_reconstruction.logical_y_dimension * padding, input_reconstruction.logical_z_dimension * padding, input_reconstruction.ReturnAverageOfRealValuesOnEdges( ));
     }
     input_reconstruction.ForwardFFT( );
-    //input_reconstruction.CosineMask(0.1, 0.01, true);
-    //input_reconstruction.Whiten();
-    //if (first_search_position == 0) input_reconstruction.QuickAndDirtyWriteSlices("/tmp/filter.mrc", 1, input_reconstruction.logical_z_dimension);
+
     input_reconstruction.ZeroCentralPixel( );
     input_reconstruction.SwapRealSpaceQuadrants( );
 
     CTF input_ctf;
-    //	input_ctf.Init(voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, 0.0, 0.0, 0.0, pixel_size, deg_2_rad(phase_shift));
-
-    // assume cube
-
-    //	windowed_particle.Allocate(input_reconstruction_file.ReturnXSize(), input_reconstruction_file.ReturnXSize(), false);
-    //	current_projection.Allocate(input_reconstruction_file.ReturnXSize(), input_reconstruction_file.ReturnXSize(), false);
-    //	projection_filter.Allocate(input_reconstruction_file.ReturnXSize(), input_reconstruction_file.ReturnXSize(), false);
-    //	template_reconstruction.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_y_dimension, input_reconstruction.logical_z_dimension, true);
-    //	if (padding != 1.0f) padded_projection.Allocate(input_reconstruction_file.ReturnXSize() * padding, input_reconstruction_file.ReturnXSize() * padding, false);
 
     temp_float = (float(input_reconstruction_file.ReturnXSize( )) / 2.0f - 1.0f) * pixel_size;
     if ( mask_radius > temp_float )
@@ -682,6 +821,11 @@ bool RefineTemplateApp::DoCalculation( ) {
         template_object.projection_filter    = &projection_filter;
         template_object.angles               = &angles;
 
+#ifdef TEST_COMPLEX_PRJ
+        template_object.whitening_filter = &whitening_filter;
+        ComplexProjector complex_projector(input_ctf, input_reconstruction_file.ReturnXSize( ), input_reconstruction_file.ReturnXSize( ), pixel_size);
+#endif
+
 //	while (current_peak.value >= wanted_threshold)
 #pragma omp for schedule(dynamic, 1)
         for ( peak_number = 0; peak_number < number_of_peaks_found; peak_number++ ) {
@@ -698,7 +842,12 @@ bool RefineTemplateApp::DoCalculation( ) {
             padded_reference.ClipInto(&windowed_particle);
             if ( mask_radius > 0.0f )
                 windowed_particle.CosineMask(mask_radius / pixel_size, mask_falloff / pixel_size);
-            windowed_particle.ForwardFFT( );
+
+            // The input image has a variance of 1 in real space. If we did the normal scaled forward FFT, the transform would have a variance 1 / N
+            // Instead, do the unscaled transform (now Variance is N in the FFT)
+            // Then multiply by sqrt(1/N) to get back to a variance of 1 in the FFT
+            windowed_particle.ForwardFFT(false);
+            windowed_particle.MultiplyByConstant(sqrtf(windowed_particle.number_of_real_space_pixels));
             windowed_particle.SwapRealSpaceQuadrants( );
             //		windowed_particle.ZeroCentralPixel();
             //		windowed_particle.DivideByConstant(sqrtf(windowed_particle.ReturnSumOfSquares()));
@@ -738,36 +887,28 @@ bool RefineTemplateApp::DoCalculation( ) {
                         angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
 
                         input_ctf.SetDefocus((defocus1 + current_defocus) / pixel_size, (defocus2 + current_defocus) / pixel_size, deg_2_rad(defocus_angle));
+
+//					input_image.ForwardFFT();
+//					template_object.windowed_particle = &input_image;
+
+//					input_reconstruction.RandomisePhases(pixel_size / 20.0f);
+#ifdef TEST_COMPLEX_PRJ
+                        complex_projector.UpdateDefocus((defocus1 + current_defocus) / pixel_size, (defocus2 + current_defocus) / pixel_size, deg_2_rad(defocus_angle));
+                        template_peak = TemplateScore(&template_object, &complex_projector);
+
+#else
                         projection_filter.CalculateCTFImage(input_ctf);
                         projection_filter.ApplyCurveFilter(&whitening_filter);
-
-                        //					input_image.ForwardFFT();
-                        //					template_object.windowed_particle = &input_image;
-
-                        //					input_reconstruction.RandomisePhases(pixel_size / 20.0f);
                         template_peak = TemplateScore(&template_object);
-                        //					starting_score = template_peak.value;
-                        //					wxPrintf("0 peak x, y, value = %g %g %g\n", template_peak.x, template_peak.y, template_peak.value);
-                        //					float s = 0.0f, a = 0.0f;
-                        //					for (int k = 0; k < 10; k++)
-                        //					{
-                        //						input_reconstruction.RandomisePhases(pixel_size / 20.0f);
-                        //						template_peak = TemplateScore(&template_object);
-                        //						wxPrintf("%i peak x, y, value = %g %g %g\n", k + 1, template_peak.x, template_peak.y, template_peak.value);
-                        //						s += powf(template_peak.value, 2);
-                        //						a += template_peak.value;
-                        //					}
-                        //					a /= 10;
-                        //					s /= 10;
-                        //					s = sqrtf(s - powf(a, 2));
-                        //					wxPrintf("noise, SNR = %g %g\n", s, fabsf(starting_score - a) / s);
-                        //					exit(0);
-                        //					starting_score = scaled_mip_image.real_values[address];
-                        starting_score   = template_peak.value * sqrtf(projection_filter.logical_x_dimension * projection_filter.logical_y_dimension);
+#endif
+
+                        // Moving to using real SNR values (properly normalized), but make sure any intermediate mix and match as the right values.
+                        // For old approach all SNR are < 1 and presumably in the new approach there is never an SNR < 1 that is being refined
+                        starting_score = template_peak.value;
+                        if ( template_peak.value < 1.0f )
+                            starting_score *= sqrtf(projection_filter.logical_x_dimension * projection_filter.logical_y_dimension);
                         score_adjustment = 1.0f;
-                        //					score_adjustment = mip_image.real_values[address] / template_peak.value / sqrtf(template_object.windowed_particle->logical_x_dimension * template_object.windowed_particle->logical_y_dimension);
-                        //					wxPrintf("old, new score = %g %g\n", mip_image.real_values[address], template_peak.value * sqrtf(template_object.windowed_particle->logical_x_dimension * template_object.windowed_particle->logical_y_dimension));
-                        //					exit(0);
+
                         starting_score = score_adjustment * scaled_mip_image.real_values[current_address] * starting_score / mip_image.real_values[current_address];
 
                         if ( max_threads == 1 )
@@ -777,28 +918,23 @@ bool RefineTemplateApp::DoCalculation( ) {
                                 wxPrintf("Peak %4i: dx, dy, dpsi, dtheta, dphi, ddefocus, dpixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f | value = %10.6f\n", peak_number + 1, 0., 0., 0., 0., 0., 0., 0., starting_score);
                             goto NEXTPEAK;
                         }
-                        //					template_reconstruction.CopyFrom(&input_reconstruction);
-                        //					template_reconstruction.ForwardFFT();
-                        //					template_reconstruction.ZeroCentralPixel();
-                        //					template_reconstruction.SwapRealSpaceQuadrants();
-
-                        //					template_object.input_reconstruction = &template_reconstruction;
-                        //					template_object.windowed_particle = &windowed_particle;
-                        //					template_object.projection_filter = &projection_filter;
-                        //					template_object.angles = &angles;
-                        //					template_object.pixel_size_factor = 1.0f;
 
                         if ( defocus_search_range != 0.0f ) {
                             //						for (defocus_is = 0; defocus_is <= myroundint(float(defocus_search_range)/float(defocus_search_step)); defocus_is = defocus_is - myroundint(float(4 * defocus_is - 1) / 2.0f))
                             for ( defocus_is = -myroundint(float(defocus_search_range) / float(defocus_step)); defocus_is <= myroundint(float(defocus_search_range) / float(defocus_step)); defocus_is++ ) {
                                 input_ctf.SetDefocus((defocus1 + current_defocus + defocus_is * defocus_step) / pixel_size, (defocus2 + current_defocus + defocus_is * defocus_step) / pixel_size, deg_2_rad(defocus_angle));
-                                projection_filter.CalculateCTFImage(input_ctf);
-                                projection_filter.ApplyCurveFilter(&whitening_filter);
 
                                 //							angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
+#ifdef TEST_COMPLEX_PRJ
+                                complex_projector.UpdateDefocus((defocus1 + current_defocus + defocus_is * defocus_step) / pixel_size, (defocus2 + current_defocus + defocus_is * defocus_step) / pixel_size, deg_2_rad(defocus_angle));
+                                template_peak = TemplateScore(&template_object, &complex_projector);
 
+#else
+                                projection_filter.CalculateCTFImage(input_ctf);
+                                projection_filter.ApplyCurveFilter(&whitening_filter);
                                 template_peak = TemplateScore(&template_object);
-                                score         = template_peak.value;
+#endif
+                                score = template_peak.value;
                                 if ( score > best_score ) {
                                     best_peak       = template_peak;
                                     best_score      = score;
@@ -847,9 +983,12 @@ bool RefineTemplateApp::DoCalculation( ) {
 
                                     // make the projection filter, which will be CTF * whitening filter
                                     input_ctf.SetDefocus((defocus1 + current_defocus + defocus_i * defocus_refine_step) / pixel_size, (defocus2 + current_defocus + defocus_i * defocus_refine_step) / pixel_size, deg_2_rad(defocus_angle));
+#ifdef TEST_COMPLEX_PRJ
+                                    complex_projector.UpdateDefocus((defocus1 + current_defocus + defocus_i * defocus_refine_step) / pixel_size, (defocus2 + current_defocus + defocus_i * defocus_refine_step) / pixel_size, deg_2_rad(defocus_angle));
+#else
                                     projection_filter.CalculateCTFImage(input_ctf);
                                     projection_filter.ApplyCurveFilter(&whitening_filter);
-
+#endif
                                     for ( kk = 0; kk < 2; kk = -2 * kk + 1 ) {
                                         do {
                                             best_phi_score = best_score;
@@ -864,9 +1003,14 @@ bool RefineTemplateApp::DoCalculation( ) {
                                                             psi_i += ii;
 
                                                             angles.Init(current_phi + phi_i * angular_step, current_theta + theta_i * angular_step, current_psi + psi_i * in_plane_angular_step, 0.0, 0.0);
+#ifdef TEST_COMPLEX_PRJ
+                                                            template_peak = TemplateScore(&template_object, &complex_projector);
+
+#else
 
                                                             template_peak = TemplateScore(&template_object);
-                                                            score         = template_peak.value;
+#endif
+                                                            score = template_peak.value;
                                                             if ( score > best_score ) {
                                                                 best_peak       = template_peak;
                                                                 best_score      = score;
@@ -920,16 +1064,24 @@ bool RefineTemplateApp::DoCalculation( ) {
                         size_i  = 0;
 
                         input_ctf.SetDefocus((defocus1 + current_defocus) / pixel_size, (defocus2 + current_defocus) / pixel_size, deg_2_rad(defocus_angle));
+#ifdef TEST_COMPLEX_PRJ
+                        complex_projector.UpdateDefocus((defocus1 + current_defocus) / pixel_size, (defocus2 + current_defocus) / pixel_size, deg_2_rad(defocus_angle));
+#else
                         projection_filter.CalculateCTFImage(input_ctf);
                         projection_filter.ApplyCurveFilter(&whitening_filter);
+#endif
                         angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
 
                         if ( pixel_size_search_range != 0.0f ) {
                             for ( size_is = -myroundint(float(pixel_size_search_range) / float(pixel_size_refine_step)); size_is <= myroundint(float(pixel_size_search_range) / float(pixel_size_refine_step)); size_is++ ) {
                                 template_object.pixel_size_factor = (pixel_size + current_pixel_size + float(size_is) * pixel_size_refine_step) / pixel_size;
-                                //						wxPrintf("trying pixel size %f\n", pixel_size + float(size_is) * pixel_size_refine_step);
+//						wxPrintf("trying pixel size %f\n", pixel_size + float(size_is) * pixel_size_refine_step);
+#ifdef TEST_COMPLEX_PRJ
+                                template_peak = TemplateScore(&template_object, &complex_projector);
+#else
                                 template_peak = TemplateScore(&template_object);
-                                score         = template_peak.value;
+#endif
+                                score = template_peak.value;
                                 if ( score > best_score ) {
                                     best_peak       = template_peak;
                                     best_score      = score;
@@ -988,17 +1140,6 @@ bool RefineTemplateApp::DoCalculation( ) {
                                         size_i += myroundint(mult_i * ll);
 
                                     template_object.pixel_size_factor = (pixel_size + current_pixel_size + float(size_i) * pixel_size_refine_step) / pixel_size;
-                                    //								wxPrintf("trying pixel size %f\n", pixel_size + float(size_i) * pixel_size_refine_step);
-                                    //								input_reconstruction.ChangePixelSize(&template_reconstruction, (pixel_size + float(size_i) * pixel_size_refine_step) / pixel_size, 0.001f, true);
-                                    ////								template_reconstruction.ForwardFFT();
-                                    //								template_reconstruction.ZeroCentralPixel();
-                                    //								template_reconstruction.SwapRealSpaceQuadrants();
-                                    //								template_object.input_reconstruction = &template_reconstruction;
-
-                                    // make the projection filter, which will be CTF * whitening filter
-                                    //								input_ctf.SetDefocus((defocus1 + current_defocus + size_i * defocus_refine_step) / pixel_size, (defocus2 + current_defocus + size_i * defocus_refine_step) / pixel_size, deg_2_rad(defocus_angle));
-                                    //								projection_filter.CalculateCTFImage(input_ctf);
-                                    //								projection_filter.ApplyCurveFilter(&whitening_filter);
 
                                     for ( kk = 0; kk < 2; kk = -2 * kk + 1 ) {
                                         do {
@@ -1014,9 +1155,12 @@ bool RefineTemplateApp::DoCalculation( ) {
                                                             psi_i += ii;
 
                                                             angles.Init(current_phi + phi_i * angular_step, current_theta + theta_i * angular_step, current_psi + psi_i * in_plane_angular_step, 0.0, 0.0);
-
+#ifdef TEST_COMPLEX_PRJ
+                                                            template_peak = TemplateScore(&template_object, &complex_projector);
+#else
                                                             template_peak = TemplateScore(&template_object);
-                                                            score         = template_peak.value;
+#endif
+                                                            score = template_peak.value;
                                                             if ( score > best_score ) {
                                                                 best_peak       = template_peak;
                                                                 best_score      = score;
@@ -1165,7 +1309,7 @@ bool RefineTemplateApp::DoCalculation( ) {
             // CURRENTLY HARD CODED TO ONLY DO 1000 MAX //
             //////////////////////////////////////////////
 
-            if ( number_of_peaks_found <= 1000 ) {
+            if ( number_of_peaks_found <= cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS ) {
 
                 angles.Init(all_peak_infos[counter].phi, all_peak_infos[counter].theta, all_peak_infos[counter].psi, 0.0, 0.0);
 

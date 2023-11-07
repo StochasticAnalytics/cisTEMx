@@ -246,9 +246,10 @@ void WaveFunctionPropagator::SetInputWaveFunction(int size_x, int size_y) {
             phase_grating[iPar].Allocate(size_x, size_y, 1);
             amplitude_grating[iPar].Allocate(size_x, size_y, 1);
             aperture_grating[iPar].Allocate(size_x, size_y, 1);
-            // We only want the real part to be set to 1
-            for ( int iPixel = 0; iPixel < aperture_grating[iPar].real_memory_allocated; iPixel += 2 ) {
-                aperture_grating[iPar].real_values[iPixel] = 1.0f;
+            // We only want the real part of each complex number to be set to 1 (in both the real and imaginary images.)
+            for ( int iPixel = 0; iPixel < aperture_grating[iPar].real_memory_allocated / 2; iPixel++ ) {
+                aperture_grating[iPar].real_values[2 * iPixel]     = 1.0f;
+                aperture_grating[iPar].real_values[2 * iPixel + 1] = 0.f;
             }
 
             aperture_grating[iPar].is_in_real_space = false;
@@ -264,6 +265,7 @@ void WaveFunctionPropagator::SetInputWaveFunction(int size_x, int size_y) {
     }
     else {
 
+// FIXME: somehow duplicate code block
 #pragma omp parallel for num_threads(local_threads)
         for ( int iPar = 0; iPar < 2; iPar++ ) {
             wave_function[iPar].SetToConstant(wave_function_in[iPar]);
@@ -309,7 +311,8 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
         starting_val = 1;
     //	int starting_val = 1; // override for new amp FIXME
 
-    //
+    bool test_aperture    = true;
+    bool test_phase_plate = true; // FIXME
     for ( int iContrast = starting_val; iContrast < 2; iContrast++ ) {
 
         SetInputWaveFunction(size_x, size_y);
@@ -319,7 +322,10 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
         objective_aperture_resolution = ReturnObjectiveApertureResoution(1226.39 / sqrtf(requested_kv * 1000 + 0.97845e-6 * powf(requested_kv * 1000, 2)) * 1e-2);
         aperture_grating[0].ReturnCosineMaskBandpassResolution(pixel_size, objective_aperture_resolution, mask_falloff);
         // Masks for scattering inside (0) and outside (1) the objective aperture.
+
+        // aperture_grating[1] is copied from [0] later to avoid redundant calculations that affect the real/imag images equally.
         aperture_grating[0].CosineRingMask(-1.0f, objective_aperture_resolution, mask_falloff);
+        wxPrintf("Using an (%d) objective aperture of %f Angstroms\n", aperture_grating[0].is_in_real_space, objective_aperture_resolution);
         //	aperture_grating[1].SubtractImage(&aperture_grating[0]);
 
         // assuming the beam tilt should actually be zero if smaller than this.
@@ -348,10 +354,12 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
         for ( int iSlab = 0; iSlab < nSlabs; iSlab++ ) {
             SetFresnelPropagator(0.0f, propagator_distance[iSlab]);
 
+            // phase_grating[1] is copied from [0] later to avoid redundant calculations that affect the real/imag images equally.
             phase_grating[0].SetToConstant(0.0f);
             //		phase_grating[0].AddGaussianNoise(scattering_potential[iSlab].ReturnSumOfSquares(0.0f));
             //		phase_grating[0].AddConstant(scattering_potential[iSlab].ReturnAverageOfRealValues(0.0f));
 
+            // The
             scattering_potential[iSlab].ClipInto(&phase_grating[0], scattering_potential[iSlab].ReturnAverageOfRealValuesOnEdges( ));
 
             if ( do_beam_tilt ) {
@@ -404,7 +412,6 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
 
                     float angert_b = 1.0f; // The relative magnitude of the inelastic to elastic is accounted for in the calculation of the potentials, so this is set to 1
                     float angert_c = -1.0 * powf(22.6f, 2);
-                    ;
 
                     float alt_1 = -200.0f;
                     float alt_2 = 0.5f;
@@ -490,26 +497,44 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
             MyDebugAssertFalse(scattering_potential[iSlab].HasNan( ), "There is a NAN 1");
             MyDebugAssertFalse(phase_grating[0].HasNan( ), "There is a NAN 2");
 
-            // Up until here the phase gratings are identical. So I've only put values into (0);
+            // Up until here the phase gratings are identical and real-valued. So I've only put values into (0);
             // Now we introduce the aperture:
             phase_grating[1].CopyFrom(&phase_grating[0]);
             amplitude_grating[1].CopyFrom(&amplitude_grating[0]);
 
+            if ( test_phase_plate ) {
 #pragma omp simd
-            for ( long iPixel = 0; iPixel < phase_grating[0].real_memory_allocated; iPixel++ ) {
-                phase_grating[0].real_values[iPixel] = expf(-amplitude_grating[0].real_values[iPixel]) * std::cos(phase_grating[0].real_values[iPixel]);
-            }
+                for ( long iPixel = 0; iPixel < phase_grating[0].real_memory_allocated; iPixel++ ) {
+                    phase_grating[0].real_values[iPixel] = std::cos(phase_grating[0].real_values[iPixel]);
+                }
 
 #pragma omp simd
-            for ( long iPixel = 0; iPixel < phase_grating[1].real_memory_allocated; iPixel++ ) {
-                phase_grating[1].real_values[iPixel] = expf(-amplitude_grating[1].real_values[iPixel]) * std::sin(phase_grating[1].real_values[iPixel]);
+                for ( long iPixel = 0; iPixel < phase_grating[1].real_memory_allocated; iPixel++ ) {
+                    phase_grating[1].real_values[iPixel] = std::sin(phase_grating[1].real_values[iPixel]);
+                }
             }
+            else {
+#pragma omp simd
+                for ( long iPixel = 0; iPixel < phase_grating[0].real_memory_allocated; iPixel++ ) {
+                    phase_grating[0].real_values[iPixel] = expf(-amplitude_grating[0].real_values[iPixel]) * std::cos(phase_grating[0].real_values[iPixel]);
+                }
 
+#pragma omp simd
+                for ( long iPixel = 0; iPixel < phase_grating[1].real_memory_allocated; iPixel++ ) {
+                    phase_grating[1].real_values[iPixel] = expf(-amplitude_grating[1].real_values[iPixel]) * std::sin(phase_grating[1].real_values[iPixel]);
+                }
+            }
             MyDebugAssertFalse(phase_grating[0].HasNan( ), "There is a NAN 2a");
             MyDebugAssertFalse(phase_grating[1].HasNan( ), "There is a NAN 3a");
 
 #pragma omp parallel for num_threads(local_threads)
             for ( int iPar = 0; iPar < 4; iPar++ ) {
+                // copy_from_1 = 0,1,1,0
+                // mult_by     = 0,1,0,1
+                // 0 - FFT(w_r * p_r)
+                // 1 - FFT(w_i * p_i)
+                // 2 - FFT(w_i * p_r)
+                // 3 - FFT(w_r * p_i)
                 t_N[iPar].CopyFrom(&wave_function[copy_from_1[iPar]]);
                 t_N[iPar].MultiplyPixelWise(phase_grating[mult_by[iPar]]);
 
@@ -553,16 +578,21 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
 
                     //					wxPrintf("Shifting b %f slab %d\n",-1.0f* propagator_distance[iSlab]*beam_tilt_y/wanted_pixel_size,iSlab);
                 }
-
+                // prop_apply_real = 0,0,1,1
                 temp_img[iPar].ApplyCTF(fresnel_propagtor[prop_apply_real[iPar]], false);
 
                 MyDebugAssertFalse(temp_img[iPar].HasNan( ), "There is a NAN temp1CTF");
                 temp_img[iPar].BackwardFFT( );
                 MyDebugAssertFalse(temp_img[iPar].HasNan( ), "There is a NAN temp1BFFT");
+                // 0 - iFFT[FFT(w_r * p_r) * f_c]
+                // 1 - iFFT[FFT(w_i * p_i) * f_c]
+                // 2 - iFFT[FFT(w_i * p_r) * f_s]
+                // 3 - iFFT[FFT(w_r * p_i) * f_s]
             }
 
             for ( int iSeq = 0; iSeq < 4; iSeq++ ) {
                 if ( iSeq == 0 ) {
+                    // Wavefunction is set to zero, so we could just copy the data here.
                     wave_function[0].AddImage(&temp_img[iSeq]);
                 }
                 else {
@@ -574,6 +604,7 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
             for ( int iPar = 0; iPar < 4; iPar++ ) {
 
                 // Get the real part of the new exit wave
+                // FIXME: these are the same as the above block, but without the explicity beam tilt shift. Why?
                 temp_img[iPar].CopyFrom(&t_N[iPar]);
                 MyDebugAssertFalse(temp_img[iPar].HasNan( ), "There is a NAN temp1");
 
@@ -599,9 +630,10 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
         for ( int iPar = 0; iPar < 4; iPar++ ) {
 
             // Re-use t_N[0] through t_N[3]
+            // copy_from_2 = 0,1,1,0
             t_N[iPar].CopyFrom(&wave_function[copy_from_2[iPar]]);
             t_N[iPar].ForwardFFT(true);
-
+            // ctf_to_apply = 0,1,0,1
             t_N[iPar].ApplyCTF(ctf[ctf_apply[iPar]], false, do_beam_tilt, do_coherence_envelope);
 
             if ( do_beam_tilt_full ) {
@@ -620,13 +652,14 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
         wave_function[1].AddImage(&t_N[2]);
         wave_function[1].AddImage(&t_N[3]);
 
+        phase_grating[0].QuickAndDirtyWriteSlice("phase_grating_0.mrc", 1, false, 1);
         MyDebugAssertFalse(wave_function[0].HasNan( ), "There is a NAN 6");
         MyDebugAssertFalse(wave_function[1].HasNan( ), "There is a NAN 7");
 
         double probability_total            = 0;
         double probability_outside_aperture = 0;
 
-        if ( iContrast > 0 ) {
+        if ( iContrast > 0 || test_aperture ) {
 
 // Re-use the amplitude grating here
 #pragma omp parallel for num_threads(local_threads)
@@ -645,10 +678,7 @@ float WaveFunctionPropagator::DoPropagation(Image* sum_image, Image* scattering_
             sum_image[tilt_IDX].real_values[iPixel] = (wave_function[0].real_values[iPixel] * wave_function[0].real_values[iPixel] + wave_function[1].real_values[iPixel] * wave_function[1].real_values[iPixel]);
         }
 
-        //	// Limit based on objective aperture. Ideally this would be done prior to "imaging" where we take the square modulus. Unfortunately, the division of the complex image into its real and imaginary parts
-        //	// only makes sense for linear operators (fft) and multiplication by scalars to both parts. Multiplying by the aperture function violates this linearity.
         if ( iContrast > 0 && estimate_amplitude_contrast ) {
-            wxPrintf("\nLimiting the resolution based on an objective aperture of diameter %3.3f micron to %3.3f Angstrom\n", GetObjectiveAperture( ), pixel_size / objective_aperture_resolution);
 
             ReturnImageContrast(sum_image[tilt_IDX], &total_contrast, false, tilt_angle); // - phase_contrast;
             //		sum_image[tilt_IDX].QuickAndDirtyWriteSlice("total.mrc",1,false,1);

@@ -2,7 +2,6 @@ import os
 import sys
 import argparse
 import toml
-
 # If we are in the container
 
 default_data_dir = '/cisTEMdev/cistem_reference_images'
@@ -55,13 +54,22 @@ def parse_TM_args(wanted_binary_name):
     args = parser.parse_args()
 
     args.binary_name = wanted_binary_name
+    # currently no plan to have a gpu version
+    args.results_binary_name = 'make_template_result'
     # Check if we are using the cpu version or old version and if so modify the binary name with _gpu
     if not (args.old_cistem or args.cpu):
         args.binary_name += '_gpu'
 
     # Check if the binary exists
-    if not os.path.isfile(args.binary_path + '/' + wanted_binary_name):
-        print('The binary does not exist')
+    if not os.path.isfile(os.path.join(args.binary_path, args.binary_name)):
+        print('The binary ' + s.path.join(args.binary_path,
+              args.binary_name) + ' does not exist')
+        sys.exit(1)
+
+    # Check if make_template_result binary exists
+    if not os.path.isfile(os.path.join(args.binary_path, args.results_binary_name)):
+        print('The binary ' + os.path.join(args.binary_path,
+              args.results_binary_name) + ' does not exist')
         sys.exit(1)
 
     # if the optional data path is not given, use the default
@@ -75,7 +83,18 @@ def parse_TM_args(wanted_binary_name):
         print('Please provide a valid path to the test data directory as a second argument')
         sys.exit(1)
 
-    # Set some default search args that may be overwritten in a givven test
+    # Check that the wanted output path exists and if not try to make it, if not error
+    if not os.path.isdir(args.output_file_prefix):
+        try:
+            os.makedirs(args.output_file_prefix)
+        except OSError:
+            print('The output file directory [' +
+                  args.output_file_prefix + '] does not exist')
+            print(
+                'Please provide a valid path to the output file directory as a second argument')
+            sys.exit(1)
+
+    # Set some default search args that may be overwritten in a given test match_template
     args.out_of_plane_angle = 2.5
     args.in_plane_angle = 1.5
     args.defocus_range = 0
@@ -86,5 +105,12 @@ def parse_TM_args(wanted_binary_name):
     args.mask_radius = 0
     args.template_symmetry = 'C1'
     args.max_threads = 4
+
+    # Set some default search args that may be overwritten in a given test make_template_results
+    args.result_min_peak_radius = 10.0
+    args.result_number_to_process = 1
+    args.sample_thickness = 2000.0  # Angstrom
+    args.result_binning_factor = 4
+    args.result_ignore_n_pixels_from_edge = -1
 
     return args

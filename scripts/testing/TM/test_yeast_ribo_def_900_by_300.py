@@ -27,9 +27,12 @@ def main():
     args.defocus_range = 900
     args.defocus_step = 300
 
+    # 2 is the 6Q8Y_mature_60S.mrc template
     config = tmArgs.get_config(args, 'Yeast', 2, 0)
 
-    temp_run_filename = mktmp.make_tmp_runfile(args, config)
+    tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(
+        args, config)
+    return
     elapsed_time = run_job(temp_run_filename)
 
     print('Time is : ' + str(elapsed_time))

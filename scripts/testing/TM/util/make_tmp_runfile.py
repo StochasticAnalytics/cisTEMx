@@ -3,7 +3,7 @@ from tempfile import NamedTemporaryFile
 from os import chmod, path
 
 
-def match_template(args, config, output_file_prefix):
+def match_template(args, config):
 
     if (args.cpu):
         use_gpu = "no"
@@ -15,16 +15,16 @@ def match_template(args, config, output_file_prefix):
     input_cmd = [
         config.get('full_path_to_img'),
         config.get('full_path_to_ref'),
-        path.join(output_file_prefix, 'mip.mrc'),
-        path.join(output_file_prefix, 'mip_scaled.mrc'),
-        path.join(output_file_prefix, 'psi.mrc'),
-        path.join(output_file_prefix, 'theta.mrc'),
-        path.join(output_file_prefix, 'phi.mrc'),
-        path.join(output_file_prefix, 'defocus.mrc'),
-        path.join(output_file_prefix, 'pixel_size.mrc'),
-        path.join(output_file_prefix, 'avg.mrc'),
-        path.join(output_file_prefix, 'std.mrc'),
-        path.join(output_file_prefix, 'hist.mrc'),
+        path.join(args.output_file_prefix, 'mip.mrc'),
+        path.join(args.output_file_prefix, 'mip_scaled.mrc'),
+        path.join(args.output_file_prefix, 'psi.mrc'),
+        path.join(args.output_file_prefix, 'theta.mrc'),
+        path.join(args.output_file_prefix, 'phi.mrc'),
+        path.join(args.output_file_prefix, 'defocus.mrc'),
+        path.join(args.output_file_prefix, 'pixel_size.mrc'),
+        path.join(args.output_file_prefix, 'avg.mrc'),
+        path.join(args.output_file_prefix, 'std.mrc'),
+        path.join(args.output_file_prefix, 'hist.txt'),
         str(config.get('microscope').get('pixel_size')),
         str(config.get('microscope').get('kv')),
         str(config.get('microscope').get('cs')),
@@ -46,17 +46,47 @@ def match_template(args, config, output_file_prefix):
         use_gpu,
         str(args.max_threads)]
 
-    return input_cmd
+    pre_process_cmd = " "
+    return pre_process_cmd, input_cmd
 
 
-def actually_make_it(args, wanted_stdin):
+def make_template_results(args, config):
+
+    read_coordinates = "no"
+    pre_process_cmd = str(
+        "wanted_threshold=$(awk '/^# Expected/{print $5}' " + path.join(args.output_file_prefix, 'hist.txt)'))
+    input_cmd = [
+        read_coordinates,
+        path.join(args.output_file_prefix, 'mip_scaled.mrc'),
+        path.join(args.output_file_prefix, 'psi.mrc'),
+        path.join(args.output_file_prefix, 'theta.mrc'),
+        path.join(args.output_file_prefix, 'phi.mrc'),
+        path.join(args.output_file_prefix, 'defocus.mrc'),
+        path.join(args.output_file_prefix, 'pixel_size.mrc'),
+        path.join(args.output_file_prefix, 'coordinates.txt'),
+        str("$wanted_threshold"),
+        str(args.result_min_peak_radius),
+        str(args.result_number_to_process),
+        config.get('full_path_to_ref'),
+        path.join(args.output_file_prefix, 'result.mrc'),
+        path.join(args.output_file_prefix, 'slab.mrc'),
+        str(args.sample_thickness),
+        str(config.get('microscope').get('pixel_size')),
+        str(args.result_binning_factor),
+        str(args.result_ignore_n_pixels_from_edge)]
+
+    return pre_process_cmd, input_cmd
+
+
+def actually_make_it(args, pre_process_cmd, wanted_stdin, wanted_binary_name):
 
     # We want to defer execution of the temp script, so set delete=False,
     # and return the filename. This meanse the caller must clean up the file.
     with NamedTemporaryFile(mode='w', delete=False) as stdin_file:
-        stdin_file.write('#!/bin/bash\n')
-        stdin_file.write(path.join(args.binary_path,
-                         args.binary_name) + ' <<EOF\n')
+        stdin_file.write('#!/bin/bash\n\n')
+        stdin_file.write(pre_process_cmd)
+        stdin_file.write('\n')
+        stdin_file.write(wanted_binary_name + ' <<EOF\n')
         stdin_file.write('\n'.join(wanted_stdin))
         stdin_file.write('\n')
         stdin_file.write('EOF\n')
@@ -67,7 +97,7 @@ def actually_make_it(args, wanted_stdin):
     return stdin_file.name
 
 
-def make_tmp_runfile(args, config: dict, output_file_prefix: str = '/tmp'):
+def make_tmp_runfile(args, config: dict):
     '''
     This function creates a temporary file that can be used to run the match_template binary
 
@@ -81,7 +111,10 @@ def make_tmp_runfile(args, config: dict, output_file_prefix: str = '/tmp'):
 
     # Check if we are using the cpu version or old version and if so modify the binary name with _gpu
     if args.binary_name == 'match_template':
-        wanted_stdin = match_template(args, config, output_file_prefix)
+        pre_process_cmd, wanted_stdin = match_template(args, config)
+        results_preprocess_cmd, results_wanted_stdin = make_template_results(
+            args, config)
+
     elif args.binary_name == 'match_template_gpu':
         # throw an error if the user tries to use the gpu version with the --cpu flag
 
@@ -91,6 +124,11 @@ def make_tmp_runfile(args, config: dict, output_file_prefix: str = '/tmp'):
         print('Unknown program name')
         exit(1)
 
-    tmp_filename = actually_make_it(args, wanted_stdin)
+    tmp_filename_match_template = actually_make_it(
+        args, pre_process_cmd, wanted_stdin, path.join(args.binary_path,
+                                                       args.binary_name))
+    tmp_filename_make_template_results = actually_make_it(
+        args, results_preprocess_cmd, results_wanted_stdin, path.join(args.binary_path,
+                                                                      args.results_binary_name))
 
-    return tmp_filename
+    return tmp_filename_match_template, tmp_filename_make_template_results

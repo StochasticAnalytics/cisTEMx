@@ -32,15 +32,17 @@ def main():
 
     config = tmArgs.get_config(args, 'Yeast', 2, 0)
 
-    temp_run_filename = mktmp.make_tmp_runfile(args, config)
-    elapsed_time = run_job(temp_run_filename)
+    tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(
+        args, config)
+    elapsed_time = run_job(tmp_filename_match_template)
     # print wanted_stdin list with newlines between each element
     # create a temporary file for feeding to stdin
 
     config = tmArgs.get_config(args, 'Yeast', 2, 1)
 
-    temp_run_filename = mktmp.make_tmp_runfile(args, config)
-    elapsed_time_rotated = run_job(temp_run_filename)
+    tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(
+        args, config)
+    elapsed_time_rotated = run_job(tmp_filename_match_template)
 
     print('Times are : ' + str(elapsed_time) +
           ' and ' + str(elapsed_time_rotated))

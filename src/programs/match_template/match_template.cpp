@@ -564,8 +564,39 @@ bool MatchTemplateApp::DoCalculation( ) {
     input_image.ApplyCurveFilter(&whitening_filter);
     input_image.ZeroCentralPixel( );
     // Note: we are dividing by the sqrt of the sum of squares, so the variance in the FFT(image) is 1/N, not 1.
-    input_image.DivideByConstant(sqrtf(input_image.ReturnSumOfSquares( )));
+    input_image.DivideByConstant(sqrtf(input_image.ReturnSumOfSquares( ) / input_image.number_of_real_space_pixels));
     //input_image.QuickAndDirtyWriteSlice("/tmp/white.mrc", 1);
+    Image mean_filt;
+    mean_filt.Allocate(input_image.logical_x_dimension, input_image.logical_y_dimension, 1);
+    mean_filt.SetToConstant(1.f);
+    Image ss_img(input_image);
+    ss_img.DivideByConstant(sqrt(input_image.number_of_real_space_pixels));
+    ss_img.BackwardFFT( );
+    Image avg_img(ss_img);
+    ss_img.SquareRealValues( );
+    ss_img.DivideByConstant(sqrt(input_image.number_of_real_space_pixels));
+    avg_img.DivideByConstant(sqrt(input_image.number_of_real_space_pixels));
+    ss_img.ForwardFFT(false);
+    avg_img.ForwardFFT(false);
+    mean_filt.CosineMask(0.15 * input_reconstruction_file.ReturnXSize( ), 14, false, true);
+    std::cerr << "sum o freal values " << (mean_filt.ReturnSumOfRealValues( )) << std::endl;
+    mean_filt.DivideByConstant(mean_filt.ReturnSumOfRealValues( ) * sqrt(input_image.number_of_real_space_pixels));
+    mean_filt.ForwardFFT(false);
+
+    ss_img.MultiplyPixelWise(mean_filt);
+    avg_img.MultiplyPixelWise(mean_filt);
+    // ss_img.SwapRealSpaceQuadrants( );
+    // avg_img.SwapRealSpaceQuadrants( );
+    ss_img.BackwardFFT( );
+    avg_img.BackwardFFT( );
+    ss_img.QuickAndDirtyWriteSlice("ss.mrc", 1);
+    avg_img.QuickAndDirtyWriteSlice("avg.mrc", 1);
+    avg_img.SquareRealValues( );
+    ss_img.SubtractImage(&avg_img);
+    ss_img.SquareRootRealValues( );
+    ss_img.QuickAndDirtyWriteSlice("std.mrc", 1);
+    mean_filt.QuickAndDirtyWriteSlice("mean_filt.mrc", 1);
+    exit(1);
 
     //exit(-1);
 

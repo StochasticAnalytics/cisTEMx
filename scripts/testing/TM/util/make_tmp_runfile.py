@@ -9,7 +9,9 @@ def match_template(args, config):
         use_gpu = "no"
     else:
         use_gpu = "yes"
-    high_res_limit = 2*config.get('microscope').get('pixel_size')
+
+    high_res_limit = 2*config.get('data')[config.get('img_number')].get('pixel_size')
+
     # make a string that will then be used to create a temporary file for feading to stdin
     # TODO: optional output dir
     input_cmd = [
@@ -25,14 +27,14 @@ def match_template(args, config):
         path.join(args.output_file_prefix, 'avg.mrc'),
         path.join(args.output_file_prefix, 'std.mrc'),
         path.join(args.output_file_prefix, 'hist.txt'),
-        str(config.get('microscope').get('pixel_size')),
+        str(config.get('data')[config.get('img_number')].get('pixel_size')),
         str(config.get('microscope').get('kv')),
         str(config.get('microscope').get('cs')),
-        str(config.get('ctf').get('amplitude_contrast')),
-        str(config.get('ctf').get('defocus_1')),
-        str(config.get('ctf').get('defocus_2')),
-        str(config.get('ctf').get('defocus_angle')),
-        str(config.get('ctf').get('extra_phase_shift')),
+        str(config.get('data')[config.get('img_number')].get('ctf').get('amplitude_contrast')),
+        str(config.get('data')[config.get('img_number')].get('ctf').get('defocus_1')),
+        str(config.get('data')[config.get('img_number')].get('ctf').get('defocus_2')),
+        str(config.get('data')[config.get('img_number')].get('ctf').get('defocus_angle')),
+        str(config.get('data')[config.get('img_number')].get('ctf').get('extra_phase_shift')),
         str(high_res_limit),
         str(args.out_of_plane_angle),
         str(args.in_plane_angle),
@@ -42,7 +44,7 @@ def match_template(args, config):
         str(args.pixel_size_step),
         str(args.padding_factor),
         str(args.mask_radius),
-        str(args.template_symmetry),
+        str(config.get('model')[config.get('ref_number')].get('symmetry')),
         use_gpu,
         str(args.max_threads)]
 
@@ -57,7 +59,7 @@ def make_template_results(args, config):
         "wanted_threshold=$(awk '/^# Expected/{print $5}' " + path.join(args.output_file_prefix, 'hist.txt)'))
     input_cmd = [
         read_coordinates,
-        path.join(args.output_file_prefix, 'mip_scaled.mrc'),
+        path.join(args.output_file_prefix, args.results_mip_to_use),
         path.join(args.output_file_prefix, 'psi.mrc'),
         path.join(args.output_file_prefix, 'theta.mrc'),
         path.join(args.output_file_prefix, 'phi.mrc'),
@@ -71,7 +73,7 @@ def make_template_results(args, config):
         path.join(args.output_file_prefix, 'result.mrc'),
         path.join(args.output_file_prefix, 'slab.mrc'),
         str(args.sample_thickness),
-        str(config.get('microscope').get('pixel_size')),
+        str(config.get('data')[config.get('img_number')].get('pixel_size')),
         str(args.result_binning_factor),
         str(args.result_ignore_n_pixels_from_edge)]
 
@@ -127,6 +129,7 @@ def make_tmp_runfile(args, config: dict):
     tmp_filename_match_template = actually_make_it(
         args, pre_process_cmd, wanted_stdin, path.join(args.binary_path,
                                                        args.binary_name))
+
     tmp_filename_make_template_results = actually_make_it(
         args, results_preprocess_cmd, results_wanted_stdin, path.join(args.binary_path,
                                                                       args.results_binary_name))

@@ -14,9 +14,7 @@ def main():
 
     args = tmArgs.parse_TM_args(wanted_binary_name)
 
-    # We want to do the full search (mostly) with defocus included, so override those defaults
-    args.defocus_range = 900
-    args.defocus_step = 300
+    # We want to do a single-plane search which is a good enough quick check for most cases.
 
     # 2 is the 6Q8Y_mature_60S.mrc template
     config = tmArgs.get_config(args, 'Yeast', 2, 0)

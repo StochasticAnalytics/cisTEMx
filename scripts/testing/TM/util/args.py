@@ -9,23 +9,32 @@ default_data_dir = '/cisTEMdev/cistem_reference_images'
 
 def get_config(args, data_dir: str, ref_number: int, img_number: int):
 
-    if data_dir not in ['Yeast', 'Crown', 'Lamella_from_je', 'SPA']:
+    if data_dir not in ['Yeast', 'Crown', 'Lamella_from_je', 'Apoferritin']:
         print('The data directory [' +
               data_dir + '] does not exist')
         print('Please provide a valid path to the test data directory as a second argument')
         sys.exit(1)
 
-    # TODO: this won't work with different tomls for different data sets
-    # either make the toml match the name of the image.
-    # parse the config file
-    config = toml.load(args.test_data_path + '/Yeast/MetaData/yeast.toml')
+    config = toml.load(os.path.join(args.test_data_path,
+                       data_dir, 'MetaData', data_dir + '.toml'))
 
     # FIXME: the image and ref number are annoying and should be more descriptive
-    config['full_path_to_img'] = os.path.join(
-        args.test_data_path, 'Yeast/Images', config.get('data').get('img_names')[img_number])
-    config['full_path_to_ref'] = os.path.join(
-        args.test_data_path, 'Yeast/Templates', config.get('data').get('ref_names')[ref_number])
 
+    config['full_path_to_img'] = os.path.join(
+        args.test_data_path, data_dir, 'Images', config.get('data')[img_number].get('img_name'))
+    config['full_path_to_ref'] = os.path.join(
+        args.test_data_path, data_dir, 'Templates', config.get('model')[ref_number].get('ref_name'))
+
+    # confirm the pixel sizes match and set that in args
+    if config.get('data')[img_number].get('pixel_size') != config.get('model')[ref_number].get('pixel_size'):
+        print('The pixel sizes do not match between the image and reference')
+        print('Please provide a valid path to the test data directory as a second arguments')
+        sys.exit(1)
+    else:
+        config['pixel_size'] = config.get('data')[img_number].get('pixel_size')
+
+    config['img_number'] = img_number
+    config['ref_number'] = ref_number
     return config
 
 
@@ -84,15 +93,7 @@ def parse_TM_args(wanted_binary_name):
         sys.exit(1)
 
     # Check that the wanted output path exists and if not try to make it, if not error
-    if not os.path.isdir(args.output_file_prefix):
-        try:
-            os.makedirs(args.output_file_prefix)
-        except OSError:
-            print('The output file directory [' +
-                  args.output_file_prefix + '] does not exist')
-            print(
-                'Please provide a valid path to the output file directory as a second argument')
-            sys.exit(1)
+    os.makedirs(args.output_file_prefix, exist_ok=True)
 
     # Set some default search args that may be overwritten in a given test match_template
     args.out_of_plane_angle = 2.5
@@ -103,10 +104,10 @@ def parse_TM_args(wanted_binary_name):
     args.pixel_size_step = 0
     args.padding_factor = 1.0
     args.mask_radius = 0
-    args.template_symmetry = 'C1'
     args.max_threads = 4
 
     # Set some default search args that may be overwritten in a given test make_template_results
+    args.results_mip_to_use = 'mip_scaled.mrc'
     args.result_min_peak_radius = 10.0
     args.result_number_to_process = 1
     args.sample_thickness = 2000.0  # Angstrom

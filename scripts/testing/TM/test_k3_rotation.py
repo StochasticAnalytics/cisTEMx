@@ -28,9 +28,9 @@ def main():
     # We want it to take long enough to armortize any overhead, but not too long, ideally a minute or so
     args.out_of_plane_angle = 5.5
     args.in_plane_angle = 3.5
-    args.template_symmetry = 'T'
 
     config = tmArgs.get_config(args, 'Yeast', 2, 0)
+    config.get('model')['symmetry'] = 'T'
 
     tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(
         args, config)

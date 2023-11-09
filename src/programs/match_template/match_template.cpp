@@ -538,9 +538,45 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     // for now, I am assuming the MTF has been applied already.
     // work out the filter to just whiten the image..
+    // Try tiling over the image
+    Image tile;
+    int   n_tiles     = 32;
+    int   tile_size_x = input_image.logical_x_dimension / n_tiles;
+    int   tile_size_y = input_image.logical_y_dimension / n_tiles;
+    int   n_tries     = input_image.number_of_real_space_pixels;
+    int   n           = 1;
+    while ( n < n_tries ) {
+        if ( input_image.logical_x_dimension % tile_size_x == 0 )
+            break;
+        if ( input_image.logical_x_dimension % (tile_size_x + n) == 0 ) {
+            tile_size_x += n;
+            break;
+        }
+        if ( input_image.logical_x_dimension % (tile_size_x - n) == 0 ) {
+            tile_size_x -= n;
+            break;
+        }
+        n++;
+    }
+    n = 1;
+    while ( n < n_tries ) {
+        if ( input_image.logical_y_dimension % tile_size_y == 0 )
+            break;
+        if ( input_image.logical_y_dimension % (tile_size_y + n) == 0 ) {
+            tile_size_y += n;
+            break;
+        }
+        if ( input_image.logical_y_dimension % (tile_size_y - n) == 0 ) {
+            tile_size_y -= n;
+            break;
+        }
+        n++;
+    }
+    wxPrintf("Tile size = %i %i\n", tile_size_x, tile_size_y);
 
-    whitening_filter.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
-    number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
+    tile.Allocate(tile_size_x, tile_size_y, 1, true);
+    whitening_filter.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((tile.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
+    number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((tile.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
 
     wxDateTime my_time_out;
     wxDateTime my_time_in;
@@ -548,6 +584,37 @@ bool MatchTemplateApp::DoCalculation( ) {
     // remove outliers
     // This won't work for movie frames (13.0 is used in unblur) TODO use poisson stats
     input_image.ReplaceOutliersWithMean(5.0f);
+    Image output_image(input_image);
+    output_image.SetToConstant(0.0f);
+    int overlap = 4;
+    int x_step  = tile.logical_x_dimension / overlap;
+    int y_step  = tile.logical_y_dimension / overlap;
+    for ( int oy = input_image.logical_lower_bound_real_y + y_step; oy < input_image.logical_upper_bound_real_y + y_step; oy += y_step ) {
+        for ( int ox = input_image.logical_lower_bound_real_x + x_step; ox < input_image.logical_upper_bound_real_x + x_step; ox += x_step ) {
+            input_image.ClipInto(&tile, 0.0, false, 1.0f, ox, oy, 0);
+            tile.ForwardFFT( );
+
+            tile.Compute1DPowerSpectrumCurve(&whitening_filter, &number_of_terms);
+            whitening_filter.SquareRoot( );
+            whitening_filter.Reciprocal( );
+            whitening_filter.MultiplyByConstant(1.0f / whitening_filter.ReturnMaximumValue( ));
+            tile.ApplyCurveFilter(&whitening_filter);
+            tile.ZeroCentralPixel( );
+            tile.DivideByConstant(sqrtf(tile.ReturnSumOfSquares( )));
+            tile.BackwardFFT( );
+
+            for ( int iy = 0; iy < tile.logical_y_dimension; iy++ ) {
+                for ( int ix = 0; ix < tile.logical_x_dimension; ix++ ) {
+                    if ( ! (iy < y_step && ix < x_step) || iy == 0 || ix == 0 )
+                        tile.real_values[tile.ReturnReal1DAddressFromPhysicalCoord(ix, iy, 0)] = 0.0f;
+                }
+            }
+
+            output_image.InsertOtherImageAtSpecifiedPosition(&tile, ox, oy, 0);
+        }
+    }
+    output_image.QuickAndDirtyWriteSlice("white_tile_" + std::to_string(tile_size_x) + "_overlap_" + std::to_string(overlap) + ".mrc", 1);
+    exit(-1);
     input_image.ForwardFFT( );
     input_image.SwapRealSpaceQuadrants( );
 
@@ -562,8 +629,11 @@ bool MatchTemplateApp::DoCalculation( ) {
     // Note: we are dividing by the sqrt of the sum of squares, so the variance in the images 1/N, not 1. This is where the need to multiply the mips by sqrt(N) comes from.
     // Dividing by sqrt(input_image.ReturnSumOfSquares() / N) would result in a properly normalized CCC value.
     input_image.DivideByConstant(sqrtf(input_image.ReturnSumOfSquares( )));
-    //input_image.QuickAndDirtyWriteSlice("/tmp/white.mrc", 1);
-    //exit(-1);
+    input_image.SwapRealSpaceQuadrants( );
+    //            input_ctf.SetDefocus((defocus1 + 200) / pixel_size, (defocus2 + 200) / pixel_size, deg_2_rad(defocus_angle));
+
+    input_image.QuickAndDirtyWriteSlice("white.mrc", 1);
+    exit(-1);
 
     // count total searches (lazy)
 

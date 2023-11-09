@@ -184,6 +184,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             current_projection.complex_values[0] = 0.0f + I * 0.0f;
 
             current_projection.SwapRealSpaceQuadrants( );
+            current_projection.QuickAndDirtyWriteSlice("pre_ctf.mrc", 1);
             current_projection.MultiplyPixelWise(projection_filter);
             current_projection.BackwardFFT( );
             average_on_edge  = current_projection.ReturnAverageOfRealValuesOnEdges( );
@@ -192,10 +193,21 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // Make sure the device has moved on to the padded projection
             cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
 
+            float cutoff = sqrtf(current_projection.ReturnVarianceOfRealValues( )) * 0.5f;
+            current_projection.MakeAbsolute( );
+            current_projection.Binarise(cutoff);
+            current_projection.DilateBinarizedMask(8.0f);
+            current_projection.Binarise(0.9f);
             //// TO THE GPU ////
             d_current_projection.CopyHostToDevice(current_projection);
 
             d_current_projection.AddConstant(-average_on_edge);
+            //FIXME
+
+            d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_current_projection.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+
+            d_current_projection.QuickAndDirtyWriteSlice("padded_Ref.mrc", 1);
+            exit(0);
 
             // The average in the full padded image will be different;
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);

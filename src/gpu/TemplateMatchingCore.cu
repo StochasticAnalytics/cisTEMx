@@ -3,8 +3,11 @@
 
 #define DO_HISTOGRAM true
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
+constexpr bool use_gpu_prj = false;
+
+__global__ void
+MipPixelWiseKernel(const __half2* __restrict__ correlation_output, __half2* my_peaks, const int numel,
+                   const __half psi, const __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks);
 
 TemplateMatchingCore::TemplateMatchingCore( ){
 
@@ -168,7 +171,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     //	cudaErr(cudaFuncSetCacheConfig(SumPixelWiseKernel, cudaFuncCachePreferL1));
 
     //	bool make_graph = true;
-    //	bool first_loop_complete = false;
+    bool first_loop_complete = false;
 
     for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
 
@@ -190,65 +193,37 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             average_of_reals = current_projection.ReturnAverageOfRealValues( ) - average_on_edge;
 
             // Make sure the device has moved on to the padded projection
+            // cudaEventSynchronize = block host until event is passed (with a busy wait)
+            // cudaStreamWaitEvent = block device until event is passed
             cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
 
             //// TO THE GPU ////
             d_current_projection.CopyHostToDevice(current_projection);
-
-            d_current_projection.AddConstant(-average_on_edge);
 
             // The average in the full padded image will be different;
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
 
             d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
             d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
-            cudaEventRecord(projection_is_free_Event, cudaStreamPerThread);
+            // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 
-            // For the cpu code (MKL and FFTW) the image is multiplied by N on the forward xform, and subsequently normalized by 1/N
-            // cuFFT multiplies by 1/root(N) forward and then 1/root(N) on the inverse. The input image is done on the cpu, and so has no scaling.
-            // Stating false on the forward FFT leaves the ref = ref*root(N). Then we have root(N)*ref*input * root(N) (on the inverse) so we need a factor of 1/N to come out proper. This is included in BackwardFFTAfterComplexConjMul
+            cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
+
             d_padded_reference.ForwardFFT(false);
             //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
             d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
 
-            //			d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values, false);
-            //			d_padded_reference.CopyFP32toFP16buffer(false);
+            // d_padded_reference.MultiplyByConstant(rsqrtf(d_padded_reference.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels));
 
-            if ( DO_HISTOGRAM ) {
+              if ( DO_HISTOGRAM ) {
                 if ( ! histogram.is_allocated_histogram ) {
                     d_padded_reference.NppInit( );
-                    histogram.BufferInit(d_padded_reference.npp_ROI);
+                    histogram.BufferInit(d_padded_reference);
                 }
                 histogram.AddToHistogram(d_padded_reference);
             }
 
-            //			if (make_graph && first_loop_complete)
-            //			{
-            //				wxPrintf("\nBeginning stream capture for creation of graph\n");
-            //				cudaStreamBeginCapture(cudaStreamPerThread, cudaStreamCaptureModeGlobal);
-            //			}
-            //
-            //			if (first_loop_complete && ! make_graph)
-            //			{
-            //				cudaGraphLaunch(graphExec, cudaStreamPerThread);
-            //
-            //			}
-            //			else
-            //			{
-            this->MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
-                               __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
-            //			this->MipPixelWise(d_padded_reference, float(current_psi) , float(global_euler_search.list_of_search_parameters[current_search_position][1]),
-            //																			 	 float(global_euler_search.list_of_search_parameters[current_search_position][0]));
-            //				this->SumPixelWise(d_padded_reference);
-            //			}
-
-            //			if (make_graph && first_loop_complete)
-            //			{
-            //				wxPrintf("\nEnding stream capture for creation of graph\n");
-            //				cudaStreamEndCapture(cudaStreamPerThread, &graph);
-            //				cudaGraphInstantiate(&graphExec, graph, NULL, NULL, 0);
-            //				make_graph = false;
-            //			}
+            this->MipPixelWise(__float2half_rn(current_psi), __floats2half2_rn(global_euler_search.list_of_search_parameters[current_search_position][1], global_euler_search.list_of_search_parameters[current_search_position][0]));
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
@@ -277,7 +252,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             current_projection.is_in_real_space = false;
             d_padded_reference.is_in_real_space = true;
-            //			d_padded_reference.Zeros();
             cudaEventRecord(gpu_work_is_done_Event, cudaStreamPerThread);
 
             //			first_loop_complete = true;
@@ -328,46 +302,40 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaFree(my_new_peaks));
 }
 
-void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
+void TemplateMatchingCore::MipPixelWise(__half psi, __half2 theta_phi) {
 
     precheck;
     // N
-    d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
+    d_padded_reference.ReturnLaunchParametersLimitSMs(0.5f, 512);
 
-    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
+    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half2*)d_padded_reference.real_values_16f, my_peaks,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,
-                                                                                                                    psi, theta, phi, my_stats, my_new_peaks);
+                                                                                                                    psi, theta_phi, my_stats, my_new_peaks);
     postcheck;
 }
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
+__global__ void MipPixelWiseKernel(const __half2* __restrict__ correlation_output, __half2* my_peaks, const int numel,
+                                   const __half psi, const __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks) {
 
     //	Peaks tmp_peak;
 
-    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
+    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel / 2; i += blockDim.x * gridDim.x ) {
 
-        const __half  half_val = correlation_output[i];
-        const __half2 input    = __half2half2(half_val * __half(10000.0));
-        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
-        //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
-        //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
-        //    	tmp_peak = my_peaks[i];
-        //		const __half half_val = __float2half_rn(val);
+        const __half half_low  = __low2half(correlation_output[i]);
+        const __half half_high = __high2half(correlation_output[i]);
 
-        //			tmp_peak.psi = psi;
-        //			tmp_peak.theta = theta;
-        //			tmp_peak.phi = phi;
-        if ( half_val > __low2half(my_peaks[i]) ) {
+        int idx = 2 * i;
+        my_stats[idx] += __halves2half2(half_low, half_low * half_low);
+        if ( half_low > CUDART_ZERO_FP16 && half_low > __low2half(my_peaks[idx]) ) {
             //				tmp_peak.mip = half_val;
-            my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = __halves2half2(theta, phi);
-
-            //				my_peaks[i].mip = correlation_output[i];
-            //				my_peaks[i].psi = psi;
-            //				my_peaks[i].theta = theta;
-            //				my_peaks[i].phi = phi;
+            my_peaks[idx]     = __halves2half2(half_low, psi);
+            my_new_peaks[idx] = theta_phi;
+        }
+        idx += 1;
+        if ( half_high > CUDART_ZERO_FP16 && half_high > __low2half(my_peaks[idx]) ) {
+            //				tmp_peak.mip = half_val;
+            my_peaks[idx]     = __halves2half2(half_low, psi);
+            my_new_peaks[idx] = theta_phi;
         }
     }
     //
@@ -515,8 +483,8 @@ __global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftRe
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x < numel ) {
 
-        sum[x]    = __fmaf_rn(0.0001f, __low2float(my_stats[x]), sum[x]);
-        sq_sum[x] = __fmaf_rn(0.0001f, __high2float(my_stats[x]), sq_sum[x]);
+        sum[x] += __low2float(my_stats[x]);
+        sq_sum[x] += __high2float(my_stats[x]);
 
         my_stats[x] = __halves2half2((__half)0., (__half)0.);
     }

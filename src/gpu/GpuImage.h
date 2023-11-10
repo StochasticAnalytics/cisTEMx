@@ -17,6 +17,9 @@ class BatchedSearch;
 
 class GpuImage {
 
+  private:
+    using tmp_val_idx = cistem::gpu::tmp_val::Enum;
+
   public:
     GpuImage( );
     GpuImage(int wanted_x_size, int wanted_y_size, int wanted_z_size = 1, bool is_in_real_space = true, bool allocate_fp16_buffer = false);
@@ -130,8 +133,8 @@ class GpuImage {
     dim3 threadsPerBlock;
     dim3 gridDims;
 
-    bool    is_meta_data_initialized;
-    float*  tmpVal;
+    bool is_meta_data_initialized;
+
     double* tmpValComplex;
     bool    is_in_memory_managed_tmp_vals;
 
@@ -139,8 +142,10 @@ class GpuImage {
 
     cudaEvent_t npp_calc_event;
     cudaEvent_t block_host_event;
+    cudaEvent_t return_sum_of_squares_event;
     bool        is_npp_calc_event_initialized;
     bool        is_block_host_event_initialized;
+    bool        is_return_sum_of_squares_event_initialized;
     //	cublasHandle_t cublasHandle;
 
     cufftHandle cuda_plan_forward;
@@ -233,6 +238,7 @@ class GpuImage {
     void CopyGpuImageMetaData(const GpuImage* other_image);
     void CopyLoopingAndAddressingFrom(GpuImage* other_image);
 
+    void  SumOfSquares( );
     float ReturnSumOfSquares( );
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
@@ -241,6 +247,9 @@ class GpuImage {
 
     template <typename StorageTypeBase>
     void CopyDataFrom(GpuImage& other_image);
+    void CopyFP32toFP16buffer(float* real_32f_values, __half* real_16f_values, int n_elements);
+    void CopyFP32toFP16buffer(float2* complex_32f_values, __half2* complex_16f_values, int n_elements);
+
     void CopyFP32toFP16buffer(bool deallocate_single_precision = true);
     void CopyFP16buffertoFP32(bool deallocate_half_precision = true);
 
@@ -520,8 +529,6 @@ class GpuImage {
     bool is_set_complexConjMulLoad;
 
     /*template void d_MultiplyByScalar<T>(T* d_input, T* d_multiplicators, T* d_output, size_t elements, int batch);*/
-
-  private:
 };
 
 #endif /* GPUIMAGE_H_ */

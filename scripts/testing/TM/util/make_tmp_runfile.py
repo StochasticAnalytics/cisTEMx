@@ -109,7 +109,9 @@ def make_tmp_runfile(config: dict):
     # Check if we are using the cpu version or old version and if so modify the binary name with _gpu
     # FIXME: currently without old_cistem, the binary is set to match_template_gpu, but we need some other specifier if the number/order of
     # input args to match_template changes. (As it will soon with FastFFT as an option.)
-    if (config.get('old_cistem') == 'yes' and config.get('binary_name') == 'match_template') or config.get('binary_name') == 'match_template_gpu':
+    print(config.get('binary_name'))
+    print(config.get('old_cistem'))
+    if (config.get('old_cistem') == True and config.get('binary_name') == 'match_template') or config.get('binary_name') == 'match_template_gpu':
         pre_process_cmd, wanted_stdin = match_template(config)
         results_preprocess_cmd, results_wanted_stdin = make_template_results(config)
     else:

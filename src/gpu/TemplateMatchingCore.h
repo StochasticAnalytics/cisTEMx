@@ -94,7 +94,7 @@ class TemplateMatchingCore {
     __half*  secondary_peaks;
 
     void SumPixelWise(GpuImage& image);
-    void MipPixelWise(__half psi, __half theta, __half phi);
+    void MipPixelWise(__half psi, __half2 theta_phi);
     void MipToImage( );
     void AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
 

@@ -152,6 +152,22 @@ constexpr std::array<std::string_view, 17> cufft_error_types = {
         "CUFFT_NOT_IMPLEMENTED",
         "CUFFT_LICENSE_ERROR",
         "CUFFT_NOT_SUPPORTED"};
+
+// To avoid extra calls to malloc managed, which are slow, set an enum for the different types were we may need tmp vals
+// Note: if you add one of these here, you need to make sure the memory allocation is also increased
+
+namespace tmp_val {
+
+constexpr size_t n_tmp_vals         = 1;
+constexpr size_t n_tmp_vals_complex = 3;
+
+enum Enum : int { ReturnSumSquareModulusComplexValues,
+                  ReturnSumOfRealValues,
+                  SumOfSquares,
+
+};
+} // namespace tmp_val
+
 } // namespace gpu
 
 } // namespace cistem

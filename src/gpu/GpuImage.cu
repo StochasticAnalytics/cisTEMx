@@ -623,7 +623,7 @@ template void GpuImage::MultiplyPixelWiseComplexConjugate<__half>(GpuImage& refe
 template void GpuImage::MultiplyPixelWiseComplexConjugate<float>(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier);
 
 __global__ void
-ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values, int4 dims, int padding_jump_value, float* returnValue);
+ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values, int4 dims, int padding_jump_value, float& returnValue);
 
 float GpuImage::ReturnAverageOfRealValuesOnEdges( ) {
     // FIXME to use a masked routing, this is slow af
@@ -631,18 +631,18 @@ float GpuImage::ReturnAverageOfRealValuesOnEdges( ) {
     MyDebugAssertTrue(dims.z == 1, "ReturnAverageOfRealValuesOnEdges only implemented in 2d");
 
     precheck;
-    *tmpVal = 5.0f;
-    ReturnSumOfRealValuesOnEdgesKernel<<<1, 1, 0, cudaStreamPerThread>>>(real_values, dims, padding_jump_value, tmpVal);
+    float ret_val = 0.0f;
+    ReturnSumOfRealValuesOnEdgesKernel<<<1, 1, 0, cudaStreamPerThread>>>(real_values, dims, padding_jump_value, ret_val);
     postcheck;
 
     // Need to wait on the return value
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
-    return *tmpVal;
+    return ret_val;
 }
 
 __global__ void
-ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values, int4 dims, int padding_jump_value, float* returnValue) {
+ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values, int4 dims, int padding_jump_value, float& returnValue) {
     int pixel_counter;
     int line_counter;
     //    int plane_counter;
@@ -676,7 +676,7 @@ ReturnSumOfRealValuesOnEdgesKernel(cufftReal* real_values, int4 dims, int paddin
     }
     number_of_pixels += dims.x;
 
-    *returnValue = (float)sum / (float)number_of_pixels;
+    returnValue = (float)sum / (float)number_of_pixels;
 }
 
 //void GpuImage::CublasInit()
@@ -1090,7 +1090,7 @@ void GpuImage::BufferDestroy( ) {
     }
 }
 
-float GpuImage::ReturnSumOfSquares( ) {
+void GpuImage::SumOfSquares( ) {
     // FIXME this assumes padded values are zero which is not strictly true
     MyDebugAssertTrue(is_in_memory_gpu, "Image not allocated");
     MyDebugAssertTrue(is_in_real_space, "This method is for real space, use ReturnSumSquareModulusComplexValues for Fourier space");
@@ -1098,25 +1098,25 @@ float GpuImage::ReturnSumOfSquares( ) {
     NppInit( );
     BufferInit(b_l2norm);
 
+    if ( ! is_return_sum_of_squares_event_initialized ) {
+        cudaErr(cudaEventCreateWithFlags(&return_sum_of_squares_event, cudaEventDisableTiming));
+        is_return_sum_of_squares_event_initialized = true;
+    }
+
     nppErr(nppiNorm_L2_32f_C1R_Ctx((Npp32f*)real_values, pitch, npp_ROI,
-                                   (Npp64f*)tmpValComplex, (Npp8u*)this->l2norm_buffer, nppStream));
+                                   (Npp64f*)&tmpValComplex[tmp_val_idx::SumOfSquares], (Npp8u*)this->l2norm_buffer, nppStream));
 
-    cudaErr(cudaStreamSynchronize(nppStream.hStream));
+    cudaEventRecord(return_sum_of_squares_event, cudaStreamPerThread);
+}
 
-    return (float)(*tmpValComplex * *tmpValComplex);
+float GpuImage::ReturnSumOfSquares( ) {
+    // Call the method to do the calculation
+    // TODO: Add debug asserts on tmpVal initialization
+    SumOfSquares( );
 
-    //    CublasInit();
-    //    // With real and complex interleaved, treating as real is equivalent to taking the conj dot prod
-    //    cublas_stat = cublasSdot( cublasHandle, real_memory_allocated,
-    //                            real_values, 1,
-    //                            real_values, 1,
-    //                            &returnValue);
-    //
-    //    if (cublas_stat) {
-    //    wxPrintf("Cublas return val %s\n", cublas_stat); }
-    //
-    //
-    //    return returnValue;
+    // Wait efficiently for the calculation to finish
+    cudaErr(cudaEventSynchronize(return_sum_of_squares_event));
+    return float(tmpValComplex[tmp_val_idx::SumOfSquares] * tmpValComplex[tmp_val_idx::SumOfSquares]);
 }
 
 float GpuImage::ReturnSumSquareModulusComplexValues( ) {
@@ -1198,19 +1198,16 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
     // With real and complex interleaved, treating as real is equivalent to taking the conj dot prod
     precheck;
 
+    // FIXME: is this working with complex values? It should be apstracted to another palce I think.
     NppInit( );
     BufferInit(b_l2norm);
     nppErr(nppiNorm_L2_32f_C1R_Ctx((Npp32f*)image_buffer->real_values, pitch, npp_ROI_fourier_with_real_functor,
-                                   (Npp64f*)tmpValComplex, (Npp8u*)this->l2norm_buffer, nppStream));
+                                   (Npp64f*)&tmpValComplex[tmp_val_idx::ReturnSumSquareModulusComplexValues], (Npp8u*)this->l2norm_buffer, nppStream));
 
+    // FIXME: streamWaitEvent
     cudaErr(cudaStreamSynchronize(nppStream.hStream));
-
-    return (float)(*tmpValComplex * *tmpValComplex);
-
     postcheck;
-
-    //    return (float)(*dotProd * 2.0f);
-    //    return (float)(returnValue * 2.0f);
+    return float(tmpValComplex[tmp_val_idx::ReturnSumSquareModulusComplexValues] * tmpValComplex[tmp_val_idx::ReturnSumSquareModulusComplexValues]);
 }
 
 void GpuImage::MipPixelWise(GpuImage& other_image) {
@@ -2258,7 +2255,7 @@ void GpuImage::Mean( ) {
 
     nppErr(nppiMean_32f_C1R_Ctx((const Npp32f*)real_values, pitch, npp_ROI, mean_buffer, &npp_mean, nppStream));
     cudaErr(cudaStreamSynchronize(nppStream.hStream));
-
+    // FIXME: make this a stream wait
     this->img_mean = float(npp_mean);
 }
 
@@ -2412,24 +2409,13 @@ float GpuImage::ReturnSumOfRealValues( ) {
 
     NppInit( );
     BufferInit(b_sum);
-    nppErr(nppiSum_32f_C1R_Ctx((const Npp32f*)real_values, pitch, npp_ROI, sum_buffer, (Npp64f*)tmpValComplex, nppStream));
+    nppErr(nppiSum_32f_C1R_Ctx((const Npp32f*)real_values, pitch, npp_ROI, sum_buffer, (Npp64f*)&tmpValComplex[tmp_val_idx::ReturnSumOfRealValues], nppStream));
+
+    // FIXME: streamWaitEvent
     cudaErr(cudaStreamSynchronize(nppStream.hStream));
 
-    return (float)*tmpValComplex;
+    return float(tmpValComplex[tmp_val_idx::ReturnSumOfRealValues]);
 }
-
-// float3 GpuImage::ReturnSumOfRealValues3Channel() {
-//     // FIXME assuming padded values are zero
-//     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
-//     MyDebugAssertTrue(is_in_real_space, "Not in real space");
-
-//     NppInit( );
-//     BufferInit(b_sum);
-//     nppErr(nppiSum_32f_C3R_Ctx((const Npp32f*)real_values, pitch, npp_ROI, sum_buffer, (Npp64f*)tmpValComplex, nppStream));
-//     cudaErr(cudaStreamSynchronize(nppStream.hStream));
-
-//     return (float3)*tmpValComplex;
-// }
 
 template <typename StorageType>
 __global__ void
@@ -2946,32 +2932,12 @@ void GpuImage::ForwardFFT(bool should_scale) {
         cudaErr(cudaMemcpyFromSymbol(&h_ConvertInputf16Tof32Ptr, d_ConvertInputf16Tof32Ptr, sizeof(h_ConvertInputf16Tof32Ptr)));
         cufftErr(cufftXtSetCallback(cuda_plan_forward, (void**)&h_ConvertInputf16Tof32Ptr, CUFFT_CB_LD_REAL, 0));
         is_set_convertInputf16Tof32 = true;
-        //      cudaErr(cudaFree(norm_factor));
-        //      this->MultiplyByConstant(ft_normalization_factor*ft_normalization_factor);
     }
     if ( should_scale ) {
         this->MultiplyByConstant(ft_normalization_factor * ft_normalization_factor);
     }
 
-    //    if (should_scale && ! is_set_scaleFFTAndStore)
-    //    {
-    //
-    //        float ft_norm_sq = ft_normalization_factor*ft_normalization_factor;
-    //        cudaErr(cudaMalloc((void **)&d_scale_factor, sizeof(float)));
-    //        cudaErr(cudaMemcpyAsync(d_scale_factor, &ft_norm_sq, sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
-    //        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-    //
-    //        cufftCallbackStoreC h_scaleFFTAndStorePtr;
-    //        cudaErr(cudaMemcpyFromSymbol(&h_scaleFFTAndStorePtr,d_scaleFFTAndStorePtr, sizeof(h_scaleFFTAndStorePtr)));
-    //        cudaErr(cufftXtSetCallback(cuda_plan_forward, (void **)&h_scaleFFTAndStorePtr, CUFFT_CB_ST_COMPLEX, (void **)&d_scale_factor));
-    //        is_set_scaleFFTAndStore = true;
-    //    }
-
-    //    BufferInit(b_image);
-    //    cudaErr(cufftExecR2C(this->cuda_plan_forward, (cufftReal*)real_values, (cufftComplex*)image_buffer->complex_values));
-
     _ForwardFFT<float, float2>( );
-    // cudaErr(cufftExecR2C(this->cuda_plan_forward, position_space_ptr, momentum_space_ptr));
 
     is_in_real_space = false;
 
@@ -3145,7 +3111,6 @@ void GpuImage::RecordBlocking( ) {
 void GpuImage::Wait( ) {
     MyDebugAssertTrue(is_npp_calc_event_initialized, "NPP event not initialized");
     cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, npp_calc_event, 0));
-    //  cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 }
 
 void GpuImage::WaitBlocking( ) {
@@ -3651,6 +3616,10 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     long long int  iDist;
     long long int  oDist;
 
+    // FIXME: there is some problem with this segfaulting that was originally  masked in TemplateMatchingCore
+    // by the sync in ReturnSUmOfSquares, which is now a wiat.
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+
     cufftErr(cufftCreate(&cuda_plan_forward));
     cufftErr(cufftCreate(&cuda_plan_inverse));
 
@@ -3738,6 +3707,7 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     //                                 NULL, NULL, NULL, CUDA_R_16F, iBatch, &cuda_plan_worksize_inverse, CUDA_R_16F));
     // }
     // else {
+    precheck;
 
     cufftErr(cufftXtMakePlanMany(cuda_plan_forward, rank, ifftDims,
                                  inembed, iStride, iDist,
@@ -3776,7 +3746,6 @@ void GpuImage::Deallocate( ) {
 
     if ( is_in_memory_managed_tmp_vals ) {
         // These are allocated as managed memory which isn't part of the async api TODO: confirm true
-        cudaErr(cudaFree(tmpVal));
         cudaErr(cudaFree(tmpValComplex));
         is_in_memory_managed_tmp_vals = false;
     }
@@ -3789,6 +3758,11 @@ void GpuImage::Deallocate( ) {
     if ( is_block_host_event_initialized ) {
         cudaErr(cudaEventDestroy(block_host_event));
         is_block_host_event_initialized = false;
+    }
+
+    if ( is_return_sum_of_squares_event_initialized ) {
+        cudaErr(cudaEventDestroy(return_sum_of_squares_event));
+        is_return_sum_of_squares_event_initialized = false;
     }
 
     // Separat method for all the buffer memory spaces, not sure it this makes sense
@@ -3918,9 +3892,10 @@ void GpuImage::CopyFP16buffertoFP32(bool deallocate_half_precision) {
 }
 
 void GpuImage::AllocateTmpVarsAndEvents( ) {
+    // TODO: consider a small managed memory pool that could be used for other exchanges as well,
+    // e.g. for hybrid cpu/gpu image methods
     if ( ! is_in_memory_managed_tmp_vals ) {
-        cudaErr(cudaMallocManaged(&tmpVal, sizeof(float)));
-        cudaErr(cudaMallocManaged(&tmpValComplex, sizeof(double)));
+        cudaErr(cudaMallocManaged(&tmpValComplex, cistem::gpu::tmp_val::n_tmp_vals_complex * sizeof(double)));
         is_in_memory_managed_tmp_vals = true;
     }
     if ( ! is_npp_calc_event_initialized ) {
@@ -4017,10 +3992,11 @@ void GpuImage::UpdateBoolsToDefault( ) {
     // This should only be called on a newly created image.
     MyDebugAssertFalse(is_meta_data_initialized, "GpuImage::UpdateBoolsToDefault() Should not be called on a non-initialized image");
 
-    is_meta_data_initialized        = false;
-    is_in_memory_managed_tmp_vals   = false;
-    is_npp_calc_event_initialized   = false;
-    is_block_host_event_initialized = false;
+    is_meta_data_initialized                   = false;
+    is_in_memory_managed_tmp_vals              = false;
+    is_npp_calc_event_initialized              = false;
+    is_block_host_event_initialized            = false;
+    is_return_sum_of_squares_event_initialized = false;
 
     is_in_memory                           = false;
     is_in_real_space                       = true;

@@ -163,7 +163,7 @@ constexpr size_t n_tmp_vals_complex = 3;
 
 enum Enum : int { ReturnSumSquareModulusComplexValues,
                   ReturnSumOfRealValues,
-                  SumOfSquares,
+                  L2Norm,
 
 };
 } // namespace tmp_val

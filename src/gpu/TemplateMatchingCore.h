@@ -5,12 +5,15 @@
 #include "DeviceManager.h"
 #include "Histogram.h"
 
+// Defined in TemplateMatching.cu
+class ProjectionQueue;
+
 class TemplateMatchingCore {
 
   public:
     TemplateMatchingCore( );
     TemplateMatchingCore(int number_of_jobs);
-    virtual ~TemplateMatchingCore( );
+    virtual ~TemplateMatchingCore( ); // FIXME: why is this virtual?
 
     void Init(int number_of_jobs);
 
@@ -22,8 +25,10 @@ class TemplateMatchingCore {
 
     // CPU images to be passed in -
     Image template_reconstruction;
-    Image current_projection;
     Image input_image; // These will be modified on the host from withing Template Matching Core so Allocate locally
+
+    std::vector<Image>               current_projection;
+    std::unique_ptr<ProjectionQueue> projection_queue;
 
     cudaGraph_t     graph;
     cudaGraphExec_t graphExec;

@@ -238,8 +238,11 @@ class GpuImage {
     void CopyGpuImageMetaData(const GpuImage* other_image);
     void CopyLoopingAndAddressingFrom(GpuImage* other_image);
 
-    void  SumOfSquares( );
+    void  L2Norm( );
     float ReturnSumOfSquares( );
+
+    void NormalizeRealSpaceStdDeviation(float additional_scalar, float pre_calculated_avg);
+
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
 

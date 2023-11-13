@@ -3,8 +3,97 @@
 
 #define DO_HISTOGRAM true
 
+using namespace cistem_timer_noop;
+
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
                                    __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
+
+constexpr int n_prjs = 2;
+
+class ProjectionQueue {
+
+  private:
+    int             n_prjs_in_queue_;
+    cudaEvent_t     cpu_projection_is_free_Event[n_prjs];
+    std::queue<int> available_prj_queue;
+    std::queue<int> submitted_prj_queue;
+
+    cudaError_t event_status;
+
+  public:
+    StopWatch timer;
+
+    ProjectionQueue(int wanted_size) : n_prjs_in_queue_(wanted_size) {
+        MyDebugAssertFalse(n_prjs_in_queue_ == 0, "ProjectionQueue must be initialized with a size greater than 0");
+        // We don't need to do anything if the queue has only one member
+        if ( n_prjs_in_queue_ > 1 )
+            ResetQueues( );
+
+        for ( int i = 0; i < n_prjs_in_queue_; i++ )
+            cudaErr(cudaEventCreateWithFlags(&cpu_projection_is_free_Event[i], cudaEventBlockingSync));
+    }
+
+    ~ProjectionQueue( ) {
+        for ( int i = 0; i < n_prjs_in_queue_; i++ )
+            cudaErr(cudaEventDestroy(cpu_projection_is_free_Event[i]));
+    }
+
+    void ResetQueues( ) {
+        while ( ! submitted_prj_queue.empty( ) ) {
+            submitted_prj_queue.pop( );
+        }
+        for ( int i = 0; i < n_prjs_in_queue_; i++ )
+            available_prj_queue.push(i);
+    }
+
+    int
+    GetAvailableProjectionIDX( ) {
+
+        // Take a shortcut if we don't need to track anything
+        if ( n_prjs_in_queue_ > 1 ) {
+
+            // Remove the oldest projections if they are ready and place them back in the available queue.
+            while ( ! submitted_prj_queue.empty( ) ) {
+                event_status = cudaEventQuery(cpu_projection_is_free_Event[submitted_prj_queue.front( )]);
+                if ( event_status == cudaSuccess ) {
+                    available_prj_queue.push(submitted_prj_queue.front( ));
+                    submitted_prj_queue.pop( );
+                }
+                else {
+                    // Okay, we've hit one that isn't ready, so we can stop looking, let's break out
+                    break;
+                }
+            }
+
+            // We only need to spin if there are no more available projections
+            if ( available_prj_queue.empty( ) ) {
+                timer.start("busy wait");
+                cudaErr(cudaEventSynchronize(cpu_projection_is_free_Event[submitted_prj_queue.front( )]));
+                timer.lap("busy wait");
+                available_prj_queue.push(submitted_prj_queue.front( ));
+                submitted_prj_queue.pop( );
+            }
+
+            submitted_prj_queue.push(available_prj_queue.front( ));
+            available_prj_queue.pop( );
+            return submitted_prj_queue.back( );
+        }
+        else {
+            timer.start("busy wait");
+            cudaErr(cudaEventSynchronize(cpu_projection_is_free_Event[0]));
+            timer.lap("busy wait");
+            return 0;
+        }
+    }
+
+    void RecordCpuProjectionIsFreeEvent(int idx) {
+        cudaErr(cudaEventRecord(cpu_projection_is_free_Event[idx], cudaStreamPerThread));
+    }
+
+    void PrintTimes( ) {
+        timer.print_times( );
+    }
+};
 
 TemplateMatchingCore::TemplateMatchingCore( ){
 
@@ -74,12 +163,21 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     // It seems that I need a copy for these - 1) confirm, 2) if already copying, maybe put straight into pinned mem with cudaHostMalloc
     this->template_reconstruction.CopyFrom(&template_reconstruction);
     this->input_image.CopyFrom(&input_image);
-    this->current_projection.CopyFrom(&current_projection);
+
+    this->projection_queue = std::make_unique<ProjectionQueue>(n_prjs);
+
+    projection_queue->timer.start("init overhead");
+    this->current_projection.reserve(n_prjs);
+    for ( int i = 0; i < n_prjs; i++ ) {
+        this->current_projection.emplace_back(current_projection);
+        this->current_projection[i].RegisterPageLockedMemory(this->current_projection[i].real_values);
+    }
+    projection_queue->timer.lap("init overhead");
 
     d_input_image.Init(this->input_image);
     d_input_image.CopyHostToDevice(input_image);
 
-    d_current_projection.Init(this->current_projection);
+    d_current_projection.Init(this->current_projection[0]);
 
     d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
     d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
@@ -151,9 +249,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     }
     //	cudaErr(cudaMemset(my_stats,0,sizeof(Peaks)*d_input_image.real_memory_allocated));
 
+    // Just for reference:
+    // cudaStreamSynchronize: Blocks host until ALL work in the stream is completed
+    // cudaStreamWaitEvent: Makes all future work in stream wait on an event. Since we are always using cudaStreamPerThread, this is not needed.
+
     cudaEvent_t projection_is_free_Event, gpu_work_is_done_Event;
-    cudaErr(cudaEventCreateWithFlags(&projection_is_free_Event, cudaEventDisableTiming));
-    cudaErr(cudaEventCreateWithFlags(&gpu_work_is_done_Event, cudaEventDisableTiming));
+
+    // cudaErr(cudaEventCreateWithFlags(&projection_is_free_Event, cudaEventDisableTiming));
+    // cudaErr(cudaEventCreateWithFlags(&gpu_work_is_done_Event, cudaEventDisableTiming));
 
     int   ccc_counter = 0;
     int   current_search_position;
@@ -167,8 +270,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     //	cudaErr(cudaFuncSetCacheConfig(SumPixelWiseKernel, cudaFuncCachePreferL1));
 
-    //	bool make_graph = true;
-    //	bool first_loop_complete = false;
+    int current_projection_idx = 0;
 
     for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
 
@@ -180,35 +282,45 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             angles.Init(global_euler_search.list_of_search_parameters[current_search_position][0], global_euler_search.list_of_search_parameters[current_search_position][1], current_psi, 0.0, 0.0);
             //			current_projection.SetToConstant(0.0f); // This also sets the FFT padding to zero
-            template_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
-            current_projection.complex_values[0] = 0.0f + I * 0.0f;
 
-            current_projection.SwapRealSpaceQuadrants( );
-            current_projection.MultiplyPixelWise(projection_filter);
-            current_projection.BackwardFFT( );
-            average_on_edge  = current_projection.ReturnAverageOfRealValuesOnEdges( );
-            average_of_reals = current_projection.ReturnAverageOfRealValues( ) - average_on_edge;
+            // Make sure the previous copy from host -> device has completed before we start to make another projection.
+            // Event is created as non-blocking so this is a busy-wait.
+            current_projection_idx = projection_queue->GetAvailableProjectionIDX( );
 
-            // Make sure the device has moved on to the padded projection
-            // cudaEventSynchronize = block host until event is passed (with a busy wait)
-            // cudaStreamWaitEvent = block device until event is passed
-            cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0);
+            template_reconstruction.ExtractSlice(current_projection[current_projection_idx], angles, 1.0f, false);
+            current_projection[current_projection_idx].complex_values[0] = 0.0f + I * 0.0f;
+
+            current_projection[current_projection_idx].SwapRealSpaceQuadrants( );
+            current_projection[current_projection_idx].MultiplyPixelWise(projection_filter);
+            current_projection[current_projection_idx].BackwardFFT( );
+            average_on_edge  = current_projection[current_projection_idx].ReturnAverageOfRealValuesOnEdges( );
+            average_of_reals = current_projection[current_projection_idx].ReturnAverageOfRealValues( ) - average_on_edge;
+
+            // Here we do not want to block the host, but do want the device to wait until the gpu projection
+            // has been copied. I think the stream order operations should deal with this.
+            // cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0));
 
             //// TO THE GPU ////
-            d_current_projection.CopyHostToDevice(current_projection);
+            d_current_projection.CopyHostToDevice(current_projection[current_projection_idx]);
+
+            projection_queue->RecordCpuProjectionIsFreeEvent(current_projection_idx);
 
             d_current_projection.AddConstant(-average_on_edge);
 
             // The average in the full padded image will be different;
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
 
-            d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+            // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+            // For the host to execute the preceding line, it was to wait on the return value from ReturnSumOfSquares. This could be a bit of a performance regression as otherwise it can queue up all the reamining
+            // GPU work and get back to calculating the next projection. The commented out method is an attempt around that, but currently the mips come out a little different a bit faster.
+            d_current_projection.NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals);
             d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
             // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 
-            cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
+            // cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
 
             d_padded_reference.ForwardFFT(false);
+
             //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
             d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
 
@@ -250,9 +362,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 d_sumSq2.Zeros( );
             }
 
-            current_projection.is_in_real_space = false;
-            d_padded_reference.is_in_real_space = true;
-            cudaEventRecord(gpu_work_is_done_Event, cudaStreamPerThread);
+            current_projection[current_projection_idx].is_in_real_space = false;
+            d_padded_reference.is_in_real_space                         = true;
+            // cudaEventRecord(gpu_work_is_done_Event, cudaStreamPerThread);
 
             //			first_loop_complete = true;
 
@@ -278,9 +390,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     } // end of outer loop euler sphere position
 
+    projection_queue->PrintTimes( );
+
     wxPrintf("\t\t\ntotal number %d\n", ccc_counter);
 
-    cudaStreamWaitEvent(cudaStreamPerThread, gpu_work_is_done_Event, 0);
+    // cudaStreamWaitEvent(cudaStreamPerThread, gpu_work_is_done_Event, 0);
 
     this->AccumulateSums(my_stats, d_sum1, d_sumSq1);
 
@@ -306,7 +420,7 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
 
     precheck;
     // N
-    d_padded_reference.ReturnLaunchParametersLimitSMs(0.5f, 512);
+    d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
     MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,

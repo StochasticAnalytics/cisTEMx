@@ -61,6 +61,9 @@ __device__ __forceinline__ int
 d_ReturnReal1DAddressFromPhysicalCoord(int3 coords, int4 img_dims);
 
 __device__ __forceinline__ int
+d_ReturnReal1DAddressFromPhysicalCoord(const int x, const int y, const int z, const int NY, const int pixel_pitch);
+
+__device__ __forceinline__ int
 d_ReturnFourier1DAddressFromPhysicalCoord(int3 wanted_coords, int3 physical_upper_bound_complex);
 
 __device__ __forceinline__ int
@@ -635,7 +638,7 @@ float GpuImage::ReturnAverageOfRealValuesOnEdges( ) {
     ReturnSumOfRealValuesOnEdgesKernel<<<1, 1, 0, cudaStreamPerThread>>>(real_values, dims, padding_jump_value, ret_val);
     postcheck;
 
-    // Need to wait on the return value
+    // FIXME Need to wait on the return value
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
     return ret_val;
@@ -878,7 +881,6 @@ void GpuImage::BufferInit(BufferType bt, int n_elements) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
                 int n_elem;
                 nppErr(nppiMeanStdDevGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
-                cudaErr(cudaStreamSynchronize(nppStream.hStream));
                 cudaErr(cudaMallocAsync(&this->meanstddev_buffer, n_elem, nppStream.hStream));
 
                 is_allocated_meanstddev_buffer = true;
@@ -1090,7 +1092,7 @@ void GpuImage::BufferDestroy( ) {
     }
 }
 
-void GpuImage::SumOfSquares( ) {
+void GpuImage::L2Norm( ) {
     // FIXME this assumes padded values are zero which is not strictly true
     MyDebugAssertTrue(is_in_memory_gpu, "Image not allocated");
     MyDebugAssertTrue(is_in_real_space, "This method is for real space, use ReturnSumSquareModulusComplexValues for Fourier space");
@@ -1104,19 +1106,49 @@ void GpuImage::SumOfSquares( ) {
     }
 
     nppErr(nppiNorm_L2_32f_C1R_Ctx((Npp32f*)real_values, pitch, npp_ROI,
-                                   (Npp64f*)&tmpValComplex[tmp_val_idx::SumOfSquares], (Npp8u*)this->l2norm_buffer, nppStream));
+                                   (Npp64f*)&tmpValComplex[tmp_val_idx::L2Norm], (Npp8u*)this->l2norm_buffer, nppStream));
 
     cudaEventRecord(return_sum_of_squares_event, cudaStreamPerThread);
 }
 
 float GpuImage::ReturnSumOfSquares( ) {
-    // Call the method to do the calculation
-    // TODO: Add debug asserts on tmpVal initialization
-    SumOfSquares( );
+    MyDebugAssertTrue(is_in_real_space, "This method is for real space, use ReturnSumSquareModulusComplexValues for Fourier space");
+    L2Norm( );
 
     // Wait efficiently for the calculation to finish
     cudaErr(cudaEventSynchronize(return_sum_of_squares_event));
-    return float(tmpValComplex[tmp_val_idx::SumOfSquares] * tmpValComplex[tmp_val_idx::SumOfSquares]);
+    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    return float(tmpValComplex[tmp_val_idx::L2Norm] * tmpValComplex[tmp_val_idx::L2Norm]);
+}
+
+__global__ void NormalizeRealSpaceStdDeviationKernel(float* input_reals, double* __restrict__ sqrt_sum_of_squares, const float additional_scalar, const float average_sq, const int4 dims) {
+
+    int x = physical_X( );
+    if ( x >= dims.x )
+        return;
+    int y = physical_Y( );
+    if ( y >= dims.y )
+        return;
+    int z = physical_Z( );
+    if ( z >= dims.z )
+        return;
+
+    int   address   = d_ReturnReal1DAddressFromPhysicalCoord(x, y, z, dims.y, dims.w);
+    float input_val = input_reals[address];
+
+    float scalar = float(sqrt_sum_of_squares[0]);
+    scalar       = rsqrtf((scalar * scalar) / additional_scalar - average_sq);
+
+    input_reals[address] = input_val * scalar;
+}
+
+void GpuImage::NormalizeRealSpaceStdDeviation(float additional_scalar, float pre_calculated_avg) {
+
+    L2Norm( );
+    ReturnLaunchParameters(dims, true);
+    precheck;
+    NormalizeRealSpaceStdDeviationKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values, (double*)&tmpValComplex[tmp_val_idx::L2Norm], additional_scalar, (pre_calculated_avg * pre_calculated_avg), dims);
+    postcheck;
 }
 
 float GpuImage::ReturnSumSquareModulusComplexValues( ) {
@@ -3360,6 +3392,11 @@ d_ReturnReal1DAddressFromPhysicalCoord(int3 coords, int4 img_dims) {
 __device__ __forceinline__ int
 d_ReturnReal1DAddressFromPhysicalCoord(int3 coords, int pitch_in_pixels, int NY) {
     return ((((int)coords.z * (int)NY + coords.y) * (int)pitch_in_pixels) + (int)coords.x);
+}
+
+__device__ __forceinline__ int
+d_ReturnReal1DAddressFromPhysicalCoord(int x, int y, int z, int NY, int pitch_in_pixels) {
+    return (((z * NY + y) * pitch_in_pixels) + x);
 }
 
 __device__ __forceinline__ int

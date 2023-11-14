@@ -49,7 +49,7 @@ def get_config(args, data_dir: str, ref_number: int, img_number: int):
     config['pixel_size_step'] = 0
     config['padding_factor'] = 1.0
     config['mask_radius'] = 0
-    config['max_threads'] = 4
+    config['max_threads'] = 2
 
     # some default search args that may be overwritten in a given test make_template_results
     config['results_mip_to_use'] = 'mip_scaled.mrc'
@@ -90,6 +90,10 @@ def parse_TM_args(wanted_binary_name):
     parser.add_argument('--output_file_prefix',
                         help='Path and prefix for the output files (Optional - defaults to /tmp)', default='/tmp')
     args_to_check.append('output_file_prefix')
+
+    parser.add_argument('--gpu_idx',  default=0,
+                        help='GPU index to use (default: 0)')
+    args_to_check.append('gpu_idx')
 
     # add another optional flag to specify that we are using an older version of cisTEM
     # TODO: for now, just trying to catch the case where we use match_template not match_template_gpu, however,

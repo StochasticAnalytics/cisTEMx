@@ -24,8 +24,9 @@ class TemplateMatchingCore {
     int number_of_jobs_per_image_in_gui;
 
     // CPU images to be passed in -
-    Image template_reconstruction;
-    Image input_image; // These will be modified on the host from withing Template Matching Core so Allocate locally
+    Image    template_reconstruction;
+    GpuImage template_gpu;
+    Image    input_image; // These will be modified on the host from withing Template Matching Core so Allocate locally
 
     std::vector<Image>               current_projection;
     std::unique_ptr<ProjectionQueue> projection_queue;
@@ -79,8 +80,8 @@ class TemplateMatchingCore {
 
     int n_global_search_images_to_save;
 
-    bool is_running_locally;
-
+    bool      is_running_locally;
+    bool      is_gpu_3d_swapped;
     Histogram histogram;
 
     // Search objects

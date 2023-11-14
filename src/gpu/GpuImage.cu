@@ -26,14 +26,14 @@ MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufft
                    float c_psi, float c_phi, float c_theta, float c_defocus, float c_pixel);
 
 __global__ void
-ClipIntoRealKernel(cufftReal* real_values,
-                   cufftReal* other_image_real_values,
-                   int4       dims,
-                   int4       other_dims,
-                   int3       physical_address_of_box_center,
-                   int3       other_physical_address_of_box_center,
-                   int3       wanted_coordinate_of_box_center,
-                   float      wanted_padding_value);
+ClipIntoRealKernel(const cufftReal* __restrict__ real_values,
+                   cufftReal* __restrict__ other_image_real_values,
+                   int4  dims,
+                   int4  other_dims,
+                   int3  physical_address_of_box_center,
+                   int3  other_physical_address_of_box_center,
+                   int3  wanted_coordinate_of_box_center,
+                   float wanted_padding_value);
 
 // Inline declarations
 __device__ __forceinline__ int
@@ -3437,14 +3437,14 @@ d_ReturnFourier1DAddressFromLogicalCoord(int wanted_x_coord, int wanted_y_coord,
 }
 
 __global__ void
-ClipIntoRealKernel(cufftReal* real_values,
-                   cufftReal* other_image_real_values,
-                   int4       dims,
-                   int4       other_dims,
-                   int3       physical_address_of_box_center,
-                   int3       other_physical_address_of_box_center,
-                   int3       wanted_coordinate_of_box_center,
-                   float      wanted_padding_value) {
+ClipIntoRealKernel(const cufftReal* __restrict__ real_values,
+                   cufftReal* __restrict__ other_image_real_values,
+                   int4  dims,
+                   int4  other_dims,
+                   int3  physical_address_of_box_center,
+                   int3  other_physical_address_of_box_center,
+                   int3  wanted_coordinate_of_box_center,
+                   float wanted_padding_value) {
     int3 other_coord = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                                  blockIdx.y * blockDim.y + threadIdx.y,
                                  blockIdx.z);
@@ -4920,13 +4920,19 @@ ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t tex_real,
                               const float  resolution_limit,
                               const bool   apply_resolution_limit,
                               const bool   apply_ctf,
-                              const bool   abs_ctf) {
+                              const bool   abs_ctf,
+                              const bool   zero_central_pixel) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
         return;
     }
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     if ( y >= NY ) {
+        return;
+    }
+
+    if ( x == 0 && y == 0 && zero_central_pixel ) {
+        outputData[y] = make_float2(0.f, 0.f);
         return;
     }
 
@@ -5010,7 +5016,7 @@ ExtractSliceShiftAndCtfKernel(const cudaTextureObject_t tex_real,
 }
 
 void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImage* ctf_image, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit, bool apply_resolution_limit,
-                                       bool swap_quadrants, bool apply_shifts, bool apply_ctf, bool absolute_ctf) {
+                                       bool swap_quadrants, bool apply_shifts, bool apply_ctf, bool absolute_ctf, bool zero_central_pixel, cudaStream_t stream) {
     MyDebugAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
     MyDebugAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
     MyDebugAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
@@ -5019,7 +5025,9 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
     MyDebugAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
     MyDebugAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
     if ( apply_ctf ) {
-        MyDebugAssertTrue(ctf_image->is_allocated_ctf_16f_buffer, "Error: ctf fp16 gpu memory not allocated");
+        // FIXME:
+        // MyDebugAssertTrue(ctf_image->is_allocated_ctf_16f_buffer, "Error: ctf fp16 gpu memory not allocated");
+        MyDebugAssertTrue(ctf_image->real_values_fp16 != nullptr, "Error: ctf fp16 gpu memory not allocated");
     }
 
     // Get launch params for a complex non-redundant half image
@@ -5054,19 +5062,20 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage* volume_to_extract_from, GpuImag
     // Image::Whiten() defaults to a res limit of 1.0, so we need to match that in the event we opt to not apply a res li mit
 
     precheck;
-    ExtractSliceShiftAndCtfKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(volume_to_extract_from->tex_real,
-                                                                                         volume_to_extract_from->tex_imag,
-                                                                                         (float2*)complex_values,
-                                                                                         (__half2*)ctf_image->ctf_complex_buffer_16f,
-                                                                                         shifts,
-                                                                                         dims.w / 2,
-                                                                                         dims.y,
-                                                                                         col1,
-                                                                                         col2,
-                                                                                         resolution_limit_pixel,
-                                                                                         apply_resolution_limit,
-                                                                                         apply_ctf,
-                                                                                         absolute_ctf);
+    ExtractSliceShiftAndCtfKernel<<<gridDims, threadsPerBlock, 0, stream>>>(volume_to_extract_from->tex_real,
+                                                                            volume_to_extract_from->tex_imag,
+                                                                            (float2*)complex_values,
+                                                                            (__half2*)ctf_image->complex_values_fp16, //(__half2*)ctf_image->ctf_complex_buffer_16f,
+                                                                            shifts,
+                                                                            dims.w / 2,
+                                                                            dims.y,
+                                                                            col1,
+                                                                            col2,
+                                                                            resolution_limit_pixel,
+                                                                            apply_resolution_limit,
+                                                                            apply_ctf,
+                                                                            absolute_ctf,
+                                                                            zero_central_pixel);
 
     postcheck;
 

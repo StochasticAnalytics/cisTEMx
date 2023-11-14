@@ -8,7 +8,8 @@ using namespace cistem_timer_noop;
 __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
                                    __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
 
-constexpr int n_prjs = 2;
+constexpr bool use_gpu = false;
+constexpr int  n_prjs  = 2;
 
 class ProjectionQueue {
 
@@ -173,6 +174,23 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
         this->current_projection[i].RegisterPageLockedMemory(this->current_projection[i].real_values);
     }
     projection_queue->timer.lap("init overhead");
+    if ( use_gpu_prj ) {
+        // FIXME: for intial testing, we want to compare GPU and CPU projections, so make a copy
+        Image tmp_vol = template_reconstruction;
+        if ( ! this->is_gpu_3d_swapped ) {
+            tmp_vol.SwapRealSpaceQuadrants( );
+            tmp_vol.BackwardFFT( );
+            tmp_vol.SwapFourierSpaceQuadrants(true);
+            // this->template_reconstruction.SwapFourierSpaceQuadrants(true);
+            this->is_gpu_3d_swapped = true;
+        }
+        // TODO: confirm you need the real-values allocated
+        // this->template_gpu.InitializeBasedOnCpuImage(this->template_reconstruction, false, true);
+
+        // this->template_gpu.CopyHostToDeviceTextureComplex3d(this->template_reconstruction);
+        this->template_gpu.InitializeBasedOnCpuImage(tmp_vol, false, true);
+        this->template_gpu.CopyHostToDeviceTextureComplex3d(tmp_vol);
+    }
 
     d_input_image.Init(this->input_image);
     d_input_image.CopyHostToDevice(input_image);
@@ -268,9 +286,15 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaGetDevice(&thisDevice);
     wxPrintf("Thread %d is running on device %d\n", threadIDX, thisDevice);
 
-    //	cudaErr(cudaFuncSetCacheConfig(SumPixelWiseKernel, cudaFuncCachePreferL1));
+    int      current_projection_idx = 0;
+    GpuImage d_projection_filter(projection_filter);
+    if ( use_gpu_prj ) {
+        d_projection_filter.CopyHostToDevice(projection_filter);
+        // FIXME:
+        d_projection_filter.CopyFP32toFP16buffer(false);
+    }
 
-    int current_projection_idx = 0;
+    bool projection_is_from_cpu = false;
 
     for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
 
@@ -283,41 +307,51 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             angles.Init(global_euler_search.list_of_search_parameters[current_search_position][0], global_euler_search.list_of_search_parameters[current_search_position][1], current_psi, 0.0, 0.0);
             //			current_projection.SetToConstant(0.0f); // This also sets the FFT padding to zero
 
-            // Make sure the previous copy from host -> device has completed before we start to make another projection.
-            // Event is created as non-blocking so this is a busy-wait.
-            current_projection_idx = projection_queue->GetAvailableProjectionIDX( );
+            auto [current_projection_idx, use_gpu_this_iter] = projection_queue->GetAvailableProjectionIDX( );
 
-            template_reconstruction.ExtractSlice(current_projection[current_projection_idx], angles, 1.0f, false);
-            current_projection[current_projection_idx].complex_values[0] = 0.0f + I * 0.0f;
+            if ( use_gpu_this_iter ) {
 
-            current_projection[current_projection_idx].SwapRealSpaceQuadrants( );
-            current_projection[current_projection_idx].MultiplyPixelWise(projection_filter);
-            current_projection[current_projection_idx].BackwardFFT( );
-            average_on_edge  = current_projection[current_projection_idx].ReturnAverageOfRealValuesOnEdges( );
-            average_of_reals = current_projection[current_projection_idx].ReturnAverageOfRealValues( ) - average_on_edge;
+                d_current_projection[current_projection_idx].is_in_real_space = false;
+                d_current_projection[current_projection_idx].ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true, projection_queue->gpu_prj_stream[current_projection_idx]);
+                average_of_reals = 0.f;
+                // Note the stream change will not affect the padded projection
+                d_current_projection.SetCufftStream(projection_queue->gpu_prj_stream[current_projection_idx]);
+                d_current_projection[current_projection_idx].BackwardFFT( );
+                projection_queue->RecordGpuProjectionIsFreeEvent(current_projection_idx);
+            }
+            else {
+                // Make sure the previous copy from host -> device has completed before we start to make another projection.
+                // Event is created as non-blocking so this is a busy-wait.
 
-            // Here we do not want to block the host, but do want the device to wait until the gpu projection
-            // has been copied. I think the stream order operations should deal with this.
-            // cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, projection_is_free_Event, 0));
+                template_reconstruction.ExtractSlice(current_projection[current_projection_idx], angles, 1.0f, false);
+                current_projection[current_projection_idx].complex_values[0] = 0.0f + I * 0.0f;
 
-            //// TO THE GPU ////
-            d_current_projection.CopyHostToDevice(current_projection[current_projection_idx]);
+                current_projection[current_projection_idx].SwapRealSpaceQuadrants( );
+                current_projection[current_projection_idx].MultiplyPixelWise(projection_filter);
+                current_projection[current_projection_idx].BackwardFFT( );
+                average_on_edge  = current_projection[current_projection_idx].ReturnAverageOfRealValuesOnEdges( );
+                average_of_reals = current_projection[current_projection_idx].ReturnAverageOfRealValues( ) - average_on_edge;
 
-            projection_queue->RecordCpuProjectionIsFreeEvent(current_projection_idx);
+                // For an intiial test, make projection_queue->cpu_prj_stream[current_projection_idx]
+                // a public member.. if it works, make it private and return a reference instead
+                d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue->cpu_prj_stream[current_projection_idx]);
 
-            d_current_projection.AddConstant(-average_on_edge);
+                projection_queue->RecordHtoDTransferAndStreamWait(current_projection_idx);
 
-            // The average in the full padded image will be different;
-            average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+                d_current_projection[current_projection_idx].AddConstant(-average_on_edge);
+                // The average in the full padded image will be different;
+                average_of_reals *= ((float)d_current_projection[current_projection_idx].number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+            }
 
             // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
             // For the host to execute the preceding line, it was to wait on the return value from ReturnSumOfSquares. This could be a bit of a performance regression as otherwise it can queue up all the reamining
             // GPU work and get back to calculating the next projection. The commented out method is an attempt around that, but currently the mips come out a little different a bit faster.
-            d_current_projection.NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals);
-            d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
+            d_current_projection[current_projection_idx].NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals);
+            d_current_projection[current_projection_idx].ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
             // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 
-            // cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
+            if ( use_gpu_prj )
+                cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
 
             d_padded_reference.ForwardFFT(false);
 

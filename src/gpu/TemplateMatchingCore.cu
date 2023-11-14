@@ -3,25 +3,28 @@
 
 #define DO_HISTOGRAM true
 
-using namespace cistem_timer_noop;
+using namespace cistem_timer;
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
+__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
+                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks);
 
-constexpr bool use_gpu = false;
-constexpr int  n_prjs  = 2;
+constexpr bool use_gpu_prj = false;
+constexpr int  n_prjs      = 1;
 
 class ProjectionQueue {
 
   private:
     int             n_prjs_in_queue_;
     cudaEvent_t     cpu_projection_is_free_Event[n_prjs];
+    cudaEvent_t     HtoD_projection_transfer_Event[n_prjs];
     std::queue<int> available_prj_queue;
     std::queue<int> submitted_prj_queue;
 
     cudaError_t event_status;
 
   public:
+    cudaStream_t transfer_stream[n_prjs];
+
     StopWatch timer;
 
     ProjectionQueue(int wanted_size) : n_prjs_in_queue_(wanted_size) {
@@ -30,8 +33,11 @@ class ProjectionQueue {
         if ( n_prjs_in_queue_ > 1 )
             ResetQueues( );
 
-        for ( int i = 0; i < n_prjs_in_queue_; i++ )
+        for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
+            cudaErr(cudaStreamCreateWithPriority(&transfer_stream[i], cudaStreamNonBlocking, -1));
+            cudaErr(cudaEventCreateWithFlags(&HtoD_projection_transfer_Event[i], cudaEventDisableTiming));
             cudaErr(cudaEventCreateWithFlags(&cpu_projection_is_free_Event[i], cudaEventBlockingSync));
+        }
     }
 
     ~ProjectionQueue( ) {
@@ -87,8 +93,13 @@ class ProjectionQueue {
         }
     }
 
-    void RecordCpuProjectionIsFreeEvent(int idx) {
+    inline void RecordCpuProjectionIsFreeEvent(int idx) {
         cudaErr(cudaEventRecord(cpu_projection_is_free_Event[idx], cudaStreamPerThread));
+    }
+
+    inline void RecordHtoDTransferAndStreamWait(int idx) {
+        cudaErr(cudaEventRecord(HtoD_projection_transfer_Event[idx], transfer_stream[idx]));
+        cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, HtoD_projection_transfer_Event[idx], 0));
     }
 
     void PrintTimes( ) {
@@ -256,14 +267,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     d_input_image.CopyFP32toFP16buffer(false);
     d_padded_reference.CopyFP32toFP16buffer(false);
 
-    cudaErr(cudaMalloc((void**)&my_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
-    cudaErr(cudaMalloc((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated));
-    cudaErr(cudaMalloc((void**)&my_stats, sizeof(__half2) * d_input_image.real_memory_allocated));
-    cudaErr(cudaMemset(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
-    cudaErr(cudaMemset(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated));
+    cudaErr(cudaMallocAsync((void**)&my_peaks, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMallocAsync((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMallocAsync((void**)&my_stats, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMemsetAsync(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMemsetAsync(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     if ( n_global_search_images_to_save > 1 ) {
-        cudaErr(cudaMalloc((void**)&secondary_peaks, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4));
-        cudaErr(cudaMemset(secondary_peaks, 0, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4));
+        cudaErr(cudaMallocAsync((void**)&secondary_peaks, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
+        cudaErr(cudaMemsetAsync(secondary_peaks, 0, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
     }
     //	cudaErr(cudaMemset(my_stats,0,sizeof(Peaks)*d_input_image.real_memory_allocated));
 
@@ -307,19 +318,20 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             angles.Init(global_euler_search.list_of_search_parameters[current_search_position][0], global_euler_search.list_of_search_parameters[current_search_position][1], current_psi, 0.0, 0.0);
             //			current_projection.SetToConstant(0.0f); // This also sets the FFT padding to zero
 
-            auto [current_projection_idx, use_gpu_this_iter] = projection_queue->GetAvailableProjectionIDX( );
+            if ( use_gpu_prj ) {
+                current_projection_idx = 0;
 
-            if ( use_gpu_this_iter ) {
-
-                d_current_projection[current_projection_idx].is_in_real_space = false;
-                d_current_projection[current_projection_idx].ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true, projection_queue->gpu_prj_stream[current_projection_idx]);
+                d_current_projection.is_in_real_space = false;
+                d_current_projection.ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true);
                 average_of_reals = 0.f;
+                average_on_edge  = 0.f;
                 // Note the stream change will not affect the padded projection
-                d_current_projection.SetCufftStream(projection_queue->gpu_prj_stream[current_projection_idx]);
-                d_current_projection[current_projection_idx].BackwardFFT( );
-                projection_queue->RecordGpuProjectionIsFreeEvent(current_projection_idx);
+
+                d_current_projection.BackwardFFT( );
             }
             else {
+                current_projection_idx = projection_queue->GetAvailableProjectionIDX( );
+
                 // Make sure the previous copy from host -> device has completed before we start to make another projection.
                 // Event is created as non-blocking so this is a busy-wait.
 
@@ -334,20 +346,24 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
                 // For an intiial test, make projection_queue->cpu_prj_stream[current_projection_idx]
                 // a public member.. if it works, make it private and return a reference instead
-                d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue->cpu_prj_stream[current_projection_idx]);
 
+                d_current_projection.CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue->transfer_stream[current_projection_idx]);
+
+                // We need to make sure the current cpu projection is not used by the host until the gpu has finished with it, which may be independent of the main work
+                // in cudaStreamPerThread, this is a blocking event for the host (if the queue is otherwise full)
+                projection_queue->RecordCpuProjectionIsFreeEvent(current_projection_idx);
+                // We need the main work in cudaStreamPerThread to wait on the transfer in this stream, which if the CPU thread is ahead, should be a non-blocking event
                 projection_queue->RecordHtoDTransferAndStreamWait(current_projection_idx);
 
-                d_current_projection[current_projection_idx].AddConstant(-average_on_edge);
                 // The average in the full padded image will be different;
-                average_of_reals *= ((float)d_current_projection[current_projection_idx].number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+                average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
             }
 
             // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
             // For the host to execute the preceding line, it was to wait on the return value from ReturnSumOfSquares. This could be a bit of a performance regression as otherwise it can queue up all the reamining
             // GPU work and get back to calculating the next projection. The commented out method is an attempt around that, but currently the mips come out a little different a bit faster.
-            d_current_projection[current_projection_idx].NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals);
-            d_current_projection[current_projection_idx].ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
+            d_current_projection.NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals, average_on_edge);
+            d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
             // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 
             if ( use_gpu_prj )
@@ -368,8 +384,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 histogram.AddToHistogram(d_padded_reference);
             }
 
-            this->MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
-                               __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
+            this->MipPixelWise(__float2half_rn(current_psi), __floats2half2_rn(global_euler_search.list_of_search_parameters[current_search_position][1], global_euler_search.list_of_search_parameters[current_search_position][0]));
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
@@ -443,53 +458,68 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!")
             histogram.Accumulate(d_padded_reference);
 
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    cudaErr(cudaFreeAsync(my_peaks, cudaStreamPerThread));
+    cudaErr(cudaFreeAsync(my_stats, cudaStreamPerThread));
+    cudaErr(cudaFreeAsync(my_new_peaks, cudaStreamPerThread));
 
-    cudaErr(cudaFree(my_peaks));
-    cudaErr(cudaFree(my_stats));
-    cudaErr(cudaFree(my_new_peaks));
+    if ( n_global_search_images_to_save > 1 ) {
+        cudaErr(cudaFreeAsync(secondary_peaks, cudaStreamPerThread));
+    }
+
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 }
 
-void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
+void TemplateMatchingCore::MipPixelWise(__half psi, __half2 theta_phi) {
 
     precheck;
     // N
     d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
-    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
+    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half2*)d_padded_reference.real_values_16f, my_peaks,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,
-                                                                                                                    psi, theta, phi, my_stats, my_new_peaks);
+                                                                                                                    psi, theta_phi, my_stats, my_new_peaks);
     postcheck;
 }
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
+__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
+                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks) {
 
     //	Peaks tmp_peak;
 
-    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
+    __half2 input_peak;
+    __half2 mulVal;
+    __half2 input;
+    __half  half_val;
+    int     idx;
+    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel / 2; i += blockDim.x * gridDim.x ) {
+        idx        = 2 * i;
+        input_peak = correlation_output[idx];
 
-        const __half  half_val = correlation_output[i];
-        const __half2 input    = __half2half2(half_val * __half(10000.0));
-        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
+        half_val = __low2half(input_peak);
+        input    = __half2half2(half_val * __half(10000.0f));
+        mulVal   = __halves2half2((__half)1.0f, half_val);
         //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
         //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
-        //    	tmp_peak = my_peaks[i];
-        //		const __half half_val = __float2half_rn(val);
+        my_stats[idx] = __hfma2(input, mulVal, my_stats[idx]);
 
-        //			tmp_peak.psi = psi;
-        //			tmp_peak.theta = theta;
-        //			tmp_peak.phi = phi;
-        if ( half_val > __low2half(my_peaks[i]) ) {
+        if ( half_val > CUDART_ZERO_FP16 && half_val > __low2half(my_peaks[i]) ) {
             //				tmp_peak.mip = half_val;
             my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = __halves2half2(theta, phi);
+            my_new_peaks[i] = theta_phi;
+        }
 
-            //				my_peaks[i].mip = correlation_output[i];
-            //				my_peaks[i].psi = psi;
-            //				my_peaks[i].theta = theta;
-            //				my_peaks[i].phi = phi;
+        idx++;
+        half_val = __high2half(input_peak);
+        input    = __half2half2(half_val * __half(10000.0f));
+        mulVal   = __halves2half2((__half)1.0f, half_val);
+        //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
+        //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
+        my_stats[idx] = __hfma2(input, mulVal, my_stats[idx]);
+
+        if ( half_val > CUDART_ZERO_FP16 && half_val > __low2half(my_peaks[i]) ) {
+            //				tmp_peak.mip = half_val;
+            my_peaks[i]     = __halves2half2(half_val, psi);
+            my_new_peaks[i] = theta_phi;
         }
     }
     //

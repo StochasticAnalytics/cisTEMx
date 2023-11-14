@@ -241,7 +241,7 @@ class GpuImage {
     void  L2Norm( );
     float ReturnSumOfSquares( );
 
-    void NormalizeRealSpaceStdDeviation(float additional_scalar, float pre_calculated_avg);
+    void NormalizeRealSpaceStdDeviation(float additional_scalar, float pre_calculated_avg, float average_on_edge);
 
     float ReturnAverageOfRealValuesOnEdges( );
     void  Deallocate( );
@@ -271,7 +271,7 @@ class GpuImage {
     ///// Methods that do not have a counterpart in the image class
     ////////////////////////////////////////////////////////////////////////
 
-    void CopyHostToDevice(Image& host_image, bool should_block_until_complete = false, bool pin_host_memory = true);
+    void CopyHostToDevice(Image& host_image, bool should_block_until_complete = false, bool pin_host_memory = true, cudaStream_t stream = cudaStreamPerThread);
 
     void CopyHostToDeviceAndSynchronize(Image& host_image, bool pin_host_memory = true) { CopyHostToDevice(host_image, true, pin_host_memory); };
 

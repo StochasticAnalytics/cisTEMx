@@ -80,10 +80,9 @@ def make_template_results(config):
     return pre_process_cmd, input_cmd
 
 
-def actually_make_it(config, pre_process_cmd, wanted_stdin):
+def actually_make_it(config, pre_process_cmd, wanted_stdin, wanted_binary_name):
 
-    wanted_binary_name = path.join(config.get('binary_path'), config.get('binary_name'))
-
+    # We want to defer execution of the temp script, so set delete=False,
     output_dir = config.get('output_file_prefix')
     output_prefix = config.get('binary_name') + '_'
     output_suffix = '.cmd'
@@ -104,19 +103,19 @@ def actually_make_it(config, pre_process_cmd, wanted_stdin):
         # Before any pre-processing, lets see what the machine has available to it.
         stdin_file.write('unset CUDA_VISIBLE_DEVICES\n')
         stdin_file.write('lscpu > ' + cpu_logfile + '\n')
-        stdin_file.write('nvidia-smi -q > ' + gpu_logfile + '\n')
+        stdin_file.write('nvidia-smi -q >> ' + gpu_logfile + '\n')
         # Now let's only take the requested GPU
         stdin_file.write('export CUDA_VISIBLE_DEVICES=' + str(config.get('gpu_idx')) + '\n')
         # Start nvidia-smi monitoring in the background
-        stdin_file.write('nvidia-smi dmon -s puctme -d ' + dmon_sampling_s + ' -c ' + dmon_max_count + ' -o DT > ' + dmon_logfile + ' &\n')
+        stdin_file.write('nvidia-smi dmon -s puctme -d ' + dmon_sampling_s + ' -c ' + dmon_max_count + ' -o DT >> ' + dmon_logfile + ' &\n')
         # Record the PID
         stdin_file.write('nvidia_pid=$!\n\n')
         stdin_file.write(pre_process_cmd + '\n')
         stdin_file.write('\n')
-        stdin_file.write('echo "Starting binary ' + wanted_binary_name + ' " > ' + run_logfile + '\n')
-        stdin_file.write('echo "using gpu idx ' + str(config.get('gpu_idx')) + ' " > ' + run_logfile + '\n')
+        stdin_file.write('echo "Starting binary ' + wanted_binary_name + ' " >> ' + run_logfile + '\n')
+        stdin_file.write('echo "using gpu idx ' + str(config.get('gpu_idx')) + ' " >> ' + run_logfile + '\n')
         stdin_file.write('\n\n')
-        stdin_file.write(wanted_binary_name + ' <<EOF &> ' + run_logfile + '\n')
+        stdin_file.write(wanted_binary_name + ' <<EOF &>> ' + run_logfile + '\n')
         stdin_file.write('\n'.join(wanted_stdin))
         stdin_file.write('\n')
         stdin_file.write('EOF\n')
@@ -148,8 +147,10 @@ def make_tmp_runfile(config: dict):
         print('Unknown program name')
         exit(1)
 
-    tmp_filename_match_template = actually_make_it(config, pre_process_cmd, wanted_stdin)
+    tmp_filename_match_template = actually_make_it(config, pre_process_cmd, wanted_stdin,
+                                                   path.join(config.get('binary_path'), config.get('binary_name')))
 
-    tmp_filename_make_template_results = actually_make_it(config, results_preprocess_cmd, results_wanted_stdin)
+    tmp_filename_make_template_results = actually_make_it(config, results_preprocess_cmd, results_wanted_stdin,
+                                                          path.join(config.get('binary_path'), config.get('results_binary_name')))
 
     return tmp_filename_match_template, tmp_filename_make_template_results

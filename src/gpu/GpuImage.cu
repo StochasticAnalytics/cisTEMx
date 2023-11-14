@@ -1121,7 +1121,7 @@ float GpuImage::ReturnSumOfSquares( ) {
     return float(tmpValComplex[tmp_val_idx::L2Norm] * tmpValComplex[tmp_val_idx::L2Norm]);
 }
 
-__global__ void NormalizeRealSpaceStdDeviationKernel(float* input_reals, double* __restrict__ sqrt_sum_of_squares, const float additional_scalar, const float average_sq, const int4 dims) {
+__global__ void NormalizeRealSpaceStdDeviationKernel(float* input_reals, double* __restrict__ sqrt_sum_of_squares, const float additional_scalar, const float average_sq, const float average_on_edge, const int4 dims) {
 
     int x = physical_X( );
     if ( x >= dims.x )
@@ -1139,15 +1139,15 @@ __global__ void NormalizeRealSpaceStdDeviationKernel(float* input_reals, double*
     float scalar = float(sqrt_sum_of_squares[0]);
     scalar       = rsqrtf((scalar * scalar) / additional_scalar - average_sq);
 
-    input_reals[address] = input_val * scalar;
+    input_reals[address] = (input_val - average_on_edge) * scalar;
 }
 
-void GpuImage::NormalizeRealSpaceStdDeviation(float additional_scalar, float pre_calculated_avg) {
+void GpuImage::NormalizeRealSpaceStdDeviation(float additional_scalar, float pre_calculated_avg, float average_on_edge) {
 
     L2Norm( );
     ReturnLaunchParameters(dims, true);
     precheck;
-    NormalizeRealSpaceStdDeviationKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values, (double*)&tmpValComplex[tmp_val_idx::L2Norm], additional_scalar, (pre_calculated_avg * pre_calculated_avg), dims);
+    NormalizeRealSpaceStdDeviationKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values, (double*)&tmpValComplex[tmp_val_idx::L2Norm], additional_scalar, (pre_calculated_avg * pre_calculated_avg), average_on_edge, dims);
     postcheck;
 }
 
@@ -2669,7 +2669,7 @@ template void GpuImage::Zeros<__half>( );
 // TODO: Method that takes a pointer and size to copy templated on data type.
 // TODO: Template storage type
 
-void GpuImage::CopyHostToDevice(Image& host_image, bool should_block_until_complete, bool pin_host_memory) {
+void GpuImage::CopyHostToDevice(Image& host_image, bool should_block_until_complete, bool pin_host_memory, cudaStream_t transfer_stream) {
     MyDebugAssertTrue(host_image.is_in_memory, "Host image not allocated");
     if ( is_meta_data_initialized ) {
         MyDebugAssertTrue(HasSameDimensionsAs(host_image), "Images have different dimensions");
@@ -2689,7 +2689,9 @@ void GpuImage::CopyHostToDevice(Image& host_image, bool should_block_until_compl
         // For batched images, we do not want the full image to be pinned
         host_image.RegisterPageLockedMemory(host_image.real_values);
 
-    cudaErr(cudaMemcpyAsync(real_values, host_image.real_values, real_memory_allocated * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+    // If Async Malloc/Free are used, we'll need some event check to ensure this memory exists prior to transfer since
+    // the given stream may be different.
+    cudaErr(cudaMemcpyAsync(real_values, host_image.real_values, real_memory_allocated * sizeof(float), cudaMemcpyHostToDevice, transfer_stream));
 
     if ( should_block_until_complete ) {
         cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
@@ -3607,11 +3609,13 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     // We also want to record the type of plan requested to see if re-planning is necessary.
     using ft = cistem::fft_type::Enum;
 
+    // set_batch_size defaults to 1.
     if ( plan_type == set_plan_type && cufft_batch_size == set_batch_size ) {
         // We are good to go.
         return;
     }
     else {
+        // We can't destroy a plan that doesn't exist. TODO: could this be checked directly?
         if ( set_plan_type != cistem::fft_type::Enum::unset ) {
             // TODO allow for more than one plan, up to some limit, to avoid teh destroy op.
             // Have a simple sort to track most recenetly used plans and evict the oldest if needed.

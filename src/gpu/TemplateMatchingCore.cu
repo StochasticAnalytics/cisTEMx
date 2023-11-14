@@ -5,8 +5,8 @@
 
 using namespace cistem_timer;
 
-__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks);
+__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
+                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
 
 constexpr bool use_gpu_prj = false;
 constexpr int  n_prjs      = 1;
@@ -384,7 +384,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 histogram.AddToHistogram(d_padded_reference);
             }
 
-            this->MipPixelWise(__float2half_rn(current_psi), __floats2half2_rn(global_euler_search.list_of_search_parameters[current_search_position][1], global_euler_search.list_of_search_parameters[current_search_position][0]));
+            this->MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
+                               __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
@@ -469,57 +470,46 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 }
 
-void TemplateMatchingCore::MipPixelWise(__half psi, __half2 theta_phi) {
+void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
 
     precheck;
     // N
-    d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
+    d_padded_reference.ReturnLaunchParametersLimitSMs(1.f, 1024);
 
-    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half2*)d_padded_reference.real_values_16f, my_peaks,
+    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,
-                                                                                                                    psi, theta_phi, my_stats, my_new_peaks);
+                                                                                                                    psi, theta, phi, my_stats, my_new_peaks);
     postcheck;
 }
 
-__global__ void MipPixelWiseKernel(__half2* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half2 theta_phi, __half2* my_stats, __half2* my_new_peaks) {
+__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
+                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
 
     //	Peaks tmp_peak;
 
-    __half2 input_peak;
-    __half2 mulVal;
-    __half2 input;
-    __half  half_val;
-    int     idx;
-    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel / 2; i += blockDim.x * gridDim.x ) {
-        idx        = 2 * i;
-        input_peak = correlation_output[idx];
+    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
 
-        half_val = __low2half(input_peak);
-        input    = __half2half2(half_val * __half(10000.0f));
-        mulVal   = __halves2half2((__half)1.0f, half_val);
+        const __half  half_val = correlation_output[i];
+        const __half2 input    = __half2half2(half_val * __half(10000.0));
+        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
         //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
         //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-        my_stats[idx] = __hfma2(input, mulVal, my_stats[idx]);
+        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
+        //    	tmp_peak = my_peaks[i];
+        //		const __half half_val = __float2half_rn(val);
 
-        if ( half_val > CUDART_ZERO_FP16 && half_val > __low2half(my_peaks[i]) ) {
+        //			tmp_peak.psi = psi;
+        //			tmp_peak.theta = theta;
+        //			tmp_peak.phi = phi;
+        if ( half_val > __low2half(my_peaks[i]) ) {
             //				tmp_peak.mip = half_val;
             my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = theta_phi;
-        }
+            my_new_peaks[i] = __halves2half2(theta, phi);
 
-        idx++;
-        half_val = __high2half(input_peak);
-        input    = __half2half2(half_val * __half(10000.0f));
-        mulVal   = __halves2half2((__half)1.0f, half_val);
-        //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
-        //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-        my_stats[idx] = __hfma2(input, mulVal, my_stats[idx]);
-
-        if ( half_val > CUDART_ZERO_FP16 && half_val > __low2half(my_peaks[i]) ) {
-            //				tmp_peak.mip = half_val;
-            my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = theta_phi;
+            //				my_peaks[i].mip = correlation_output[i];
+            //				my_peaks[i].psi = psi;
+            //				my_peaks[i].theta = theta;
+            //				my_peaks[i].phi = phi;
         }
     }
     //

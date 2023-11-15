@@ -2,11 +2,6 @@
 #include "TemplateMatchingCore.h"
 
 #define DO_HISTOGRAM true
-// clang-format off
-// #define print_from_thread_zero(args) if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {args;}
-#define print_from_thread_zero(args) if (false ) {args;}
-
-// clang-format on
 
 using namespace cistem_timer;
 
@@ -20,36 +15,37 @@ class ProjectionQueue {
 
   private:
     int             n_prjs_in_queue_;
-    cudaEvent_t     cpu_projection_is_free_Event[n_prjs];
-    cudaEvent_t     HtoD_projection_transfer_Event[n_prjs];
+    cudaEvent_t     gpu_projection_is_ready_Event[n_prjs];
     std::queue<int> available_prj_queue;
     std::queue<int> submitted_prj_queue;
 
     cudaError_t event_status;
 
   public:
-    cudaStream_t transfer_stream[n_prjs];
+    cudaStream_t gpu_projection_stream[n_prjs];
+    cudaEvent_t  cpu_projection_is_writeable_Event[n_prjs];
 
     StopWatch timer;
 
     ProjectionQueue(int wanted_size) : n_prjs_in_queue_(wanted_size) {
         MyDebugAssertFalse(n_prjs_in_queue_ == 0, "ProjectionQueue must be initialized with a size greater than 0");
         // We don't need to do anything if the queue has only one member
-        if ( n_prjs_in_queue_ > 1 )
-            ResetQueues( );
+        ResetQueues( );
 
+        int least_priority, highest_priority;
+        cudaErr(cudaDeviceGetStreamPriorityRange(&least_priority, &highest_priority));
         for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
-            cudaErr(cudaStreamCreateWithPriority(&transfer_stream[i], cudaStreamNonBlocking, -1));
-            cudaErr(cudaEventCreateWithFlags(&HtoD_projection_transfer_Event[i], cudaEventDisableTiming));
-            cudaErr(cudaEventCreateWithFlags(&cpu_projection_is_free_Event[i], cudaEventBlockingSync));
+            cudaErr(cudaStreamCreateWithPriority(&gpu_projection_stream[i], cudaStreamNonBlocking, highest_priority - 1));
+            cudaErr(cudaEventCreateWithFlags(&gpu_projection_is_ready_Event[i], cudaEventBlockingSync));
+            cudaErr(cudaEventCreateWithFlags(&cpu_projection_is_writeable_Event[i], cudaEventBlockingSync));
         }
     }
 
     ~ProjectionQueue( ) {
         for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
-            cudaErr(cudaStreamDestroy(transfer_stream[i]));
-            cudaErr(cudaEventDestroy(HtoD_projection_transfer_Event[i]));
-            cudaErr(cudaEventDestroy(cpu_projection_is_free_Event[i]));
+            cudaErr(cudaStreamDestroy(gpu_projection_stream[i]));
+            cudaErr(cudaEventDestroy(gpu_projection_is_ready_Event[i]));
+            cudaErr(cudaEventDestroy(cpu_projection_is_writeable_Event[i]));
         }
     }
 
@@ -64,59 +60,47 @@ class ProjectionQueue {
     int
     GetAvailableProjectionIDX( ) {
 
-        // Take a shortcut if we don't need to track anything
-        if ( n_prjs_in_queue_ > 1 ) {
-
-            print_from_thread_zero(std::cerr << "checking queue size\n");
-            // Remove the oldest projections if they are ready and place them back in the available queue.
-            while ( ! submitted_prj_queue.empty( ) ) {
-                print_from_thread_zero(std::cerr << "while loop\n");
-                event_status = cudaEventQuery(cpu_projection_is_free_Event[submitted_prj_queue.front( )]);
-                if ( event_status == cudaErrorNotReady ) {
-                    // Okay, we've hit one that isn't ready, so we can stop looking, let's break out
-                    break;
-                }
-                else {
-                    available_prj_queue.push(submitted_prj_queue.front( ));
-                    submitted_prj_queue.pop( );
-                }
+        // Remove the oldest projections if they are ready and place them back in the available queue.
+        while ( ! submitted_prj_queue.empty( ) ) {
+            event_status = cudaEventQuery(cpu_projection_is_writeable_Event[submitted_prj_queue.front( )]);
+            if ( event_status == cudaErrorNotReady ) {
+                // Okay, we've hit one that isn't ready, so we can stop looking, let's break out
+                break;
             }
-
-            // We only need to spin if there are no more available projections
-            if ( available_prj_queue.empty( ) ) {
-
-                print_from_thread_zero(std::cerr << "busy wait\n");
-                timer.start("busy wait");
-                cudaErr(cudaEventSynchronize(cpu_projection_is_free_Event[submitted_prj_queue.front( )]));
-                timer.lap("busy wait");
+            else {
                 available_prj_queue.push(submitted_prj_queue.front( ));
                 submitted_prj_queue.pop( );
             }
-
-            submitted_prj_queue.push(available_prj_queue.front( ));
-            available_prj_queue.pop( );
-
-            print_from_thread_zero(std::cerr << "returning " << submitted_prj_queue.back( ) << "\n");
-            return submitted_prj_queue.back( );
         }
-        else {
+
+        // We only need to spin if there are no more available projections
+        if ( available_prj_queue.empty( ) ) {
             timer.start("busy wait");
-            cudaErr(cudaEventSynchronize(cpu_projection_is_free_Event[0]));
+            cudaErr(cudaEventSynchronize(cpu_projection_is_writeable_Event[submitted_prj_queue.front( )]));
             timer.lap("busy wait");
-            return 0;
+            available_prj_queue.push(submitted_prj_queue.front( ));
+            submitted_prj_queue.pop( );
         }
+
+        submitted_prj_queue.push(available_prj_queue.front( ));
+        available_prj_queue.pop( );
+
+        return submitted_prj_queue.back( );
     }
 
-    inline void RecordCpuProjectionIsFreeEvent(int idx) {
-        cudaErr(cudaEventRecord(cpu_projection_is_free_Event[idx], transfer_stream[idx]));
+    inline void
+    RecordProjectionReadyBlockingHost(int idx, cudaStream_t stream) {
+        cudaErr(cudaEventRecord(cpu_projection_is_writeable_Event[idx], stream));
     }
 
-    inline void RecordHtoDTransferAndStreamWait(int idx) {
-        cudaErr(cudaEventRecord(HtoD_projection_transfer_Event[idx], transfer_stream[idx]));
-        cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, HtoD_projection_transfer_Event[idx], 0));
+    inline void
+    RecordGpuProjectionReadyStreamPerThreadWait(int idx) {
+        cudaErr(cudaEventRecord(gpu_projection_is_ready_Event[idx], gpu_projection_stream[idx]));
+        cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, gpu_projection_is_ready_Event[idx], cudaEventWaitDefault));
     }
 
-    void PrintTimes( ) {
+    void
+    PrintTimes( ) {
         timer.print_times( );
     }
 };
@@ -193,7 +177,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->current_projection.reserve(n_prjs);
     for ( int i = 0; i < n_prjs; i++ ) {
         this->current_projection.emplace_back(current_projection);
-        this->current_projection[i].RegisterPageLockedMemory(this->current_projection[i].real_values);
+        d_current_projection.emplace_back(this->current_projection[i]);
     }
     if ( use_gpu_prj ) {
         // FIXME: for intial testing, we want to compare GPU and CPU projections, so make a copy
@@ -202,21 +186,16 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
             tmp_vol.SwapRealSpaceQuadrants( );
             tmp_vol.BackwardFFT( );
             tmp_vol.SwapFourierSpaceQuadrants(true);
-            // this->template_reconstruction.SwapFourierSpaceQuadrants(true);
             this->is_gpu_3d_swapped = true;
         }
         // TODO: confirm you need the real-values allocated
-        // this->template_gpu.InitializeBasedOnCpuImage(this->template_reconstruction, false, true);
 
-        // this->template_gpu.CopyHostToDeviceTextureComplex3d(this->template_reconstruction);
         this->template_gpu.InitializeBasedOnCpuImage(tmp_vol, false, true);
         this->template_gpu.CopyHostToDeviceTextureComplex3d(tmp_vol);
     }
 
     d_input_image.Init(this->input_image);
     d_input_image.CopyHostToDevice(input_image);
-
-    d_current_projection.Init(this->current_projection[0]);
 
     d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
     d_max_intensity_projection.Allocate(d_input_image.dims.x, d_input_image.dims.y, number_of_global_search_images_to_save, true);
@@ -248,8 +227,6 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     // At the outset these are all empty cpu images, so don't xfer, just allocate on gpuDev
 
     // Transfer the input image_memory_should_not_be_deallocated
-
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 };
 
 void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel, float c_defocus, int threadIDX, long& current_correlation_position) {
@@ -294,8 +271,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     cudaEvent_t projection_is_free_Event, gpu_work_is_done_Event;
 
-    ProjectionQueue projection_queue(n_prjs);
-
     // cudaErr(cudaEventCreateWithFlags(&projection_is_free_Event, cudaEventDisableTiming));
     // cudaErr(cudaEventCreateWithFlags(&gpu_work_is_done_Event, cudaEventDisableTiming));
 
@@ -309,7 +284,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaGetDevice(&thisDevice);
     wxPrintf("Thread %d is running on device %d\n", threadIDX, thisDevice);
 
-    int      current_projection_idx = 0;
     GpuImage d_projection_filter(projection_filter);
     if ( use_gpu_prj ) {
         d_projection_filter.CopyHostToDevice(projection_filter);
@@ -317,7 +291,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         d_projection_filter.CopyFP32toFP16buffer(false);
     }
 
-    bool projection_is_from_cpu = false;
+    int             current_projection_idx = 0;
+    ProjectionQueue projection_queue(n_prjs);
+    // We need to make sure the host blocks on all setup work before we start to make projections,
+    // since we are using more than one stream.
+    projection_queue.RecordProjectionReadyBlockingHost(current_projection_idx, cudaStreamPerThread);
 
     for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
 
@@ -330,19 +308,17 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             angles.Init(global_euler_search.list_of_search_parameters[current_search_position][0], global_euler_search.list_of_search_parameters[current_search_position][1], current_psi, 0.0, 0.0);
             //			current_projection.SetToConstant(0.0f); // This also sets the FFT padding to zero
 
+            current_projection_idx = projection_queue.GetAvailableProjectionIDX( );
             if ( use_gpu_prj ) {
-                current_projection_idx = 0;
 
-                d_current_projection.is_in_real_space = false;
-                d_current_projection.ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true);
+                d_current_projection[current_projection_idx].is_in_real_space = false;
+                d_current_projection[current_projection_idx].ExtractSliceShiftAndCtf(&template_gpu, &d_projection_filter, angles, 1.0, 1.0, false, true, true, true, false, true, projection_queue.gpu_projection_stream[current_projection_idx]);
                 average_of_reals = 0.f;
                 average_on_edge  = 0.f;
-                // Note the stream change will not affect the padded projection
-
-                d_current_projection.BackwardFFT( );
+                projection_queue.RecordGpuProjectionReadyStreamPerThreadWait(current_projection_idx);
+                d_current_projection[current_projection_idx].BackwardFFT( );
             }
             else {
-                current_projection_idx = projection_queue.GetAvailableProjectionIDX( );
 
                 // Make sure the previous copy from host -> device has completed before we start to make another projection.
                 // Event is created as non-blocking so this is a busy-wait.
@@ -359,28 +335,30 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // For an intiial test, make projection_queue.cpu_prj_stream[current_projection_idx]
                 // a public member.. if it works, make it private and return a reference instead
 
-                // d_current_projection.CopyHostToDevice(current_projection[current_projection_idx], false, false);
-                d_current_projection.CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue.transfer_stream[current_projection_idx]);
+                // d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false);
+                d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue.gpu_projection_stream[current_projection_idx]);
 
                 // We need to make sure the current cpu projection is not used by the host until the gpu has finished with it, which may be independent of the main work
                 // in cudaStreamPerThread, this is a blocking event for the host (if the queue is otherwise full)
-                projection_queue.RecordCpuProjectionIsFreeEvent(current_projection_idx);
+                projection_queue.RecordProjectionReadyBlockingHost(current_projection_idx, projection_queue.gpu_projection_stream[current_projection_idx]);
                 // We need the main work in cudaStreamPerThread to wait on the transfer in this stream, which if the CPU thread is ahead, should be a non-blocking event
-                projection_queue.RecordHtoDTransferAndStreamWait(current_projection_idx);
+                projection_queue.RecordGpuProjectionReadyStreamPerThreadWait(current_projection_idx);
 
                 // The average in the full padded image will be different;
-                average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
+                average_of_reals *= ((float)d_current_projection[current_projection_idx].number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
             }
 
-            // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+            // d_current_projection[current_projection_idx].MultiplyByConstant(rsqrtf(d_current_projection[current_projection_idx].ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
             // For the host to execute the preceding line, it was to wait on the return value from ReturnSumOfSquares. This could be a bit of a performance regression as otherwise it can queue up all the reamining
             // GPU work and get back to calculating the next projection. The commented out method is an attempt around that, but currently the mips come out a little different a bit faster.
-            d_current_projection.NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals, average_on_edge);
-            d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
-            // d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
+            d_current_projection[current_projection_idx].NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals, average_on_edge);
+            d_current_projection[current_projection_idx].ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
+            // d_current_projection[current_projection_idx].MultiplyByConstant(rsqrtf(d_current_projection[current_projection_idx].ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 
-            if ( use_gpu_prj )
-                cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
+            if ( use_gpu_prj ) {
+                // Note the stream change will not affect the padded projection
+                projection_queue.RecordProjectionReadyBlockingHost(current_projection_idx, cudaStreamPerThread);
+            }
 
             d_padded_reference.ForwardFFT(false);
 

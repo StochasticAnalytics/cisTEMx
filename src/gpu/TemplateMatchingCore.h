@@ -5,9 +5,6 @@
 #include "DeviceManager.h"
 #include "Histogram.h"
 
-// Defined in TemplateMatching.cu
-class ProjectionQueue;
-
 class TemplateMatchingCore {
 
   public:
@@ -28,8 +25,7 @@ class TemplateMatchingCore {
     GpuImage template_gpu;
     Image    input_image; // These will be modified on the host from withing Template Matching Core so Allocate locally
 
-    std::vector<Image>               current_projection;
-    std::unique_ptr<ProjectionQueue> projection_queue;
+    std::vector<Image> current_projection;
 
     cudaGraph_t     graph;
     cudaGraphExec_t graphExec;

@@ -19,10 +19,7 @@ def main():
 
     for image_number in range(0, 3):
 
-        # FIXME: temp checking repeatabliity
-        config = tmArgs.get_config(args, 'Apoferritin', 0, 0)
-
-        # config = tmArgs.get_config(args, 'Apoferritin', 0, image_number)
+        config = tmArgs.get_config(args, 'Apoferritin', 0, image_number)
 
         tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(config)
         elapsed_time[image_number] = runner.run_job(tmp_filename_match_template)

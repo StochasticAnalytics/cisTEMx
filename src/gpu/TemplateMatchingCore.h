@@ -27,10 +27,6 @@ class TemplateMatchingCore {
 
     std::vector<Image> current_projection;
 
-    cudaGraph_t     graph;
-    cudaGraphExec_t graphExec;
-    bool            is_graph_allocated = false;
-
     // These are assumed to be empty containers at the outset, so xfer host-->device is skipped
     GpuImage d_max_intensity_projection;
     GpuImage d_best_psi;
@@ -48,8 +44,9 @@ class TemplateMatchingCore {
     //  GpuImage d_sumSq1, d_sumSq2, d_sumSq3, d_sumSq4, d_sumSq5;
 
     // This will need to be copied in
-    GpuImage d_input_image;
-    GpuImage d_current_projection;
+    GpuImage              d_input_image;
+    std::vector<GpuImage> d_current_projection;
+
     GpuImage d_padded_reference;
 
     // Search range parameters

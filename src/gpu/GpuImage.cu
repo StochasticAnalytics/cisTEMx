@@ -3072,18 +3072,20 @@ void GpuImage::BackwardFFT( ) {
 }
 
 template <typename LoadType, typename StoreType>
-void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool load_half_precision) {
+void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool load_half_precision, StoreType* output_ptr) {
     MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
     MyDebugAssertFalse(is_in_real_space, "Image is already in real space");
 
-    if constexpr ( std::is_same<StoreType, __half2>::value ) {
-        // We always store the output in the fp16 buffer,
-        BufferInit(b_16f);
+    if constexpr ( std::is_same_v<StoreType, __half> ) {
+        // allows us to pass in a different external buffer
+        if ( output_ptr == nullptr ) {
+            BufferInit(b_16f);
+        }
     }
     else {
         // We would do something else here if it was enabled, but it is not.
         // NOTE: I guess
-        static_assert(std::is_same<StoreType, __half2>::value, "GpuImage::BackwardFFTAfterComplexConjMul: StoreType must be __half2");
+        static_assert(std::is_same_v<StoreType, __half>, "GpuImage::BackwardFFTAfterComplexConjMul: StoreType must be __half");
     }
 
     SetCufftPlan(cistem::fft_type::Enum::inplace_32f_32f_32f, (void*)real_values, (void*)complex_values);
@@ -3112,7 +3114,12 @@ void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool 
         //        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
         cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_complexConjMulLoad, CUFFT_CB_LD_COMPLEX, (void**)&d_params));
         //        void** fake_params;real_values_16f
-        cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
+        if ( output_ptr == nullptr ) {
+            cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
+        }
+        else {
+            cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&output_ptr));
+        }
 
         //        d_complexConjMulLoad;
         is_set_complexConjMulLoad = true;
@@ -3129,8 +3136,8 @@ void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool 
     npp_ROI = npp_ROI_real_space;
 }
 
-template void GpuImage::BackwardFFTAfterComplexConjMul<__half2, __half2>(__half2* image_to_multiply, bool load_half_precision);
-template void GpuImage::BackwardFFTAfterComplexConjMul<cufftComplex, __half2>(cufftComplex* image_to_multiply, bool load_half_precision);
+template void GpuImage::BackwardFFTAfterComplexConjMul<__half2, __half>(__half2* image_to_multiply, bool load_half_precision, __half* output_ptr);
+template void GpuImage::BackwardFFTAfterComplexConjMul<cufftComplex, __half>(cufftComplex* image_to_multiply, bool load_half_precision, __half* output_ptr);
 
 void GpuImage::Record( ) {
     MyDebugAssertTrue(is_npp_calc_event_initialized, "NPP event not initialized");

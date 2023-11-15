@@ -228,8 +228,8 @@ class GpuImage {
     void BackwardFFTBatched(int wanted_batch_size = 0); // if zero, defaults to dims.z
 
     void ForwardFFTAndClipInto(GpuImage& image_to_insert, bool should_scale);
-    template <typename LoadType, typename StoreType = __half2>
-    void BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool load_half_precision);
+    template <typename LoadType, typename StoreType = __half>
+    void BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool load_half_precision, StoreType* output_ptr = nullptr);
 
     void Resize(int wanted_x_dimension, int wanted_y_dimension, int wanted_z_dimension, float wanted_padding_value, bool zero_central_pixel = false);
     void Consume(GpuImage* other_image);

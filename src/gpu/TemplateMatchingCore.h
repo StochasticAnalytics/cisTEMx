@@ -94,6 +94,7 @@ class TemplateMatchingCore {
 
     void SumPixelWise(GpuImage& image);
     void MipPixelWise(__half psi, __half theta, __half phi);
+    void MipPixelWiseStack(__half* mip_array, __half* psi, __half* theta, __half* phi, int n_mips_this_round);
     void MipToImage( );
     void AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
 

@@ -5,11 +5,11 @@
 
 using namespace cistem_timer;
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks);
+constexpr bool use_gpu_prj               = true;
+constexpr int  n_prjs                    = 2;
+constexpr int  n_mips_to_process_at_once = 10;
 
-constexpr bool use_gpu_prj = false;
-constexpr int  n_prjs      = 1;
+static_assert(n_mips_to_process_at_once == 1 || n_mips_to_process_at_once == 10, "n_mips_to_process_at_once must be 1 or 10");
 
 class ProjectionQueue {
 
@@ -254,6 +254,24 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     d_input_image.CopyFP32toFP16buffer(false);
     d_padded_reference.CopyFP32toFP16buffer(false);
 
+    __half* psi_array;
+    __half* theta_array;
+    __half* phi_array;
+    __half* d_psi_array;
+    __half* d_theta_array;
+    __half* d_phi_array;
+    __half* ccf_array;
+
+    if constexpr ( n_mips_to_process_at_once > 1 ) {
+        psi_array   = new __half[n_mips_to_process_at_once];
+        theta_array = new __half[n_mips_to_process_at_once];
+        phi_array   = new __half[n_mips_to_process_at_once];
+
+        cudaErr(cudaMallocAsync((void**)&d_psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
+        cudaErr(cudaMallocAsync((void**)&d_theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
+        cudaErr(cudaMallocAsync((void**)&d_phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
+        cudaErr(cudaMallocAsync((void**)&ccf_array, sizeof(__half) * n_mips_to_process_at_once * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    }
     cudaErr(cudaMallocAsync((void**)&my_peaks, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     cudaErr(cudaMallocAsync((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     cudaErr(cudaMallocAsync((void**)&my_stats, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
@@ -292,9 +310,12 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     }
 
     int             current_projection_idx = 0;
+    int             current_mip_to_process = 0;
+    int             total_mip_processed    = 0;
     ProjectionQueue projection_queue(n_prjs);
     // We need to make sure the host blocks on all setup work before we start to make projections,
     // since we are using more than one stream.
+    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     projection_queue.RecordProjectionReadyBlockingHost(current_projection_idx, cudaStreamPerThread);
 
     for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
@@ -363,7 +384,12 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             d_padded_reference.ForwardFFT(false);
 
             //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
-            d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
+            if constexpr ( n_mips_to_process_at_once > 1 ) {
+                d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true, &ccf_array[current_mip_to_process * d_input_image.real_memory_allocated]);
+            }
+            else {
+                d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
+            }
 
             // d_padded_reference.MultiplyByConstant(rsqrtf(d_padded_reference.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels));
 
@@ -375,18 +401,37 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 histogram.AddToHistogram(d_padded_reference);
             }
 
-            this->MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
-                               __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
+            if constexpr ( n_mips_to_process_at_once > 1 ) {
+                psi_array[current_mip_to_process]   = __float2half_rn(current_psi);
+                theta_array[current_mip_to_process] = __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]);
+                phi_array[current_mip_to_process]   = __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]);
+                current_mip_to_process++;
+                if ( current_mip_to_process == n_mips_to_process_at_once ) {
+                    cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
+                    cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
+                    cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
+                    total_mip_processed += current_mip_to_process;
+                    MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
+                    current_mip_to_process = 0;
+                }
+            }
+            else {
+                MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
+                             __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
+            }
+
+            cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
 
-            if ( ccc_counter % 10 == 0 ) {
-                this->AccumulateSums(my_stats, d_sum1, d_sumSq1);
+            if constexpr ( n_mips_to_process_at_once == 1 ) {
+                if ( ccc_counter % 10 == 0 ) {
+                    AccumulateSums(my_stats, d_sum1, d_sumSq1);
+                }
             }
 
             if ( ccc_counter % 100 == 0 ) {
-
                 d_sum2.AddImage(d_sum1);
                 d_sum1.Zeros( );
 
@@ -433,11 +478,22 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     projection_queue.PrintTimes( );
 
-    wxPrintf("\t\t\ntotal number %d\n", ccc_counter);
+    wxPrintf("\t\t\ntotal number %d, total mips %d\n", ccc_counter, total_mip_processed);
 
     // cudaStreamWaitEvent(cudaStreamPerThread, gpu_work_is_done_Event, 0);
 
-    this->AccumulateSums(my_stats, d_sum1, d_sumSq1);
+    if constexpr ( n_mips_to_process_at_once > 1 ) {
+        if ( current_mip_to_process > 0 ) {
+            cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
+            cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
+            cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
+            MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
+        }
+    }
+
+    else {
+        AccumulateSums(my_stats, d_sum1, d_sumSq1);
+    }
 
     d_sum2.AddImage(d_sum1);
     d_sumSq2.AddImage(d_sumSq1);
@@ -445,7 +501,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     d_sum3.AddImage(d_sum2);
     d_sumSq3.AddImage(d_sumSq2);
 
-    this->MipToImage( );
+    MipToImage( );
 
     MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!")
             histogram.Accumulate(d_padded_reference);
@@ -454,11 +510,43 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaFreeAsync(my_stats, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(my_new_peaks, cudaStreamPerThread));
 
+    if constexpr ( n_mips_to_process_at_once > 1 ) {
+        delete[] psi_array;
+        delete[] theta_array;
+        delete[] phi_array;
+        cudaErr(cudaFreeAsync(d_psi_array, cudaStreamPerThread));
+        cudaErr(cudaFreeAsync(d_theta_array, cudaStreamPerThread));
+        cudaErr(cudaFreeAsync(d_phi_array, cudaStreamPerThread));
+        cudaErr(cudaFreeAsync(ccf_array, cudaStreamPerThread));
+    }
+
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaFreeAsync(secondary_peaks, cudaStreamPerThread));
     }
 
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+}
+
+__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
+                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
+
+    //	Peaks tmp_peak;
+
+    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
+
+        const __half  half_val = correlation_output[i];
+        const __half2 input    = __half2half2(half_val * __half(10000.0));
+        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
+
+        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
+
+        if ( half_val > __low2half(my_peaks[i]) ) {
+            //				tmp_peak.mip = half_val;
+            my_peaks[i]     = __halves2half2(half_val, psi);
+            my_new_peaks[i] = __halves2half2(theta, phi);
+        }
+        //
+    }
 }
 
 void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
@@ -473,37 +561,63 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
     postcheck;
 }
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
+__global__ void MipPixelWiseStackKernel(const __half* __restrict__ ccf,
+                                        const __half* __restrict__ psi,
+                                        const __half* __restrict__ theta,
+                                        const __half* __restrict__ phi,
+                                        float*   sum,
+                                        float*   sum_sq,
+                                        __half2* my_peaks,
+                                        __half2* my_new_peaks,
+                                        int      numel,
+                                        int      n_mips_this_round) {
 
-    //	Peaks tmp_peak;
+    int   max_idx;
+    float tmp_sum;
+    float tmp_sum_sq;
+    float max_val;
+    float ccf_val;
 
     for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
+        max_val    = std::numeric_limits<float>::min( );
+        tmp_sum    = 0.f;
+        tmp_sum_sq = 0.f;
+        for ( int iSlice = 0; iSlice < n_mips_this_round; iSlice++ ) {
+            ccf_val = __half2float(ccf[iSlice * numel + i]);
+            tmp_sum += ccf_val;
+            tmp_sum_sq = __fmaf_rn(ccf_val, ccf_val, tmp_sum_sq);
+            if ( ccf_val > max_val ) {
+                max_val = ccf_val;
+                max_idx = iSlice;
+            }
+        }
 
-        const __half  half_val = correlation_output[i];
-        const __half2 input    = __half2half2(half_val * __half(10000.0));
-        const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
-        //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
-        //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
-        //    	tmp_peak = my_peaks[i];
-        //		const __half half_val = __float2half_rn(val);
-
-        //			tmp_peak.psi = psi;
-        //			tmp_peak.theta = theta;
-        //			tmp_peak.phi = phi;
-        if ( half_val > __low2half(my_peaks[i]) ) {
-            //				tmp_peak.mip = half_val;
-            my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = __halves2half2(theta, phi);
-
-            //				my_peaks[i].mip = correlation_output[i];
-            //				my_peaks[i].psi = psi;
-            //				my_peaks[i].theta = theta;
-            //				my_peaks[i].phi = phi;
+        sum[i] += tmp_sum;
+        sum_sq[i] += tmp_sum_sq;
+        if ( __float2half_rn(max_val) > __low2half(my_peaks[i]) ) {
+            my_peaks[i]     = __halves2half2(__float2half_rn(max_val), psi[max_idx]);
+            my_new_peaks[i] = __halves2half2(theta[max_idx], phi[max_idx]);
         }
     }
-    //
+}
+
+void TemplateMatchingCore::MipPixelWiseStack(__half* ccf, __half* psi, __half* theta, __half* phi, int n_mips_this_round) {
+
+    precheck;
+    // N
+    d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
+
+    MipPixelWiseStackKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>(ccf,
+                                                                                                                         psi,
+                                                                                                                         theta,
+                                                                                                                         phi,
+                                                                                                                         (float*)d_sum1.real_values,
+                                                                                                                         (float*)d_sumSq1.real_values,
+                                                                                                                         my_peaks,
+                                                                                                                         my_new_peaks,
+                                                                                                                         (int)d_padded_reference.real_memory_allocated,
+                                                                                                                         n_mips_this_round);
+    postcheck;
 }
 
 __global__ void

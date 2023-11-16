@@ -36,15 +36,16 @@ def main():
     # print wanted_stdin list with newlines between each element
     # create a temporary file for feeding to stdin
 
-    config = tmArgs.get_config(args, 'Yeast', 2, 1)
-    config.get('model')['symmetry'] = 'T'
-    # Override some default arguments to make this a fast search
-    # We want it to take long enough to armortize any overhead, but not too long, ideally a minute or so
-    config['out_of_plane_angle'] = 5.5
-    config['in_plane_angle'] = 3.5
+    # config = tmArgs.get_config(args, 'Yeast', 2, 1)
+    # config.get('model')['symmetry'] = 'T'
+    # # Override some default arguments to make this a fast search
+    # # We want it to take long enough to armortize any overhead, but not too long, ideally a minute or so
+    # config['out_of_plane_angle'] = 5.5
+    # config['in_plane_angle'] = 3.5
 
-    tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(config)
-    elapsed_time_rotated = run_job(tmp_filename_match_template)
+    # tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(config)
+    # elapsed_time_rotated = run_job(tmp_filename_match_template)
+    elapsed_time_rotated = 0
     print('Times are : ' + str(elapsed_time) +
           ' and ' + str(elapsed_time_rotated))
     print('Time difference: ' + str(elapsed_time - elapsed_time_rotated) +

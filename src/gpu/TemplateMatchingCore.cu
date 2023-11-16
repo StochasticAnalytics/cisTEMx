@@ -7,7 +7,7 @@
 
 using namespace cistem_timer;
 
-constexpr bool use_gpu_prj               = true;
+constexpr bool use_gpu_prj               = false;
 constexpr int  n_prjs                    = 2;
 constexpr int  n_mips_to_process_at_once = 10;
 
@@ -289,10 +289,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     // cudaStreamSynchronize: Blocks host until ALL work in the stream is completed
     // cudaStreamWaitEvent: Makes all future work in stream wait on an event. Since we are always using cudaStreamPerThread, this is not needed.
 
-    cudaEvent_t projection_is_free_Event, gpu_work_is_done_Event;
+    cudaEvent_t projection_is_free_Event, gpu_work_is_done_Event, mip_is_done_Event;
 
     // cudaErr(cudaEventCreateWithFlags(&projection_is_free_Event, cudaEventDisableTiming));
     // cudaErr(cudaEventCreateWithFlags(&gpu_work_is_done_Event, cudaEventDisableTiming));
+    cudaErr(cudaEventCreateWithFlags(&mip_is_done_Event, cudaEventBlockingSync));
 
     int   ccc_counter = 0;
     int   current_search_position;
@@ -403,6 +404,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 histogram.AddToHistogram(d_padded_reference);
             }
 
+            // cudaErr(cudaEventSynchronize(mip_is_done_Event));
             if constexpr ( n_mips_to_process_at_once > 1 ) {
                 psi_array[current_mip_to_process]   = __float2half_rn(current_psi);
                 theta_array[current_mip_to_process] = __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]);
@@ -414,6 +416,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     total_mip_processed += current_mip_to_process;
                     MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
+                    // This shouldn't be needed AFAIK as all work that might affect ccf array or mip_psi is done in cudaStreamPerThread
+                    cudaErr(cudaEventRecord(mip_is_done_Event, cudaStreamPerThread));
+                    cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, mip_is_done_Event, cudaEventWaitDefault));
+
                     current_mip_to_process = 0;
                 }
             }
@@ -421,8 +427,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
                              __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
             }
-
-            cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
@@ -442,7 +446,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             }
 
             if ( ccc_counter % 10000 == 0 ) {
-
                 d_sum3.AddImage(d_sum2);
                 d_sum2.Zeros( );
 
@@ -580,11 +583,14 @@ __global__ void MipPixelWiseStackKernel(const __half* __restrict__ ccf,
     float tmp_sum_sq;
     float max_val;
     float ccf_val;
+    // for ( int img_index = blockIdx.x * blockDim.x + threadIdx.x; img_index < NX; img_index += blockDim.x * gridDim.x ) {
+    // 2,147,483,647 max_int(32 bit)
+    // k3 padded is 5832 4096, so max_int could handle is 89.89 slices
 
     for ( int i = physical_X_1d_grid( ); i < numel; i += GridStride_1dGrid( ) ) {
         tmp_sum    = 0.f;
         tmp_sum_sq = 0.f;
-        max_val    = 0.f;
+        max_val    = -10.f;
         for ( int iSlice = 0; iSlice < n_mips_this_round; iSlice++ ) {
 
             ccf_val = __half2float(ccf[iSlice * numel + i]);
@@ -599,7 +605,7 @@ __global__ void MipPixelWiseStackKernel(const __half* __restrict__ ccf,
         sum[i] += tmp_sum;
         sum_sq[i] += tmp_sum_sq;
 
-        if ( max_val > 0.f && __float2half_rn(max_val) > __low2half(mip_psi[i]) ) {
+        if ( max_val > -10.f && __float2half_rn(max_val) > __low2half(mip_psi[i]) ) {
             mip_psi[i]   = __halves2half2(__float2half_rn(max_val), psi[max_idx]);
             theta_phi[i] = __halves2half2(theta[max_idx], phi[max_idx]);
         }

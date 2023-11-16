@@ -23,6 +23,10 @@ constexpr int number_of_output_images     = 8; //mip, psi, theta, phi, pixel, de
 constexpr int number_of_meta_data_values  = 7; // img_x, img_y, number cccs, histogram values, pixel_size
 constexpr int MAX_ALLOWED_NUMBER_OF_PEAKS = 1000; // An error will be thrown and job aborted if this number of peaks is exceeded in the make template results block
 
+/**
+ * @brief Fixed number of bins in histogram used for template matching. Must be < 1024 (max number of cuda threads in a block) and must be a multiple of 32 (cistem::gpu::warp size).
+ * 
+ */
 constexpr int   histogram_number_of_points = 512;
 constexpr float histogram_min              = -12.5f;
 constexpr float histogram_max              = 22.5f;

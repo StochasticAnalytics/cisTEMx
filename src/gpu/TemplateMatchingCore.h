@@ -87,16 +87,16 @@ class TemplateMatchingCore {
 
     MyApp* parent_pointer;
 
-    __half2* my_stats;
-    __half2* my_peaks;
-    __half2* my_new_peaks; // for passing euler angles to the callback
+    __half2* sum_sumsq;
+    __half2* mip_psi;
+    __half2* theta_phi; // for passing euler angles to the callback
     __half*  secondary_peaks;
 
     void SumPixelWise(GpuImage& image);
     void MipPixelWise(__half psi, __half theta, __half phi);
     void MipPixelWiseStack(__half* mip_array, __half* psi, __half* theta, __half* phi, int n_mips_this_round);
     void MipToImage( );
-    void AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum);
+    void AccumulateSums(__half2* sum_sumsq, GpuImage& sum, GpuImage& sq_sum);
 
     void UpdateSecondaryPeaks( );
 

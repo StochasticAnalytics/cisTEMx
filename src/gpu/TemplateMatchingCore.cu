@@ -1,4 +1,6 @@
 #include "gpu_core_headers.h"
+#include "gpu_indexing_functions.h"
+
 #include "TemplateMatchingCore.h"
 
 #define DO_HISTOGRAM true
@@ -272,16 +274,16 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         cudaErr(cudaMallocAsync((void**)&d_phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
         cudaErr(cudaMallocAsync((void**)&ccf_array, sizeof(__half) * n_mips_to_process_at_once * d_input_image.real_memory_allocated, cudaStreamPerThread));
     }
-    cudaErr(cudaMallocAsync((void**)&my_peaks, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMallocAsync((void**)&my_new_peaks, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMallocAsync((void**)&my_stats, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMemsetAsync(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMemsetAsync(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMallocAsync((void**)&mip_psi, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMallocAsync((void**)&theta_phi, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMallocAsync((void**)&sum_sumsq, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMemsetAsync(mip_psi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMemsetAsync(theta_phi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaMallocAsync((void**)&secondary_peaks, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
         cudaErr(cudaMemsetAsync(secondary_peaks, 0, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
     }
-    //	cudaErr(cudaMemset(my_stats,0,sizeof(Peaks)*d_input_image.real_memory_allocated));
+    //	cudaErr(cudaMemset(sum_sumsq,0,sizeof(Peaks)*d_input_image.real_memory_allocated));
 
     // Just for reference:
     // cudaStreamSynchronize: Blocks host until ALL work in the stream is completed
@@ -427,7 +429,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             if constexpr ( n_mips_to_process_at_once == 1 ) {
                 if ( ccc_counter % 10 == 0 ) {
-                    AccumulateSums(my_stats, d_sum1, d_sumSq1);
+                    AccumulateSums(sum_sumsq, d_sum1, d_sumSq1);
                 }
             }
 
@@ -478,8 +480,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     projection_queue.PrintTimes( );
 
-    wxPrintf("\t\t\ntotal number %d, total mips %d\n", ccc_counter, total_mip_processed);
-
     // cudaStreamWaitEvent(cudaStreamPerThread, gpu_work_is_done_Event, 0);
 
     if constexpr ( n_mips_to_process_at_once > 1 ) {
@@ -488,12 +488,15 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
+            total_mip_processed += current_mip_to_process;
         }
     }
 
     else {
-        AccumulateSums(my_stats, d_sum1, d_sumSq1);
+        AccumulateSums(sum_sumsq, d_sum1, d_sumSq1);
     }
+
+    wxPrintf("\t\t\ntotal number %d, total mips %d\n", ccc_counter, total_mip_processed);
 
     d_sum2.AddImage(d_sum1);
     d_sumSq2.AddImage(d_sumSq1);
@@ -506,9 +509,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!")
             histogram.Accumulate(d_padded_reference);
 
-    cudaErr(cudaFreeAsync(my_peaks, cudaStreamPerThread));
-    cudaErr(cudaFreeAsync(my_stats, cudaStreamPerThread));
-    cudaErr(cudaFreeAsync(my_new_peaks, cudaStreamPerThread));
+    cudaErr(cudaFreeAsync(mip_psi, cudaStreamPerThread));
+    cudaErr(cudaFreeAsync(sum_sumsq, cudaStreamPerThread));
+    cudaErr(cudaFreeAsync(theta_phi, cudaStreamPerThread));
 
     if constexpr ( n_mips_to_process_at_once > 1 ) {
         delete[] psi_array;
@@ -527,23 +530,23 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 }
 
-__global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* my_stats, __half2* my_new_peaks) {
+__global__ void MipPixelWiseKernel(__half* ccf, __half2* mip_psi, const int numel,
+                                   __half psi, __half theta, __half phi, __half2* sum_sumsq, __half2* theta_phi) {
 
     //	Peaks tmp_peak;
 
-    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
+    for ( int i = physical_X_1d_grid( ); i < numel; i += GridStride_1dGrid( ) ) {
 
-        const __half  half_val = correlation_output[i];
+        const __half  half_val = ccf[i];
         const __half2 input    = __half2half2(half_val * __half(10000.0));
         const __half2 mulVal   = __halves2half2((__half)1.0, half_val);
 
-        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
+        sum_sumsq[i] = __hfma2(input, mulVal, sum_sumsq[i]);
 
-        if ( half_val > __low2half(my_peaks[i]) ) {
+        if ( half_val > __low2half(mip_psi[i]) ) {
             //				tmp_peak.mip = half_val;
-            my_peaks[i]     = __halves2half2(half_val, psi);
-            my_new_peaks[i] = __halves2half2(theta, phi);
+            mip_psi[i]   = __halves2half2(half_val, psi);
+            theta_phi[i] = __halves2half2(theta, phi);
         }
         //
     }
@@ -555,9 +558,9 @@ void TemplateMatchingCore::MipPixelWise(__half psi, __half theta, __half phi) {
     // N
     d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
-    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, my_peaks,
+    MipPixelWiseKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)d_padded_reference.real_values_16f, mip_psi,
                                                                                                                     (int)d_padded_reference.real_memory_allocated,
-                                                                                                                    psi, theta, phi, my_stats, my_new_peaks);
+                                                                                                                    psi, theta, phi, sum_sumsq, theta_phi);
     postcheck;
 }
 
@@ -567,8 +570,8 @@ __global__ void MipPixelWiseStackKernel(const __half* __restrict__ ccf,
                                         const __half* __restrict__ phi,
                                         float*   sum,
                                         float*   sum_sq,
-                                        __half2* my_peaks,
-                                        __half2* my_new_peaks,
+                                        __half2* mip_psi,
+                                        __half2* theta_phi,
                                         int      numel,
                                         int      n_mips_this_round) {
 
@@ -578,14 +581,15 @@ __global__ void MipPixelWiseStackKernel(const __half* __restrict__ ccf,
     float max_val;
     float ccf_val;
 
-    for ( int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x ) {
-        max_val    = std::numeric_limits<float>::min( );
+    for ( int i = physical_X_1d_grid( ); i < numel; i += GridStride_1dGrid( ) ) {
         tmp_sum    = 0.f;
         tmp_sum_sq = 0.f;
+        max_val    = 0.f;
         for ( int iSlice = 0; iSlice < n_mips_this_round; iSlice++ ) {
+
             ccf_val = __half2float(ccf[iSlice * numel + i]);
             tmp_sum += ccf_val;
-            tmp_sum_sq = __fmaf_rn(ccf_val, ccf_val, tmp_sum_sq);
+            tmp_sum_sq += (ccf_val * ccf_val);
             if ( ccf_val > max_val ) {
                 max_val = ccf_val;
                 max_idx = iSlice;
@@ -594,9 +598,10 @@ __global__ void MipPixelWiseStackKernel(const __half* __restrict__ ccf,
 
         sum[i] += tmp_sum;
         sum_sq[i] += tmp_sum_sq;
-        if ( __float2half_rn(max_val) > __low2half(my_peaks[i]) ) {
-            my_peaks[i]     = __halves2half2(__float2half_rn(max_val), psi[max_idx]);
-            my_new_peaks[i] = __halves2half2(theta[max_idx], phi[max_idx]);
+
+        if ( max_val > 0.f && __float2half_rn(max_val) > __low2half(mip_psi[i]) ) {
+            mip_psi[i]   = __halves2half2(__float2half_rn(max_val), psi[max_idx]);
+            theta_phi[i] = __halves2half2(theta[max_idx], phi[max_idx]);
         }
     }
 }
@@ -613,8 +618,8 @@ void TemplateMatchingCore::MipPixelWiseStack(__half* ccf, __half* psi, __half* t
                                                                                                                          phi,
                                                                                                                          (float*)d_sum1.real_values,
                                                                                                                          (float*)d_sumSq1.real_values,
-                                                                                                                         my_peaks,
-                                                                                                                         my_new_peaks,
+                                                                                                                         mip_psi,
+                                                                                                                         theta_phi,
                                                                                                                          (int)d_padded_reference.real_memory_allocated,
                                                                                                                          n_mips_this_round);
     postcheck;
@@ -622,8 +627,8 @@ void TemplateMatchingCore::MipPixelWiseStack(__half* ccf, __half* psi, __half* t
 
 __global__ void
 UpdateSecondaryPeaksKernel(__half*   secondary_peaks,
-                           __half2*  my_peaks,
-                           __half2*  my_new_peaks,
+                           __half2*  mip_psi,
+                           __half2*  theta_phi,
                            const int NY,
                            const int NX) {
 
@@ -636,7 +641,7 @@ UpdateSecondaryPeaksKernel(__half*   secondary_peaks,
         best_index = NY;
         for ( int i_peak = 0; i_peak < NY; i_peak++ ) {
             // Check to see if any peak from this search position is in the top n_peaks scores
-            if ( __low2half(my_peaks[img_index]) > secondary_peaks[img_index + i_peak * NX] ) {
+            if ( __low2half(mip_psi[img_index]) > secondary_peaks[img_index + i_peak * NX] ) {
                 best_index = i_peak;
                 break;
             }
@@ -661,16 +666,16 @@ UpdateSecondaryPeaksKernel(__half*   secondary_peaks,
         // Now insert the new peak
         if ( best_index < NY ) {
             offset                  = img_index + best_index * NX;
-            secondary_peaks[offset] = __low2half(my_peaks[img_index]);
+            secondary_peaks[offset] = __low2half(mip_psi[img_index]);
             // Psi
             offset += NX * NY;
-            secondary_peaks[offset] = __high2half(my_peaks[img_index]);
+            secondary_peaks[offset] = __high2half(mip_psi[img_index]);
             // Theta
             offset += NX * NY;
-            secondary_peaks[offset] = __low2half(my_new_peaks[img_index]);
+            secondary_peaks[offset] = __low2half(theta_phi[img_index]);
             // Phi
             offset += NX * NY;
-            secondary_peaks[offset] = __high2half(my_new_peaks[img_index]);
+            secondary_peaks[offset] = __high2half(theta_phi[img_index]);
         }
     }
 }
@@ -682,19 +687,19 @@ void TemplateMatchingCore::UpdateSecondaryPeaks( ) {
     d_padded_reference.ReturnLaunchParametersLimitSMs(5.f, 1024);
 
     UpdateSecondaryPeaksKernel<<<d_padded_reference.gridDims, d_padded_reference.threadsPerBlock, 0, cudaStreamPerThread>>>((__half*)secondary_peaks,
-                                                                                                                            my_peaks,
-                                                                                                                            my_new_peaks,
+                                                                                                                            mip_psi,
+                                                                                                                            theta_phi,
                                                                                                                             n_global_search_images_to_save,
                                                                                                                             (int)d_padded_reference.real_memory_allocated);
     postcheck;
 
     // We need to reset this each outer angle search or we'll never see new maximums
-    cudaErr(cudaMemsetAsync(my_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMemsetAsync(my_new_peaks, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMemsetAsync(mip_psi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+    cudaErr(cudaMemsetAsync(theta_phi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
 }
 
-__global__ void MipToImageKernel(const __half2* my_peaks,
-                                 const __half2* my_new_peaks,
+__global__ void MipToImageKernel(const __half2* mip_psi,
+                                 const __half2* theta_phi,
                                  const __half*  secondary_peaks,
                                  const int      numel,
                                  cufftReal*     mip,
@@ -709,10 +714,10 @@ __global__ void MipToImageKernel(const __half2* my_peaks,
 
     if ( n_peaks == 1 ) {
 
-        mip[x]   = (cufftReal)__low2float(my_peaks[x]);
-        psi[x]   = (cufftReal)__high2float(my_peaks[x]);
-        theta[x] = (cufftReal)__low2float(my_new_peaks[x]);
-        phi[x]   = (cufftReal)__high2float(my_new_peaks[x]);
+        mip[x]   = (cufftReal)__low2float(mip_psi[x]);
+        psi[x]   = (cufftReal)__high2float(mip_psi[x]);
+        theta[x] = (cufftReal)__low2float(theta_phi[x]);
+        phi[x]   = (cufftReal)__high2float(theta_phi[x]);
     }
     else {
         int offset;
@@ -733,8 +738,8 @@ void TemplateMatchingCore::MipToImage( ) {
     dim3 threadsPerBlock = dim3(1024, 1, 1);
     dim3 gridDims        = dim3((d_max_intensity_projection.real_memory_allocated + threadsPerBlock.x - 1) / threadsPerBlock.x, 1, 1);
 
-    MipToImageKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(my_peaks,
-                                                                            my_new_peaks,
+    MipToImageKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(mip_psi,
+                                                                            theta_phi,
                                                                             secondary_peaks,
                                                                             d_padded_reference.real_memory_allocated,
                                                                             d_max_intensity_projection.real_values,
@@ -745,26 +750,26 @@ void TemplateMatchingCore::MipToImage( ) {
     postcheck;
 }
 
-__global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftReal* sum, cufftReal* sq_sum);
+__global__ void AccumulateSumsKernel(__half2* sum_sumsq, const int numel, cufftReal* sum, cufftReal* sq_sum);
 
-void TemplateMatchingCore::AccumulateSums(__half2* my_stats, GpuImage& sum, GpuImage& sq_sum) {
+void TemplateMatchingCore::AccumulateSums(__half2* sum_sumsq, GpuImage& sum, GpuImage& sq_sum) {
 
     precheck;
     dim3 threadsPerBlock = dim3(1024, 1, 1);
     dim3 gridDims        = dim3((sum.real_memory_allocated + threadsPerBlock.x - 1) / threadsPerBlock.x, 1, 1);
 
-    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(my_stats, sum.real_memory_allocated, sum.real_values, sq_sum.real_values);
+    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(sum_sumsq, sum.real_memory_allocated, sum.real_values, sq_sum.real_values);
     postcheck;
 }
 
-__global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftReal* sum, cufftReal* sq_sum) {
+__global__ void AccumulateSumsKernel(__half2* sum_sumsq, const int numel, cufftReal* sum, cufftReal* sq_sum) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x < numel ) {
 
-        sum[x]    = __fmaf_rn(0.0001f, __low2float(my_stats[x]), sum[x]);
-        sq_sum[x] = __fmaf_rn(0.0001f, __high2float(my_stats[x]), sq_sum[x]);
+        sum[x]    = __fmaf_rn(0.0001f, __low2float(sum_sumsq[x]), sum[x]);
+        sq_sum[x] = __fmaf_rn(0.0001f, __high2float(sum_sumsq[x]), sq_sum[x]);
 
-        my_stats[x] = __halves2half2((__half)0., (__half)0.);
+        sum_sumsq[x] = __halves2half2((__half)0., (__half)0.);
     }
 }

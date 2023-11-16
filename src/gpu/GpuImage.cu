@@ -3078,7 +3078,7 @@ void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool 
 
     if constexpr ( std::is_same_v<StoreType, __half> ) {
         // allows us to pass in a different external buffer
-        if ( output_ptr == nullptr ) {
+        if ( ! output_ptr ) {
             BufferInit(b_16f);
         }
     }
@@ -3092,7 +3092,6 @@ void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool 
 
     if ( ! is_set_complexConjMulLoad ) {
         cufftCallbackStoreC                     h_complexConjMulLoad;
-        cufftCallbackStoreR                     h_mipCCGStore;
         CB_complexConjMulLoad_params<LoadType>* d_params;
         CB_complexConjMulLoad_params<LoadType>  h_params;
         h_params.scale  = ft_normalization_factor * ft_normalization_factor;
@@ -3110,19 +3109,18 @@ void GpuImage::BackwardFFTAfterComplexConjMul(LoadType* image_to_multiply, bool 
             cudaErr(cudaMemcpyFromSymbol(&h_complexConjMulLoad, d_complexConjMulLoad_32f, sizeof(h_complexConjMulLoad)));
         }
 
-        cudaErr(cudaMemcpyFromSymbol(&h_mipCCGStore, d_mipCCGAndStorePtr, sizeof(h_mipCCGStore)));
-        //        cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+        cudaErr(cudaMemcpyFromSymbol(&h_mipCCGStore_BackwardFFTAfterComplexConjMul, d_mipCCGAndStorePtr, sizeof(h_mipCCGStore_BackwardFFTAfterComplexConjMul)));
         cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_complexConjMulLoad, CUFFT_CB_LD_COMPLEX, (void**)&d_params));
-        //        void** fake_params;real_values_16f
-        if ( output_ptr == nullptr ) {
-            cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
-        }
-        else {
-            cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore, CUFFT_CB_ST_REAL, (void**)&output_ptr));
+        if ( ! output_ptr ) {
+            cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore_BackwardFFTAfterComplexConjMul, CUFFT_CB_ST_REAL, (void**)&real_values_16f));
         }
 
-        //        d_complexConjMulLoad;
         is_set_complexConjMulLoad = true;
+    }
+
+    // We can skip the rest of the initialization, but always need to set the pointer if an external buffer is requested.
+    if ( output_ptr ) {
+        cufftErr(cufftXtSetCallback(cuda_plan_inverse, (void**)&h_mipCCGStore_BackwardFFTAfterComplexConjMul, CUFFT_CB_ST_REAL, (void**)&output_ptr));
     }
 
     //  BufferInit(b_image);

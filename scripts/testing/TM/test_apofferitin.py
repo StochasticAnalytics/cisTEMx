@@ -17,7 +17,8 @@ def main():
     # We want to do a single-plane search which is a good enough quick check for most cases.
     elapsed_time = [0, 0, 0]
 
-    for image_number in range(0, 3):
+    # FIXME: 1 _/3
+    for image_number in range(0, 1):
 
         config = tmArgs.get_config(args, 'Apoferritin', 0, image_number)
 

@@ -13,7 +13,6 @@ class TemplateMatchingCore {
 
   public:
     TemplateMatchingCore( ) : object_initialized_{false} { };
-    ~TemplateMatchingCore( );
 
     // block copy and move explicitly
     TemplateMatchingCore(const TemplateMatchingCore&)            = delete;
@@ -86,7 +85,11 @@ class TemplateMatchingCore {
     bool      is_gpu_3d_swapped;
     Histogram histogram;
 
-    std::unique_ptr<TM_EmpiricalDistribution<__half>> empirical_distribution;
+    std::vector<TM_EmpiricalDistribution<__half>> my_dist;
+
+    float histogram_min_scaled;
+    float histogram_step_scaled;
+    int   histogram_max_padding;
 
     // Search objects
     AnglesAndShifts angles;

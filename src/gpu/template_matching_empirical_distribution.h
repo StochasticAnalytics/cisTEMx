@@ -13,15 +13,17 @@
 
 using histogram_storage_t = float;
 
-template <InputType input_type, bool per_image = false>
-class TM_EmpiricalDistribution( ) {
+template <typename InputType, bool per_image = false>
+class TM_EmpiricalDistribution {
 
   private:
+    bool      higher_order_moments_;
     int       current_image_index_;
     InputType histogram_min_;
     InputType histogram_step_;
     int       histogram_n_bins_;
     int       n_border_pixels_to_ignore_for_histogram_;
+    const int n_images_to_accumulate_concurrently_;
 
     dim3 threadsPerBlock_;
     dim3 gridDims_;
@@ -29,19 +31,37 @@ class TM_EmpiricalDistribution( ) {
     int4 image_dims_;
 
     histogram_storage_t* histogram_;
-    cudaStream_t*        calc_stream_; // Managed by some external resource
+    cudaStream_t         calc_stream_; // Managed by some external resource
 
   public:
-    TM_EmpiricalDistribution(GpuImage & reference_image,
+    /**
+ * @brief Construct a new TM_EmpiricalDistribution
+ * Note: both histogram_min and histogram step must be > 0 or no histogram will be created
+ * Note: the number of histogram bins is fixed by TM::histogram_number_of_points
+ * 
+ * @param reference_image - used to determine the size of the input images and set gpu launch configurations
+ * @param histogram_min - the minimum value of the histogram
+ * @param histogram_step - the step size of the histogram
+ * @param n_images_to_accumulate_concurrently - the number of images to accumulate concurrently
+ * 
+ */
+    TM_EmpiricalDistribution(GpuImage&           reference_image,
                              histogram_storage_t histogram_min,
                              histogram_storage_t histogram_step,
-                             int                 n_images_to_accumulate_concurrently = 1,
-                             cudaStream_t        calc_stream                         = cudaStreamPerThread);
+                             int                 n_border_pixels_to_ignore_for_histogram,
+                             const int           n_images_to_accumulate_before_final_accumulation,
+                             cudaStream_t        calc_stream = cudaStreamPerThread);
 
     ~TM_EmpiricalDistribution( );
 
-    void AccumulateDistribution(InputType * input_data, int n_images_this_batch);
+    void AccumulateDistribution(InputType* input_data, int n_images_this_batch);
     void FinalAccumulate( );
-}
+    void CopyToHostAndAdd(long* array_to_add_to);
+
+    void SetCalcStream(cudaStream_t calc_stream) {
+        MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
+        calc_stream_ = calc_stream;
+    }
+};
 
 #endif

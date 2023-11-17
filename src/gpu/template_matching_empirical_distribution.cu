@@ -111,13 +111,13 @@ TM_EmpiricalDistribution<InputType, per_image>::~TM_EmpiricalDistribution( ) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-inline __device__ int convert_input(T* input_ptr, int x, int y, int NW, const T bin_min, const T bin_inc) {
+inline __device__ int convert_input(T* input_ptr, int x, int y, int z, int NY, int pitch_in_pixels, const T bin_min, const T bin_inc) {
     if constexpr ( std::is_same_v<T, __half> )
-        return __half2int_rd((input_ptr[y * NW + x] - bin_min) / bin_inc);
+        return __half2int_rd((input_ptr[((z * NY + y) * pitch_in_pixels) + x] - bin_min) / bin_inc);
     if constexpr ( std::is_same_v<T, __nv_bfloat16> )
-        return __bfloat162int_rd((input_ptr[y * NW + x] - bin_min) / bin_inc);
+        return __bfloat162int_rd((input_ptr[((z * NY + y) * pitch_in_pixels) + x] - bin_min) / bin_inc);
     if constexpr ( std::is_same_v<T, histogram_storage_t> )
-        return __float2int_rd((input_ptr[y * NW + x] - bin_min) / bin_inc);
+        return __float2int_rd((input_ptr[((z * NY + y) * pitch_in_pixels) + x] - bin_min) / bin_inc);
 }
 
 template <typename T>
@@ -147,32 +147,21 @@ AccumulateDistributionKernel(T*                   input_ptr,
     __syncthreads( );
 
     int pixel_idx;
-    int previous_pixel_idx;
-    int n_counts = 0;
+
     // updates our block's partial histogram input_ptr shared memory
 
     for ( int j = max_padding + physical_Y( ); j < dims.y - max_padding; j += blockDim.y * gridDim.y ) {
         for ( int i = max_padding + physical_X( ); i < dims.x - max_padding; i += blockDim.x * gridDim.x ) {
             for ( int k = 0; k < n_slices_to_process; k++ ) {
-                pixel_idx = convert_input(input_ptr, i, j, dims.w, bin_min, bin_inc);
-                // we have to check n_counts first otherwise the results are undefined on the first pass.
-                if ( n_counts > 0 && pixel_idx != previous_pixel_idx ) {
-                    if ( previous_pixel_idx >= 0 && previous_pixel_idx < TM::histogram_number_of_points ) {
-                        atomicAdd(&smem[previous_pixel_idx], n_counts);
-                    }
-                    n_counts = 0;
+                // pixel_idx = __half2int_rd((input_ptr[j * dims.w + i] - bin_min) / bin_inc);
+                pixel_idx = convert_input(input_ptr, i, j, k, dims.y, dims.w, bin_min, bin_inc);
+                if ( pixel_idx >= 0 && pixel_idx < TM::histogram_number_of_points ) {
+                    atomicAdd(&smem[pixel_idx], 1);
                 }
-                else {
-                    n_counts++;
-                }
-                previous_pixel_idx = pixel_idx;
             }
         }
     }
-    // We have to do a final cleanup in case we've been accumulating the same value:
-    if ( n_counts > 0 && previous_pixel_idx >= 0 && previous_pixel_idx < TM::histogram_number_of_points ) {
-        atomicAdd(&smem[previous_pixel_idx], n_counts);
-    }
+
     __syncthreads( );
 
     // write partial histogram into the global memory

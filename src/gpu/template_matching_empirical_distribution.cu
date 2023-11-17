@@ -140,7 +140,7 @@ AccumulateDistributionKernel(T*                   input_ptr,
     // Since the number of x-threads is enforced to be = to the number of bins, we can just copy the bins to shared memory
     // Otherwise, we would need a loop to copy the bins to shared memory e.g. ->
     //        smem[threadIdx.x] = __float2int_rn(stored_array[threadIdx.x]);
-    // FIXME:     // smem[i] = __float2int_rn(stored_array[i]);
+    // FIXME:     // smem[i] =
     for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
         smem[i] = int(stored_array[i]);
 

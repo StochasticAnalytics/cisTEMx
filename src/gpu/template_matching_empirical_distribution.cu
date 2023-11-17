@@ -3,10 +3,22 @@
 #include "gpu_indexing_functions.h"
 
 #include "GpuImage.h"
-#include "template_matching_empricial_distribution.h"
+#include "template_matching_empirical_distribution.h"
 #include "../constants/constants.h"
 
-using namespace cistem::match_template as TM;
+namespace TM = cistem::match_template;
+
+template <typename T>
+inline __device__ __host__ bool test_gt_zero(T value) {
+    if constexpr ( std::is_same_v<T, __half> )
+        return value > CUDART_ZERO_FP16;
+    else if constexpr ( std::is_same_v<T, __nv_bfloat16> )
+        return value > CUDART_ZERO_BF16;
+    else if constexpr ( std::is_same_v<T, histogram_storage_t> )
+        return value > 0.0f;
+    else
+        MyDebugAssertTrue(false, "input_type must be either __half __nv_bfloat16, or histogram_storage_t");
+}
 
 /**
  * @brief Construct a new TM_EmpiricalDistribution
@@ -19,19 +31,20 @@ using namespace cistem::match_template as TM;
  * @param n_images_to_accumulate_concurrently - the number of images to accumulate concurrently
  * 
  */
-template <InputType input_type, bool per_image>
-TM_EmpiricalDistribution::TM_EmpiricalDistribution(GpuImage&           reference_image,
-                                                   histogram_storage_t histogram_min,
-                                                   histogram_storage_t histogram_step,
-                                                   int                 n_border_pixels_to_ignore_for_histogram,
-                                                   int                 n_images_to_accumulate_concurrently,
-                                                   cudaStream_t*       calc_stream) : n_images_to_accumulate_concurrently_{n_images_to_accumulate_concurrently},
-                                                                                n_border_pixels_to_ignore_for_histogram_{n_border_pixels_to_ignore_for_histogram},
-                                                                                reference_image_{reference_image},
-                                                                                calc_stream_{calc_stream} {
+template <typename InputType, bool per_image>
+TM_EmpiricalDistribution<InputType, per_image>::TM_EmpiricalDistribution(GpuImage&           reference_image,
+                                                                         histogram_storage_t histogram_min,
+                                                                         histogram_storage_t histogram_step,
+                                                                         int                 n_border_pixels_to_ignore_for_histogram,
+                                                                         const int           n_images_to_accumulate_concurrently,
+                                                                         cudaStream_t        calc_stream) : n_images_to_accumulate_concurrently_{n_images_to_accumulate_concurrently},
+                                                                                                     n_border_pixels_to_ignore_for_histogram_{n_border_pixels_to_ignore_for_histogram},
+                                                                                                     calc_stream_{calc_stream},
+                                                                                                     higher_order_moments_{false} {
 
     static_assert(per_image == false, "This class does not support per image accumulation yet");
 
+    MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
     // I suspect we'll move to bfloat16 for the input data, as it was not available at the time the
     // original code was implemented. The extended dynamic range, and ease of conversion to/from histogram_storage_t
     // are likely a benefit, while the further reduced precision is unlikely to be a problem in the raw data values.
@@ -53,7 +66,8 @@ TM_EmpiricalDistribution::TM_EmpiricalDistribution(GpuImage&           reference
         MyDebugAssertTrue(false, "input_type must be either __half __nv_bfloat16, or histogram_storage_t");
     }
 
-    if ( histogram_min_ > 0.0f && histogram_step_ > 0.0f ) {
+    // FIXME: this should probably be a bool rather than testing for a default zero value. Hacky habits die hard
+    if ( test_gt_zero(histogram_step_) ) {
         MyDebugAssertTrue(TM::histogram_number_of_points <= 1024, "The histogram kernel assumes <= 1024 threads per block");
         MyDebugAssertTrue(TM::histogram_number_of_points % cistem::gpu::warp_size == 0, "The histogram kernel assumes a multiple of 32 threads per block");
         histogram_n_bins_ = TM::histogram_number_of_points;
@@ -73,21 +87,23 @@ TM_EmpiricalDistribution::TM_EmpiricalDistribution(GpuImage&           reference
     // Set-up the launch configuration - assumed to be a real space image.
     // WARNING: this is up to the developer to ensure, as we'll use pointers for the input arrays
     // Note: we prefer the "1d" grid as a NxN patch is more likely to have similar values than a N^2x1 line, and so more atomic collisions in the histogram kernel.
-    reference_image_.ReturnLaunchParameters<TM::histogram_number_of_points, 1>(image_dims_, true);
-    gridDims_  = reference_image_.gridDims;
-    blockDims_ = reference_image_.blockDims;
+    reference_image.ReturnLaunchParameters<TM::histogram_number_of_points, 1>(image_dims_, true);
+    gridDims_        = reference_image.gridDims;
+    threadsPerBlock_ = reference_image.threadsPerBlock;
 
     // Every block will have a shared memory array of the size of the number of bins and aggregate those into their own
     // temp arrays. Only at the end of the search will these be added together'
 
     // Array of temporary storage to accumulate the shared mem to
-    cudaErr(cudaMallocAsync(&histogram_,
-                            gridDims_img.x * gridDims_img.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), *calc_stream_)));
+    cudaErr(cudaMallocAsync(&histogram_, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
+    cudaErr(cudaMemsetAsync(histogram_, 0, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
 };
 
-template <InputType input_type, bool per_image>
-TM_EmpiricalDistribution::~TM_EmpiricalDistribution( ) {
-    cudaErr(cudaFreeAsync(histogram_, *calc_stream_));
+template <typename InputType, bool per_image>
+TM_EmpiricalDistribution<InputType, per_image>::~TM_EmpiricalDistribution( ) {
+    MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
+
+    cudaErr(cudaFreeAsync(histogram_, calc_stream_));
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,7 +111,7 @@ TM_EmpiricalDistribution::~TM_EmpiricalDistribution( ) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-inline __device__ int convert_input(T* input_ptr, int x, int y, int NW, T bin_min, T bin_inc) {
+inline __device__ int convert_input(T* input_ptr, int x, int y, int NW, const T bin_min, const T bin_inc) {
     if constexpr ( std::is_same_v<T, __half> )
         return __half2int_rd((input_ptr[y * NW + x] - bin_min) / bin_inc);
     if constexpr ( std::is_same_v<T, __nv_bfloat16> )
@@ -104,15 +120,15 @@ inline __device__ int convert_input(T* input_ptr, int x, int y, int NW, T bin_mi
         return __float2int_rd((input_ptr[y * NW + x] - bin_min) / bin_inc);
 }
 
-template <InputType input_type>
+template <typename T>
 __global__ void
-histogram_smem_atomics(const InputType* __restrict__ input_ptr,
-                       histogram_storage_t* output_ptr,
-                       int4                 dims,
-                       const InputType      bin_min,
-                       const InputType      bin_inc,
-                       const int            max_padding,
-                       const int            n_slices_to_process) {
+AccumulateDistributionKernel(T*                   input_ptr,
+                             histogram_storage_t* output_ptr,
+                             int4                 dims,
+                             const T              bin_min,
+                             const T              bin_inc,
+                             const int            max_padding,
+                             const int            n_slices_to_process) {
 
     // initialize temporary accumulation array input_ptr shared memory, this is equal to the number of bins input_ptr the histogram,
     // which may  be more or less than the number of threads input_ptr a block
@@ -122,8 +138,12 @@ histogram_smem_atomics(const InputType* __restrict__ input_ptr,
     histogram_storage_t* stored_array = &output_ptr[LinearBlockIdx_2dGrid( ) * TM::histogram_number_of_points];
 
     // Since the number of x-threads is enforced to be = to the number of bins, we can just copy the bins to shared memory
-    // Otherwise, we would need a loop to copy the bins to shared memory e.g. -> for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
-    smem[i] = __float2int_rn(stored_array[i]);
+    // Otherwise, we would need a loop to copy the bins to shared memory e.g. ->
+    //        smem[threadIdx.x] = __float2int_rn(stored_array[threadIdx.x]);
+    // FIXME:     // smem[i] = __float2int_rn(stored_array[i]);
+    for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
+        smem[i] = int(stored_array[i]);
+
     __syncthreads( );
 
     int pixel_idx;
@@ -137,7 +157,9 @@ histogram_smem_atomics(const InputType* __restrict__ input_ptr,
                 pixel_idx = convert_input(input_ptr, i, j, dims.w, bin_min, bin_inc);
                 // we have to check n_counts first otherwise the results are undefined on the first pass.
                 if ( n_counts > 0 && pixel_idx != previous_pixel_idx ) {
-                    atomicAdd(&smem[previous_pixel_idx], n_counts);
+                    if ( previous_pixel_idx >= 0 && previous_pixel_idx < TM::histogram_number_of_points ) {
+                        atomicAdd(&smem[previous_pixel_idx], n_counts);
+                    }
                     n_counts = 0;
                 }
                 else {
@@ -148,22 +170,23 @@ histogram_smem_atomics(const InputType* __restrict__ input_ptr,
         }
     }
     // We have to do a final cleanup in case we've been accumulating the same value:
-    if ( n_counts > 0 ) {
+    if ( n_counts > 0 && previous_pixel_idx >= 0 && previous_pixel_idx < TM::histogram_number_of_points ) {
         atomicAdd(&smem[previous_pixel_idx], n_counts);
     }
     __syncthreads( );
 
     // write partial histogram into the global memory
     // Converting to long was super slow. Given that I don't care about representing the number exactly, but do care about overflow, just switch the bins to histogram_storage_t
-    // As in the read case, we would need a loop if the number of threads != number of bins e.g. -> for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
-    stored_array[i] = __int2float_rn(smem[i]);
+    // As in the read case, we would need a loop if the number of threads != number of bins e.g. ->
+    // stored_array[threadIdx.x] = __int2float_rn(smem[threadIdx.x]);
+    for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
+        stored_array[i] = __int2float_rn(smem[i]);
 }
 
-template <InputType input_type>
 __global__ void
-histogram_final_accum(histogram_storage_t* input_ptr, int n_bins, int n_blocks) {
+FinalAccumulateKernel(histogram_storage_t* input_ptr, const int n_bins, const int n_blocks) {
 
-    int lIDX = physical_X_1d_grid( );
+    int lIDX = physical_X( );
 
     if ( lIDX < n_bins ) {
         histogram_storage_t total{0.0};
@@ -183,20 +206,30 @@ histogram_final_accum(histogram_storage_t* input_ptr, int n_bins, int n_blocks) 
  * @param input_data - pointer to the input data to accumulate, a stack of images.
  * @param n_images_this_batch - number of slices to accumulate, must be <= n_images_to_accumulate_concurrently
  */
-template <InputType input_type, bool per_image>
-void TM_EmpiricalDistribution::AccumulateDistribution(InputType* input_data, int n_images_this_batch) {
-    MyDebugAssertTrue(input_data, "The data to acmmulate is not input_ptr memory.");
-    MyDebugAssertTrue(n_images_this_batch <= n_images_to_accumulate_concurrently_, "The number of images to accumulate is greater than the number of images to accumulate concurrently");
 
-    if ( histogram_n_bins_ == 0 ) {
+template <typename InputType, bool per_image>
+void TM_EmpiricalDistribution<InputType, per_image>::AccumulateDistribution(InputType* input_data, int n_images_this_batch) {
+    MyDebugAssertTrue(input_data != nullptr, "The data to acmmulate is not input_ptr memory.");
+    MyDebugAssertTrue(n_images_this_batch <= n_images_to_accumulate_concurrently_, "The number of images to accumulate is greater than the number of images to accumulate concurrently");
+    MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
+
+    constexpr int n_threads_in_y_or_z = 1;
+    const int     y_grid_divisor      = 32; // TODO: optimize this.
+    dim3          threadsPerBlock_img = dim3(TM::histogram_number_of_points, n_threads_in_y_or_z, n_threads_in_y_or_z);
+
+    dim3 gridDims_img = dim3((image_dims_.x + threadsPerBlock_img.x - 1) / threadsPerBlock_img.x,
+                             (image_dims_.y + (y_grid_divisor + threadsPerBlock_img.y) - 1) / (y_grid_divisor - 1 + threadsPerBlock_img.y), 1);
+
+    if ( histogram_n_bins_ != 0 ) {
         precheck;
-        histogram_smem_atomics<<<gridDims_, blockDims_, 0, *calc_stream_>>>(
+        AccumulateDistributionKernel<<<gridDims_img, threadsPerBlock_img, 0, calc_stream_>>>(
                 input_data,
                 histogram_,
                 image_dims_,
                 histogram_min_,
                 histogram_step_,
-                n_border_pixels_to_ignore_for_histogram_);
+                n_border_pixels_to_ignore_for_histogram_,
+                n_images_this_batch);
         postcheck;
     }
     else if ( higher_order_moments_ ) {
@@ -204,28 +237,37 @@ void TM_EmpiricalDistribution::AccumulateDistribution(InputType* input_data, int
         // call the pixel wise kernel
     }
     else {
-        MyDebugAssertFalse(true, "This should never happen");
-        precheck;
-        histogram_and_stats_smem_atomics<<<gridDims_, blockDims_, 0, *calc_stream_>>>(
-                input_data,
-                image_dims_,
-                histogram_,
-                histogram_min_,
-                histogram_step_,
-                n_border_pixels_to_ignore_for_histogram_);
-        postcheck;
+        MyDebugAssertFalse(true, "The fused kernel is not yet implemented.");
+        // precheck;
+        // histogram_and_stats_smem_atomics<<<gridDims_, threadsPerBlock_, 0, calc_stream_>>>(
+        //         input_data,
+        //         image_dims_,
+        //         histogram_,
+        //         histogram_min_,
+        //         histogram_step_,
+        //         n_border_pixels_to_ignore_for_histogram_);
+        // postcheck;
     }
 };
 
-template <InputType input_type, bool per_image>
-void TM_EmpiricalDistribution::FinalAccumulate( ) {
+template <typename InputType, bool per_image>
+void TM_EmpiricalDistribution<InputType, per_image>::FinalAccumulate( ) {
+    MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
+
+    const int n_blocks = gridDims_.x * gridDims_.y;
+    const int n_bins   = TM::histogram_number_of_points;
+
+    // FIXME: this is from histogram.cu, but is probably not optimal
+    dim3 threadsPerBlock_accum_array = dim3(32, 1, 1);
+    dim3 gridDims_accum_array        = dim3((TM::histogram_number_of_points + threadsPerBlock_accum_array.x - 1) / threadsPerBlock_accum_array.x, 1, 1);
+
     precheck;
-    histogram_final_accum<<<gridDims_, blockDims_, 0, *calc_stream_>>>(histogram_, TM::histogram_number_of_points, gridDims_.x * gridDims_.y);
+    FinalAccumulateKernel<<<gridDims_accum_array, threadsPerBlock_accum_array, 0, calc_stream_>>>(histogram_, n_bins, n_blocks);
     postcheck;
 }
 
-template <InputType input_type, bool per_image>
-void TM_EmpiricalDistribution::CopyToHostAndAdd(long* array_to_add_to) {
+template <typename InputType, bool per_image>
+void TM_EmpiricalDistribution<InputType, per_image>::CopyToHostAndAdd(long* array_to_add_to) {
 
     // Make a temporary copy of the cummulative histogram on the host and then add on the host. TODO errorchecking
     histogram_storage_t* tmp_array;
@@ -238,3 +280,9 @@ void TM_EmpiricalDistribution::CopyToHostAndAdd(long* array_to_add_to) {
 
     cudaErr(cudaFreeHost(tmp_array));
 }
+
+template class TM_EmpiricalDistribution<__half, false>;
+template class TM_EmpiricalDistribution<__nv_bfloat16, false>;
+
+// Note: we allow for float in the constructor checking, however, we don't need this for our implementation, so we won't instantiate it.
+// template class TM_EmpiricalDistribution<float, per_image>;

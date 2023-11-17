@@ -3,13 +3,13 @@
 
 #include "TemplateMatchingCore.h"
 
-#define DO_HISTOGRAM true
+// #define DO_HISTOGRAM
 
 using namespace cistem_timer;
 
 constexpr bool use_gpu_prj               = false;
 constexpr int  n_prjs                    = 2;
-constexpr int  n_mips_to_process_at_once = 10;
+constexpr int  n_mips_to_process_at_once = 1;
 
 static_assert(n_mips_to_process_at_once == 1 || n_mips_to_process_at_once == 10, "n_mips_to_process_at_once must be 1 or 10");
 
@@ -189,13 +189,18 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     d_sum3.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
     d_sumSq3.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
 
+#ifdef DO_HISTOGRAM
     wxPrintf("Setting up the histogram\n\n");
     histogram.Init(histogram_number_of_bins, histogram_min_scaled, histogram_step_scaled);
     if ( max_padding > 2 ) {
         histogram.max_padding = max_padding;
     }
+#endif
 
-    empirical_distribution            = std::make_unique<EmpiricalDistribution<__half>>(d_input_image, histogram_min_scaled, histogram_step_scaled, max_madding, n_prjs, cudaStreamPerThread);
+    this->histogram_max_padding = max_padding;
+    this->histogram_min_scaled  = histogram_min_scaled;
+    this->histogram_step_scaled = histogram_step_scaled;
+
     this->my_progress                 = my_progress;
     this->total_correlation_positions = total_correlation_positions;
     this->is_running_locally          = is_running_locally;
@@ -211,6 +216,9 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 
 void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel, float c_defocus, int threadIDX, long& current_correlation_position) {
 
+#ifndef DO_HISTOGRAM
+    my_dist.emplace_back(d_input_image, histogram_min_scaled, histogram_step_scaled, histogram_max_padding, n_mips_to_process_at_once, cudaStreamPerThread);
+#endif
     // Make sure we are starting with zeros
     d_max_intensity_projection.Zeros( );
     d_best_psi.Zeros( );
@@ -374,13 +382,13 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             // d_padded_reference.MultiplyByConstant(rsqrtf(d_padded_reference.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels));
 
-            if ( DO_HISTOGRAM ) {
-                if ( ! histogram.is_allocated_histogram ) {
-                    d_padded_reference.NppInit( );
-                    histogram.BufferInit(d_padded_reference);
-                }
-                histogram.AddToHistogram(d_padded_reference);
+#ifdef DO_HISTOGRAM
+            if ( ! histogram.is_allocated_histogram ) {
+                d_padded_reference.NppInit( );
+                histogram.BufferInit(d_padded_reference);
             }
+            histogram.AddToHistogram(d_padded_reference);
+#endif
 
             // cudaErr(cudaEventSynchronize(mip_is_done_Event));
             if constexpr ( n_mips_to_process_at_once > 1 ) {
@@ -393,8 +401,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     total_mip_processed += current_mip_to_process;
-
-                    empirical_distribution.AccumulateDistribution(ccf_array, current_mip_to_process);
+#ifndef DO_HISTOGRAM
+                    my_dist.at(0).AccumulateDistribution(ccf_array, current_mip_to_process);
+#endif
                     MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
 
                     // This shouldn't be needed AFAIK as all work that might affect ccf array or mip_psi is done in cudaStreamPerThread
@@ -405,6 +414,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 }
             }
             else {
+#ifndef DO_HISTOGRAM
+                my_dist.at(0).AccumulateDistribution(d_padded_reference.real_values_fp16, 1);
+#endif
+
                 MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
                              __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
             }
@@ -471,7 +484,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-            empirical_distribution.AccumulateDistribution(ccf_array, current_mip_to_process);
+#ifndef DO_HISTOGRAM
+            my_dist.at(0).AccumulateDistribution(ccf_array, current_mip_to_process);
+#endif
             MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
             total_mip_processed += current_mip_to_process;
         }
@@ -491,9 +506,12 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     MipToImage( );
 
+#ifdef DO_HISTOGRAM
     MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!");
     histogram.Accumulate(d_padded_reference);
-    empirical_distribution.FinalAccumulate( );
+#else
+    my_dist.at(0).FinalAccumulate( );
+#endif
 
     cudaErr(cudaFreeAsync(mip_psi, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(sum_sumsq, cudaStreamPerThread));

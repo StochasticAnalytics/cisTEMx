@@ -89,8 +89,8 @@ Histogram::Histogram(int ignored_n_bins, float histogram_min, float histogram_st
 Histogram::~Histogram( ) {
 
     if ( is_allocated_histogram ) {
-        cudaErr(cudaFree(histogram))
-                cudaErr(cudaFree(cummulative_histogram));
+        cudaErr(cudaFree(histogram));
+        cudaErr(cudaFree(cummulative_histogram));
     }
 }
 
@@ -130,15 +130,15 @@ void Histogram::BufferInit(GpuImage& input_image) {
 
     // Every block will have a shared memory array of the size of the number of bins and aggregate those into their own
     // temp arrays. Only at the end of the search will these be added together
-    size_of_temp_hist = (gridDims_img.x * gridDims_img.y * cistem::match_template::histogram_number_of_points * sizeof(int));
+    size_of_temp_hist = (gridDims_img.x * gridDims_img.y * cistem::match_template::histogram_number_of_points * sizeof(float));
 
     // Array of temporary storage to accumulate the shared mem to
     cudaErr(cudaMalloc(&histogram, size_of_temp_hist));
-    cudaErr(cudaMalloc(&cummulative_histogram, cistem::match_template::histogram_number_of_points * sizeof(int)));
+    cudaErr(cudaMalloc(&cummulative_histogram, cistem::match_template::histogram_number_of_points * sizeof(float)));
 
     // could bring in the context and then put this to an async op
     cudaErr(cudaMemset(histogram, 0, size_of_temp_hist));
-    cudaErr(cudaMemset(cummulative_histogram, 0, (cistem::match_template::histogram_number_of_points) * sizeof(int)));
+    cudaErr(cudaMemset(cummulative_histogram, 0, (cistem::match_template::histogram_number_of_points) * sizeof(float)));
 
     is_allocated_histogram = true;
 }

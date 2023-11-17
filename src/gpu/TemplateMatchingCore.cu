@@ -107,35 +107,9 @@ class ProjectionQueue {
     }
 };
 
-TemplateMatchingCore::TemplateMatchingCore( ){
-
-};
-
-TemplateMatchingCore::TemplateMatchingCore(int number_of_jobs) {
-
-    Init(number_of_jobs);
-};
-
-TemplateMatchingCore::~TemplateMatchingCore( ){
-
-        // FIXME
-        //	if (is_allocated_cummulative_histogram)
-        //	{
-        //		cudaErr(cudaFree((void *)cummulative_histogram));
-        //		cudaErr(cudaFreeHost((void *)h_cummulative_histogram));
-        //	}
-
-};
-
-void TemplateMatchingCore::Init(int number_of_jobs) {
-    this->nThreads                        = 1;
-    this->number_of_jobs_per_image_in_gui = 1;
-    this->nGPUs                           = 1;
-};
-
 void TemplateMatchingCore::Init(MyApp*           parent_pointer,
-                                Image&           template_reconstruction,
-                                Image&           input_image,
+                                Image&           wanted_template_reconstruction,
+                                Image&           wanted_input_image,
                                 Image&           current_projection,
                                 float            pixel_size_search_range,
                                 float            pixel_size_step,
@@ -162,6 +136,9 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 
 {
 
+    MyDebugAssertFalse(object_initialized_, "Init must only be called once!");
+    object_initialized_ = true;
+
     this->first_search_position          = first_search_position;
     this->last_search_position           = last_search_position;
     this->angles                         = angles;
@@ -173,8 +150,8 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->psi_max   = psi_max;
 
     // It seems that I need a copy for these - 1) confirm, 2) if already copying, maybe put straight into pinned mem with cudaHostMalloc
-    this->template_reconstruction.CopyFrom(&template_reconstruction);
-    this->input_image.CopyFrom(&input_image);
+    template_reconstruction.CopyFrom(&wanted_template_reconstruction);
+    input_image.CopyFrom(&wanted_input_image);
 
     this->current_projection.reserve(n_prjs);
     for ( int i = 0; i < n_prjs; i++ ) {
@@ -196,7 +173,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
         this->template_gpu.CopyHostToDeviceTextureComplex3d(tmp_vol);
     }
 
-    d_input_image.Init(this->input_image);
+    d_input_image.Init(input_image);
     d_input_image.CopyHostToDevice(input_image);
 
     d_padded_reference.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
@@ -218,6 +195,7 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
         histogram.max_padding = max_padding;
     }
 
+    empirical_distribution            = std::make_unique<EmpiricalDistribution<__half>>(d_input_image, histogram_min_scaled, histogram_step_scaled, max_madding, n_prjs, cudaStreamPerThread);
     this->my_progress                 = my_progress;
     this->total_correlation_positions = total_correlation_positions;
     this->is_running_locally          = is_running_locally;
@@ -415,7 +393,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     total_mip_processed += current_mip_to_process;
+
+                    empirical_distribution.AccumulateDistribution(ccf_array, current_mip_to_process);
                     MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
+
                     // This shouldn't be needed AFAIK as all work that might affect ccf array or mip_psi is done in cudaStreamPerThread
                     cudaErr(cudaEventRecord(mip_is_done_Event, cudaStreamPerThread));
                     cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, mip_is_done_Event, cudaEventWaitDefault));
@@ -490,6 +471,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
+            empirical_distribution.AccumulateDistribution(ccf_array, current_mip_to_process);
             MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
             total_mip_processed += current_mip_to_process;
         }
@@ -509,8 +491,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     MipToImage( );
 
-    MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!")
-            histogram.Accumulate(d_padded_reference);
+    MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!");
+    histogram.Accumulate(d_padded_reference);
+    empirical_distribution.FinalAccumulate( );
 
     cudaErr(cudaFreeAsync(mip_psi, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(sum_sumsq, cudaStreamPerThread));

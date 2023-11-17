@@ -4,13 +4,22 @@
 #include "GpuImage.h"
 #include "DeviceManager.h"
 #include "Histogram.h"
+#include "template_matching_empirical_distribution.h"
 
 class TemplateMatchingCore {
 
+  private:
+    bool object_initialized_;
+
   public:
-    TemplateMatchingCore( );
-    TemplateMatchingCore(int number_of_jobs);
-    virtual ~TemplateMatchingCore( ); // FIXME: why is this virtual?
+    TemplateMatchingCore( ) : object_initialized_{false} { };
+    ~TemplateMatchingCore( );
+
+    // block copy and move explicitly
+    TemplateMatchingCore(const TemplateMatchingCore&)            = delete;
+    TemplateMatchingCore& operator=(const TemplateMatchingCore&) = delete;
+    TemplateMatchingCore(TemplateMatchingCore&&)                 = delete;
+    TemplateMatchingCore& operator=(TemplateMatchingCore&&)      = delete;
 
     void Init(int number_of_jobs);
 
@@ -77,6 +86,8 @@ class TemplateMatchingCore {
     bool      is_gpu_3d_swapped;
     Histogram histogram;
 
+    std::unique_ptr<TM_EmpiricalDistribution<__half>> empirical_distribution;
+
     // Search objects
     AnglesAndShifts angles;
     EulerSearch     global_euler_search;
@@ -130,8 +141,6 @@ class TemplateMatchingCore {
               int              number_of_global_search_images_to_save = 1);
 
     void RunInnerLoop(Image& projection_filter, float pixel_i, float defocus_i, int threadIDX, long& current_correlation_position);
-
-  private:
 };
 
 #endif

@@ -672,11 +672,11 @@ bool MatchTemplateApp::DoCalculation( ) {
         template_reconstruction.ZeroCentralPixel( );
         template_reconstruction.SwapRealSpaceQuadrants( );
 
-        //        wxPrintf("First search last search position %d/ %d\n",first_search_position, last_search_position);
-
         if ( use_gpu ) {
 #ifdef ENABLEGPU
 
+// TODO: for images that are being copied into the GPU, change to references in the call to Init
+// TODO: for cpu images not copied after the call to Init, unpin the memory to limit locked pages.
 #pragma omp parallel num_threads(max_threads)
             {
                 int tIDX = ReturnThreadNumberOfCurrentThread( );
@@ -767,7 +767,8 @@ bool MatchTemplateApp::DoCalculation( ) {
                             pixel_counter += max_intensity_projection.padding_jump_value;
                         }
 
-                        GPU[tIDX].histogram.CopyToHostAndAdd(histogram_data);
+                        // GPU[tIDX].histogram.CopyToHostAndAdd(histogram_data);
+                        GPU[tIDX]->empirical_distribution.CopyToHostAndAdd(histogram_data);
 
                         //                    current_correlation_position += GPU[tIDX].total_number_of_cccs_calculated;
                         actual_number_of_ccs_calculated += GPU[tIDX].total_number_of_cccs_calculated;

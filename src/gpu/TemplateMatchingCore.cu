@@ -38,7 +38,7 @@ class ProjectionQueue {
         int least_priority, highest_priority;
         cudaErr(cudaDeviceGetStreamPriorityRange(&least_priority, &highest_priority));
         for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
-            cudaErr(cudaStreamCreateWithPriority(&gpu_projection_stream[i], cudaStreamNonBlocking, highest_priority - 1));
+            cudaErr(cudaStreamCreateWithPriority(&gpu_projection_stream[i], cudaStreamNonBlocking, 0));
             cudaErr(cudaEventCreateWithFlags(&gpu_projection_is_ready_Event[i], cudaEventBlockingSync));
             cudaErr(cudaEventCreateWithFlags(&cpu_projection_is_writeable_Event[i], cudaEventBlockingSync));
         }
@@ -265,12 +265,13 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         cudaErr(cudaMallocAsync((void**)&d_phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
         cudaErr(cudaMallocAsync((void**)&ccf_array, sizeof(__half) * n_mips_to_process_at_once * d_input_image.real_memory_allocated, cudaStreamPerThread));
     }
-#endif
+
     cudaErr(cudaMallocAsync((void**)&mip_psi, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     cudaErr(cudaMallocAsync((void**)&theta_phi, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     cudaErr(cudaMallocAsync((void**)&sum_sumsq, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     cudaErr(cudaMemsetAsync(mip_psi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
     cudaErr(cudaMemsetAsync(theta_phi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
+#endif
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaMallocAsync((void**)&secondary_peaks, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
         cudaErr(cudaMemsetAsync(secondary_peaks, 0, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
@@ -352,6 +353,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // a public member.. if it works, make it private and return a reference instead
 
                 // d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false);
+                std::cerr << "Current projection idx: " << current_projection_idx << "\n";
+
                 d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue.gpu_projection_stream[current_projection_idx]);
 
                 // We need to make sure the current cpu projection is not used by the host until the gpu has finished with it, which may be independent of the main work
@@ -413,9 +416,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     total_mip_processed += current_mip_to_process;
-#ifndef DO_HISTOGRAM
-                    my_dist->AccumulateDistribution( );
-#endif
+
                     MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
 
                     // This shouldn't be needed AFAIK as all work that might affect ccf array or mip_psi is done in cudaStreamPerThread
@@ -432,13 +433,17 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 #endif
             }
             else {
-#ifndef DO_HISTOGRAM
-                my_dist->AccumulateDistribution( );
-#endif
+
+#ifdef FUSED_KERENEL
+                my_dist->AddValues(__float2half_rn(current_psi),
+                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
+                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
+#else
 
                 MipPixelWise(__float2half_rn(current_psi),
                              __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
                              __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
+#endif
             }
 
             ccc_counter++;
@@ -499,20 +504,16 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     projection_queue.PrintTimes( );
 
     // cudaStreamWaitEvent(cudaStreamPerThread, gpu_work_is_done_Event, 0);
-
+#ifndef FUSED_KERENEL
     if constexpr ( n_mips_to_process_at_once > 1 ) {
         if ( current_mip_to_process > 0 ) {
-#ifndef FUSED_KERENEL
+
             cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-#endif
-#ifndef DO_HISTOGRAM
-            my_dist->AccumulateDistribution( );
-#endif
-#ifndef FUSED_KERENEL
+
             MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
-#endif
+
             total_mip_processed += current_mip_to_process;
         }
     }
@@ -520,7 +521,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     else {
         AccumulateSums(sum_sumsq, d_sum1, d_sumSq1);
     }
-
+#endif
     wxPrintf("\t\t\ntotal number %d, total mips %d\n", ccc_counter, total_mip_processed);
 
     d_sum2.AddImage(d_sum1);
@@ -529,7 +530,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     d_sum3.AddImage(d_sum2);
     d_sumSq3.AddImage(d_sumSq2);
 
+#ifdef FUSED_KERENEL
+    my_dist->CopyStatisticsToArrays(d_max_intensity_projection.real_values, d_best_psi.real_values, d_best_theta.real_values, d_best_phi.real_values);
+#else
     MipToImage( );
+#endif
 
 #ifdef DO_HISTOGRAM
     MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!");
@@ -538,11 +543,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     my_dist->FinalAccumulate( );
 #endif
 
+#ifndef FUSED_KERENEL
     cudaErr(cudaFreeAsync(mip_psi, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(sum_sumsq, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(theta_phi, cudaStreamPerThread));
-
-#ifndef FUSED_KERENEL
     if constexpr ( n_mips_to_process_at_once > 1 ) {
         cudaErr(cudaFreeAsync(d_psi_array, cudaStreamPerThread));
         cudaErr(cudaFreeAsync(d_theta_array, cudaStreamPerThread));

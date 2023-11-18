@@ -33,12 +33,12 @@ class TM_EmpiricalDistribution {
     int       current_mip_to_process_;
     long      total_mips_processed_;
 
-    histogram_storage_t* sum_array_;
-    histogram_storage_t* sum_sq_array_;
-    mipType*             mip_psi_;
-    mipType*             theta_phi_;
-    ccfType*             psi_theta_phi_;
-    ccfType*             d_psi_theta_phi_;
+    histogram_storage_t*     sum_array_;
+    histogram_storage_t*     sum_sq_array_;
+    mipType*                 mip_psi_;
+    mipType*                 theta_phi_;
+    ccfType*                 d_psi_theta_phi_;
+    std::unique_ptr<ccfType> psi_theta_phi_;
 
     dim3 threadsPerBlock_;
     dim3 gridDims_;
@@ -75,7 +75,7 @@ class TM_EmpiricalDistribution {
 
     ~TM_EmpiricalDistribution( );
 
-    void AccumulateDistribution( );
+    void AccumulateDistribution(TM_AccumulationType::Enum accumulation_type);
     void FinalAccumulate( );
     void CopyToHostAndAdd(long* array_to_add_to);
 
@@ -85,15 +85,17 @@ class TM_EmpiricalDistribution {
     }
 
     void AllocateStatisticsArrays( );
+    void DeallocateStatisticsArrays( );
+    void CopyStatisticsToArrays(float* output_mip, float* output_psi, float* output_theta, float* output_phi);
     void AddValues(ccfType psi, ccfType theta, ccfType phi);
     void CopyPsiThetaPhiHostToDevice( );
 
     // The reason to have one array is to reduce calls to memcopy, for which the API overhead is measurable.
-    inline ccfType* GetHostPsiPtr( ) { return &psi_theta_phi_[0]; };
+    inline ccfType* GetHostPsiPtr( ) { return &psi_theta_phi_.get( )[0]; };
 
-    inline ccfType* GetHostThetaPtr( ) { return &psi_theta_phi_[n_images_to_accumulate_concurrently_]; };
+    inline ccfType* GetHostThetaPtr( ) { return &psi_theta_phi_.get( )[n_images_to_accumulate_concurrently_]; };
 
-    inline ccfType* GetHostPhiPtr( ) { return &psi_theta_phi_[2 * n_images_to_accumulate_concurrently_]; };
+    inline ccfType* GetHostPhiPtr( ) { return &psi_theta_phi_.get( )[2 * n_images_to_accumulate_concurrently_]; };
 
     inline ccfType* GetDevicePsiPtr( ) { return &d_psi_theta_phi_[0]; };
 

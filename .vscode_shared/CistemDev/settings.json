@@ -98,7 +98,8 @@
         "ios": "cpp",
         "target": "cpp",
         "typeindex": "cpp",
-        "__debug": "cpp"
+        "__debug": "cpp",
+        "stream_ref": "cpp"
     },
     "C_Cpp.clang_format_path": "/usr/bin/clang-format-14",
     "editor.formatOnSave": true,

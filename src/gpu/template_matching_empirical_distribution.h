@@ -13,6 +13,13 @@
 
 using histogram_storage_t = float;
 
+namespace TM_AccumulationType {
+enum Enum : int { HistogramOnly,
+                  HistogramAndMip,
+                  HistogramAndMipAndHigherOrderMoments };
+
+} // namespace TM_AccumulationType
+
 template <typename ccfType, typename mipType, bool per_image = false>
 class TM_EmpiricalDistribution {
 
@@ -24,14 +31,16 @@ class TM_EmpiricalDistribution {
     int       histogram_n_bins_;
     int       n_border_pixels_to_ignore_for_histogram_;
     const int n_images_to_accumulate_concurrently_;
+    int       current_mip_to_process_;
+    long      total_mips_processed_;
 
-    float*   sum_array;
+    float*   sum_array_;
     float*   sum_sq_array;
-    mipType* mip_psi;
-    mipType* mip_theta;
-    ccfType* psi;
-    ccfType* theta;
-    ccfType* phi;
+    mipType* mip_psi_;
+    mipType* theta_phi_;
+    ccfType* psi_theta_phi_;
+    ccfType* d_psi_theta_phi_;
+    ccfType* ccf_array_;
 
     dim3 threadsPerBlock_;
     dim3 gridDims_;
@@ -40,6 +49,7 @@ class TM_EmpiricalDistribution {
 
     histogram_storage_t* histogram_;
     cudaStream_t         calc_stream_; // Managed by some external resource
+    cudaEvent_t          mip_is_done_Event_;
 
   public:
     /**
@@ -62,7 +72,7 @@ class TM_EmpiricalDistribution {
 
     ~TM_EmpiricalDistribution( );
 
-    void AccumulateDistribution(ccfType* input_data, int n_images_this_batch);
+    void AccumulateDistribution(ccfType* input_data);
     void FinalAccumulate( );
     void CopyToHostAndAdd(long* array_to_add_to);
 
@@ -70,6 +80,25 @@ class TM_EmpiricalDistribution {
         MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
         calc_stream_ = calc_stream;
     }
+
+    void AllocateStatisticsArrays( );
+    void AddValues(ccfType ccf_array, ccfType psi, ccfType theta, ccfType phi);
+    void CopyPsiThetaPhiHostToDevice( );
+
+    // The reason to have one array is to reduce calls to memcopy, for which the API overhead is measurable.
+    inline ccfType* GetHostPsiPtr( ) { return &psi_theta_phi_[0]; };
+
+    inline ccfType* GetHostThetaPtr( ) { return &psi_theta_phi_[n_images_to_accumulate_concurrently_]; };
+
+    inline ccfType* GetHostPhiPtr( ) { return &psi_theta_phi_[2 * n_images_to_accumulate_concurrently_]; };
+
+    inline ccfType* GetDevicePsiPtr( ) { return &d_psi_theta_phi_[0]; };
+
+    inline ccfType* GetDeviceThetaPtr( ) { return &d_psi_theta_phi_[n_images_to_accumulate_concurrently_]; };
+
+    inline ccfType* GetDevicePhiPtr( ) { return &d_psi_theta_phi_[2 * n_images_to_accumulate_concurrently_]; };
+
+    inline ccfType* GetDeviceCCFPtr( ) { return &ccf_array_[current_image_index_]; };
 };
 
 #endif

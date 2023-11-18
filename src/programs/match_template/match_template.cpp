@@ -768,7 +768,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                         }
 
                         // GPU[tIDX].histogram.CopyToHostAndAdd(histogram_data);
-                        GPU[tIDX].my_dist.at(0).CopyToHostAndAdd(histogram_data);
+                        GPU[tIDX].my_dist->CopyToHostAndAdd(histogram_data);
 
                         //                    current_correlation_position += GPU[tIDX].total_number_of_cccs_calculated;
                         actual_number_of_ccs_calculated += GPU[tIDX].total_number_of_cccs_calculated;

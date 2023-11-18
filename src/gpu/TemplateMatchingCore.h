@@ -85,7 +85,7 @@ class TemplateMatchingCore {
     bool      is_gpu_3d_swapped;
     Histogram histogram;
 
-    std::vector<TM_EmpiricalDistribution<__half, __half2>> my_dist;
+    std::unique_ptr<TM_EmpiricalDistribution<__half, __half2>> my_dist;
 
     float histogram_min_scaled;
     float histogram_step_scaled;

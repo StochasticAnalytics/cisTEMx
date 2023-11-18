@@ -401,14 +401,12 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     total_mip_processed += current_mip_to_process;
+
 #ifndef DO_HISTOGRAM
                     my_dist.at(0).AccumulateDistribution(ccf_array, current_mip_to_process);
 #endif
-                    MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
 
-                    // This shouldn't be needed AFAIK as all work that might affect ccf array or mip_psi is done in cudaStreamPerThread
-                    cudaErr(cudaEventRecord(mip_is_done_Event, cudaStreamPerThread));
-                    cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, mip_is_done_Event, cudaEventWaitDefault));
+                    MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
 
                     current_mip_to_process = 0;
                 }
@@ -518,9 +516,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaFreeAsync(theta_phi, cudaStreamPerThread));
 
     if constexpr ( n_mips_to_process_at_once > 1 ) {
-        delete[] psi_array;
-        delete[] theta_array;
-        delete[] phi_array;
         cudaErr(cudaFreeAsync(d_psi_array, cudaStreamPerThread));
         cudaErr(cudaFreeAsync(d_theta_array, cudaStreamPerThread));
         cudaErr(cudaFreeAsync(d_phi_array, cudaStreamPerThread));
@@ -531,7 +526,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         cudaErr(cudaFreeAsync(secondary_peaks, cudaStreamPerThread));
     }
 
+    // make sure the final copies from these arrays is complete before we delete them.
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+
+    if constexpr ( n_mips_to_process_at_once > 1 ) {
+        delete[] psi_array;
+        delete[] theta_array;
+        delete[] phi_array;
+    }
 }
 
 __global__ void MipPixelWiseKernel(__half* ccf, __half2* mip_psi, const int numel,

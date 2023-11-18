@@ -25,7 +25,6 @@ class TM_EmpiricalDistribution {
 
   private:
     bool      higher_order_moments_;
-    int       current_image_index_;
     ccfType   histogram_min_;
     ccfType   histogram_step_;
     int       histogram_n_bins_;
@@ -34,24 +33,26 @@ class TM_EmpiricalDistribution {
     int       current_mip_to_process_;
     long      total_mips_processed_;
 
-    float*   sum_array_;
-    float*   sum_sq_array;
-    mipType* mip_psi_;
-    mipType* theta_phi_;
-    ccfType* psi_theta_phi_;
-    ccfType* d_psi_theta_phi_;
-    ccfType* ccf_array_;
+    histogram_storage_t* sum_array_;
+    histogram_storage_t* sum_sq_array_;
+    mipType*             mip_psi_;
+    mipType*             theta_phi_;
+    ccfType*             psi_theta_phi_;
+    ccfType*             d_psi_theta_phi_;
 
     dim3 threadsPerBlock_;
     dim3 gridDims_;
 
     int4 image_dims_;
+    int  image_n_elements_allocated_;
 
     histogram_storage_t* histogram_;
     cudaStream_t         calc_stream_; // Managed by some external resource
     cudaEvent_t          mip_is_done_Event_;
 
   public:
+    ccfType* ccf_array_;
+
     /**
  * @brief Construct a new TM_EmpiricalDistribution
  * Note: both histogram_min and histogram step must be > 0 or no histogram will be created
@@ -63,16 +64,18 @@ class TM_EmpiricalDistribution {
  * @param n_images_to_accumulate_concurrently - the number of images to accumulate concurrently
  * 
  */
-    TM_EmpiricalDistribution(GpuImage&           reference_image,
-                             histogram_storage_t histogram_min,
-                             histogram_storage_t histogram_step,
-                             int                 n_border_pixels_to_ignore_for_histogram,
-                             const int           n_images_to_accumulate_before_final_accumulation,
-                             cudaStream_t        calc_stream = cudaStreamPerThread);
+    TM_EmpiricalDistribution(GpuImage&            reference_image,
+                             histogram_storage_t* sum_array,
+                             histogram_storage_t* sum_sq_array,
+                             histogram_storage_t  histogram_min,
+                             histogram_storage_t  histogram_step,
+                             int                  n_border_pixels_to_ignore_for_histogram,
+                             const int            n_images_to_accumulate_before_final_accumulation,
+                             cudaStream_t         calc_stream = cudaStreamPerThread);
 
     ~TM_EmpiricalDistribution( );
 
-    void AccumulateDistribution(ccfType* input_data);
+    void AccumulateDistribution( );
     void FinalAccumulate( );
     void CopyToHostAndAdd(long* array_to_add_to);
 
@@ -82,7 +85,7 @@ class TM_EmpiricalDistribution {
     }
 
     void AllocateStatisticsArrays( );
-    void AddValues(ccfType ccf_array, ccfType psi, ccfType theta, ccfType phi);
+    void AddValues(ccfType psi, ccfType theta, ccfType phi);
     void CopyPsiThetaPhiHostToDevice( );
 
     // The reason to have one array is to reduce calls to memcopy, for which the API overhead is measurable.
@@ -98,7 +101,7 @@ class TM_EmpiricalDistribution {
 
     inline ccfType* GetDevicePhiPtr( ) { return &d_psi_theta_phi_[2 * n_images_to_accumulate_concurrently_]; };
 
-    inline ccfType* GetDeviceCCFPtr( ) { return &ccf_array_[current_image_index_]; };
+    inline ccfType* GetDeviceCCFPtr( ) { return &ccf_array_[current_mip_to_process_]; };
 };
 
 #endif

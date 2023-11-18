@@ -218,7 +218,10 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel, float c_defocus, int threadIDX, long& current_correlation_position) {
 
 #ifndef DO_HISTOGRAM
-    my_dist.make_unique(d_input_image, histogram_min_scaled, histogram_step_scaled, histogram_max_padding, n_mips_to_process_at_once, cudaStreamPerThread);
+    // TODO: print val from constructor to make sure we aren't re-allocating
+    my_dist = std::make_unique<TM_EmpiricalDistribution<__half, __half2>>(d_input_image, d_sum1.real_values, d_sumSq1.real_values,
+                                                                          histogram_min_scaled, histogram_step_scaled, histogram_max_padding,
+                                                                          n_mips_to_process_at_once, cudaStreamPerThread);
 #endif
     // Make sure we are starting with zeros
     d_max_intensity_projection.Zeros( );
@@ -411,7 +414,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
                     total_mip_processed += current_mip_to_process;
 #ifndef DO_HISTOGRAM
-                    my_dist->AccumulateDistribution(ccf_array, current_mip_to_process);
+                    my_dist->AccumulateDistribution( );
 #endif
                     MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
 
@@ -422,17 +425,19 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     current_mip_to_process = 0;
                 }
 #else
-                my_dist.AddValues(current_mip_to_process, __float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
-                cudaErr(cudaEventRecord(mip_is_done_Event, cudaStreamPerThread));
-                cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, mip_is_done_Event, cudaEventWaitDefault));
+                my_dist->AddValues(__float2half_rn(current_psi),
+                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
+                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
+
 #endif
             }
             else {
 #ifndef DO_HISTOGRAM
-                my_dist->AccumulateDistribution(d_padded_reference.real_values_fp16, 1);
+                my_dist->AccumulateDistribution( );
 #endif
 
-                MipPixelWise(__float2half_rn(current_psi), __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
+                MipPixelWise(__float2half_rn(current_psi),
+                             __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
                              __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
             }
 
@@ -440,9 +445,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             total_number_of_cccs_calculated++;
 
             if constexpr ( n_mips_to_process_at_once == 1 ) {
+#ifndef FUSED_KERENEL
                 if ( ccc_counter % 10 == 0 ) {
                     AccumulateSums(sum_sumsq, d_sum1, d_sumSq1);
                 }
+#endif
             }
 
             if ( ccc_counter % 100 == 0 ) {
@@ -495,13 +502,17 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
     if constexpr ( n_mips_to_process_at_once > 1 ) {
         if ( current_mip_to_process > 0 ) {
+#ifndef FUSED_KERENEL
             cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
             cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-#ifndef DO_HISTOGRAM
-            my_dist->AccumulateDistribution(ccf_array, current_mip_to_process);
 #endif
+#ifndef DO_HISTOGRAM
+            my_dist->AccumulateDistribution( );
+#endif
+#ifndef FUSED_KERENEL
             MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
+#endif
             total_mip_processed += current_mip_to_process;
         }
     }
@@ -531,21 +542,27 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     cudaErr(cudaFreeAsync(sum_sumsq, cudaStreamPerThread));
     cudaErr(cudaFreeAsync(theta_phi, cudaStreamPerThread));
 
+#ifndef FUSED_KERENEL
     if constexpr ( n_mips_to_process_at_once > 1 ) {
-        delete[] psi_array;
-        delete[] theta_array;
-        delete[] phi_array;
         cudaErr(cudaFreeAsync(d_psi_array, cudaStreamPerThread));
         cudaErr(cudaFreeAsync(d_theta_array, cudaStreamPerThread));
         cudaErr(cudaFreeAsync(d_phi_array, cudaStreamPerThread));
         cudaErr(cudaFreeAsync(ccf_array, cudaStreamPerThread));
     }
-
+#endif
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaFreeAsync(secondary_peaks, cudaStreamPerThread));
     }
 
+    // make sure the final copies from these arrays is complete before we delete them.
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+#ifndef FUSED_KERENEL
+    if constexpr ( n_mips_to_process_at_once > 1 ) {
+        delete[] psi_array;
+        delete[] theta_array;
+        delete[] phi_array;
+    }
+#endif
 }
 
 __global__ void MipPixelWiseKernel(__half* ccf, __half2* mip_psi, const int numel,

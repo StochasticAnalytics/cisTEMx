@@ -32,16 +32,21 @@ inline __device__ __host__ bool test_gt_zero(T value) {
  * 
  */
 template <typename ccfType, typename mipType, bool per_image>
-TM_EmpiricalDistribution<ccfType, mipType, per_image>::TM_EmpiricalDistribution(GpuImage&           reference_image,
-                                                                                histogram_storage_t histogram_min,
-                                                                                histogram_storage_t histogram_step,
-                                                                                int                 n_border_pixels_to_ignore_for_histogram,
-                                                                                const int           n_images_to_accumulate_concurrently,
-                                                                                cudaStream_t        calc_stream) : n_images_to_accumulate_concurrently_{n_images_to_accumulate_concurrently},
-                                                                                                            n_border_pixels_to_ignore_for_histogram_{n_border_pixels_to_ignore_for_histogram},
-                                                                                                            calc_stream_{calc_stream},
-                                                                                                            current_mip_to_process_{0},
-                                                                                                            higher_order_moments_{false} {
+TM_EmpiricalDistribution<ccfType, mipType, per_image>::TM_EmpiricalDistribution(GpuImage&            reference_image,
+                                                                                histogram_storage_t* sum_array,
+                                                                                histogram_storage_t* sum_sq_array,
+                                                                                histogram_storage_t  histogram_min,
+                                                                                histogram_storage_t  histogram_step,
+                                                                                int                  n_border_pixels_to_ignore_for_histogram,
+                                                                                const int            n_images_to_accumulate_concurrently,
+                                                                                cudaStream_t         calc_stream)
+    : sum_array_{sum_array},
+      sum_sq_array_{sum_sq_array},
+      n_images_to_accumulate_concurrently_{n_images_to_accumulate_concurrently},
+      n_border_pixels_to_ignore_for_histogram_{n_border_pixels_to_ignore_for_histogram},
+      calc_stream_{calc_stream},
+      current_mip_to_process_{0},
+      higher_order_moments_{false} {
 
     static_assert(per_image == false, "This class does not support per image accumulation yet");
 
@@ -78,10 +83,11 @@ TM_EmpiricalDistribution<ccfType, mipType, per_image>::TM_EmpiricalDistribution(
         histogram_n_bins_ = 0;
     }
 
-    image_dims_.x = reference_image.dims.x;
-    image_dims_.y = reference_image.dims.y;
-    image_dims_.z = reference_image.dims.z;
-    image_dims_.w = reference_image.dims.w;
+    image_dims_.x               = reference_image.dims.x;
+    image_dims_.y               = reference_image.dims.y;
+    image_dims_.z               = reference_image.dims.z;
+    image_dims_.w               = reference_image.dims.w;
+    image_n_elements_allocated_ = reference_image.real_memory_allocated;
 
     MyDebugAssertTrue(image_dims_.x > 0 && image_dims_.y > 0 && image_dims_.z > 0 && image_dims_.w > 0, "Image dimensions must be > 0");
 
@@ -95,10 +101,7 @@ TM_EmpiricalDistribution<ccfType, mipType, per_image>::TM_EmpiricalDistribution(
     // Every block will have a shared memory array of the size of the number of bins and aggregate those into their own
     // temp arrays. Only at the end of the search will these be added together'
 
-    // Array of temporary storage to accumulate the shared mem to
-    cudaErr(cudaMallocAsync(&histogram_, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
-    cudaErr(cudaMemsetAsync(histogram_, 0, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
-    cudaErr(cudaEventCreateWithFlags(&mip_is_done_Event_, cudaEventBlockingSync));
+    AllocateStatisticsArrays( );
 };
 
 template <typename ccfType, typename mipType, bool per_image>
@@ -273,12 +276,11 @@ FinalAccumulateKernel(histogram_storage_t* input_ptr, const int n_bins, const in
  * If set to record a histogram, a fused kernal will be called to accumulate the histogram and the pixel wise distribution
  * If set to track 3rd and 4th moments of the distribution, a fused kernel will be called to accumulate the moments and the pixel wise distribution
  * 
- * @param input_data - pointer to the input data to accumulate, a stack of images.
  */
 
 template <typename ccfType, typename mipType, bool per_image>
-void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AccumulateDistribution(ccfType* input_data) {
-    MyDebugAssertTrue(input_data != nullptr, "The data to acmmulate is not input_ptr memory.");
+void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AccumulateDistribution( ) {
+    MyDebugAssertTrue(ccf_array_ != nullptr, "The data to acmmulate is not input_ptr memory.");
     MyDebugAssertTrue(current_mip_to_process_ <= n_images_to_accumulate_concurrently_, "The number of images to accumulate is greater than the number of images to accumulate concurrently");
     MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
 
@@ -295,7 +297,7 @@ void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AccumulateDistributi
 
         precheck;
         AccumulateDistributionKernel<TM_AccumulationType::HistogramOnly><<<gridDims_img, threadsPerBlock_img, 0, calc_stream_>>>(
-                input_data,
+                ccf_array_,
                 histogram_,
                 image_dims_,
                 histogram_min_,
@@ -322,13 +324,13 @@ void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AccumulateDistributi
         precheck;
 
         AccumulateDistributionKernel<TM_AccumulationType::HistogramAndMip><<<gridDims_img, threadsPerBlock_img, 0, calc_stream_>>>(
-                input_data,
+                ccf_array_,
                 histogram_,
                 image_dims_,
                 histogram_min_,
                 histogram_step_,
                 n_border_pixels_to_ignore_for_histogram_,
-                n_images_this_batch,
+                current_mip_to_process_,
                 sum_array_,
                 sum_sq_array_,
                 mip_psi_,
@@ -375,14 +377,19 @@ template <typename ccfType, typename mipType, bool per_image>
 void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AllocateStatisticsArrays( ) {
     MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
 
+    // Array of temporary storage to accumulate the shared mem to
+    cudaErr(cudaMallocAsync(&histogram_, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
+    cudaErr(cudaMemsetAsync(histogram_, 0, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
+    cudaErr(cudaEventCreateWithFlags(&mip_is_done_Event_, cudaEventBlockingSync));
+
     psi_theta_phi_ = new ccfType[n_images_to_accumulate_concurrently_ * 3];
 
     cudaErr(cudaMallocAsync((void**)&d_psi_theta_phi_, sizeof(ccfType) * n_images_to_accumulate_concurrently_ * 3, calc_stream_));
-    cudaErr(cudaMallocAsync((void**)&ccf_array_, sizeof(__half) * n_mips_to_process_at_once_ * d_input_image.real_memory_allocated, calc_stream_));
+    cudaErr(cudaMallocAsync((void**)&ccf_array_, sizeof(__half) * n_images_to_accumulate_concurrently_ * image_n_elements_allocated_, calc_stream_));
 }
 
 template <typename ccfType, typename mipType, bool per_image>
-void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AddValues(ccfType ccf_array, ccfType psi, ccfType theta, ccfType phi) {
+void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AddValues(ccfType psi, ccfType theta, ccfType phi) {
 
     MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
 
@@ -403,8 +410,9 @@ void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AddValues(ccfType cc
         CopyPsiThetaPhiHostToDevice( );
         total_mips_processed_ += current_mip_to_process_;
 
-        AccumulateDistribution(ccf_array);
+        AccumulateDistribution( );
 
+        // FIXME: this should be something we can remove.
         // This shouldn't be needed AFAIK as all work that might affect ccf array or mip_psi is done in cudaStreamPerThread
         cudaErr(cudaEventRecord(mip_is_done_Event_, calc_stream_));
         cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, mip_is_done_Event_, cudaEventWaitDefault));
@@ -417,7 +425,7 @@ template <typename ccfType, typename mipType, bool per_image>
 void TM_EmpiricalDistribution<ccfType, mipType, per_image>::CopyPsiThetaPhiHostToDevice( ) {
     MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
 
-    cudaErr(cudaMemcpyAsync(d_psi_theta_phi_, psi_theta_phi_, sizeof(ccfType) * n_images_to_accumulate_concurrently_ * 3, cudaMemcpyDeviceToHost, calc_stream_));
+    cudaErr(cudaMemcpyAsync(d_psi_theta_phi_, psi_theta_phi_, sizeof(ccfType) * n_images_to_accumulate_concurrently_ * 3, cudaMemcpyHostToDevice, calc_stream_));
 }
 template class TM_EmpiricalDistribution<__half, __half2, false>;
 template class TM_EmpiricalDistribution<__nv_bfloat16, __nv_bfloat162, false>;

@@ -13,17 +13,25 @@
 
 using histogram_storage_t = float;
 
-template <typename InputType, bool per_image = false>
+template <typename ccfType, typename mipType, bool per_image = false>
 class TM_EmpiricalDistribution {
 
   private:
     bool      higher_order_moments_;
     int       current_image_index_;
-    InputType histogram_min_;
-    InputType histogram_step_;
+    ccfType   histogram_min_;
+    ccfType   histogram_step_;
     int       histogram_n_bins_;
     int       n_border_pixels_to_ignore_for_histogram_;
     const int n_images_to_accumulate_concurrently_;
+
+    float*   sum_array;
+    float*   sum_sq_array;
+    mipType* mip_psi;
+    mipType* mip_theta;
+    ccfType* psi;
+    ccfType* theta;
+    ccfType* phi;
 
     dim3 threadsPerBlock_;
     dim3 gridDims_;
@@ -54,7 +62,7 @@ class TM_EmpiricalDistribution {
 
     ~TM_EmpiricalDistribution( );
 
-    void AccumulateDistribution(InputType* input_data, int n_images_this_batch);
+    void AccumulateDistribution(ccfType* input_data, int n_images_this_batch);
     void FinalAccumulate( );
     void CopyToHostAndAdd(long* array_to_add_to);
 

@@ -3,13 +3,11 @@
 
 #include "TemplateMatchingCore.h"
 
-#define FUSED_KERENEL
-
 using namespace cistem_timer;
 
 constexpr bool use_gpu_prj               = false;
 constexpr int  n_prjs                    = 2;
-constexpr int  n_mips_to_process_at_once = 10;
+constexpr int  n_mips_to_process_at_once = 1;
 
 static_assert(n_mips_to_process_at_once == 1 || n_mips_to_process_at_once == 10, "n_mips_to_process_at_once must be 1 or 10");
 
@@ -193,6 +191,9 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 
     this->parent_pointer = parent_pointer;
 
+    this->padding_x = padding_x;
+    this->padding_y = padding_y;
+
     // For now we are only working on the inner loop, so no need to track best_defocus and best_pixel_size
 
     // At the outset these are all empty cpu images, so don't xfer, just allocate on gpuDev
@@ -230,32 +231,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     d_input_image.CopyFP32toFP16buffer(false);
     d_padded_reference.CopyFP32toFP16buffer(false);
 
-#ifndef FUSED_KERENEL
-    __half* psi_array;
-    __half* theta_array;
-    __half* phi_array;
-    __half* d_psi_array;
-    __half* d_theta_array;
-    __half* d_phi_array;
-    __half* ccf_array;
-
-    if constexpr ( n_mips_to_process_at_once > 1 ) {
-        psi_array   = new __half[n_mips_to_process_at_once];
-        theta_array = new __half[n_mips_to_process_at_once];
-        phi_array   = new __half[n_mips_to_process_at_once];
-
-        cudaErr(cudaMallocAsync((void**)&d_psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
-        cudaErr(cudaMallocAsync((void**)&d_theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
-        cudaErr(cudaMallocAsync((void**)&d_phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaStreamPerThread));
-        cudaErr(cudaMallocAsync((void**)&ccf_array, sizeof(__half) * n_mips_to_process_at_once * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    }
-
-    cudaErr(cudaMallocAsync((void**)&mip_psi, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMallocAsync((void**)&theta_phi, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMallocAsync((void**)&sum_sumsq, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMemsetAsync(mip_psi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-    cudaErr(cudaMemsetAsync(theta_phi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
-#endif
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaMallocAsync((void**)&secondary_peaks, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
         cudaErr(cudaMemsetAsync(secondary_peaks, 0, sizeof(__half) * d_input_image.real_memory_allocated * n_global_search_images_to_save * 4, cudaStreamPerThread));
@@ -363,73 +338,16 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             d_padded_reference.ForwardFFT(false);
 
-            //      d_padded_reference.ForwardFFTAndClipInto(d_current_projection,false);
-            if constexpr ( n_mips_to_process_at_once > 1 ) {
-#ifdef FUSED_KERENEL
-                d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true, my_dist->GetDeviceCCFPtr( ));
-#else
-                d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true, &ccf_array[current_mip_to_process * d_input_image.real_memory_allocated]);
-#endif
-            }
-            else {
-                d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true);
-            }
+            d_padded_reference.BackwardFFTAfterComplexConjMul(d_input_image.complex_values_fp16, true, my_dist->GetDeviceCCFPtr( ));
 
             // d_padded_reference.MultiplyByConstant(rsqrtf(d_padded_reference.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels));
 
-            // cudaErr(cudaEventSynchronize(mip_is_done_Event));
-            if constexpr ( n_mips_to_process_at_once > 1 ) {
-#ifndef FUSED_KERENEL
-                psi_array[current_mip_to_process]   = __float2half_rn(current_psi);
-                theta_array[current_mip_to_process] = __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]);
-                phi_array[current_mip_to_process]   = __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]);
-
-                current_mip_to_process++;
-                if ( current_mip_to_process == n_mips_to_process_at_once ) {
-                    cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-                    cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-                    cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-                    total_mip_processed += current_mip_to_process;
-
-                    MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
-
-                    // This shouldn't be needed AFAIK as all work that might affect ccf array or mip_psi is done in cudaStreamPerThread
-                    cudaErr(cudaEventRecord(mip_is_done_Event, cudaStreamPerThread));
-                    cudaErr(cudaStreamWaitEvent(cudaStreamPerThread, mip_is_done_Event, cudaEventWaitDefault));
-
-                    current_mip_to_process = 0;
-                }
-#else
-                my_dist->AddValues(__float2half_rn(current_psi),
-                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
-                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
-
-#endif
-            }
-            else {
-
-#ifdef FUSED_KERENEL
-                my_dist->AddValues(__float2half_rn(current_psi),
-                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
-                                   __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
-#else
-
-                MipPixelWise(__float2half_rn(current_psi),
-                             __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
-                             __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
-#endif
-            }
+            my_dist->AddValues(__float2half_rn(current_psi),
+                               __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]),
+                               __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][0]));
 
             ccc_counter++;
             total_number_of_cccs_calculated++;
-
-            if constexpr ( n_mips_to_process_at_once == 1 ) {
-#ifndef FUSED_KERENEL
-                if ( ccc_counter % 10 == 0 ) {
-                    AccumulateSums(sum_sumsq, d_sum1, d_sumSq1);
-                }
-#endif
-            }
 
             if ( ccc_counter % 100 == 0 ) {
                 d_sum2.AddImage(d_sum1);
@@ -478,24 +396,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     projection_queue.PrintTimes( );
 
     // cudaStreamWaitEvent(cudaStreamPerThread, gpu_work_is_done_Event, 0);
-#ifndef FUSED_KERENEL
-    if constexpr ( n_mips_to_process_at_once > 1 ) {
-        if ( current_mip_to_process > 0 ) {
 
-            cudaErr(cudaMemcpyAsync(d_psi_array, psi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-            cudaErr(cudaMemcpyAsync(d_theta_array, theta_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-            cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
-
-            MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
-
-            total_mip_processed += current_mip_to_process;
-        }
-    }
-
-    else {
-        AccumulateSums(sum_sumsq, d_sum1, d_sumSq1);
-    }
-#endif
     wxPrintf("\t\t\ntotal number %d, total mips %d\n", ccc_counter, total_mip_processed);
 
     d_sum2.AddImage(d_sum1);
@@ -504,38 +405,16 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     d_sum3.AddImage(d_sum2);
     d_sumSq3.AddImage(d_sumSq2);
 
-#ifdef FUSED_KERENEL
     my_dist->CopyStatisticsToArrays(d_max_intensity_projection.real_values, d_best_psi.real_values, d_best_theta.real_values, d_best_phi.real_values);
-#else
-    MipToImage( );
-#endif
 
     my_dist->FinalAccumulate( );
 
-#ifndef FUSED_KERENEL
-    cudaErr(cudaFreeAsync(mip_psi, cudaStreamPerThread));
-    cudaErr(cudaFreeAsync(sum_sumsq, cudaStreamPerThread));
-    cudaErr(cudaFreeAsync(theta_phi, cudaStreamPerThread));
-    if constexpr ( n_mips_to_process_at_once > 1 ) {
-        cudaErr(cudaFreeAsync(d_psi_array, cudaStreamPerThread));
-        cudaErr(cudaFreeAsync(d_theta_array, cudaStreamPerThread));
-        cudaErr(cudaFreeAsync(d_phi_array, cudaStreamPerThread));
-        cudaErr(cudaFreeAsync(ccf_array, cudaStreamPerThread));
-    }
-#endif
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaFreeAsync(secondary_peaks, cudaStreamPerThread));
     }
 
     // make sure the final copies from these arrays is complete before we delete them.
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-#ifndef FUSED_KERENEL
-    if constexpr ( n_mips_to_process_at_once > 1 ) {
-        delete[] psi_array;
-        delete[] theta_array;
-        delete[] phi_array;
-    }
-#endif
 }
 
 __global__ void MipPixelWiseKernel(__half* ccf, __half2* mip_psi, const int numel,

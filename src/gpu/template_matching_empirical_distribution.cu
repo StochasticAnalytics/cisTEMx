@@ -112,19 +112,17 @@ TM_EmpiricalDistribution<ccfType, mipType, per_image>::~TM_EmpiricalDistribution
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-inline __device__ void convert_input(T* input_ptr, int x, int y, int z, int NY, int pitch_in_pixels,
-                                     const T bin_min, const T bin_inc, int& pixel_idx, T& val, int& address_2d) {
-    address_2d = y * pitch_in_pixels + x;
+inline __device__ void convert_input(T* input_ptr, int& address_3d, const T bin_min, const T bin_inc, int& pixel_idx, T& val) {
     if constexpr ( std::is_same_v<T, __half> ) {
-        val       = input_ptr[address_2d + z * NY * pitch_in_pixels];
+        val       = input_ptr[address_3d];
         pixel_idx = __half2int_rd((val - bin_min) / bin_inc);
     }
     if constexpr ( std::is_same_v<T, __nv_bfloat16> ) {
-        val       = input_ptr[address_2d + z * NY * pitch_in_pixels];
+        val       = input_ptr[address_3d];
         pixel_idx = __bfloat162int_rd((val - bin_min) / bin_inc);
     }
     if constexpr ( std::is_same_v<T, histogram_storage_t> ) {
-        val       = input_ptr[address_2d + z * NY * pitch_in_pixels];
+        val       = input_ptr[address_3d];
         pixel_idx = __float2int_rd((val - bin_min) / bin_inc);
     }
 }
@@ -165,27 +163,27 @@ inline __device__ void write_mip_and_stats(float* sum_array, float* sum_sq_array
         sum_sq = 0.f;
 
         if constexpr ( std::is_same_v<ccfType, __half> ) {
-            if ( max_val > ccfType{0.0} && max_val > __low2half(mip_psi[address]) ) {
+            if ( max_val > CUDART_ZERO_FP16 && max_val > __low2half(mip_psi[address]) ) {
                 mip_psi[address]   = __halves2half2(max_val, psi[max_idx]);
                 theta_phi[address] = __halves2half2(theta[max_idx], phi[max_idx]);
             }
-            max_val = ccfType{0.0};
+            max_val = CUDART_ZERO_FP16;
         }
         else if constexpr ( std::is_same_v<ccfType, __nv_bfloat16> ) {
-            if ( max_val > ccfType{0.0} && max_val > __low2bfloat16(mip_psi[address]) ) {
+            if ( max_val > CUDART_ZERO_BF16 && max_val > __low2bfloat16(mip_psi[address]) ) {
                 mip_psi[address]   = __halves2bfloat162(max_val, psi[max_idx]);
                 theta_phi[address] = __halves2bfloat162(theta[max_idx], phi[max_idx]);
             }
-            max_val = ccfType{0.0};
+            max_val = CUDART_ZERO_BF16;
         }
         else if constexpr ( std::is_same_v<ccfType, histogram_storage_t> ) {
-            if ( max_val > ccfType{0.0} && max_val > mip_psi[address] ) {
+            if ( max_val > 0.f && max_val > mip_psi[address] ) {
                 mip_psi[address].x   = max_val;
                 mip_psi[address].y   = psi[max_idx];
                 theta_phi[address].x = theta[max_idx];
                 theta_phi[address].y = phi[max_idx];
             }
-            max_val = ccfType{0.0};
+            max_val = 0.0f;
         }
     }
 }
@@ -200,13 +198,13 @@ AccumulateDistributionKernel(ccfType*             input_ptr,
                              const int            padding_x,
                              const int            padding_y,
                              const int            n_slices_to_process,
-                             float*               sum_array_   = nullptr,
-                             float*               sum_sq_array = nullptr,
-                             mipType*             mip_psi      = nullptr,
-                             mipType*             theta_phi    = nullptr,
-                             ccfType*             psi          = nullptr,
-                             ccfType*             theta        = nullptr,
-                             ccfType*             phi          = nullptr) {
+                             float*               sum_array_,
+                             float*               sum_sq_array,
+                             mipType*             mip_psi,
+                             mipType*             theta_phi,
+                             ccfType*             psi,
+                             ccfType*             theta,
+                             ccfType*             phi) {
 
     // initialize temporary accumulation array input_ptr shared memory, this is equal to the number of bins input_ptr the histogram,
     // which may  be more or less than the number of threads input_ptr a block
@@ -216,12 +214,9 @@ AccumulateDistributionKernel(ccfType*             input_ptr,
     histogram_storage_t* stored_array = &output_ptr[LinearBlockIdx_2dGrid( ) * TM::histogram_number_of_points];
 
     // Since the number of x-threads is enforced to be = to the number of bins, we can just copy the bins to shared memory
-    // Otherwise, we would need a loop to copy the bins to shared memory e.g. ->
-    //        smem[threadIdx.x] = __float2int_rn(stored_array[threadIdx.x]);
-    // FIXME:     // smem[i] =
-    for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
-        smem[i] = int(stored_array[i]);
-
+    // Otherwise, we would need a loop to copy the bins to shared memory e.g. ->for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
+    //    smem[threadIdx.x] = __float2int_rn(stored_array[threadIdx.x]);
+    smem[threadIdx.x] = int(stored_array[threadIdx.x]);
     __syncthreads( );
 
     int     address_2d;
@@ -230,17 +225,21 @@ AccumulateDistributionKernel(ccfType*             input_ptr,
     // updates our block's partial histogram input_ptr shared memory
     int     max_idx;
     ccfType max_val = ccfType{0.0};
-    float   sum{0.f}, sum_sq{0.f};
-    // FIXME: padding should be x/y dependend
+    float   sum{0.f};
+    float   sum_sq{0.f};
+
     for ( int j = padding_y + physical_Y( ); j < dims.y - padding_y; j += GridStride_2dGrid_Y( ) ) {
+        address_2d = j * dims.w;
         for ( int i = padding_x + physical_X( ); i < dims.x - padding_x; i += GridStride_2dGrid_X( ) ) {
+            address_2d += i;
+            int address_3d = address_2d;
             for ( int k = 0; k < n_slices_to_process; k++ ) {
-                // pixel_idx = __half2int_rd((input_ptr[j * dims.w + i] - bin_min) / bin_inc);
-                convert_input(input_ptr, i, j, k, dims.y, dims.w, bin_min, bin_inc, pixel_idx, val, address_2d);
+                convert_input(input_ptr, address_3d, bin_min, bin_inc, pixel_idx, val);
                 if ( pixel_idx >= 0 && pixel_idx < TM::histogram_number_of_points ) {
                     atomicAdd(&smem[pixel_idx], 1);
                 }
                 sum_squares_and_check_max<evalType>(val, sum, sum_sq, max_val, max_idx, k);
+                address_3d += dims.w * dims.y;
             } // loop over slices
 
             // Now we need to actually write out to global memory for the mip if we are doint it
@@ -256,10 +255,9 @@ AccumulateDistributionKernel(ccfType*             input_ptr,
 
     // write partial histogram into the global memory
     // Converting to long was super slow. Given that I don't care about representing the number exactly, but do care about overflow, just switch the bins to histogram_storage_t
-    // As in the read case, we would need a loop if the number of threads != number of bins e.g. ->
+    // As in the read case, we would need a loop if the number of threads != number of bins e.g. ->for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
     // stored_array[threadIdx.x] = __int2float_rn(smem[threadIdx.x]);
-    for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
-        stored_array[i] = int(smem[i]);
+    stored_array[threadIdx.x] = float(smem[threadIdx.x]);
 }
 
 __global__ void

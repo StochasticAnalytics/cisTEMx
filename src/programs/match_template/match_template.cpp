@@ -437,6 +437,10 @@ bool MatchTemplateApp::DoCalculation( ) {
             // bool preserve_origin = true;
             // input_reconstruction.RotateInPlaceAboutZBy90Degrees(true, preserve_origin);
             // The amplitude spectrum is also rotated
+            int tmp;
+            tmp       = padding_x;
+            padding_x = padding_y;
+            padding_y = tmp;
             defocus_angle += 90.0f;
             is_rotated_by_90 = true;
         }
@@ -939,6 +943,12 @@ bool MatchTemplateApp::DoCalculation( ) {
             correlation_pixel_sum[pixel_counter]            = (double)correlation_pixel_sum_image.real_values[pixel_counter];
             correlation_pixel_sum_of_squares[pixel_counter] = (double)correlation_pixel_sum_of_squares_image.real_values[pixel_counter];
         }
+
+        // These are not currently used after intializing the GPU template matching core object, but adding here for completeness.
+        int tmp;
+        tmp       = padding_x;
+        padding_x = padding_y;
+        padding_y = tmp;
     }
 
     if ( is_running_locally == true ) {

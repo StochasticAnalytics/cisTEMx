@@ -3,7 +3,6 @@
 
 #include "TemplateMatchingCore.h"
 
-// #define DO_HISTOGRAM
 #define FUSED_KERENEL
 
 using namespace cistem_timer;
@@ -38,7 +37,7 @@ class ProjectionQueue {
         int least_priority, highest_priority;
         cudaErr(cudaDeviceGetStreamPriorityRange(&least_priority, &highest_priority));
         for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
-            cudaErr(cudaStreamCreateWithPriority(&gpu_projection_stream[i], cudaStreamNonBlocking, 0));
+            cudaErr(cudaStreamCreateWithPriority(&gpu_projection_stream[i], cudaStreamNonBlocking, highest_priority - 1));
             cudaErr(cudaEventCreateWithFlags(&gpu_projection_is_ready_Event[i], cudaEventBlockingSync));
             cudaErr(cudaEventCreateWithFlags(&cpu_projection_is_writeable_Event[i], cudaEventBlockingSync));
         }
@@ -124,10 +123,8 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
                                 float            psi_step,
                                 AnglesAndShifts& angles,
                                 EulerSearch&     global_euler_search,
-                                float            histogram_min_scaled,
-                                float            histogram_step_scaled,
-                                int              histogram_number_of_bins,
-                                int              max_padding,
+                                int              padding_x,
+                                int              padding_y,
                                 int              first_search_position,
                                 int              last_search_position,
                                 ProgressBar*     my_progress,
@@ -190,18 +187,6 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     d_sum3.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
     d_sumSq3.Allocate(d_input_image.dims.x, d_input_image.dims.y, 1, true);
 
-#ifdef DO_HISTOGRAM
-    wxPrintf("Setting up the histogram\n\n");
-    histogram.Init(histogram_number_of_bins, histogram_min_scaled, histogram_step_scaled);
-    if ( max_padding > 2 ) {
-        histogram.max_padding = max_padding;
-    }
-#endif
-
-    this->histogram_max_padding = max_padding;
-    this->histogram_min_scaled  = histogram_min_scaled;
-    this->histogram_step_scaled = histogram_step_scaled;
-
     this->my_progress                 = my_progress;
     this->total_correlation_positions = total_correlation_positions;
     this->is_running_locally          = is_running_locally;
@@ -217,12 +202,11 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
 
 void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel, float c_defocus, int threadIDX, long& current_correlation_position) {
 
-#ifndef DO_HISTOGRAM
     // TODO: print val from constructor to make sure we aren't re-allocating
     my_dist = std::make_unique<TM_EmpiricalDistribution<__half, __half2>>(d_input_image, d_sum1.real_values, d_sumSq1.real_values,
-                                                                          histogram_min_scaled, histogram_step_scaled, histogram_max_padding,
+                                                                          padding_x, padding_y,
                                                                           n_mips_to_process_at_once, cudaStreamPerThread);
-#endif
+
     // Make sure we are starting with zeros
     d_max_intensity_projection.Zeros( );
     d_best_psi.Zeros( );
@@ -353,8 +337,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // a public member.. if it works, make it private and return a reference instead
 
                 // d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false);
-                std::cerr << "Current projection idx: " << current_projection_idx << "\n";
-
                 d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue.gpu_projection_stream[current_projection_idx]);
 
                 // We need to make sure the current cpu projection is not used by the host until the gpu has finished with it, which may be independent of the main work
@@ -394,14 +376,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             }
 
             // d_padded_reference.MultiplyByConstant(rsqrtf(d_padded_reference.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels));
-
-#ifdef DO_HISTOGRAM
-            if ( ! histogram.is_allocated_histogram ) {
-                d_padded_reference.NppInit( );
-                histogram.BufferInit(d_padded_reference);
-            }
-            histogram.AddToHistogram(d_padded_reference);
-#endif
 
             // cudaErr(cudaEventSynchronize(mip_is_done_Event));
             if constexpr ( n_mips_to_process_at_once > 1 ) {
@@ -536,12 +510,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     MipToImage( );
 #endif
 
-#ifdef DO_HISTOGRAM
-    MyAssertTrue(histogram.is_allocated_histogram, "Trying to accumulate a histogram that has not been initialized!");
-    histogram.Accumulate(d_padded_reference);
-#else
     my_dist->FinalAccumulate( );
-#endif
 
 #ifndef FUSED_KERENEL
     cudaErr(cudaFreeAsync(mip_psi, cudaStreamPerThread));

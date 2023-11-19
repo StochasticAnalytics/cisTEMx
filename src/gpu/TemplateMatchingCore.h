@@ -89,7 +89,8 @@ class TemplateMatchingCore {
 
     float histogram_min_scaled;
     float histogram_step_scaled;
-    int   histogram_max_padding;
+    int   padding_x;
+    int   padding_y;
 
     // Search objects
     AnglesAndShifts angles;
@@ -132,10 +133,8 @@ class TemplateMatchingCore {
               float            psi_step,
               AnglesAndShifts& angles,
               EulerSearch&     global_euler_search,
-              float            histogram_min_scaled,
-              float            histogram_step_scaled,
-              int              histogram_number_of_bins,
-              int              max_padding,
+              int              padding_x,
+              int              padding_y,
               int              first_search_position,
               int              last_search_position,
               ProgressBar*     my_progress,

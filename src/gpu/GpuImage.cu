@@ -2691,7 +2691,6 @@ void GpuImage::CopyHostToDevice(Image& host_image, bool should_block_until_compl
 
     // If Async Malloc/Free are used, we'll need some event check to ensure this memory exists prior to transfer since
     // the given stream may be different.
-    std::cerr << "Allcoating on stream " << transfer_stream << std::endl;
     cudaErr(cudaMemcpyAsync(real_values, host_image.real_values, real_memory_allocated * sizeof(float), cudaMemcpyHostToDevice, transfer_stream));
 
     if ( should_block_until_complete ) {

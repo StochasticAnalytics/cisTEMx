@@ -28,17 +28,19 @@ class TM_EmpiricalDistribution {
     ccfType   histogram_min_;
     ccfType   histogram_step_;
     int       histogram_n_bins_;
-    int       n_border_pixels_to_ignore_for_histogram_;
+    int       padding_x_;
+    int       padding_y_;
     const int n_images_to_accumulate_concurrently_;
     int       current_mip_to_process_;
     long      total_mips_processed_;
 
-    histogram_storage_t*     sum_array_;
-    histogram_storage_t*     sum_sq_array_;
-    mipType*                 mip_psi_;
-    mipType*                 theta_phi_;
-    ccfType*                 d_psi_theta_phi_;
-    std::unique_ptr<ccfType> psi_theta_phi_;
+    histogram_storage_t* sum_array_;
+    histogram_storage_t* sum_sq_array_;
+    mipType*             mip_psi_;
+    mipType*             theta_phi_;
+    ccfType*             psi_theta_phi_;
+    ccfType*             d_psi_theta_phi_;
+    ccfType*             ccf_array_;
 
     dim3 threadsPerBlock_;
     dim3 gridDims_;
@@ -51,8 +53,6 @@ class TM_EmpiricalDistribution {
     cudaEvent_t          mip_is_done_Event_;
 
   public:
-    ccfType* ccf_array_;
-
     /**
  * @brief Construct a new TM_EmpiricalDistribution
  * Note: both histogram_min and histogram step must be > 0 or no histogram will be created
@@ -67,9 +67,8 @@ class TM_EmpiricalDistribution {
     TM_EmpiricalDistribution(GpuImage&            reference_image,
                              histogram_storage_t* sum_array,
                              histogram_storage_t* sum_sq_array,
-                             histogram_storage_t  histogram_min,
-                             histogram_storage_t  histogram_step,
-                             int                  n_border_pixels_to_ignore_for_histogram,
+                             int                  padding_x,
+                             int                  padding_y,
                              const int            n_images_to_accumulate_before_final_accumulation,
                              cudaStream_t         calc_stream = cudaStreamPerThread);
 
@@ -91,11 +90,11 @@ class TM_EmpiricalDistribution {
     void CopyPsiThetaPhiHostToDevice( );
 
     // The reason to have one array is to reduce calls to memcopy, for which the API overhead is measurable.
-    inline ccfType* GetHostPsiPtr( ) { return &psi_theta_phi_.get( )[0]; };
+    inline ccfType* GetHostPsiPtr( ) { return &psi_theta_phi_[0]; };
 
-    inline ccfType* GetHostThetaPtr( ) { return &psi_theta_phi_.get( )[n_images_to_accumulate_concurrently_]; };
+    inline ccfType* GetHostThetaPtr( ) { return &psi_theta_phi_[n_images_to_accumulate_concurrently_]; };
 
-    inline ccfType* GetHostPhiPtr( ) { return &psi_theta_phi_.get( )[2 * n_images_to_accumulate_concurrently_]; };
+    inline ccfType* GetHostPhiPtr( ) { return &psi_theta_phi_[2 * n_images_to_accumulate_concurrently_]; };
 
     inline ccfType* GetDevicePsiPtr( ) { return &d_psi_theta_phi_[0]; };
 

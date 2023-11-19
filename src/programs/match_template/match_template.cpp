@@ -373,8 +373,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     const int max_number_primes                      = 6;
     int       primes[max_number_primes]              = {2, 3, 5, 7, 9, 13};
     float     max_reduction_by_fraction_of_reference = 0.000001f; // FIXME the cpu version is crashing when the image is reduced, but not the GPU
-    float     max_increas_by_fraction_of_image       = 0.1f;
-    int       max_padding                            = 0; // To restrict histogram calculation
+    float     max_increas_by_fraction_of_image{0.1f};
+    int       padding_x{0.f}; // To restrict histogram calculation
+    int       padding_y{0.f};
     float     histogram_padding_trim_rescale; // scale the counts to
 
     // for 5760 this will return
@@ -409,10 +410,10 @@ bool MatchTemplateApp::DoCalculation( ) {
                 break;
             }
         }
-        if ( factorizable_x - original_input_image_x > max_padding )
-            max_padding = factorizable_x - original_input_image_x;
-        if ( factorizable_y - original_input_image_y > max_padding )
-            max_padding = factorizable_y - original_input_image_y;
+        if ( factorizable_x - original_input_image_x > padding_x )
+            padding_x = (factorizable_x - original_input_image_x) / 2;
+        if ( factorizable_y - original_input_image_y > padding_y )
+            padding_y = (factorizable_y - original_input_image_y) / 2;
 
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
             wxPrintf("old x, y = %i %i\n  new x, y = %i %i\n", input_image.logical_x_dimension, input_image.logical_y_dimension, factorizable_x, factorizable_y);
@@ -473,6 +474,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     sqrt_input_pixels = sqrt((double)(input_image.logical_x_dimension * input_image.logical_y_dimension));
 
     // setup curve
+    // FIXME: remove the scaling and once there, just use the const values in constants.h
     histogram_step        = (histogram_max - histogram_min) / float(histogram_number_of_points);
     histogram_min_scaled  = histogram_min / sqrt_input_pixels;
     histogram_step_scaled = histogram_step / sqrt_input_pixels;
@@ -695,8 +697,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                    defocus_search_range, defocus_step, defocus1, defocus2,
                                    psi_max, psi_start, psi_step,
                                    angles, global_euler_search,
-                                   histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
-                                   max_padding, t_first_search_position, t_last_search_position,
+                                   padding_x, padding_y, t_first_search_position, t_last_search_position,
                                    my_progress, total_correlation_positions_per_thread, is_running_locally);
 
                     wxPrintf("%d\n", tIDX);

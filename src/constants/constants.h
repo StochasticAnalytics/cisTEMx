@@ -30,6 +30,7 @@ constexpr int MAX_ALLOWED_NUMBER_OF_PEAKS = 1000; // An error will be thrown and
 constexpr int   histogram_number_of_points = 512;
 constexpr float histogram_min              = -12.5f;
 constexpr float histogram_max              = 22.5f;
+constexpr float histogram_step             = (histogram_max - histogram_min) / float(histogram_number_of_points);
 
 enum Enum : int {
     image_size_x,

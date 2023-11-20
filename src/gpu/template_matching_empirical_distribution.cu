@@ -125,12 +125,17 @@ inline __device__ void convert_input(T* input_ptr, int& address_3d, const T bin_
         val       = input_ptr[address_3d];
         pixel_idx = __float2int_rd((val - bin_min) / bin_inc);
     }
+    if ( pixel_idx < 0 )
+        pixel_idx = 0;
+    if ( pixel_idx >= TM::histogram_number_of_points ) {
+        pixel_idx = TM::histogram_number_of_points - 1;
+    }
 }
 
 template <TM_AccumulationType::Enum evalType, typename ccfType>
 inline __device__ void sum_squares_and_check_max(ccfType& val, float& sum, float& sum_sq,
                                                  ccfType& max_val, int& max_idx, const int idx) {
-    if constexpr ( evalType != TM_AccumulationType::HistogramOnly ) {
+    if constexpr ( evalType == TM_AccumulationType::HistogramOnly ) {
         if ( val > max_val ) {
             max_val = val;
             max_idx = idx;
@@ -159,22 +164,22 @@ inline __device__ void write_mip_and_stats(float* sum_array, float* sum_sq_array
     if constexpr ( evalType != TM_AccumulationType::HistogramOnly ) {
         sum_array[address] += sum;
         sum_sq_array[address] += sum_sq;
-        sum    = 0.f;
-        sum_sq = 0.f;
+        // sum    = 0.f;
+        // sum_sq = 0.f;
 
         if constexpr ( std::is_same_v<ccfType, __half> ) {
             if ( max_val > CUDART_ZERO_FP16 && max_val > __low2half(mip_psi[address]) ) {
                 mip_psi[address]   = __halves2half2(max_val, psi[max_idx]);
                 theta_phi[address] = __halves2half2(theta[max_idx], phi[max_idx]);
             }
-            max_val = CUDART_ZERO_FP16;
+            // max_val = CUDART_ZERO_FP16;
         }
         else if constexpr ( std::is_same_v<ccfType, __nv_bfloat16> ) {
             if ( max_val > CUDART_ZERO_BF16 && max_val > __low2bfloat16(mip_psi[address]) ) {
                 mip_psi[address]   = __halves2bfloat162(max_val, psi[max_idx]);
                 theta_phi[address] = __halves2bfloat162(theta[max_idx], phi[max_idx]);
             }
-            max_val = CUDART_ZERO_BF16;
+            // max_val = CUDART_ZERO_BF16;
         }
         else if constexpr ( std::is_same_v<ccfType, histogram_storage_t> ) {
             if ( max_val > 0.f && max_val > mip_psi[address] ) {
@@ -183,65 +188,61 @@ inline __device__ void write_mip_and_stats(float* sum_array, float* sum_sq_array
                 theta_phi[address].x = theta[max_idx];
                 theta_phi[address].y = phi[max_idx];
             }
-            max_val = 0.0f;
+            // max_val = 0.0f;
         }
     }
 }
 
 template <TM_AccumulationType::Enum evalType, typename ccfType, typename mipType>
-__global__ void
-AccumulateDistributionKernel(ccfType*             input_ptr,
-                             histogram_storage_t* output_ptr,
-                             int4                 dims,
-                             const ccfType        bin_min,
-                             const ccfType        bin_inc,
-                             const int            padding_x,
-                             const int            padding_y,
-                             const int            n_slices_to_process,
-                             float*               sum_array_,
-                             float*               sum_sq_array,
-                             mipType*             mip_psi,
-                             mipType*             theta_phi,
-                             ccfType*             psi,
-                             ccfType*             theta,
-                             ccfType*             phi) {
+__global__ void __launch_bounds__(TM::histogram_number_of_points)
+        AccumulateDistributionKernel(ccfType*             input_ptr,
+                                     histogram_storage_t* output_ptr,
+                                     int4                 dims,
+                                     const ccfType        bin_min,
+                                     const ccfType        bin_inc,
+                                     const int            padding_x,
+                                     const int            padding_y,
+                                     const int            n_slices_to_process,
+                                     float*               sum_array_,
+                                     float*               sum_sq_array,
+                                     mipType*             mip_psi,
+                                     mipType*             theta_phi,
+                                     ccfType*             psi,
+                                     ccfType*             theta,
+                                     ccfType*             phi) {
 
     // initialize temporary accumulation array input_ptr shared memory, this is equal to the number of bins input_ptr the histogram,
     // which may  be more or less than the number of threads input_ptr a block
     __shared__ int smem[TM::histogram_number_of_points];
 
-    // Each block has it's own copy of the histogram stored input_ptr global memory, found at the linear block index
-    histogram_storage_t* stored_array = &output_ptr[LinearBlockIdx_2dGrid( ) * TM::histogram_number_of_points];
-
     // Since the number of x-threads is enforced to be = to the number of bins, we can just copy the bins to shared memory
     // Otherwise, we would need a loop to copy the bins to shared memory e.g. ->for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
     //    smem[threadIdx.x] = __float2int_rn(stored_array[threadIdx.x]);
-    smem[threadIdx.x] = int(stored_array[threadIdx.x]);
+    smem[threadIdx.x] = 0; //int(output_ptr[threadIdx.x + LinearBlockIdx_2dGrid( ) * TM::histogram_number_of_points]);
     __syncthreads( );
 
-    int     address_2d;
-    int     pixel_idx;
-    ccfType val;
-    // updates our block's partial histogram input_ptr shared memory
-    int     max_idx;
-    ccfType max_val = ccfType{0.0};
-    float   sum{0.f};
-    float   sum_sq{0.f};
+    for ( int y = padding_y + physical_Y( ); y < dims.y - padding_y; y += GridStride_2dGrid_Y( ) ) {
 
-    for ( int j = padding_y + physical_Y( ); j < dims.y - padding_y; j += GridStride_2dGrid_Y( ) ) {
-        address_2d = j * dims.w;
-        for ( int i = padding_x + physical_X( ); i < dims.x - padding_x; i += GridStride_2dGrid_X( ) ) {
-            address_2d += i;
-            int address_3d = address_2d;
-            for ( int k = 0; k < n_slices_to_process; k++ ) {
-                convert_input(input_ptr, address_3d, bin_min, bin_inc, pixel_idx, val);
-                if ( pixel_idx >= 0 && pixel_idx < TM::histogram_number_of_points ) {
-                    atomicAdd(&smem[pixel_idx], 1);
-                }
+        for ( int x = padding_x + physical_X( ); x < dims.x - padding_x; x += GridStride_2dGrid_X( ) ) {
+            int address_2d = y * dims.w + x;
+            // updates our block's partial histogram input_ptr shared memory
+            int     max_idx;
+            ccfType max_val = ccfType{0.0};
+            float   sum{0.f};
+            float   sum_sq{0.f};
+            for ( int k = address_2d; k < dims.w * dims.y * n_slices_to_process; k += dims.w * dims.y ) {
+                ccfType val;
+                int     pixel_idx;
+                convert_input(input_ptr, k, bin_min, bin_inc, pixel_idx, val);
+
+                // Rather than doing bounds checking with a logical, we have clamped the value of pixel_idx to be within the range of the histogram
+
+                atomicAdd(&smem[pixel_idx], 1);
+
                 sum_squares_and_check_max<evalType>(val, sum, sum_sq, max_val, max_idx, k);
-                address_3d += dims.w * dims.y;
             } // loop over slices
-
+            // max_idx /= (dims.w * dims.y); is somehow a bit slower than without the parenthesis
+            max_idx /= dims.w * dims.y;
             // Now we need to actually write out to global memory for the mip if we are doint it
             write_mip_and_stats<evalType>(sum_array_, sum_sq_array,
                                           mip_psi, theta_phi,
@@ -257,11 +258,12 @@ AccumulateDistributionKernel(ccfType*             input_ptr,
     // Converting to long was super slow. Given that I don't care about representing the number exactly, but do care about overflow, just switch the bins to histogram_storage_t
     // As in the read case, we would need a loop if the number of threads != number of bins e.g. ->for ( int i = threadIdx.x; i < TM::histogram_number_of_points; i += BlockDimension_2d( ) )
     // stored_array[threadIdx.x] = __int2float_rn(smem[threadIdx.x]);
-    stored_array[threadIdx.x] = float(smem[threadIdx.x]);
+    output_ptr[threadIdx.x + LinearBlockIdx_2dGrid( ) * TM::histogram_number_of_points] += float(smem[threadIdx.x]);
 }
 
 __global__ void
-FinalAccumulateKernel(histogram_storage_t* input_ptr, const int n_bins, const int n_blocks) {
+__launch_bounds__(TM::histogram_number_of_points)
+        FinalAccumulateKernel(histogram_storage_t* input_ptr, const int n_bins, const int n_blocks) {
 
     int lIDX = physical_X( );
 
@@ -289,11 +291,12 @@ void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AccumulateDistributi
     MyDebugAssertFalse(cudaStreamQuery(calc_stream_) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
 
     constexpr int n_threads_in_y_or_z = 1;
-    const int     y_grid_divisor      = 32; // TODO: optimize this.
+    const int     y_grid_divisor      = 16; // TODO: optimize this.
     dim3          threadsPerBlock_img = dim3(TM::histogram_number_of_points, n_threads_in_y_or_z, n_threads_in_y_or_z);
 
     dim3 gridDims_img = dim3((image_dims_.x + threadsPerBlock_img.x - 1) / threadsPerBlock_img.x,
-                             (image_dims_.y + (y_grid_divisor + threadsPerBlock_img.y) - 1) / (y_grid_divisor - 1 + threadsPerBlock_img.y), 1);
+                             (image_dims_.y + (y_grid_divisor + threadsPerBlock_img.y) - 1) / (y_grid_divisor - 1 + threadsPerBlock_img.y),
+                             1);
 
     // Instead of calculating int((value - bin_min) / bin_inc), use a fused multiply add
 
@@ -389,7 +392,7 @@ void TM_EmpiricalDistribution<ccfType, mipType, per_image>::AllocateStatisticsAr
     // Array of temporary storage to accumulate the shared mem to
     cudaErr(cudaMallocAsync(&histogram_, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
     cudaErr(cudaMemsetAsync(histogram_, 0, gridDims_.x * gridDims_.y * TM::histogram_number_of_points * sizeof(histogram_storage_t), calc_stream_));
-    cudaErr(cudaEventCreateWithFlags(&mip_is_done_Event_, cudaEventBlockingSync));
+    cudaErr(cudaEventCreateWithFlags(&mip_is_done_Event_, cudaEventDisableTiming));
 
     psi_theta_phi_ = new ccfType[n_images_to_accumulate_concurrently_ * 3];
 

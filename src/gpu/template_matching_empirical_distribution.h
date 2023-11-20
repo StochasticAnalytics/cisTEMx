@@ -16,6 +16,7 @@ using histogram_storage_t = float;
 namespace TM_AccumulationType {
 enum Enum : int { HistogramOnly,
                   HistogramAndMip,
+                  MipOnly,
                   HistogramAndMipAndHigherOrderMoments };
 
 } // namespace TM_AccumulationType

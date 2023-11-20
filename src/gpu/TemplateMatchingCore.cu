@@ -194,6 +194,12 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->padding_x = padding_x;
     this->padding_y = padding_y;
 
+    // Make sure warps start reading from an address that is a multiple of 32 bytes
+    while ( this->padding_x % (128 / 4) != 0 )
+        this->padding_x++;
+    while ( this->padding_y % (128 / 4) != 0 )
+        this->padding_y++;
+
     // For now we are only working on the inner loop, so no need to track best_defocus and best_pixel_size
 
     // At the outset these are all empty cpu images, so don't xfer, just allocate on gpuDev

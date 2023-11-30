@@ -25,16 +25,6 @@ __global__ void
 MipPixelWiseKernel(cufftReal* mip, cufftReal* other_image, cufftReal* psi, cufftReal* phi, cufftReal* theta, cufftReal* defocus, cufftReal* pixel, const int4 dims,
                    float c_psi, float c_phi, float c_theta, float c_defocus, float c_pixel);
 
-__global__ void
-ClipIntoRealKernel(const cufftReal* __restrict__ real_values,
-                   cufftReal* __restrict__ other_image_real_values,
-                   int4  dims,
-                   int4  other_dims,
-                   int3  physical_address_of_box_center,
-                   int3  other_physical_address_of_box_center,
-                   int3  wanted_coordinate_of_box_center,
-                   float wanted_padding_value);
-
 // Inline declarations
 __device__ __forceinline__ int
 d_ReturnFourierLogicalCoordGivenPhysicalCoord_X(int physical_index,
@@ -3446,23 +3436,21 @@ d_ReturnFourier1DAddressFromLogicalCoord(int wanted_x_coord, int wanted_y_coord,
 __global__ void
 ClipIntoRealKernel(const cufftReal* __restrict__ real_values,
                    cufftReal* __restrict__ other_image_real_values,
-                   int4  dims,
-                   int4  other_dims,
-                   int3  physical_address_of_box_center,
-                   int3  other_physical_address_of_box_center,
-                   int3  wanted_coordinate_of_box_center,
-                   float wanted_padding_value) {
+                   const __grid_constant__ int4  dims,
+                   const __grid_constant__ int4  other_dims,
+                   const __grid_constant__ int3  physical_address_of_box_center,
+                   const __grid_constant__ int3  other_physical_address_of_box_center,
+                   const __grid_constant__ int3  wanted_coordinate_of_box_center,
+                   const __grid_constant__ float wanted_padding_value) {
     int3 other_coord = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                                  blockIdx.y * blockDim.y + threadIdx.y,
                                  blockIdx.z);
 
-    int3 coord = make_int3(0, 0, 0);
-
     if ( other_coord.x < other_dims.x &&
          other_coord.y < other_dims.y &&
          other_coord.z < other_dims.z ) {
-
-        coord.z = physical_address_of_box_center.z + wanted_coordinate_of_box_center.z +
+        int3 coord = make_int3(0, 0, 0);
+        coord.z    = physical_address_of_box_center.z + wanted_coordinate_of_box_center.z +
                   other_coord.z - other_physical_address_of_box_center.z;
 
         coord.y = physical_address_of_box_center.y + wanted_coordinate_of_box_center.y +
@@ -3471,27 +3459,63 @@ ClipIntoRealKernel(const cufftReal* __restrict__ real_values,
         coord.x = physical_address_of_box_center.x + wanted_coordinate_of_box_center.x +
                   other_coord.x - other_physical_address_of_box_center.x;
 
+        float my_val;
         if ( coord.z < 0 || coord.z >= dims.z ||
              coord.y < 0 || coord.y >= dims.y ||
              coord.x < 0 || coord.x >= dims.x ) {
-            other_image_real_values[d_ReturnReal1DAddressFromPhysicalCoord(other_coord, other_dims)] = wanted_padding_value;
+            my_val = wanted_padding_value;
         }
         else {
-            other_image_real_values[d_ReturnReal1DAddressFromPhysicalCoord(other_coord, other_dims)] =
-                    real_values[d_ReturnReal1DAddressFromPhysicalCoord(coord, dims)];
+
+            my_val = real_values[d_ReturnReal1DAddressFromPhysicalCoord(coord, dims)];
         }
+        other_image_real_values[d_ReturnReal1DAddressFromPhysicalCoord(other_coord, other_dims)] = my_val;
+    }
+}
+
+__global__ void
+ClipIntoRealKernel2d(const cufftReal* __restrict__ real_values,
+                     cufftReal* __restrict__ other_image_real_values,
+                     const __grid_constant__ int4  dims,
+                     const __grid_constant__ int4  other_dims,
+                     const __grid_constant__ int3  physical_address_of_box_center,
+                     const __grid_constant__ int3  other_physical_address_of_box_center,
+                     const __grid_constant__ int3  wanted_coordinate_of_box_center,
+                     const __grid_constant__ float wanted_padding_value) {
+
+    int x = physical_X_2d_grid( );
+    int y = physical_Y_2d_grid( );
+
+    if ( x < other_dims.x && y < other_dims.y ) {
+        int other_address = d_ReturnReal1DAddressFromPhysicalCoord(x, y, 0, other_dims.y, other_dims.w);
+
+        y = physical_address_of_box_center.y + wanted_coordinate_of_box_center.y +
+            y - other_physical_address_of_box_center.y;
+
+        x = physical_address_of_box_center.x + wanted_coordinate_of_box_center.x +
+            x - other_physical_address_of_box_center.x;
+
+        float my_val;
+        if ( y < 0 || y >= dims.y ||
+             x < 0 || x >= dims.x ) {
+            my_val = wanted_padding_value;
+        }
+        else {
+            my_val = real_values[d_ReturnReal1DAddressFromPhysicalCoord(x, y, 0, dims.y, dims.w)];
+        }
+        other_image_real_values[other_address] = my_val;
     }
 }
 
 __global__ void
 ClipIntoMaskKernel(
-        int*  mask_values,
-        int4  dims,
-        int4  other_dims,
-        int3  physical_address_of_box_center,
-        int3  other_physical_address_of_box_center,
-        int3  wanted_coordinate_of_box_center,
-        float wanted_padding_value) {
+        int*                          mask_values,
+        const __grid_constant__ int4  dims,
+        const __grid_constant__ int4  other_dims,
+        const __grid_constant__ int3  physical_address_of_box_center,
+        const __grid_constant__ int3  other_physical_address_of_box_center,
+        const __grid_constant__ int3  wanted_coordinate_of_box_center,
+        const __grid_constant__ float wanted_padding_value) {
     int3 other_coord = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                                  blockIdx.y * blockDim.y + threadIdx.y,
                                  blockIdx.z);
@@ -3550,16 +3574,30 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
 
         ReturnLaunchParameters(other_image->dims, true);
 
-        precheck;
-        ClipIntoRealKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values,
-                                                                                  other_image->real_values,
-                                                                                  dims,
-                                                                                  other_image->dims,
-                                                                                  physical_address_of_box_center,
-                                                                                  other_image->physical_address_of_box_center,
-                                                                                  wanted_coordinate_of_box_center,
-                                                                                  wanted_padding_value);
-        postcheck;
+        if ( dims.z > 1 ) {
+            precheck;
+            ClipIntoRealKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values,
+                                                                                      other_image->real_values,
+                                                                                      dims,
+                                                                                      other_image->dims,
+                                                                                      physical_address_of_box_center,
+                                                                                      other_image->physical_address_of_box_center,
+                                                                                      wanted_coordinate_of_box_center,
+                                                                                      wanted_padding_value);
+            postcheck;
+        }
+        else {
+            precheck;
+            ClipIntoRealKernel2d<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values,
+                                                                                        other_image->real_values,
+                                                                                        dims,
+                                                                                        other_image->dims,
+                                                                                        physical_address_of_box_center,
+                                                                                        other_image->physical_address_of_box_center,
+                                                                                        wanted_coordinate_of_box_center,
+                                                                                        wanted_padding_value);
+            postcheck;
+        }
     }
 }
 
@@ -3664,7 +3702,7 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
 
     // FIXME: there is some problem with this segfaulting that was originally  masked in TemplateMatchingCore
     // by the sync in ReturnSUmOfSquares, which is now a wiat.
-    cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
+    // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
 
     cufftErr(cufftCreate(&cuda_plan_forward));
     cufftErr(cufftCreate(&cuda_plan_inverse));
@@ -3833,7 +3871,7 @@ void GpuImage::Deallocate( ) {
 }
 
 __global__ void
-CopyFP32toFP16bufferKernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
+CopyFP32toFP16bufferKernelReal(const cufftReal* __restrict__ real_32f_values, __half* __restrict__ real_16f_values, int4 dims) {
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,
                             blockIdx.z);
@@ -3847,7 +3885,7 @@ CopyFP32toFP16bufferKernelReal(cufftReal* real_32f_values, __half* real_16f_valu
 }
 
 __global__ void
-CopyFP32toFP16bufferKernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
+CopyFP32toFP16bufferKernelComplex(const cufftComplex* __restrict__ complex_32f_values, __half2* __restrict__ complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,
                             blockIdx.z);
@@ -3861,7 +3899,7 @@ CopyFP32toFP16bufferKernelComplex(cufftComplex* complex_32f_values, __half2* com
 }
 
 __global__ void
-CopyFP16buffertoFP32KernelReal(cufftReal* real_32f_values, __half* real_16f_values, int4 dims) {
+CopyFP16buffertoFP32KernelReal(cufftReal* __restrict__ real_32f_values, const __half* __restrict__ real_16f_values, int4 dims) {
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,
                             blockIdx.z);
@@ -3874,7 +3912,7 @@ CopyFP16buffertoFP32KernelReal(cufftReal* real_32f_values, __half* real_16f_valu
 }
 
 __global__ void
-CopyFP16buffertoFP32KernelComplex(cufftComplex* complex_32f_values, __half2* complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
+CopyFP16buffertoFP32KernelComplex(cufftComplex* __restrict__ complex_32f_values, const __half2* __restrict__ complex_16f_values, int4 dims, int3 physical_upper_bound_complex) {
     int3 coords = make_int3(blockIdx.x * blockDim.x + threadIdx.x,
                             blockIdx.y * blockDim.y + threadIdx.y,
                             blockIdx.z);

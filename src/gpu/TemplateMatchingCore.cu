@@ -539,8 +539,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     }
 }
 
-__global__ void MipPixelWiseKernel(__half* ccf, __half2* mip_psi, const int numel,
-                                   __half psi, __half theta, __half phi, __half2* sum_sumsq, __half2* theta_phi) {
+__global__ void MipPixelWiseKernel(__half* __restrict__ ccf,
+                                   __half2* __restrict__ mip_psi,
+                                   const int numel,
+                                   __half    psi,
+                                   __half    theta,
+                                   __half    phi,
+                                   __half2* __restrict__ sum_sumsq,
+                                   __half2* __restrict__ theta_phi) {
 
     //	Peaks tmp_peak;
 
@@ -577,12 +583,12 @@ __global__ void MipPixelWiseStackKernel(const __half* __restrict__ ccf,
                                         const __half* __restrict__ psi,
                                         const __half* __restrict__ theta,
                                         const __half* __restrict__ phi,
-                                        float*   sum,
-                                        float*   sum_sq,
-                                        __half2* mip_psi,
-                                        __half2* theta_phi,
-                                        int      numel,
-                                        int      n_mips_this_round) {
+                                        float* __restrict__ sum,
+                                        float* __restrict__ sum_sq,
+                                        __half2* __restrict__ mip_psi,
+                                        __half2* __restrict__ theta_phi,
+                                        int numel,
+                                        int n_mips_this_round) {
 
     int   max_idx;
     float tmp_sum;
@@ -710,15 +716,15 @@ void TemplateMatchingCore::UpdateSecondaryPeaks( ) {
     cudaErr(cudaMemsetAsync(theta_phi, 0, sizeof(__half2) * d_input_image.real_memory_allocated, cudaStreamPerThread));
 }
 
-__global__ void MipToImageKernel(const __half2* mip_psi,
-                                 const __half2* theta_phi,
-                                 const __half*  secondary_peaks,
-                                 const int      numel,
-                                 cufftReal*     mip,
-                                 cufftReal*     psi,
-                                 cufftReal*     theta,
-                                 cufftReal*     phi,
-                                 const int      n_peaks) {
+__global__ void MipToImageKernel(const __half2* __restrict__ mip_psi,
+                                 const __half2* __restrict__ theta_phi,
+                                 const __half* __restrict__ secondary_peaks,
+                                 const int numel,
+                                 cufftReal* __restrict__ mip,
+                                 cufftReal* __restrict__ psi,
+                                 cufftReal* __restrict__ theta,
+                                 cufftReal* __restrict__ phi,
+                                 const int n_peaks) {
 
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= numel )
@@ -762,7 +768,7 @@ void TemplateMatchingCore::MipToImage( ) {
     postcheck;
 }
 
-__global__ void AccumulateSumsKernel(__half2* sum_sumsq, const int numel, cufftReal* sum, cufftReal* sq_sum);
+__global__ void AccumulateSumsKernel(__half2* __restrict__ sum_sumsq, cufftReal* __restrict__ sum, cufftReal* __restrict__ sq_sum, const int numel);
 
 void TemplateMatchingCore::AccumulateSums(__half2* sum_sumsq, GpuImage& sum, GpuImage& sq_sum) {
 
@@ -770,11 +776,11 @@ void TemplateMatchingCore::AccumulateSums(__half2* sum_sumsq, GpuImage& sum, Gpu
     dim3 threadsPerBlock = dim3(1024, 1, 1);
     dim3 gridDims        = dim3((sum.real_memory_allocated + threadsPerBlock.x - 1) / threadsPerBlock.x, 1, 1);
 
-    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(sum_sumsq, sum.real_memory_allocated, sum.real_values, sq_sum.real_values);
+    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(sum_sumsq, sum.real_values, sq_sum.real_values, sum.real_memory_allocated);
     postcheck;
 }
 
-__global__ void AccumulateSumsKernel(__half2* sum_sumsq, const int numel, cufftReal* sum, cufftReal* sq_sum) {
+__global__ void AccumulateSumsKernel(__half2* __restrict__ sum_sumsq, cufftReal* __restrict__ sum, cufftReal* __restrict__ sq_sum, const int numel) {
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x < numel ) {

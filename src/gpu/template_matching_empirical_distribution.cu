@@ -184,22 +184,25 @@ inline __device__ void write_mip_and_stats(float* sum_array, float* sum_sq_array
     }
 }
 
+// TODO: __half2 atomicAdd(__half2 *address, __half2 val);
+// TODO: __nv_bfloat162 atomicAdd(__nv_bfloat162 *address, __nv_bfloat162 val);
+// This would allow us to double the number of bins in the histogram, and still use atomicAdd reducing contention
 template <int evalType, typename ccfType, typename mipType>
-__global__ void
-AccumulateDistributionKernel(ccfType*             input_ptr,
-                             histogram_storage_t* output_ptr,
-                             int4                 dims,
-                             const ccfType        bin_min,
-                             const ccfType        bin_inc,
-                             const int            max_padding,
-                             const int            n_slices_to_process,
-                             float*               sum_array    = nullptr,
-                             float*               sum_sq_array = nullptr,
-                             mipType*             mip_psi      = nullptr,
-                             mipType*             mip_theta    = nullptr,
-                             ccfType*             psi          = nullptr,
-                             ccfType*             theta        = nullptr,
-                             ccfType*             phi          = nullptr) {
+__global__ void __launch_bounds__(TM::histogram_number_of_points)
+        AccumulateDistributionKernel(ccfType*             input_ptr,
+                                     histogram_storage_t* output_ptr,
+                                     int4                 dims,
+                                     const ccfType        bin_min,
+                                     const ccfType        bin_inc,
+                                     const int            max_padding,
+                                     const int            n_slices_to_process,
+                                     float*               sum_array    = nullptr,
+                                     float*               sum_sq_array = nullptr,
+                                     mipType*             mip_psi      = nullptr,
+                                     mipType*             mip_theta    = nullptr,
+                                     ccfType*             psi          = nullptr,
+                                     ccfType*             theta        = nullptr,
+                                     ccfType*             phi          = nullptr) {
 
     // initialize temporary accumulation array input_ptr shared memory, this is equal to the number of bins input_ptr the histogram,
     // which may  be more or less than the number of threads input_ptr a block

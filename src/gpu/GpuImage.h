@@ -250,8 +250,8 @@ class GpuImage {
 
     template <typename StorageTypeBase>
     void CopyDataFrom(GpuImage& other_image);
-    void CopyFP32toFP16buffer(float* real_32f_values, __half* real_16f_values, int n_elements);
-    void CopyFP32toFP16buffer(float2* complex_32f_values, __half2* complex_16f_values, int n_elements);
+    void CopyFP32toFP16buffer(const float* __restrict__ real_32f_values, __half* __restrict__real_16f_values, int n_elements);
+    void CopyFP32toFP16buffer(const float2* __restrict__ complex_32f_values, __half2* __restrict__ complex_16f_values, int n_elements);
 
     void CopyFP32toFP16buffer(bool deallocate_single_precision = true);
     void CopyFP16buffertoFP32(bool deallocate_half_precision = true);
@@ -276,6 +276,8 @@ class GpuImage {
     void CopyHostToDeviceAndSynchronize(Image& host_image, bool pin_host_memory = true) { CopyHostToDevice(host_image, true, pin_host_memory); };
 
     void CopyHostToDeviceTextureComplex3d(Image& host_image);
+    void CopyHostToDeviceTextureComplex2d(Image& host_image);
+
     void CopyHostToDevice16f(Image& host_image, bool should_block_until_finished = false); // CTF images in the ImageClass are stored as complex, even if they only have a real part. This is a waste of memory bandwidth on the GPU
     void CopyDeviceToHostAndSynchronize(Image& cpu_image, bool unpin_host_memory = true);
     void CopyDeviceToHost(Image& host_image, bool unpin_host_memory = true);

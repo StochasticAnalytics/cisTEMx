@@ -2003,18 +2003,15 @@ void MyTestApp::TestFastFFT( ) {
         copy_of_input.CopyFrom(&input_image);
 
         // We just make one instance of the FourierTransformer class, with calc type float.
-        FastFFT::FourierTransformer<float, float, float, 2> FT;
+        FastFFT::FourierTransformer<float, float, float2, 2> FT;
 
         // This is similar to creating an FFT/CUFFT plan, so set these up before doing anything on the GPU
         // for this test, we know the size is square and 64 with input and output size equal.
         FT.SetForwardFFTPlan(copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1, copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1);
         FT.SetInverseFFTPlan(copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1, copy_of_input.logical_x_dimension, copy_of_input.logical_y_dimension, 1);
 
-        constexpr bool input_is_on_device = false;
-        FT.SetInputPointer(copy_of_input.real_values, input_is_on_device);
-        FT.CopyHostToDevice(copy_of_input.real_values);
-        FT.FwdFFT( );
-        FT.InvFFT( );
+        FT.FwdFFT(copy_of_input.real_values);
+        FT.InvFFT(copy_of_input.real_values);
         // There is no size change, so we can just use the input image memory buffer.
         constexpr bool free_gpu_memory = true;
         FT.CopyDeviceToHostAndSynchronize(copy_of_input.real_values, free_gpu_memory);

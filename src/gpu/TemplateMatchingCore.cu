@@ -258,7 +258,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 d_current_projection.MultiplyByConstant(1.f / (float)d_padded_reference.number_of_real_space_pixels);
 
                 cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
-                FT.Generic_Fwd_Image_Inv(d_current_projection.real_values, (float2*)d_input_image.complex_values, d_padded_reference.real_values_fp16, noop, conj_mul, noop);
+                FT.FwdImageInvFFT(d_current_projection.real_values, (float2*)d_input_image.complex_values, d_padded_reference.real_values, noop, conj_mul, noop);
                 d_padded_reference.CopyFP32toFP16buffer(false);
             }
 #endif

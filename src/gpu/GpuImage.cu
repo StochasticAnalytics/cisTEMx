@@ -3873,16 +3873,18 @@ void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
 
     BufferInit(b_16f);
 
-    precheck;
     if ( is_in_real_space ) {
         ReturnLaunchParameters(dims, true);
+        precheck;
         CopyFP32toFP16bufferKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values, real_values_fp16, this->dims);
+        postcheck;
     }
     else {
         ReturnLaunchParameters(dims, false);
+        precheck;
         CopyFP32toFP16bufferKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values, complex_values_fp16, this->dims, this->physical_upper_bound_complex);
+        postcheck;
     }
-    postcheck;
 
     if ( deallocate_single_precision ) {
         cudaErr(cudaFreeAsync(real_values, cudaStreamPerThread));

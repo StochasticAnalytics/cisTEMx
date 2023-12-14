@@ -160,17 +160,13 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
         d_input_image.BackwardFFT( );
 
-        FastFFT::FourierTransformer<float, float, float, 2> FT;
+        FastFFT::FourierTransformer<float, float, float2, 2> FT;
 
         // TODO: overload that takes and short4's int4's instead of the individual values
         FT.SetForwardFFTPlan(input_image.logical_x_dimension, input_image.logical_y_dimension, d_input_image.logical_z_dimension, d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
         FT.SetInverseFFTPlan(d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, d_input_image.dims.x, d_input_image.dims.y, d_input_image.dims.z, true);
 
-        constexpr bool input_is_on_device = true;
-        FT.SetInputPointer(d_input_image.real_values, input_is_on_device);
-        FT.CopyDeviceToDeviceFromNonOwningAddress(d_input_image.real_values, d_input_image.real_memory_allocated);
-        FT.FwdFFT( );
-        FT.CopyDeviceToDeviceAndSynchronize(d_input_image.real_values, false, d_input_image.real_memory_allocated);
+        FT.FwdFFT(d_input_image.real_values);
 
         // We've done a round trip iFFT/FFT since the input image was normalized to STD 1.0, so re-normalize by 1/n
         d_input_image.is_in_real_space = false;
@@ -199,14 +195,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 // TODO: This will probably be a member variable
 #ifdef ENABLE_FastFFT
 
-    FastFFT::FourierTransformer<float, float, float, 2> FT;
+    FastFFT::FourierTransformer<float, float, float2, 2> FT;
 
     // TODO: overload that takes and short4's int4's instead of the individual values
     FT.SetForwardFFTPlan(current_projection.logical_x_dimension, current_projection.logical_y_dimension, current_projection.logical_z_dimension, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
     FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
-
-    constexpr bool input_is_on_device = true;
-    FT.SetInputPointer(d_current_projection.real_values, input_is_on_device);
 
     FastFFT::KernelFunction::my_functor<float, 0, FastFFT::KernelFunction::NOOP>     noop;
     FastFFT::KernelFunction::my_functor<float, 2, FastFFT::KernelFunction::CONJ_MUL> conj_mul;
@@ -263,9 +256,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             if ( use_fast_fft ) {
                 // FIXME:
                 d_current_projection.MultiplyByConstant(1.f / (float)d_padded_reference.number_of_real_space_pixels);
-                FT.CopyDeviceToDeviceFromNonOwningAddress(d_current_projection.real_values);
+
                 cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
-                FT.Generic_Fwd_Image_Inv((float2*)d_input_image.complex_values, noop, conj_mul, noop);
+                FT.Generic_Fwd_Image_Inv(d_current_projection.real_values, (float2*)d_input_image.complex_values, d_padded_reference.real_values_fp16, noop, conj_mul, noop);
+                d_padded_reference.CopyFP32toFP16buffer(false);
             }
 #endif
             if ( ! use_fast_fft ) {
@@ -273,14 +267,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
                 cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
             }
-
-#ifdef ENABLE_FastFFT
-            if ( use_fast_fft ) {
-                FT.CopyDeviceToDevice(d_padded_reference.real_values, false, d_padded_reference.real_memory_allocated);
-                d_padded_reference.CopyFP32toFP16buffer(false);
-            }
-
-#endif
 
             if ( ! use_fast_fft ) {
                 // For the cpu code (MKL and FFTW) the image is multiplied by N on the forward xform, and subsequently normalized by 1/N

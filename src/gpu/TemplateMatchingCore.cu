@@ -195,7 +195,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 // TODO: This will probably be a member variable
 #ifdef ENABLE_FastFFT
 
-    FastFFT::FourierTransformer<float, float, float2, 2> FT;
+    FastFFT::FourierTransformer<float, float, __half2, 2> FT;
 
     // TODO: overload that takes and short4's int4's instead of the individual values
     FT.SetForwardFFTPlan(current_projection.logical_x_dimension, current_projection.logical_y_dimension, current_projection.logical_z_dimension, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
@@ -258,7 +258,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 d_current_projection.MultiplyByConstant(1.f / (float)d_padded_reference.number_of_real_space_pixels);
 
                 cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
-                FT.FwdImageInvFFT(d_current_projection.real_values, (float2*)d_input_image.complex_values, d_padded_reference.real_values, noop, conj_mul, noop);
+                FT.FwdImageInvFFT(d_current_projection.real_values, (__half2*)d_input_image.complex_values_fp16, d_padded_reference.real_values, noop, conj_mul, noop);
                 d_padded_reference.CopyFP32toFP16buffer(false);
             }
 #endif

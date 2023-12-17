@@ -3866,6 +3866,35 @@ CopyFP16buffertoFP32KernelComplex(cufftComplex* complex_32f_values, __half2* com
     }
 }
 
+__global__ void
+__launch_bounds__(512)
+        CopyFP32toFP16bufferAndScaleKernelReal(const cufftComplex* __restrict__ complex_32f_values,
+                                               __half2* __restrict__ complex_16f_values,
+                                               const float scalar,
+                                               const int   n_elem,
+                                               int4        dims) {
+
+    for ( int address = physical_X_1d_grid( ); address < n_elem; address += GridStride_1dGrid( ) ) {
+        float2 value = complex_32f_values[address];
+        ComplexScale((float2*)&value, scalar);
+        complex_16f_values[address] = __float22half2_rn(value);
+    }
+}
+
+void GpuImage::CopyFP32toFP16bufferAndScale(float scalar) {
+    // This is a temp impl to test FastFFT itnegration
+    MyDebugAssertTrue(is_in_memory_gpu, "Image is in not on the GPU!");
+    MyDebugAssertTrue(is_in_real_space, "Image is not in real space!");
+
+    BufferInit(b_16f);
+
+    ReturnLaunchParametersLimitSMs(1, 512);
+    precheck;
+    CopyFP32toFP16bufferAndScaleKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(
+            complex_values, complex_values_fp16, scalar, real_memory_allocated / 2, this->dims);
+    postcheck;
+}
+
 void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
     // FIXME when adding real space complex images.
     // FIXME should probably be called COPYorConvert

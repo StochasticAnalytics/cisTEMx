@@ -170,7 +170,8 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
         // We've done a round trip iFFT/FFT since the input image was normalized to STD 1.0, so re-normalize by 1/n
         d_input_image.is_in_real_space = false;
-        d_input_image.MultiplyByConstant(sqrtf(1.f / d_input_image.number_of_real_space_pixels));
+        // d_input_image.MultiplyByConstant(sqrtf(1.f / d_input_image.number_of_real_space_pixels));
+        d_input_image.MultiplyByConstant((1.f / d_input_image.number_of_real_space_pixels));
     }
 
 #endif
@@ -195,7 +196,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 // TODO: This will probably be a member variable
 #ifdef ENABLE_FastFFT
 
-    FastFFT::FourierTransformer<float, float, __half2, 2> FT;
+    FastFFT::FourierTransformer<float, __half, __half2, 2> FT;
 
     // TODO: overload that takes and short4's int4's instead of the individual values
     FT.SetForwardFFTPlan(current_projection.logical_x_dimension, current_projection.logical_y_dimension, current_projection.logical_z_dimension, d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
@@ -250,20 +251,21 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // The average in the full padded image will be different;
             average_of_reals *= ((float)d_current_projection.number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
 
-            d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
-
 #ifdef ENABLE_FastFFT
             if ( use_fast_fft ) {
                 // FIXME:
-                d_current_projection.MultiplyByConstant(1.f / (float)d_padded_reference.number_of_real_space_pixels);
+                float scale_factor = rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
+                scale_factor /= powf((float)d_current_projection.number_of_real_space_pixels, 1.5);
+                // d_current_projection.MultiplyByConstant(scale_factor);
 
+                d_current_projection.CopyFP32toFP16bufferAndScale(scale_factor);
                 cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
-                FT.FwdImageInvFFT(d_current_projection.real_values, (__half2*)d_input_image.complex_values_fp16, d_padded_reference.real_values, noop, conj_mul, noop);
-                d_padded_reference.CopyFP32toFP16buffer(false);
+                FT.FwdImageInvFFT(d_current_projection.real_values_fp16, (__half2*)d_input_image.complex_values_fp16, d_padded_reference.real_values_fp16, noop, conj_mul, noop);
+                // d_padded_reference.CopyFP32toFP16buffer(false);
             }
 #endif
             if ( ! use_fast_fft ) {
-
+                d_current_projection.MultiplyByConstant(rsqrtf(d_current_projection.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
                 d_current_projection.ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
                 cudaErr(cudaEventRecord(projection_is_free_Event, cudaStreamPerThread));
             }
@@ -391,24 +393,18 @@ __global__ void MipPixelWiseKernel(__half* correlation_output, __half2* my_peaks
 #ifdef CHECK_FOR_BAD_FLOATS
         __half half_val = correlation_output[i];
         if ( half_val == CUDART_INF_FP16 )
-            half_val = half(225.0f);
+            half_val = half(-225.0f);
         else if ( half_val == CUDART_NAN_FP16 )
-            half_val = half(226.0f);
+            half_val = half(-226.0f);
 #else
         const __half half_val = correlation_output[i];
 #endif
 
-        if ( use_fast_fft ) {
-            my_stats[i] += __halves2half2(half_val, half_val * half_val);
-        }
-        else {
-
-            const __half2 input  = __half2half2(half_val * __half(10000.0));
-            const __half2 mulVal = __halves2half2((__half)1.0, half_val);
-            //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
-            //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
-            my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
-        }
+        const __half2 input  = __half2half2(half_val * __half(10000.0));
+        const __half2 mulVal = __halves2half2((__half)1.0, half_val);
+        //    	my_stats[i].sum = __hadd(my_stats[i].sum, half_val);
+        //    	my_stats[i].sq_sum = __hfma(__half(1000.)*half_val,half_val,my_stats[i].sq_sum);
+        my_stats[i] = __hfma2(input, mulVal, my_stats[i]);
 
         // We are always reading the mip value
         // And likely often writing both that value and the updated angles.
@@ -564,14 +560,9 @@ __global__ void AccumulateSumsKernel(__half2* my_stats, const int numel, cufftRe
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x < numel ) {
-        if ( use_fast_fft ) {
-            sum[x] += __low2float(my_stats[x]);
-            sq_sum[x] += __high2float(my_stats[x]);
-        }
-        else {
-            sum[x]    = __fmaf_rn(0.0001f, __low2float(my_stats[x]), sum[x]);
-            sq_sum[x] = __fmaf_rn(0.0001f, __high2float(my_stats[x]), sq_sum[x]);
-        }
+
+        sum[x]    = __fmaf_rn(0.0001f, __low2float(my_stats[x]), sum[x]);
+        sq_sum[x] = __fmaf_rn(0.0001f, __high2float(my_stats[x]), sq_sum[x]);
 
         my_stats[x] = __halves2half2((__half)0., (__half)0.);
     }

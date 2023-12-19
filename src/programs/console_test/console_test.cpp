@@ -8,13 +8,10 @@
 #ifdef ENABLEGPU
 #include "../../gpu/gpu_core_headers.h"
 #include "../../gpu/GpuImage.h"
+#include "../../ext/FastFFT/include/FastFFT.h"
+#define RUN_FastFFT_TESTS
 #else
 #include "../../core/core_headers.h"
-#endif
-
-#if defined(ENABLE_FastFFT) && defined(ENABLEGPU)
-#define RUN_FastFFT_TESTS
-#include "../../ext/FastFFT/include/FastFFT.h"
 #endif
 
 // embedded images..

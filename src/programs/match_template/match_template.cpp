@@ -466,6 +466,13 @@ bool MatchTemplateApp::DoCalculation( ) {
             wxPrintf("old x, y = %i %i\n  new x, y = %i %i\n", input_image.logical_x_dimension, input_image.logical_y_dimension, factorizable_x, factorizable_y);
         }
 
+        if ( use_fast_fft ) {
+            SendInfo("Using FastFFT is\n\n");
+        }
+        else {
+            SendInfo("Using FastFFT is NO\n\n");
+        }
+
         input_image.Resize(factorizable_x, factorizable_y, 1, input_image.ReturnAverageOfRealValuesOnEdges( ));
 
         input_reconstruction.ReadSlices(&input_reconstruction_file, 1, input_reconstruction_file.ReturnNumberOfSlices( ));

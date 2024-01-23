@@ -8,7 +8,7 @@
 
 using namespace cistem_timer;
 
-constexpr bool use_gpu_prj               = false;
+constexpr bool use_gpu_prj               = true;
 constexpr int  n_mips_to_process_at_once = 10;
 
 static_assert(n_mips_to_process_at_once == 1 || n_mips_to_process_at_once == 10, "n_mips_to_process_at_once must be 1 or 10");
@@ -55,6 +55,8 @@ void TemplateMatchingCore::Init(MyApp*           parent_pointer,
     this->psi_start = psi_start;
     this->psi_step  = psi_step;
     this->psi_max   = psi_max;
+
+    this->use_fast_fft = use_fast_fft;
 
     // It seems that I need a copy for these - 1) confirm, 2) if already copying, maybe put straight into pinned mem with cudaHostMalloc
     template_reconstruction.CopyFrom(&wanted_template_reconstruction);
@@ -141,7 +143,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
     // FIXME: FastFFT works on transposed 2D xforms so for testing. Really we should just do the original transform in match template with this.
     // TODO: need a scale and a scale and shift functor
     if ( use_fast_fft ) {
-        std::cerr << "Using FastFFT\n";
+        std::cerr << "\n\n\nUsing FastFFT\n\n\n\n";
         // FastFFT pads from the upper left corner, so we need to shift the image so the origins coinicide
         d_input_image.PhaseShift(-(d_input_image.physical_address_of_box_center.x - d_current_projection[0].physical_address_of_box_center.x),
                                  -(d_input_image.physical_address_of_box_center.y - d_current_projection[0].physical_address_of_box_center.y),

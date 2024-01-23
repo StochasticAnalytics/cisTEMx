@@ -105,6 +105,8 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     float    in_plane_angular_step     = 0;
     bool     use_gpu_input             = false;
     int      max_threads               = 1; // Only used for the GPU code
+    bool     use_fast_fft              = false;
+    bool     use_fast_fft_and_crop     = false;
 
     UserInput* my_input = new UserInput("MatchTemplate", 1.00);
 
@@ -142,15 +144,10 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     particle_radius_angstroms = my_input->GetFloatFromUser("Mask radius for global search (A) (0.0 = max)", "Radius of a circular mask to be applied to the input images during global search", "0.0", 0.0);
     my_symmetry               = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
 #ifdef ENABLEGPU
-    use_gpu_input = my_input->GetYesNoFromUser("Use GPU", "Offload expensive calcs to GPU", "No");
-    max_threads   = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
-#else
-    // Ensure we always have the same number of interactive inputs to make scripting more consistent.
-    // (N\ot that it is likely to run match_template on the CPU)
-    use_gpu_input = my_input->GetYesNoFromUser("Use GPU", "Not compiled for gpu, input ignored.", "No");
-    max_threads   = my_input->GetIntFromUser("Max. threads to use for calculation", "Not compiled for gpu, input ignored.", "1", 1);
-    use_gpu_input = false;
-    max_threads   = 1;
+    use_gpu_input         = my_input->GetYesNoFromUser("Use GPU", "Offload expensive calcs to GPU", "Yes");
+    use_fast_fft          = my_input->GetYesNoFromUser("Use Fast FFT", "Use the Fast FFT library", "Yes");
+    use_fast_fft_and_crop = my_input->GetYesNoFromUser("Use Fast FFT and Crop", "Use Fast FFT with images > 4096 by cropping", "No");
+    max_threads           = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
 #endif
 
     int   first_search_position           = -1;
@@ -164,7 +161,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbi", input_search_images.ToUTF8( ).data( ),
+    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbbbi", input_search_images.ToUTF8( ).data( ),
                                       input_reconstruction.ToUTF8( ).data( ),
                                       pixel_size,
                                       voltage_kV,
@@ -192,7 +189,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
                                       best_defocus_output_file.ToUTF8( ).data( ),
                                       best_pixel_size_output_file.ToUTF8( ).data( ),
                                       scaled_mip_output_file.ToUTF8( ).data( ),
-                                      correlation_avg_output_file.ToUTF8( ).data( ),
+                                      correlation_std_output_file.ToUTF8( ).data( ),
                                       my_symmetry.ToUTF8( ).data( ),
                                       in_plane_angular_step,
                                       output_histogram_file.ToUTF8( ).data( ),
@@ -200,11 +197,13 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
                                       last_search_position,
                                       image_number_for_gui,
                                       number_of_jobs_per_image_in_gui,
-                                      correlation_std_output_file.ToUTF8( ).data( ),
+                                      correlation_avg_output_file.ToUTF8( ).data( ),
                                       directory_for_results.ToUTF8( ).data( ),
                                       result_filename.ToUTF8( ).data( ),
                                       min_peak_radius,
                                       use_gpu_input,
+                                      use_fast_fft,
+                                      use_fast_fft_and_crop,
                                       max_threads);
 }
 
@@ -262,7 +261,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     wxString result_output_filename          = my_current_job.arguments[38].ReturnStringArgument( );
     float    min_peak_radius                 = my_current_job.arguments[39].ReturnFloatArgument( );
     bool     use_gpu                         = my_current_job.arguments[40].ReturnBoolArgument( );
-    int      max_threads                     = my_current_job.arguments[41].ReturnIntegerArgument( );
+    bool     use_fast_fft                    = my_current_job.arguments[41].ReturnBoolArgument( );
+    bool     use_fast_fft_and_crop           = my_current_job.arguments[42].ReturnBoolArgument( );
+    int      max_threads                     = my_current_job.arguments[43].ReturnIntegerArgument( );
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
@@ -374,52 +375,92 @@ bool MatchTemplateApp::DoCalculation( ) {
     factorizable_x         = input_image.logical_x_dimension;
     factorizable_y         = input_image.logical_y_dimension;
 
-    bool      DO_FACTORIZATION                       = true;
-    bool      MUST_BE_POWER_OF_TWO                   = false; // Required for half-precision xforms
-    bool      MUST_BE_FACTOR_OF_FOUR                 = true; // May be faster
-    const int max_number_primes                      = 6;
-    int       primes[max_number_primes]              = {2, 3, 5, 7, 9, 13};
-    float     max_reduction_by_fraction_of_reference = 0.000001f; // FIXME the cpu version is crashing when the image is reduced, but not the GPU
-    float     max_increas_by_fraction_of_image       = 0.1f;
-    int       max_padding                            = 0; // To restrict histogram calculation
-    float     histogram_padding_trim_rescale; // scale the counts to
+    bool             DO_FACTORIZATION       = true;
+    bool             MUST_BE_POWER_OF_TWO   = false; // Required for half-precision xforms
+    bool             MUST_BE_FACTOR_OF_FOUR = true; // May be faster
+    std::vector<int> primes;
+    if ( use_fast_fft )
+        primes.assign({2});
+    else
+        primes.assign({2, 3, 5, 7, 9, 13});
+    float max_reduction_by_fraction_of_reference = 0.000001f; // FIXME the cpu version is crashing when the image is reduced, but not the GPU
+    float max_increase_by_fraction_of_image;
+    if ( use_fast_fft )
+        max_increase_by_fraction_of_image = 2.f;
+    else
+        max_increase_by_fraction_of_image = 0.1f;
+    int   max_padding = 0; // To restrict histogram calculation
+    float histogram_padding_trim_rescale; // scale the counts to
 
     // for 5760 this will return
     // 5832 2     2     2     3     3     3     3     3     3 - this is ~ 10% faster than the previous solution BUT
     if ( DO_FACTORIZATION ) {
-        for ( i = 0; i < max_number_primes; i++ ) {
+        for ( auto& prime_value : primes ) {
 
-            factor_result_neg = ReturnClosestFactorizedLower(original_input_image_x, primes[i], true, MUST_BE_FACTOR_OF_FOUR);
-            factor_result_pos = ReturnClosestFactorizedUpper(original_input_image_x, primes[i], true, MUST_BE_FACTOR_OF_FOUR);
+            factor_result_neg = ReturnClosestFactorizedLower(original_input_image_x, prime_value, true, MUST_BE_FACTOR_OF_FOUR);
+            factor_result_pos = ReturnClosestFactorizedUpper(original_input_image_x, prime_value, true, MUST_BE_FACTOR_OF_FOUR);
 
             if ( (float)(original_input_image_x - factor_result_neg) < (float)input_reconstruction_file.ReturnXSize( ) * max_reduction_by_fraction_of_reference ) {
                 factorizable_x = factor_result_neg;
                 break;
             }
-            if ( (float)(-original_input_image_x + factor_result_pos) < (float)input_image.logical_x_dimension * max_increas_by_fraction_of_image ) {
+            if ( (float)(-original_input_image_x + factor_result_pos) < (float)input_image.logical_x_dimension * max_increase_by_fraction_of_image ) {
                 factorizable_x = factor_result_pos;
                 break;
             }
         }
         factor_score = FLT_MAX;
-        for ( i = 0; i < max_number_primes; i++ ) {
+        for ( auto& prime_value : primes ) {
 
-            factor_result_neg = ReturnClosestFactorizedLower(original_input_image_y, primes[i], true, MUST_BE_FACTOR_OF_FOUR);
-            factor_result_pos = ReturnClosestFactorizedUpper(original_input_image_y, primes[i], true, MUST_BE_FACTOR_OF_FOUR);
+            factor_result_neg = ReturnClosestFactorizedLower(original_input_image_y, prime_value, true, MUST_BE_FACTOR_OF_FOUR);
+            factor_result_pos = ReturnClosestFactorizedUpper(original_input_image_y, prime_value, true, MUST_BE_FACTOR_OF_FOUR);
 
             if ( (float)(original_input_image_y - factor_result_neg) < (float)input_reconstruction_file.ReturnYSize( ) * max_reduction_by_fraction_of_reference ) {
                 factorizable_y = factor_result_neg;
                 break;
             }
-            if ( (float)(-original_input_image_y + factor_result_pos) < (float)input_image.logical_y_dimension * max_increas_by_fraction_of_image ) {
+            if ( (float)(-original_input_image_y + factor_result_pos) < (float)input_image.logical_y_dimension * max_increase_by_fraction_of_image ) {
                 factorizable_y = factor_result_pos;
                 break;
             }
         }
+
         if ( factorizable_x - original_input_image_x > max_padding )
             max_padding = factorizable_x - original_input_image_x;
         if ( factorizable_y - original_input_image_y > max_padding )
             max_padding = factorizable_y - original_input_image_y;
+
+        if ( use_fast_fft ) {
+            // We currently can only use FastFFT for power of 2 size images and template
+            // TODO: the limit on templates should be trivial to remove since they are padded.
+            // TOOD: Should probably consider this in the code above working out next good size, rather than only allowing power of 2,
+            //       which will take a k3 to 8k x 8k it would be better to pad either
+            //       a) crop to 4k x 4k (lossy but immediately supported)
+            //       b) split into two images and pad each to either 4k x 4k (possibly a bit slower and not yet supported)
+            // FIXME:
+            if ( factorizable_x != factorizable_y ) {
+                SendInfo("FastFFT currently only supports square images, padding smaller up\n");
+            }
+            if ( factorizable_x > factorizable_y ) {
+                factorizable_y = factorizable_x;
+            }
+            else {
+                factorizable_x = factorizable_y;
+            }
+            if ( factorizable_x > 4096 * 2 || factorizable_y > 4096 * 2 ) {
+                SendError("FastFFT only supports images up to 8192x8192\n");
+            }
+            else if ( factorizable_x > 4096 || factorizable_y > 4096 ) {
+                if ( use_fast_fft_and_crop ) {
+                    SendInfo("Warning, cropping image to max 4096x4096\n");
+                    factorizable_x = std::min(factorizable_x, 4096);
+                    factorizable_y = std::min(factorizable_y, 4096);
+                }
+                else {
+                    SendInfo("Use of FastFFT for images larger than 4k x 4k is likely a pessimation\n");
+                }
+            }
+        }
 
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
             wxPrintf("old x, y = %i %i\n  new x, y = %i %i\n", input_image.logical_x_dimension, input_image.logical_y_dimension, factorizable_x, factorizable_y);
@@ -682,8 +723,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         if ( use_gpu ) {
 #ifdef ENABLEGPU
 
-// TODO: for images that are being copied into the GPU, change to references in the call to Init
-// TODO: for cpu images not copied after the call to Init, unpin the memory to limit locked pages.
 #pragma omp parallel num_threads(max_threads)
             {
                 int tIDX = ReturnThreadNumberOfCurrentThread( );
@@ -697,14 +736,19 @@ bool MatchTemplateApp::DoCalculation( ) {
                     if ( tIDX == (max_threads - 1) )
                         t_last_search_position = maxPos;
 
-                    GPU[tIDX].Init(this, template_reconstruction, input_image, current_projection,
-                                   pixel_size_search_range, pixel_size_step, pixel_size,
-                                   defocus_search_range, defocus_step, defocus1, defocus2,
-                                   psi_max, psi_start, psi_step,
-                                   angles, global_euler_search,
-                                   histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
-                                   max_padding, t_first_search_position, t_last_search_position,
-                                   my_progress, total_correlation_positions_per_thread, is_running_locally);
+// FIXME: the check on whether the memory is page locked is not threadsafe
+#pragma omp critical
+
+                    {
+                        GPU[tIDX].Init(this, template_reconstruction, input_image, current_projection,
+                                       pixel_size_search_range, pixel_size_step, pixel_size,
+                                       defocus_search_range, defocus_step, defocus1, defocus2,
+                                       psi_max, psi_start, psi_step,
+                                       angles, global_euler_search,
+                                       histogram_min_scaled, histogram_step_scaled, histogram_number_of_points,
+                                       max_padding, t_first_search_position, t_last_search_position,
+                                       my_progress, total_correlation_positions_per_thread, is_running_locally, use_fast_fft);
+                    }
 
                     wxPrintf("%d\n", tIDX);
                     wxPrintf("%d\n", t_first_search_position);
@@ -832,7 +876,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                     vmcMulByConj(padded_reference.real_memory_allocated / 2, reinterpret_cast<MKL_Complex8*>(input_image.complex_values), reinterpret_cast<MKL_Complex8*>(padded_reference.complex_values), reinterpret_cast<MKL_Complex8*>(padded_reference.complex_values), VML_EP | VML_FTZDAZ_ON | VML_ERRMODE_IGNORE);
 #else
                     for ( pixel_counter = 0; pixel_counter < padded_reference.real_memory_allocated / 2; pixel_counter++ ) {
-                          padded_reference.complex_values[pixel_counter] = conj(padded_reference.complex_values[pixel_counter]) * input_image.complex_values[pixel_counter];
+                        padded_reference.complex_values[pixel_counter] = conj(padded_reference.complex_values[pixel_counter]) * input_image.complex_values[pixel_counter];
                     }
 #endif
 
@@ -1537,7 +1581,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 #ifdef MKL
         vdErfcInv(1, &erf_input, &temp_threshold);
 #else
-        temp_threshold       = cisTEM_erfcinv(erf_input);
+        temp_threshold = cisTEM_erfcinv(erf_input);
 #endif
         expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
 

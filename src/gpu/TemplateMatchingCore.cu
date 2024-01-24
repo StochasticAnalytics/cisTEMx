@@ -8,7 +8,7 @@
 
 using namespace cistem_timer;
 
-constexpr bool use_gpu_prj               = false;
+constexpr bool use_gpu_prj               = true;
 constexpr int  n_mips_to_process_at_once = 10;
 
 static_assert(n_mips_to_process_at_once == 1 || n_mips_to_process_at_once == 10, "n_mips_to_process_at_once must be 1 or 10");
@@ -293,11 +293,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             // GPU work and get back to calculating the next projection. The commented out method is an attempt around that, but currently the mips come out a little different a bit faster.
 
             if ( use_fast_fft ) {
-                float scale_factor = rsqrtf(d_current_projection[current_projection_idx].ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
-                scale_factor /= powf((float)d_current_projection[current_projection_idx].number_of_real_space_pixels, 1.5);
-                // d_current_projection[current_projection_idx].MultiplyByConstant(scale_factor);
+                // float scale_factor = rsqrtf(d_current_projection[current_projection_idx].ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
+                // scale_factor /= powf((float)d_current_projection[current_projection_idx].number_of_real_space_pixels, 1.0);
 
-                d_current_projection[current_projection_idx].CopyFP32toFP16bufferAndScale(scale_factor);
+                float scale_factor = powf(float(d_padded_reference.number_of_real_space_pixels), 1.0);
+                // scale_factor /= powf((float)d_current_projection[current_projection_idx].number_of_real_space_pixels, 1.5);
+                // d_current_projection[current_projection_idx].MultiplyByConstant(scale_factor);
+                d_current_projection[current_projection_idx].NormalizeRealSpaceStdDeviationAndCastToFp16(scale_factor, average_of_reals, average_on_edge);
+
                 if constexpr ( n_mips_to_process_at_once > 1 ) {
                     FT.FwdImageInvFFT(d_current_projection[current_projection_idx].real_values_fp16, (__half2*)d_input_image.complex_values_fp16, &ccf_array[current_mip_to_process * d_input_image.real_memory_allocated], noop, conj_mul, noop);
                 }
@@ -311,7 +314,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
             }
             else {
                 d_current_projection[current_projection_idx].NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals, average_on_edge);
-
                 d_current_projection[current_projection_idx].ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
                 // d_current_projection[current_projection_idx].MultiplyByConstant(rsqrtf(d_current_projection[current_projection_idx].ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 
@@ -332,8 +334,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
             // d_padded_reference.MultiplyByConstant(rsqrtf(d_padded_reference.ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels));
 
-            // cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
-
             if constexpr ( n_mips_to_process_at_once > 1 ) {
                 psi_array[current_mip_to_process]   = __float2half_rn(current_psi);
                 theta_array[current_mip_to_process] = __float2half_rn(global_euler_search.list_of_search_parameters[current_search_position][1]);
@@ -346,6 +346,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
 
                     total_mip_processed += current_mip_to_process;
+                    // FIXME: this is annoying but the fp16 underflow is causing problems
+                    if ( use_fast_fft )
+                        d_padded_reference.MultiplyByConstant16f(ccf_array, 1.f / d_padded_reference.number_of_real_space_pixels, n_mips_to_process_at_once);
                     my_dist.at(0).AccumulateDistribution(ccf_array, current_mip_to_process);
 
                     MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
@@ -354,6 +357,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 }
             }
             else {
+
+                // FIXME: this is annoying but the fp16 underflow is causing problems
+                if ( use_fast_fft )
+                    d_padded_reference.MultiplyByConstant16f(1.f / d_padded_reference.number_of_real_space_pixels, n_mips_to_process_at_once);
 
                 my_dist.at(0).AccumulateDistribution(d_padded_reference.real_values_fp16, 1);
 

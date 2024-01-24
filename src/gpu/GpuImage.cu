@@ -2617,6 +2617,44 @@ void GpuImage::AddSquaredImage(GpuImage& other_image) {
     nppErr(nppiAddSquare_32f_C1IR_Ctx((const Npp32f*)other_image.real_values, pitch, (Npp32f*)real_values, pitch, npp_ROI, nppStream));
 }
 
+/**
+ * @brief Workaround for TemplateMatchingCore with use_fast_fft = true, we need an extra scaling after the transform to deal with uderflow.
+ * The n_slices allows us to do this scaling on a stack of mips by temporarily overriding the npp_ROI.height, which is also used by default
+ * when working with 3d images.
+ * 
+ * @param scale_factor 
+ * @param n_slices 
+ */
+void GpuImage::MultiplyByConstant16f(const float scale_factor, int n_slices) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Image is not in real space");
+
+    NppInit( );
+    NppiSize npp_ROI_with_slices = npp_ROI_real_space;
+    size_t   fp16_pitch          = pitch / sizeof(float) * sizeof(__half);
+    npp_ROI_with_slices.height *= n_slices;
+    nppErr(nppiMulC_16f_C1IR_Ctx((Npp32f)scale_factor, (Npp16f*)real_values_16f, fp16_pitch, npp_ROI_with_slices, nppStream));
+}
+
+/**
+ * @brief Workaround for TemplateMatchingCore with use_fast_fft = true, we need an extra scaling after the transform to deal with uderflow.
+ * The n_slices allows us to do this scaling on a stack of mips by temporarily overriding the npp_ROI.height, which is also used by default
+ * when working with 3d images.
+ * 
+ * @param scale_factor 
+ * @param n_slices 
+ */
+void GpuImage::MultiplyByConstant16f(__half* input_ptr, const float scale_factor, int n_slices) {
+    MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Image is not in real space");
+
+    NppInit( );
+    NppiSize npp_ROI_with_slices = npp_ROI_real_space;
+    size_t   fp16_pitch          = pitch / sizeof(float) * sizeof(__half);
+    npp_ROI_with_slices.height *= n_slices;
+    nppErr(nppiMulC_16f_C1IR_Ctx((Npp32f)scale_factor, (Npp16f*)input_ptr, fp16_pitch, npp_ROI_with_slices, nppStream));
+}
+
 void GpuImage::MultiplyByConstant(float scale_factor) {
     MyDebugAssertTrue(is_in_memory_gpu, "Memory not allocated");
 

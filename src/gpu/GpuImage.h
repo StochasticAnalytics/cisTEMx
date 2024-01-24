@@ -185,7 +185,11 @@ class GpuImage {
     void ZeroCentralPixel( ); /**CPU_eq**/
     template <typename StorageTypeBase = float>
     void PhaseShift(float wanted_x_shift, float wanted_y_shift, float wanted_z_shift); /**CPU_eq**/
+
     void MultiplyByConstant(float scale_factor); /**CPU_eq**/
+    void MultiplyByConstant16f(const float scale_factor, int n_slices = 1);
+    void MultiplyByConstant16f(__half* input_ptr, const float scale_factor, int n_slices = 1);
+
     void SetToConstant(float val);
     void SetToConstant(Npp32fc val);
     void Conj( ); // FIXME

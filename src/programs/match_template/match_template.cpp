@@ -525,7 +525,10 @@ bool MatchTemplateApp::DoCalculation( ) {
     ZeroDoubleArray(correlation_pixel_sum, input_image.real_memory_allocated);
     ZeroDoubleArray(correlation_pixel_sum_of_squares, input_image.real_memory_allocated);
 
-    sqrt_input_pixels = sqrt((double)(input_image.logical_x_dimension * input_image.logical_y_dimension));
+    if ( use_fast_fft )
+        sqrt_input_pixels = 1.f;
+    else
+        sqrt_input_pixels = sqrt((double)(input_image.logical_x_dimension * input_image.logical_y_dimension));
 
     // setup curve
     histogram_step        = (histogram_max - histogram_min) / float(histogram_number_of_points);
@@ -1005,13 +1008,6 @@ bool MatchTemplateApp::DoCalculation( ) {
 
         for ( pixel_counter = 0; pixel_counter < input_image.real_memory_allocated; pixel_counter++ ) {
 
-            //            correlation_pixel_sum.real_values[pixel_counter] /= float(total_correlation_positions);
-            //            correlation_pixel_sum_of_squares.real_values[pixel_counter] = correlation_pixel_sum_of_squares.real_values[pixel_counter] / float(total_correlation_positions) - powf(correlation_pixel_sum.real_values[pixel_counter], 2);
-            //            if (correlation_pixel_sum_of_squares.real_values[pixel_counter] > 0.0f)
-            //            {
-            //                correlation_pixel_sum_of_squares.real_values[pixel_counter] = sqrtf(correlation_pixel_sum_of_squares.real_values[pixel_counter]) * sqrtf(correlation_pixel_sum.logical_x_dimension * correlation_pixel_sum.logical_y_dimension);
-            //            }
-            //            else correlation_pixel_sum_of_squares.real_values[pixel_counter] = 0.0f;
             correlation_pixel_sum[pixel_counter] /= float(total_correlation_positions);
             correlation_pixel_sum_of_squares[pixel_counter] = correlation_pixel_sum_of_squares[pixel_counter] / float(total_correlation_positions) - powf(correlation_pixel_sum[pixel_counter], 2);
             if ( correlation_pixel_sum_of_squares[pixel_counter] > 0.0f ) {
@@ -1023,31 +1019,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         }
 
         max_intensity_projection.MultiplyByConstant((float)sqrt_input_pixels);
-        //        correlation_pixel_sum.MultiplyByConstant(sqrtf(max_intensity_projection.logical_x_dimension * max_intensity_projection.logical_y_dimension));
-        //        correlation_pixel_sum_of_squares.MultiplyByConstant(max_intensity_projection.logical_x_dimension * max_intensity_projection.logical_y_dimension);
-
-        // we need to quadrant swap the images, also shift them, with an extra pixel shift.  This is because I take the conjugate of the input image, not the reference..
-
-        //        max_intensity_projection.InvertPixelOrder();
-        //        max_intensity_projection.SwapRealSpaceQuadrants();
-
-        //        best_psi.InvertPixelOrder();
-        //        best_psi.SwapRealSpaceQuadrants();
-
-        //        best_theta.InvertPixelOrder();
-        //        best_theta.SwapRealSpaceQuadrants();
-
-        //        best_phi.InvertPixelOrder();
-        //        best_phi.SwapRealSpaceQuadrants();
-
-        //        best_defocus.InvertPixelOrder();
-        //        best_defocus.SwapRealSpaceQuadrants();
-
-        //        correlation_pixel_sum.InvertPixelOrder();
-        //        correlation_pixel_sum.SwapRealSpaceQuadrants();
-
-        //        correlation_pixel_sum_of_squares.InvertPixelOrder();
-        //        correlation_pixel_sum_of_squares.SwapRealSpaceQuadrants();
 
         // calculate the expected threshold (from peter's paper)
         const float CCG_NOISE_STDDEV = 1.0;
@@ -1059,13 +1030,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         cisTEM_erfcinv(erf_input);
 #endif
         expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
-
-        //        expected_threshold = sqrtf(2.0f)*cisTEM_erfcinv((2.0f*(1))/((original_input_image_x * original_input_image_y * double(total_correlation_positions))));
-
-        // write out images..
-
-        //        wxPrintf("\nPeak at %g, %g : %g\n", max_intensity_projection.FindPeakWithIntegerCoordinates().x, max_intensity_projection.FindPeakWithIntegerCoordinates().y, max_intensity_projection.FindPeakWithIntegerCoordinates().value);
-        //        wxPrintf("Sigma = %g, ratio = %g\n", sqrtf(max_intensity_projection.ReturnVarianceOfRealValues()), max_intensity_projection.FindPeakWithIntegerCoordinates().value / sqrtf(max_intensity_projection.ReturnVarianceOfRealValues()));
 
         temp_image.CopyFrom(&max_intensity_projection);
         temp_image.Resize(original_input_image_x, original_input_image_y, 1, temp_image.ReturnAverageOfRealValuesOnEdges( ));
@@ -1146,15 +1110,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         float* pointer_to_histogram_data;
 
         pointer_to_histogram_data = (float*)histogram_data;
-
-        //        max_intensity_projection.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
-        //        correlation_pixel_sum_image.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
-        //        correlation_pixel_sum_of_squares_image.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
-        //        best_psi.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
-        //        best_theta.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
-        //        best_phi.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
-        //        best_defocus.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
-        //        best_pixel_size.Resize(original_input_image_x, original_input_image_y, 1, 0.0f);
 
         // If the padded image is large, we want to resize, then trim to valid area, otherwise we want to trim to valid area and then resize.
         // Default to the case where the padding increases the image size. A call to resize a same size image only cost the function call time.
@@ -1376,8 +1331,31 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         Peak            current_peak;
         AnglesAndShifts angles;
 
-        double sqrt_input_pixels = aggregated_results[array_location].collated_data_array[5];
-        bool   use_gpu           = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[40].ReturnBoolArgument( );
+        bool  scale_by_measured_stddev = false;
+        float sqrt_input_pixels        = aggregated_results[array_location].collated_data_array[5];
+        float mip_rescaling_factor;
+
+        // FIXME: This is a temporary proxy for use_fast_fft
+        if ( FloatsAreAlmostTheSame(sqrt_input_pixels, 1.0f) ) {
+            scale_by_measured_stddev = true;
+            // Get the value to use
+            aggregated_results[array_location].total_number_of_ccs;
+            double global_sum_of_squares = 0.0;
+            double global_sum            = 0.0;
+            float  global_std_dev        = 0.0f;
+            temp_image.Allocate(int(aggregated_results[array_location].collated_data_array[0]), int(aggregated_results[array_location].collated_data_array[1]), true);
+            for ( pixel_counter = 0; pixel_counter < int(result_array[2]); pixel_counter++ ) {
+                global_sum += (aggregated_results[array_location].collated_pixel_sums[pixel_counter] / aggregated_results[array_location].total_number_of_ccs);
+                global_sum_of_squares += (aggregated_results[array_location].collated_pixel_square_sums[pixel_counter] / aggregated_results[array_location].total_number_of_ccs);
+            }
+            global_std_dev       = sqrtf(global_sum_of_squares / result_array[2] - powf(global_sum / result_array[2], 2));
+            mip_rescaling_factor = 1.0f / global_std_dev;
+        }
+        else {
+            mip_rescaling_factor = sqrt_input_pixels;
+        }
+
+        bool use_gpu = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[40].ReturnBoolArgument( );
 
         ImageFile input_reconstruction_file;
         input_reconstruction_file.OpenFile(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[1].ReturnStringArgument( ), false);
@@ -1385,7 +1363,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         temp_image.Allocate(int(aggregated_results[array_location].collated_data_array[0]), int(aggregated_results[array_location].collated_data_array[1]), true);
 
         for ( pixel_counter = 0; pixel_counter < int(result_array[2]); pixel_counter++ ) {
-            temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_mip_data[pixel_counter] * sqrt_input_pixels;
+            temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_mip_data[pixel_counter] * mip_rescaling_factor;
         }
 
         wxPrintf("Writing result %i\n", aggregated_results[array_location].image_number - 1);
@@ -1538,7 +1516,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         temp_image.Allocate(int(aggregated_results[array_location].collated_data_array[0]), int(aggregated_results[array_location].collated_data_array[1]), true);
         for ( pixel_counter = 0; pixel_counter < int(result_array[2]); pixel_counter++ ) {
-            temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_pixel_sums[pixel_counter] * sqrt_input_pixels;
+            temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_pixel_sums[pixel_counter] * mip_rescaling_factor;
         }
 
         temp_image.QuickAndDirtyWriteSlice(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[28].ReturnStringArgument( ), 1);
@@ -1548,7 +1526,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         temp_image.Allocate(int(aggregated_results[array_location].collated_data_array[0]), int(aggregated_results[array_location].collated_data_array[1]), true);
         for ( pixel_counter = 0; pixel_counter < int(result_array[2]); pixel_counter++ ) {
-            temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_pixel_square_sums[pixel_counter] * sqrt_input_pixels;
+            temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_pixel_square_sums[pixel_counter] * mip_rescaling_factor;
         }
 
         temp_image.QuickAndDirtyWriteSlice(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[36].ReturnStringArgument( ), 1);
@@ -1568,6 +1546,26 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         double temp_double_array[5];
 
+        std::cerr << "\n\n\nmip_rescaling_factor = " << mip_rescaling_factor << "\n\n\n";
+        std::cerr << histogram_step << "\n";
+        std::cerr << histogram_min << "\n";
+        int bin_shift;
+
+        int* tmp_hist = new int[histogram_number_of_points];
+        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
+            tmp_hist[line_counter] = 0;
+        }
+
+        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
+            bin_shift = int(((histogram_step * float(line_counter) + histogram_min) * mip_rescaling_factor - histogram_min) / histogram_step);
+            std::cerr << "line_counter, Binshift " << line_counter << " " << bin_shift << "\n\n\n";
+            if ( bin_shift >= 0 && bin_shift < histogram_number_of_points )
+                tmp_hist[bin_shift] = aggregated_results[array_location].collated_histogram_data[line_counter];
+        }
+        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
+            aggregated_results[array_location].collated_histogram_data[line_counter] = tmp_hist[line_counter];
+        }
+        delete[] tmp_hist;
         ZeroDoubleArray(survival_histogram, histogram_number_of_points);
         survival_histogram[histogram_number_of_points - 1] = aggregated_results[array_location].collated_histogram_data[histogram_number_of_points - 1];
 
@@ -1608,7 +1606,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
                 sum_expected += expected_survival_histogram[line_counter];
             }
             for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
-                survival_histogram[line_counter] *= (float)(sum_expected / sum_counted);
+                if ( sum_counted > 0.0 )
+                    survival_histogram[line_counter] *= (float)(sum_expected / sum_counted);
             }
 #endif
         }

@@ -162,7 +162,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
         // We've done a round trip iFFT/FFT since the input image was normalized to STD 1.0, so re-normalize by 1/n
         d_input_image.is_in_real_space = false;
         // d_input_image.MultiplyByConstant(sqrtf(1.f / d_input_image.number_of_real_space_pixels));
-        d_input_image.MultiplyByConstant((1.f / d_input_image.number_of_real_space_pixels));
+        d_input_image.MultiplyByConstant(1.f / d_input_image.number_of_real_space_pixels);
     }
 
     d_input_image.CopyFP32toFP16buffer(false);
@@ -297,7 +297,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // scale_factor /= powf((float)d_current_projection[current_projection_idx].number_of_real_space_pixels, 1.0);
 
                 float scale_factor = powf(float(d_padded_reference.number_of_real_space_pixels), 1.0);
-                // scale_factor /= powf((float)d_current_projection[current_projection_idx].number_of_real_space_pixels, 1.5);
+                scale_factor /= powf((float)d_current_projection[current_projection_idx].number_of_real_space_pixels, 1.5);
                 // d_current_projection[current_projection_idx].MultiplyByConstant(scale_factor);
                 d_current_projection[current_projection_idx].NormalizeRealSpaceStdDeviationAndCastToFp16(scale_factor, average_of_reals, average_on_edge);
 
@@ -346,9 +346,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                     cudaErr(cudaMemcpyAsync(d_phi_array, phi_array, sizeof(__half) * n_mips_to_process_at_once, cudaMemcpyHostToDevice, cudaStreamPerThread));
 
                     total_mip_processed += current_mip_to_process;
-                    // FIXME: this is annoying but the fp16 underflow is causing problems
-                    if ( use_fast_fft )
-                        d_padded_reference.MultiplyByConstant16f(ccf_array, 1.f / d_padded_reference.number_of_real_space_pixels, n_mips_to_process_at_once);
+
                     my_dist.at(0).AccumulateDistribution(ccf_array, current_mip_to_process);
 
                     MipPixelWiseStack(ccf_array, d_psi_array, d_theta_array, d_phi_array, current_mip_to_process);
@@ -357,10 +355,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 }
             }
             else {
-
-                // FIXME: this is annoying but the fp16 underflow is causing problems
-                if ( use_fast_fft )
-                    d_padded_reference.MultiplyByConstant16f(1.f / d_padded_reference.number_of_real_space_pixels, n_mips_to_process_at_once);
 
                 my_dist.at(0).AccumulateDistribution(d_padded_reference.real_values_fp16, 1);
 

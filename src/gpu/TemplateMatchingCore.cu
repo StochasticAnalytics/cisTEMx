@@ -8,7 +8,7 @@
 
 using namespace cistem_timer;
 
-constexpr bool use_gpu_prj               = true;
+constexpr bool use_gpu_prj               = false;
 constexpr int  n_mips_to_process_at_once = 10;
 
 static_assert(n_mips_to_process_at_once == 1 || n_mips_to_process_at_once == 10, "n_mips_to_process_at_once must be 1 or 10");
@@ -257,6 +257,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 average_of_reals = 0.f;
                 average_on_edge  = 0.f;
                 projection_queue.RecordGpuProjectionReadyStreamPerThreadWait(current_projection_idx);
+                // Default GpuImage methods are in cudaStreamPerThread
                 d_current_projection[current_projection_idx].BackwardFFT( );
             }
             else {
@@ -276,7 +277,6 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 // For an intiial test, make projection_queue.cpu_prj_stream[current_projection_idx]
                 // a public member.. if it works, make it private and return a reference instead
 
-                // d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false);
                 d_current_projection[current_projection_idx].CopyHostToDevice(current_projection[current_projection_idx], false, false, projection_queue.gpu_projection_stream[current_projection_idx]);
 
                 // We need to make sure the current cpu projection is not used by the host until the gpu has finished with it, which may be independent of the main work
@@ -289,7 +289,9 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
                 average_of_reals *= ((float)d_current_projection[current_projection_idx].number_of_real_space_pixels / (float)d_padded_reference.number_of_real_space_pixels);
             }
 
-            // FIXME: both the if/else need to move the actual FFT Conj Mul to the constexpr block
+            // For the host to execute the preceding line, it was to wait on the return value from ReturnSumOfSquares. This could be a bit of a performance regression as otherwise it can queue up all the reamining
+            // GPU work and get back to calculating the next projection. The commented out method is an attempt around that, but currently the mips come out a little different a bit faster.
+
             if ( use_fast_fft ) {
                 float scale_factor = rsqrtf(d_current_projection[current_projection_idx].ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals));
                 scale_factor /= powf((float)d_current_projection[current_projection_idx].number_of_real_space_pixels, 1.5);
@@ -297,16 +299,19 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter, float c_pixel,
 
                 d_current_projection[current_projection_idx].CopyFP32toFP16bufferAndScale(scale_factor);
                 if constexpr ( n_mips_to_process_at_once > 1 ) {
-                    FT.FwdImageInvFFT(d_current_projection[current_projection_idx].real_values_fp16, (__half2*)d_input_image.complex_values_fp16, d_padded_reference.real_values_fp16, noop, conj_mul, noop);
+                    FT.FwdImageInvFFT(d_current_projection[current_projection_idx].real_values_fp16, (__half2*)d_input_image.complex_values_fp16, &ccf_array[current_mip_to_process * d_input_image.real_memory_allocated], noop, conj_mul, noop);
                 }
                 else {
-                    FT.FwdImageInvFFT(d_current_projection[current_projection_idx].real_values_fp16, (__half2*)d_input_image.complex_values_fp16, &ccf_array[current_mip_to_process * d_input_image.real_memory_allocated], noop, conj_mul, noop);
+                    FT.FwdImageInvFFT(d_current_projection[current_projection_idx].real_values_fp16, (__half2*)d_input_image.complex_values_fp16, d_padded_reference.real_values_fp16, noop, conj_mul, noop);
+                }
+                if ( use_gpu_prj ) {
+                    // Note the stream change will not affect the padded projection
+                    projection_queue.RecordProjectionReadyBlockingHost(current_projection_idx, cudaStreamPerThread);
                 }
             }
             else {
-                // For the host to execute the preceding line, it was to wait on the return value from ReturnSumOfSquares. This could be a bit of a performance regression as otherwise it can queue up all the reamining
-                // GPU work and get back to calculating the next projection. The commented out method is an attempt around that, but currently the mips come out a little different a bit faster.
                 d_current_projection[current_projection_idx].NormalizeRealSpaceStdDeviation(float(d_padded_reference.number_of_real_space_pixels), average_of_reals, average_on_edge);
+
                 d_current_projection[current_projection_idx].ClipInto(&d_padded_reference, 0, false, 0, 0, 0, 0);
                 // d_current_projection[current_projection_idx].MultiplyByConstant(rsqrtf(d_current_projection[current_projection_idx].ReturnSumOfSquares( ) / (float)d_padded_reference.number_of_real_space_pixels - (average_of_reals * average_of_reals)));
 

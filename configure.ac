@@ -707,6 +707,7 @@ AC_CONFIG_HEADERS([cistem_config.h:cistem_config.in])
 AC_OUTPUT
 
 # Test placeholder
+
 # SA INSERT 1b
- 
+"" 
 # SA INSERT 1e

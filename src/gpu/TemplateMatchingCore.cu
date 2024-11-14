@@ -15,7 +15,7 @@ using namespace cistem_timer;
 
 void TemplateMatchingCore::Init(MyApp*                    parent_pointer,
                                 std::shared_ptr<GpuImage> wanted_template_reconstruction,
-                                Image&                    wanted_input_image,
+                                Image*                    wanted_input_image,
                                 Image&                    current_projection,
                                 float                     psi_max,
                                 float                     psi_start,
@@ -61,7 +61,7 @@ void TemplateMatchingCore::Init(MyApp*                    parent_pointer,
     this->use_fast_fft = use_fast_fft;
 
     // It seems that I need a copy for these - 1) confirm, 2) if already copying, maybe put straight into pinned mem with cudaHostMalloc
-    input_image.CopyFrom(&wanted_input_image);
+    input_image.CopyFrom(wanted_input_image);
 
     this->current_projection.reserve(n_prjs);
     for ( int i = 0; i < n_prjs; i++ ) {

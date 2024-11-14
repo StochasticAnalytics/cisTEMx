@@ -112,7 +112,7 @@ class TemplateMatchingCore {
 
     void Init(MyApp*                    parent_pointer,
               std::shared_ptr<GpuImage> template_reconstruction,
-              Image&                    input_image,
+              Image*                    input_image,
               Image&                    current_projection,
               float                     psi_max,
               float                     psi_start,

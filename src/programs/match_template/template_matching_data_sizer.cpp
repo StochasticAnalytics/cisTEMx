@@ -16,8 +16,9 @@
 
 #include "template_matching_data_sizer.h"
 
-// #define DEBUG_IMG_OUTPUT "/tmp"
-// #define DEBUG_TM_SIZER_PRINT
+// #define DEBUG_IMG_PREPROCESS_OUTPUT "/scratch/salina/TM_test_scaling/yeast/Assets/TemplateMatching"
+// #define DEBUG_IMG_POSTPROCESS_OUTPUT "/scratch/salina/TM_test_scaling/yeast/Assets/TemplateMatching"
+#define DEBUG_TM_SIZER_PRINT
 
 TemplateMatchingDataSizer::TemplateMatchingDataSizer(MyApp*    wanted_parent_ptr,
                                                      const int input_image_logical_x_dimension,
@@ -28,14 +29,11 @@ TemplateMatchingDataSizer::TemplateMatchingDataSizer(MyApp*    wanted_parent_ptr
                                                      float     wanted_pixel_size,
                                                      float     wanted_template_padding)
     : parent_match_template_app_ptr{wanted_parent_ptr},
-      image_size.x{input_image_logical_x_dimension},
-      image_size.y{input_image_logical_y_dimension},
-      image_size.z{1}, // NOTE: if we split the image into chunks, we will stack them in Z
-      image_size.w{IsEven(input_image_logical_x_dimension) ? (input_image_logical_x_dimension + 2) / 2 : (input_image_logical_x_dimension + 1) / 2},
-      template_size.x{template_logical_x_dimension},
-      template_size.y{template_logical_y_dimension},
-      template_size.z{template_logical_z_dimension},
-      template_size.w{IsEven(template_logical_x_dimension) ? (template_logical_x_dimension + 2) / 2 : (template_logical_x_dimension + 1) / 2},
+      image_size{int4{input_image_logical_x_dimension, input_image_logical_y_dimension, 1,
+                      IsEven(input_image_logical_x_dimension) ? (input_image_logical_x_dimension + 2) / 2 : (input_image_logical_x_dimension + 1) / 2}},
+      template_size{int4{template_logical_x_dimension, template_logical_y_dimension, template_logical_z_dimension,
+                         IsEven(template_logical_x_dimension) ? (template_logical_x_dimension + 2) / 2 : (template_logical_x_dimension + 1) / 2}},
+
       pixel_size{wanted_pixel_size},
       template_padding{wanted_template_padding} {
 
@@ -46,10 +44,9 @@ TemplateMatchingDataSizer::TemplateMatchingDataSizer(MyApp*    wanted_parent_ptr
     // Is the case of an odd sized image handled properly?
 };
 
-TemplateMatchingDataSizer::~TemplateMatchingDataSizer( ) {
-    // Nothing to do here
-    if ( pre_processed_image )
-        delete[] pre_processed_image;
+TemplateMatchingDataSizer::~TemplateMatchingDataSizer( ){
+        // Nothing to do here
+
 };
 
 /**
@@ -92,7 +89,7 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image) {
 
     // We could also check and FFT if necessary similar to Resize() but we are assuming the input image is in real space.
     MyDebugAssertTrue(input_image.is_in_real_space, "Input image must be in real space");
-    MyDebugAssertFalse(whitening_filter_ptr.at(0), "Whitening filter not set");
+    MyDebugAssertTrue(whitening_filter_ptr == nullptr, "Whitening filter is already set");
     MyDebugAssertTrue(sizing_is_set, "Sizing has already been set");
 
     // We whiten the image prior to any padding etc in particular to remove any low-frequency gradients that would add to boundary dislocations.
@@ -102,20 +99,20 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image) {
     local_whitening_filter.SetupXAxisForFourierSpace(input_image.logical_x_dimension, 2.0f);
     number_of_terms.SetupXAxisForFourierSpace(input_image.logical_x_dimension, 2.0f);
 
-    pre_processed_image = new Image[GetNumberOfChunks( )];
+    // FIXME: confirm this is being cleaned up
     for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
-        pre_processed_image.Allocate(image_search_size.x, image_search_size.y, 1, true);
-        whitening_filter_ptr.at(i_chunk) = std::make_unique<Curve>(local_whitening_filter);
-        whitening_filter_ptr.at(i_chunk)->SetYToConstant(1.0f);
+        pre_processed_image.emplace_back(image_search_size.x, image_search_size.y, 1, true);
     }
+    whitening_filter_ptr = std::make_unique<Curve>(local_whitening_filter);
+    whitening_filter_ptr->SetYToConstant(1.0f);
     // We'll accumulate the local whitening filter at the end of the method
 
     // This won't work for movie frames (13.0 is used in unblur) TODO use poisson stats
     input_image.ReplaceOutliersWithMean(5.0f);
 
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
     if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-        input_image.QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT "/input_image.mrc", 1);
+        input_image.QuickAndDirtyWriteSlice(DEBUG_IMG_PREPROCESS_OUTPUT "/input_image.mrc", 1);
 #endif
 
     input_image.ForwardFFT( );
@@ -129,9 +126,7 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image) {
     input_image.ApplyCurveFilter(&local_whitening_filter);
 
     // Record this filtering for later use
-    for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
-        whitening_filter_ptr->MultiplyBy(local_whitening_filter);
-    }
+    whitening_filter_ptr->MultiplyBy(local_whitening_filter);
 
     input_image.ZeroCentralPixel( );
     // Presumably for Pre-processing (where we need the realspace variance = 1 so noise in padding reginos matchs)
@@ -139,102 +134,113 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image) {
     input_image.DivideByConstant(sqrtf(input_image.ReturnSumOfSquares( )));
     input_image.BackwardFFT( );
 
-    // Now if we are splitting into chunks do it here.
-    for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
-#if defined(USE_ZERO_PADDING_NOT_NOISE) || defined(USE_REPLICATIVE_PADDING)
-        bool skip_padding_in_clipinto = false;
-#else
-        bool skip_padding_in_clipinto = true;
-        pre_processed_image[ichunk].FillWithNoiseFromNormalDistribution(0.f, 1.0f);
-#endif
-        int3 wanted_origin;
-
-        // Chunks are taken from lower left, then lower right, then upper left, then upper right
-        GetChunkOffsets(wanted_origin, i_chunk);
-
-#ifdef USE_REPLICATIVE_PADDING
-        input_image.ClipIntoWithReplicativePadding(&pre_processed_image[ichunk],
-                                                   wanted_origin.x,
-                                                   wanted_origin.y,
-                                                   0,
-                                                   skip_padding_in_clipinto);
-#else
-        input_image.ClipInto(&pre_processed_image[ichunk],
-                             0.0f,
-                             false,
-                             1.0f,
-                             wanted_origin.x,
-                             wanted_origin.y,
-                             0,
-                             skip_padding_in_clipinto);
-#endif
-    }
-    else {
-        pre_processed_image[0].CopyFrom(input_image);
-    }
-
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
     if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-        input_image.QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT "/input_image_whitened.mrc", 1);
+        input_image.QuickAndDirtyWriteSlice(DEBUG_IMG_PREPROCESS_OUTPUT "/input_image_whitened.mrc", 1);
 #endif
 
     input_image_has_been_preprocessed = true;
 };
 
-void TemplateMatchingDataSizer::PreProcessResizedInputImage( ) {
-    MyDebugAssertTrue(whitening_filter_ptr.at(0), "Whitening filter not set");
-
-    Curve number_of_terms;
-    Curve local_whitening_filter;
+void TemplateMatchingDataSizer::PreProcessResizedInputImage(Image& input_image) {
+    MyDebugAssertFalse(whitening_filter_ptr == nullptr, "Whitening filter not set");
 
     for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
+        if ( GetNumberOfChunks( ) > 1 ) {
+            pre_processed_image.at(i_chunk).Allocate(image_search_size.x, image_search_size.y, 1, true);
 
-        local_whitening_filter.SetupXAxisForFourierSpace(pre_processed_image.logical_x_dimension, 2.0f);
-        number_of_terms.SetupXAxisForFourierSpace(pre_processed_image.logical_x_dimension, 2.0f);
+            // Now if we are splitting into chunks do it here.
 
-        pre_processed_image[i_chunk].ForwardFFT( );
-        pre_processed_image[i_chunk].ZeroCentralPixel( );
+#ifdef USE_REPLICATIVE_PADDING
+            bool skip_padding_in_clipinto = false;
+#else
+            bool skip_padding_in_clipinto = true;
+            pre_processed_image.at(i_chunk).FillWithNoiseFromNormalDistribution(0.f, 1.0f);
+#endif
+            int3 wanted_origin;
+            // Chunks are taken from lower left, then lower right, then upper left, then upper right
+            GetChunkOffsets(wanted_origin, i_chunk, true);
 
-        pre_processed_image[i_chunk].Compute1DPowerSpectrumCurve(&local_whitening_filter, &number_of_terms);
-        local_whitening_filter.SquareRoot( );
-        local_whitening_filter.Reciprocal( );
-        local_whitening_filter.MultiplyByConstant(1.0f / local_whitening_filter.ReturnMaximumValue( ));
-
-        pre_processed_image[i_chunk].ApplyCurveFilter(&local_whitening_filter);
-
-        whitening_filter_ptr.at(i_chunk)->ResampleCurve(whitening_filter_ptr.at(i_chunk).get( ), local_whitening_filter.NumberOfPoints( ));
-        local_whitening_filter.ResampleCurve(&local_whitening_filter, whitening_filter_ptr.at(i_chunk)->NumberOfPoints( ));
-
-        // Record this filtering for later use
-        whitening_filter_ptr.at(i_chunk)->MultiplyBy(local_whitening_filter);
-
-        pre_processed_image[i_chunk].SwapRealSpaceQuadrants( );
+#ifdef USE_REPLICATIVE_PADDING
+            input_image.ClipIntoWithReplicativePadding(&pre_processed_image.at(i_chunk),
+                                                       wanted_origin.x,
+                                                       wanted_origin.y,
+                                                       0,
+                                                       skip_padding_in_clipinto);
+#else
+            input_image.ClipInto(&pre_processed_image.at(i_chunk),
+                                 0.0f,
+                                 false,
+                                 1.0f,
+                                 wanted_origin.x,
+                                 wanted_origin.y,
+                                 0,
+                                 skip_padding_in_clipinto);
+#endif
+        }
+        pre_processed_image.at(i_chunk).ForwardFFT( );
+        pre_processed_image.at(i_chunk).SwapRealSpaceQuadrants( );
         // FIXME: chunks move to new method
         // When used in cross-correlation, we need the extra division.
-        pre_processed_image[i_chunk].DivideByConstant(sqrtf(pre_processed_image[i_chunk].ReturnSumOfSquares( ) / float(GetNumberOfPixelsForNormalization( ))));
+        pre_processed_image.at(i_chunk).DivideByConstant(sqrtf(pre_processed_image.at(i_chunk).ReturnSumOfSquares( ) / float(GetNumberOfPixelsForNormalization( ))));
     }
+
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
+    if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
+        for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
+            std::string chunk_name = DEBUG_IMG_PREPROCESS_OUTPUT "/input_image_" + std::to_string(i_chunk) + ".mrc";
+            pre_processed_image.at(i_chunk).QuickAndDirtyWriteSlice(chunk_name, 1);
+        }
+    }
+    DEBUG_ABORT;
+#endif
 }
 
-void TemplateMatchingDataSizer::GetChunkOffsets(int3& wanted_origin, const int i_chunk) {
+void TemplateMatchingDataSizer::GetChunkOffsets(int3& wanted_origin, const int i_chunk, bool pre_shift) {
 
     // Chunks are taken from lower left, then lower right, then upper left, then upper right
 
+    int nx_source{ }, ny_source{ }, ox_source{ }, oy_source{ };
+    int nx_dest{ }, ny_dest{ }, ox_dest{ }, oy_dest{ };
+
+    // Note: we are assuming the origin is always N/2 for both even and odd
+    if ( pre_shift ) {
+        nx_source = image_size.x;
+        ny_source = image_size.y;
+        ox_source = nx_source / 2;
+        oy_source = ny_source / 2;
+        nx_dest   = image_search_size.x;
+        ny_dest   = image_search_size.y;
+        ox_dest   = nx_dest / 2;
+        oy_dest   = ny_dest / 2;
+    }
+    else {
+        nx_source = image_search_size.x;
+        ny_source = image_search_size.y;
+        ox_source = nx_source / 2;
+        oy_source = ny_source / 2;
+        nx_dest   = image_size.x;
+        ny_dest   = image_size.y;
+        ox_dest   = nx_dest / 2;
+        oy_dest   = ny_dest / 2;
+    }
+
     switch ( i_chunk ) {
         case 0:
-            wanted_origin.x = 0 + pre_processed_image.physical_address_of_box_center_x;
-            wanted_origin.y = 0 + pre_processed_image.physical_address_of_box_center_y;
+            wanted_origin.x = ox_dest - ox_source;
+            wanted_origin.y = oy_dest - oy_source;
             break;
         case 1:
-            wanted_origin.x = pre_processed_image.logical_x_dimension - pre_processed_image.physical_address_of_box_center_x;
-            wanted_origin.y = 0 + pre_processed_image.physical_address_of_box_center_y;
+            wanted_origin.x = (nx_source - ox_dest) - ox_source;
+            wanted_origin.y = oy_dest - oy_source;
             break;
         case 2:
-            wanted_origin.x = 0 + pre_processed_image.physical_address_of_box_center_x;
-            wanted_origin.y = pre_processed_image.logical_y_dimension - pre_processed_image.physical_address_of_box_center_y;
+            wanted_origin.x = ox_dest - ox_source;
+            wanted_origin.y = (ny_source - oy_dest) - oy_source;
             break;
         case 3:
-            wanted_origin.x = pre_processed_image.logical_x_dimension - pre_processed_image.physical_address_of_box_center_x;
-            wanted_origin.y = pre_processed_image.logical_y_dimension - pre_processed_image.physical_address_of_box_center_y;
+            wanted_origin.x = (nx_source - ox_dest) - ox_source;
+            wanted_origin.y = (ny_source - oy_dest) - oy_source;
             break;
     }
     wanted_origin.z = i_chunk;
@@ -246,27 +252,40 @@ void TemplateMatchingDataSizer::CheckSizingForGreaterThan4k( ) {
     // There may be cases where splitting the image into chunks may be faster even for cuFFT, for example,
     // If someone were to search a huge image (8k for example.)
     if ( use_fast_fft ) {
+        image_pre_scaling_size.x = image_size.x;
+        image_pre_scaling_size.y = image_size.y;
+
+        image_cropped_size.x = image_size.x;
+        image_cropped_size.y = image_size.y;
         // We can only use FastFFT for power of 2 size images and template
         // for now, we'll only deal with the case where we can split the image into either 2 or 4 chunks.
-        if ( image_size.x > 4096 && image_size <= 8192 ) {
-            n_chunks_in_x = 2;
+        if ( image_size.x > 4096 ) {
+            if ( image_size.x <= 8192 ) {
+                n_chunks_in_x        = 2;
+                image_cropped_size.x = 4096;
+            }
+            else
+                parent_match_template_app_ptr->SendError("Image size is too large in X dimension for FastFFT\n");
         }
-        else
-            parent_match_template_app_ptr->SendError("Image size is too large in X dimension for FastFFT\n");
-        if ( image_size.y > 4096 && image_size <= 8192 ) {
-            n_chunks_in_y = 2;
+        if ( image_size.y > 4096 ) {
+            if ( image_size.y <= 8192 ) {
+                n_chunks_in_y        = 2;
+                image_cropped_size.y = 4096;
+            }
+            else
+                parent_match_template_app_ptr->SendError("Image size is too large in Y dimension for FastFFT\n");
         }
-        else
-            parent_match_template_app_ptr->SendError("Image size is too large in Y dimension for FastFFT\n");
+    }
+    else {
+        image_pre_scaling_size.x = image_size.x;
+        image_pre_scaling_size.y = image_size.y;
+
+        image_cropped_size.x = image_size.x;
+        image_cropped_size.y = image_size.y;
     }
 
     image_pre_scaling_size.z = 1;
     image_cropped_size.z     = 1;
-    image_pre_scaling_size.x = image_size.x;
-    image_pre_scaling_size.y = image_size.y;
-
-    image_cropped_size.x = image_size.x;
-    image_cropped_size.y = image_size.y;
 }
 
 /**
@@ -365,11 +384,11 @@ void TemplateMatchingDataSizer::GetFFTSize( ) {
 
             image_pre_scaling_size.x = max_square_size + bin_offset_2d;
             image_pre_scaling_size.y = max_square_size + bin_offset_2d;
-            image_pre_scaling_size.z = 1; // FIXME: once we add chunking ...
+            image_pre_scaling_size.z = 1;
 
             image_cropped_size.x = closest_2d_binned_size;
             image_cropped_size.y = closest_2d_binned_size;
-            image_cropped_size.z = 1; // FIXME: once we add chunking ...
+            image_cropped_size.z = 1;
 
             n_tries++;
 
@@ -491,41 +510,94 @@ void TemplateMatchingDataSizer::GetFFTSize( ) {
     SetValidSearchImageIndiciesFromPadding(pre_binning_padding_x, pre_binning_padding_y, post_binning_padding_x, post_binning_padding_y);
 };
 
+/**
+ * @brief Define the regions where there is non-padding values, which impacts the normalization and is in turn used to define the  ROI
+ * which is needed to both correctly histogram the data and also to reduce wasted computation.
+ * 
+ * @param pre_padding_x 
+ * @param pre_padding_y 
+ * @param post_padding_x 
+ * @param post_padding_y 
+ */
 void TemplateMatchingDataSizer::SetValidSearchImageIndiciesFromPadding(const int pre_padding_x, const int pre_padding_y, const int post_padding_x, const int post_padding_y) {
     MyDebugAssertTrue(sizing_is_set, "Sizing has not been set");
     MyDebugAssertFalse(valid_bounds_are_set, "Valid bounds have already been set");
 
-    // This could be too large if the user created a reference with a very large box size
-    // This could be too small if the search is far from focus and has a tightly cropped box size
-    // TODO: Consider these cases, but for now we are only considering what is valid in the sense of the image processing.
-    // NOTE: On whether or not to remove these results:
-    //       While it is true that a peak halfway into the template width from the edge may still be strong enough to be detectible,
-    //       and thereby we create "false negatives" by enforcing this exclusion border the more important issue is to return only peak heights that are not due to the location
-    //       in the image. We cannot determine how the downstream processing may compare peak to peak within an image, and so we must be conservative,
-    //       in the goal of not leading these downstream analysis to errant conclusions.
-    int template_padding = 0; //myroundint(float(template_search_size.x) / GetFullBinningFactor( )) / cistem::fraction_of_box_size_to_exclude_for_border;
+    number_of_valid_search_pixels = 0;
 
-    search_image_valid_area_lower_bound_x = pre_padding_x + template_padding;
-    search_image_valid_area_lower_bound_y = pre_padding_y + template_padding;
-    search_image_valid_area_upper_bound_x = image_search_size.x - 1 - post_padding_x - template_padding;
-    search_image_valid_area_upper_bound_y = image_search_size.y - 1 - post_padding_y - template_padding;
+    for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
+        pre_padding[i_chunk].x = pre_padding_x;
+        pre_padding[i_chunk].y = pre_padding_y;
+        // Each chunk has a large area of redundant information (i suppose it could be called implicit padding.)
+        // Each chunk is unique in the corner it is pushed to and will overlap with neighboring chunks.
+        int overlap_x{ }, overlap_y{ };
+        if ( n_chunks_in_x > 1 ) {
+            overlap_x = (2 * image_search_size.x - image_size.x) / 2;
+        }
+        else {
+            overlap_x = 0;
+        }
+        if ( n_chunks_in_y > 1 ) {
+            overlap_y = (2 * image_search_size.y - image_size.y) / 2;
+        }
+        else {
+            overlap_y = 0;
+        }
 
-    pre_padding.x = search_image_valid_area_lower_bound_x;
-    pre_padding.y = search_image_valid_area_lower_bound_y;
+        std::cerr << "image_search_size.x = " << image_search_size.x << std::endl;
+        std::cerr << "post_padding_y = " << post_padding_y << std::endl;
+        std::cerr << "pre_padding[i_chunk].x = " << pre_padding[i_chunk].x << std::endl;
+        std::cerr << "overlap_x = " << overlap_x << std::endl;
+        std::cerr << "image_search_size.y = " << image_search_size.y << std::endl;
+        std::cerr << "post_padding_y = " << post_padding_y << std::endl;
+        std::cerr << "pre_padding[i_chunk].y = " << pre_padding[i_chunk].y << std::endl;
+        std::cerr << "overlap_y = " << overlap_y << std::endl;
 
-    roi.x = search_image_valid_area_upper_bound_x - search_image_valid_area_lower_bound_x + 1;
-    roi.y = search_image_valid_area_upper_bound_y - search_image_valid_area_lower_bound_y + 1;
+        // FIXME: confirm there isn't an off by one error here
+        roi[i_chunk].x = image_search_size.x - post_padding_y - pre_padding[i_chunk].x - overlap_x;
+        roi[i_chunk].y = image_search_size.y - post_padding_y - pre_padding[i_chunk].y - overlap_y;
+        if ( GetNumberOfChunks( ) > 1 ) {
+            roi[i_chunk].x++;
+            roi[i_chunk].y++;
+        }
 
-    number_of_pixels_for_normalization = long(image_search_size.x - post_padding_x - pre_padding_x) *
-                                         long(image_search_size.y - post_padding_y - pre_padding_y);
-
-    number_of_valid_search_pixels = long(roi.x) * long(roi.y);
-    MyDebugAssertTrue(number_of_valid_search_pixels > 0, "The number of valid search pixels is less than 1");
+        switch ( i_chunk + 1 ) {
+            case 1: {
+                // The lower left corner, no need to modify as the search images are indexed from pre_padding -> pre_padding + roi
+                break;
+            }
+            case 2: {
+                // The lower right corner, pre padding needs to be modified
+                pre_padding[i_chunk].x = pre_padding_x + overlap_x - 1;
+                break;
+            }
+            case 3: {
+                // The upper left corner, pre padding needs to be modified
+                pre_padding[i_chunk].y = pre_padding_y + overlap_y - 1;
+                break;
+            }
+            case 4: {
+                // The upper right corner, pre padding needs to be modified
+                pre_padding[i_chunk].x = pre_padding_x + overlap_x - 1;
+                pre_padding[i_chunk].y = pre_padding_y + overlap_y - 1;
+                break;
+            }
+        }
 
 #ifdef DEBUG_TM_SIZER_PRINT
-    wxPrintf("The valid search area is %i %i %i %i\n", search_image_valid_area_lower_bound_x, search_image_valid_area_lower_bound_y, search_image_valid_area_upper_bound_x, search_image_valid_area_upper_bound_y);
-    wxPrintf("The number of valid search pixels is %li\n", number_of_valid_search_pixels);
+        wxPrintf("pre_padding[%i] = %i %i\n", i_chunk, pre_padding[i_chunk].x, pre_padding[i_chunk].y);
+        wxPrintf("roi[%i] = %i %i\n", i_chunk, roi[i_chunk].x, roi[i_chunk].y);
 #endif
+
+        MyDebugAssertTrue(roi[i_chunk].x > 0 && roi[i_chunk].y > 0, "The ROI is less than 1 pixel in size");
+        // Note this is used for calculating the full size of the search space and should represent all pixels that will be represented
+        // in the final result mip. If we are downsampling, each pixel in number_of_valid_search_pixels may correspond to multiple pixels in
+        // the final result, which are co-dependent. I.e. the threshold for a binned search should be lower than a full search.
+        number_of_valid_search_pixels += long(roi[i_chunk].x) * long(roi[i_chunk].y);
+    }
+
+    MyDebugAssertTrue(number_of_valid_search_pixels > 0, "The number of valid search pixels is less than 1");
+
     valid_bounds_are_set = true;
 };
 
@@ -542,7 +614,7 @@ void TemplateMatchingDataSizer::GetInputImageToEvenAndSquareOrPrimeFactoredSizeP
         padding_x_TOTAL = image_pre_scaling_size.x - image_size.x;
         padding_y_TOTAL = image_pre_scaling_size.y - image_size.y;
     }
-    else if ( image_pre_scaling_size.z > 1 ) {
+    else if ( GetNumberOfChunks( ) > 1 ) {
         // When breaking into chunks, we currently only allow images (4096, 8192] in size. We only need to pad for any dimensions < 4096
         padding_x_TOTAL = std::max(0, 4096 - image_size.x);
         padding_y_TOTAL = std::max(0, 4096 - image_size.y);
@@ -570,7 +642,7 @@ void TemplateMatchingDataSizer::GetInputImageToEvenAndSquareOrPrimeFactoredSizeP
     post_padding_y = padding_y_TOTAL / 2;
     pre_padding_y  = padding_y_TOTAL / 2;
     if ( IsEven(image_size.x) ) {
-        post_padding_x += padding_x_TOTOAL % 2;
+        post_padding_x += padding_x_TOTAL % 2;
     }
     else {
         pre_padding_x += padding_x_TOTAL % 2;
@@ -601,6 +673,14 @@ void TemplateMatchingDataSizer::SetHighResolutionLimit(const float wanted_high_r
         resampling_is_wanted = false;
     else
         resampling_is_wanted = true;
+
+    // TODO: this isn't perfect
+    float approx_binning_factor = high_resolution_limit / (pixel_size * 2.0f);
+    if ( image_size.x / approx_binning_factor > 4096.f || image_size.y / approx_binning_factor > 4096.f ) {
+        parent_match_template_app_ptr->SendInfo("The image size is too large for the requested resolution limit, chunking instead\n");
+        resampling_is_wanted  = false;
+        high_resolution_limit = 2.0f * pixel_size;
+    }
 };
 
 void TemplateMatchingDataSizer::ResizeTemplate_preSearch(Image& template_image, const bool use_lerp_not_fourier_resampling) {
@@ -614,30 +694,30 @@ void TemplateMatchingDataSizer::ResizeTemplate_preSearch(Image& template_image, 
                               template_image.ReturnAverageOfRealValuesOnEdges( ));
     }
     else {
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
             // Print out the size of each step
             wxPrintf("template_size = %i %i %i\n", template_size.x, template_size.y, template_size.z);
             wxPrintf("template_pre_scaling_size = %i %i %i\n", template_pre_scaling_size.x, template_pre_scaling_size.y, template_pre_scaling_size.z);
             wxPrintf("template_cropped_size = %i %i %i\n", template_cropped_size.x, template_cropped_size.y, template_cropped_size.z);
             wxPrintf("template_search_size = %i %i %i\n", template_search_size.x, template_search_size.y, template_search_size.z);
-            template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_OUTPUT "/template_image.mrc", 1, template_size.z / 2);
+            template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_PREPROCESS_OUTPUT "/template_image.mrc", 1, template_size.z / 2);
         }
 #endif
         template_image.Resize(template_pre_scaling_size.x, template_pre_scaling_size.y, template_pre_scaling_size.z, template_image.ReturnAverageOfRealValuesOnEdges( ));
-#ifdef DEBUG_IMG_OUTPUT
-        template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_OUTPUT "/template_image_resized_pre_scale.mrc", 1, template_pre_scaling_size.z / 2);
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
+        template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_PREPROCESS_OUTPUT "/template_image_resized_pre_scale.mrc", 1, template_pre_scaling_size.z / 2);
 #endif
         template_image.ForwardFFT( );
         template_image.Resize(template_cropped_size.x, template_cropped_size.y, template_cropped_size.z);
         template_image.BackwardFFT( );
-#ifdef DEBUG_IMG_OUTPUT
-        template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_OUTPUT "/template_image_resized_cropped.mrc", 1, template_cropped_size.z / 2);
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
+        template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_PREPROCESS_OUTPUT "/template_image_resized_cropped.mrc", 1, template_cropped_size.z / 2);
 #endif
         template_image.Resize(template_search_size.x, template_search_size.y, template_search_size.z, template_image.ReturnAverageOfRealValuesOnEdges( ));
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
-            template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_OUTPUT "/template_image_resized.mrc", 1, template_search_size.z / 2);
+            template_image.QuickAndDirtyWriteSlices(DEBUG_IMG_PREPROCESS_OUTPUT "/template_image_resized.mrc", 1, template_search_size.z / 2);
         }
 #endif
     }
@@ -659,7 +739,7 @@ void TemplateMatchingDataSizer::ResizeImage_preSearch(const int central_cross_ha
         Image tmp_sq;
 
         tmp_sq.Allocate(image_pre_scaling_size.x, image_pre_scaling_size.y, image_pre_scaling_size.z, true);
-#if defined(USE_ZERO_PADDING_NOT_NOISE) || defined(USE_REPLICATIVE_PADDING)
+#ifdef USE_REPLICATIVE_PADDING
         bool skip_padding_in_clipinto = false;
 #else
         bool skip_padding_in_clipinto = true;
@@ -667,50 +747,48 @@ void TemplateMatchingDataSizer::ResizeImage_preSearch(const int central_cross_ha
 #endif
 
 #ifdef USE_REPLICATIVE_PADDING
-        pre_processed_image[0].ClipIntoWithReplicativePadding(&tmp_sq);
+        pre_processed_image.at(0).ClipIntoWithReplicativePadding(&tmp_sq);
 #else
-        pre_processed_image[0].ClipInto(&tmp_sq, 0.0f, false, 1.0f, 0, 0, 0, skip_padding_in_clipinto);
+        pre_processed_image.at(0).ClipInto(&tmp_sq, 0.0f, false, 1.0f, 0, 0, 0, skip_padding_in_clipinto);
 #endif
 
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-            tmp_sq.QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT "/tmp_sq.mrc", 1);
+            tmp_sq.QuickAndDirtyWriteSlice(DEBUG_IMG_PREPROCESS_OUTPUT "/tmp_sq.mrc", 1);
 #endif
         tmp_sq.ForwardFFT( );
         tmp_sq.Resize(image_cropped_size.x, image_cropped_size.y, image_cropped_size.z);
         tmp_sq.ZeroCentralPixel( );
         tmp_sq.DivideByConstant(sqrtf(tmp_sq.ReturnSumOfSquares( )));
         tmp_sq.BackwardFFT( );
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-            tmp_sq.QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT "/tmp_sq_resized.mrc", 1);
+            tmp_sq.QuickAndDirtyWriteSlice(DEBUG_IMG_PREPROCESS_OUTPUT "/tmp_sq_resized.mrc", 1);
 #endif
 
-        pre_processed_image[0].Allocate(image_search_size.x, image_search_size.y, GetNumberOfChunks( ), true);
+        pre_processed_image.at(0).Allocate(image_search_size.x, image_search_size.y, 1, true);
 
 #ifdef USE_REPLICATIVE_PADDING
-        tmp_sq.ClipIntoWithReplicativePadding(&pre_processed_image[0]);
+        tmp_sq.ClipIntoWithReplicativePadding(&pre_processed_image.at(0));
 #else
-#ifndef USE_ZERO_PADDING_NOT_NOISE
-        pre_processed_image[0].FillWithNoiseFromNormalDistribution(0.f, 1.0f);
-#endif // ndef USE_ZERO_PADDING_NOT_NOISE
-        tmp_sq.ClipInto(&pre_processed_image[0], 0.0f, false, 1.0f, 0, 0, 0, skip_padding_in_clipinto);
+        pre_processed_image.at(0).FillWithNoiseFromNormalDistribution(0.f, 1.0f);
+        tmp_sq.ClipInto(&pre_processed_image.at(0), 0.0f, false, 1.0f, 0, 0, 0, skip_padding_in_clipinto);
 #endif // USE_REPLICATIVE_PADDING
 
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-            pre_processed_image[0].QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT "/input_image_resized.mrc", 1);
+            pre_processed_image.at(0).QuickAndDirtyWriteSlice(DEBUG_IMG_PREPROCESS_OUTPUT "/input_image_resized.mrc", 1);
 #endif
 
         if ( central_cross_half_width > 0 ) {
-            pre_processed_image[0].ForwardFFT( );
-            pre_processed_image[0].MaskCentralCross(central_cross_half_width, central_cross_half_width);
-            pre_processed_image[0].BackwardFFT( );
+            pre_processed_image.at(0).ForwardFFT( );
+            pre_processed_image.at(0).MaskCentralCross(central_cross_half_width, central_cross_half_width);
+            pre_processed_image.at(0).BackwardFFT( );
         }
 
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-            pre_processed_image[0].QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT "/input_image_resized_masked.mrc", 1);
+            pre_processed_image.at(0).QuickAndDirtyWriteSlice(DEBUG_IMG_PREPROCESS_OUTPUT "/input_image_resized_masked.mrc", 1);
         DEBUG_ABORT;
 #endif
     }
@@ -718,20 +796,10 @@ void TemplateMatchingDataSizer::ResizeImage_preSearch(const int central_cross_ha
         wxPrintf("not resampling\n");
 
         if ( central_cross_half_width > 0 ) {
-            pre_processed_image[0].ForwardFFT( );
-            pre_processed_image[0].MaskCentralCross(central_cross_half_width, central_cross_half_width);
-            pre_processed_image[0].BackwardFFT( );
+            pre_processed_image.at(0).ForwardFFT( );
+            pre_processed_image.at(0).MaskCentralCross(central_cross_half_width, central_cross_half_width);
+            pre_processed_image.at(0).BackwardFFT( );
         }
-
-#ifdef DEBUG_IMG_OUTPUT
-        if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
-            for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
-                std::string chunk_name = "/input_image_" + std::to_string(i_chunk) + ".mrc";
-                pre_processed_image[i_chunk].QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT chunk_name, 1);
-            }
-        }
-        DEBUG_ABORT;
-#endif
     }
 
 // NOTE: rotation must always be the FINAL step in pre-processing / resizing and it is always the first to be inverted at the end.
@@ -743,14 +811,14 @@ void TemplateMatchingDataSizer::ResizeImage_preSearch(const int central_cross_ha
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
             wxPrintf("Rotating the search image for speed\n");
         }
-        input_image.RotateInPlaceAboutZBy90Degrees(true);
+        pre_processed_image.at(0).RotateInPlaceAboutZBy90Degrees(true);
         // bool preserve_origin = true;
         // input_reconstruction.RotateInPlaceAboutZBy90Degrees(true, preserve_origin);
         // The amplitude spectrum is also rotated
         image_is_rotated_by_90 = true;
-#ifdef DEBUG_IMG_OUTPUT
+#ifdef DEBUG_IMG_PREPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
-            input_image.QuickAndDirtyWriteSlice(DEBUG_IMG_OUTPUT "/input_image_rotated.mrc", 1);
+            pre_processed_image.at(0).QuickAndDirtyWriteSlice(DEBUG_IMG_PREPROCESS_OUTPUT "/input_image_rotated.mrc", 1);
 #endif
     }
     else {
@@ -762,43 +830,91 @@ void TemplateMatchingDataSizer::ResizeImage_preSearch(const int central_cross_ha
 #endif
 };
 
-void TemplateMatchingDataSizer::ResizeImage_postSearch(std::array<Image*, n_outputs>& statistical_images) {
+float TemplateMatchingDataSizer::ResizeImage_postSearch(std::array<Image*, n_outputs>& statistical_images, long* total_number_of_stats_samples) {
 
     MyDebugAssertTrue(sizing_is_set, "Sizing has not been set");
     MyDebugAssertFalse(use_fast_fft ? image_is_rotated_by_90 : false, "Rotating the search image when using fastfft does  not make sense given the current square size restriction of FastFFT");
-    MyDebugAssertTrue(max_intensity_projection[0].logical_x_dimension <= (image_is_rotated_by_90 ? image_size.y : image_size.x), "The max intensity projection is larger than the original image size");
-    MyDebugAssertTrue(max_intensity_projection[0].logical_y_dimension <= (image_is_rotated_by_90 ? image_size.x : image_size.y), "The max intensity projection is larger than the original image size");
+    if ( resampling_is_wanted ) {
+        MyDebugAssertTrue(statistical_images.at(max_intensity_projection)[0].logical_x_dimension <= (image_is_rotated_by_90 ? image_size.y : image_size.x), "The max intensity projection is larger than the original image size");
+        MyDebugAssertTrue(statistical_images.at(max_intensity_projection)[0].logical_y_dimension <= (image_is_rotated_by_90 ? image_size.x : image_size.y), "The max intensity projection is larger than the original image size");
+    }
     for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
-        MyDebugAssertTrue(pre_processed_image[i_chunk].is_in_memory, "The pre-processed image is not in memory");
+        MyDebugAssertTrue(pre_processed_image.at(i_chunk).is_in_memory, "The pre-processed image is not in memory");
+    }
+
+    // The stats and histogram sampling is stochastic if < 1, so we want to rescale the avg/std img to the relative avg of the sampling
+    float avg_sampling{ };
+    for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
+        avg_sampling += float(total_number_of_stats_samples[i_chunk]);
+    }
+    avg_sampling /= float(GetNumberOfChunks( ));
+    for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
+        statistical_images.at(correlation_pixel_sum_image)[i_chunk].MultiplyByConstant(avg_sampling / total_number_of_stats_samples[i_chunk]);
+        statistical_images.at(correlation_pixel_sum_of_squares_image)[i_chunk].MultiplyByConstant(avg_sampling / total_number_of_stats_samples[i_chunk]);
     }
 
     // If we have split the image into chunks, our task is much easier because we have NOT rotated by 90 (all chunks are square)
     // and we have NOT done any resampling (in the current implementation.)
     if ( GetNumberOfChunks( ) > 1 ) {
+#ifdef DEBUG_IMG_POSTPROCESS_OUTPUT
+        std::cerr << " Resizing the image post search\n";
+
+#endif
         // Now if we are splitting into chunks do it here.
         Image tmp_output;
         int3  wanted_origin;
         // we don't want to deal with explicitly figuring out the overlap, so just write in where we have a valid search, some
         // points will be overwritten but that shouldn't matter.
         bool skip_padding_in_clipinto = true;
-        for ( auto& working_image : statistical_images ) {
+        for ( int i_img = 0; i_img < statistical_images.size( ); i_img++ ) {
             tmp_output.Allocate(image_size.x, image_size.y, image_size.z, true);
+            double avg       = 0.0;
+            long   n_samples = 0;
+            if ( i_img != correlation_pixel_sum_image && i_img != correlation_pixel_sum_of_squares_image ) {
+                for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
+                    for ( int y = pre_padding[i_chunk].y; y < pre_padding[i_chunk].y + roi[i_chunk].y; y++ ) {
+                        for ( int x = pre_padding[i_chunk].x; x < pre_padding[i_chunk].x + roi[i_chunk].x; x++ ) {
+                            avg += statistical_images[i_img][i_chunk].ReturnRealPixelFromPhysicalCoord(x, y, 0);
+                            n_samples++;
+                        }
+                    }
+                }
+            }
+            if ( n_samples > 0 )
+                avg /= double(n_samples);
+            tmp_output.SetToConstant(0.f);
+
             for ( int i_chunk = 0; i_chunk < GetNumberOfChunks( ); i_chunk++ ) {
+                // This assumes the overlaping region is zeroed out by proper consideration of ROI during mipping and that
+                // the mip and other stats arrays were initialized to zero.
 
                 // Chunks are taken from lower left, then lower right, then upper left, then upper right
-                GetChunkOffsets(wanted_origin, i_chunk);
-
-#ifdef USE_REPLICATIVE_PADDING
-                working_image[i_chunk].ClipIntoWithReplicativePadding(&tmp_output, wanted_origin.x, wanted_origin.y, 0, skip_padding_in_clipinto);
-#else
-                working_image[i_chunk].ClipInto(&tmp_output, 0.0f, false, 1.0f, wanted_origin.x, wanted_origin.y, 0, skip_padding_in_clipinto);
+                GetChunkOffsets(wanted_origin, i_chunk, false);
+#ifdef DEBUG_IMG_POSTPROCESS_OUTPUT
+                std::string output_name = DEBUG_IMG_POSTPROCESS_OUTPUT "/output_" + std::to_string(i_img) + "_" + std::to_string(i_chunk) + ".mrc";
+                statistical_images[i_img][i_chunk].QuickAndDirtyWriteSlice(output_name, 1);
 #endif
+
+                // The offsets are calculated for Clip into  (this int -> other)
+                // InsertOther adds (other -> this.)
+                // FIXME as part of unifying clip into
+                tmp_output.InsertOtherImageAtSpecifiedPosition(&statistical_images[i_img][i_chunk], -wanted_origin.x, -wanted_origin.y, 0);
             }
+
+            if ( i_img != correlation_pixel_sum_image && i_img != correlation_pixel_sum_of_squares_image ) {
+                for ( long i_pixel = 0; i_pixel < tmp_output.real_memory_allocated; i_pixel++ ) {
+                    if ( tmp_output.real_values[i_pixel] == 0.f ) {
+                        tmp_output.real_values[i_pixel] = avg;
+                    }
+                }
+            }
+
             // We start with an std::array of Image pointers, that point to arrays of Images. Delete the array of images and move the resources
             // to the output which is std::array of Image pointers that point to a single resized image.
-            delete[] working_image;
-            working_image = new Image;
-            working_image.Consume(&tmp_output);
+            delete[] statistical_images[i_img];
+            statistical_images[i_img] = new Image;
+            statistical_images[i_img]->Consume(&tmp_output);
+
         } // end of loop over images
     }
     else {
@@ -812,17 +928,17 @@ void TemplateMatchingDataSizer::ResizeImage_postSearch(std::array<Image*, n_outp
         // To avoid dislocations around the edge, the random padding is not enough for these images with their much larger dynamic range.
         // We might devise a mirrored or replicative padding, but a simpler solution is just to handle dividing by N here rather than latter in the processing.
 
-        int x_lower_bound = pre_padding.x;
-        int y_lower_bound = pre_padding.y;
-        int x_upper_bound = pre_padding.x + roi.x;
-        int y_upper_bound = pre_padding.y + roi.y;
+        int x_lower_bound = pre_padding[0].x;
+        int y_lower_bound = pre_padding[0].y;
+        int x_upper_bound = pre_padding[0].x + roi[0].x;
+        int y_upper_bound = pre_padding[0].y + roi[0].y;
         int i_x, i_y;
 
-        float x_radius = float(max_intensity_projection[0].physical_address_of_box_center_x - x_lower_bound);
-        float y_radius = float(max_intensity_projection[0].physical_address_of_box_center_y - y_lower_bound);
+        float x_radius = float(statistical_images.at(max_intensity_projection)[0].physical_address_of_box_center_x - x_lower_bound);
+        float y_radius = float(statistical_images.at(max_intensity_projection)[0].physical_address_of_box_center_y - y_lower_bound);
 
         Image tmp_trim;
-        tmp_trim.Allocate(roi.x, roi.y, 1, true);
+        tmp_trim.Allocate(roi[0].x, roi[0].y, 1, true);
 
         for ( auto& working_image : statistical_images ) {
             working_image[0].ClipInto(&tmp_trim);
@@ -874,9 +990,9 @@ void TemplateMatchingDataSizer::ResizeImage_postSearch(std::array<Image*, n_outp
             const float actual_image_binning   = GetFullBinningFactor( );
 
             // Loop over the (possibly) binned image coordinates
-            for ( int j = search_image_valid_area_lower_bound_y; j <= search_image_valid_area_upper_bound_y; j++ ) {
+            for ( int j = pre_padding[0].y; j < pre_padding[0].y + roi[0].y; j++ ) {
                 int y_offset_from_origin = j - statistical_images.at(max_intensity_projection)[0].physical_address_of_box_center_y;
-                for ( int i = search_image_valid_area_lower_bound_x; i <= search_image_valid_area_upper_bound_x; i++ ) {
+                for ( int i = pre_padding[0].x; i < pre_padding[0].y + roi[0].y; i++ ) {
                     // Get this pixels offset from the center of the box
                     int x_offset_from_origin = i - statistical_images.at(max_intensity_projection)[0].physical_address_of_box_center_x;
 
@@ -909,11 +1025,11 @@ void TemplateMatchingDataSizer::ResizeImage_postSearch(std::array<Image*, n_outp
                     }
                     else {
                         MyDebugAssertFalse(tmp_phi.real_values[address] == no_value, "Address already updated");
-                        tmp_phi.real_values[address]        = statistical_images.at(best_phi).real_values[searched_image_address];
-                        tmp_theta.real_values[address]      = statistical_images.at(best_theta).real_values[searched_image_address];
-                        tmp_psi.real_values[address]        = statistical_images.at(best_psi).real_values[searched_image_address];
-                        tmp_defocus.real_values[address]    = statistical_images.at(best_defocus).real_values[searched_image_address];
-                        tmp_pixel_size.real_values[address] = statistical_images.at(best_pixel_size).real_values[searched_image_address];
+                        tmp_phi.real_values[address]        = statistical_images.at(best_phi)[0].real_values[searched_image_address];
+                        tmp_theta.real_values[address]      = statistical_images.at(best_theta)[0].real_values[searched_image_address];
+                        tmp_psi.real_values[address]        = statistical_images.at(best_psi)[0].real_values[searched_image_address];
+                        tmp_defocus.real_values[address]    = statistical_images.at(best_defocus)[0].real_values[searched_image_address];
+                        tmp_pixel_size.real_values[address] = statistical_images.at(best_pixel_size)[0].real_values[searched_image_address];
                     }
                 }
             }
@@ -1006,7 +1122,9 @@ void TemplateMatchingDataSizer::ResizeImage_postSearch(std::array<Image*, n_outp
             }
         }
     }
-};
+
+    return avg_sampling;
+}
 
 void TemplateMatchingDataSizer::FillInNearestNeighbors(Image& output_image, Image& nn_upsampled_image, Image& valid_area_mask, const float no_value) {
 

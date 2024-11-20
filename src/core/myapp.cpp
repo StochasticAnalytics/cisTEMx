@@ -1136,7 +1136,7 @@ void MyApp::HandleSocketReadyToSendSingleJob(wxSocketBase* connected_socket, Run
     wxMutexLocker* lock = new wxMutexLocker(job_lock);
 
     if ( lock->IsOk( ) == true ) {
-        MyDebugAssertFalse(thread_next_action = THREAD_START_NEXT_JOB, "Thread action is already start job");
+        MyDebugAssertFalse(thread_next_action == THREAD_START_NEXT_JOB, "Thread action is already start job");
         thread_next_action = THREAD_START_NEXT_JOB;
     }
     else {

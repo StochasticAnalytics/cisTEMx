@@ -33,6 +33,7 @@ void QuickTestApp::DoInteractiveUserInput( ) {
 
 // override the do calculation method which will be what is actually run..
 
+
 bool QuickTestApp::DoCalculation( ) {
 
     return true;

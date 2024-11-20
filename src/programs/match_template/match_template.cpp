@@ -151,7 +151,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     wxString my_symmetry               = "C1";
     float    in_plane_angular_step     = 0;
     bool     use_gpu_input             = false;
-    int      max_threads               = 1; // Only used for the GPU code
+    int      n_threads_wanted          = 1; // Only used for the GPU code
     bool     use_fast_fft              = false;
 
     UserInput* my_input = new UserInput("MatchTemplate", 1.00);
@@ -194,7 +194,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
 #ifdef cisTEM_USING_FastFFT
     use_fast_fft = my_input->GetYesNoFromUser("Use Fast FFT", "Use the Fast FFT library", "Yes");
 #endif
-    max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
+    n_threads_wanted = my_input->GetIntFromUser("Wanted number of threads to use for calculation. When splitting a large image, overidden.", "requested number of threads", "1", 1);
 #endif
 
     int   first_search_position           = -1;
@@ -251,7 +251,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
                                       min_peak_radius,
                                       use_gpu_input,
                                       use_fast_fft,
-                                      max_threads);
+                                      n_threads_wanted);
 }
 
 // override the do calculation method which will be what is actually run..
@@ -333,19 +333,10 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool     use_gpu                         = my_current_job.arguments[40].ReturnBoolArgument( );
     bool     use_fast_fft                    = my_current_job.arguments[41].ReturnBoolArgument( );
 
-    int max_threads = my_current_job.arguments[42].ReturnIntegerArgument( );
+    int n_threads_wanted = my_current_job.arguments[42].ReturnIntegerArgument( );
 
     if ( is_running_locally == false )
-        max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
-
-    // This condition applies to GUI and CLI - it is just a recommendation to the user.
-    if ( use_gpu && max_threads <= 1 ) {
-        SendInfo("Warning, you are only using one thread on the GPU. Suggested minimum is 2. Check compute saturation using nvidia-smi -l 1\n");
-    }
-    if ( ! use_gpu && max_threads > 1 ) {
-        SendInfo("Using more than one thread only works in the GPU implementation\nSet No. of threads per copy to 1 in your Run Profile\n.");
-        max_threads = 1;
-    }
+        n_threads_wanted = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
 
     if ( ! use_gpu && (FloatsAreAlmostTheSame(histogram_sampling, 1.0f) == false || FloatsAreAlmostTheSame(stats_sampling, 1.0f) == false) ) {
         // only GPU can handle this
@@ -375,8 +366,8 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     float expected_threshold;
     float actual_number_of_angles_searched{0.f};
-    long  total_number_of_histogram_samples{0};
-    long  total_number_of_stats_samples{0};
+    long  total_number_of_histogram_samples[4] = {0, 0, 0, 0};
+    long  total_number_of_stats_samples[4]     = {0, 0, 0, 0};
 
     long* histogram_data;
 
@@ -423,12 +414,38 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     data_sizer.SetImageAndTemplateSizing(high_resolution_limit_search, use_fast_fft);
 
+    // This condition applies to GUI and CLI - it is just a recommendation to the user.
+    if ( ! use_gpu && n_threads_wanted > 1 ) {
+        SendInfo("Using more than one thread only works in the GPU implementation\nSet No. of threads per copy to 1 in your Run Profile\n.");
+        n_threads_wanted = 1;
+    }
+
+    if ( data_sizer.GetNumberOfChunks( ) > 1 ) {
+        if ( use_gpu ) {
+            // Each chunk is handled by a thread so we need at least 2
+            if ( n_threads_wanted == 1 && data_sizer.GetNumberOfChunks( ) == 2 ) {
+                SendInfo("Overriding n_threads to 2 to handle the chunking.");
+                n_threads_wanted = 2;
+            }
+            else if ( data_sizer.GetNumberOfChunks( ) % n_threads_wanted != 0 ) {
+                while ( n_threads_wanted % data_sizer.GetNumberOfChunks( ) != 0 ) {
+                    n_threads_wanted++;
+                }
+                SendInfo(wxString::Format("Overriding n_threads to %d to be be a multiple of the number of chunks.", n_threads_wanted));
+            }
+        }
+        else
+            SendError("The number of chunks is greater than 1, but the GPU is not enabled. This is not supported.");
+    }
+
     // Images for the correlation
     std::array<Image*, n_outputs> outputs;
     for ( auto& output : outputs ) {
         output = new Image[data_sizer.GetNumberOfChunks( )];
     }
 
+    Image input_image;
+    Image padded_reference;
     Image input_reconstruction;
     Image template_reconstruction;
     Image current_projection;
@@ -472,20 +489,26 @@ bool MatchTemplateApp::DoCalculation( ) {
     }
 
     profile_timing.start("Allocate and zero arrays");
-    padded_reference.Allocate(date_sizer.GetImageSearchSizeX( ), data_sizer.GetImageSearchSizeY( ), 1);
+    padded_reference.Allocate(data_sizer.GetImageSearchSizeX( ), data_sizer.GetImageSearchSizeY( ), 1);
     for ( auto& output : outputs ) {
         for ( int i_chunk = 0; i_chunk < data_sizer.GetNumberOfChunks( ); i_chunk++ ) {
-            output[i_chunk].Allocate(date_sizer.GetImageSearchSizeX( ), data_sizer.GetImageSearchSizeY( ), 1);
+            output[i_chunk].Allocate(data_sizer.GetImageSearchSizeX( ), data_sizer.GetImageSearchSizeY( ), 1);
             output[i_chunk].SetToConstant(0.f);
         }
     }
-    double* correlation_pixel_sum            = new double[data_sizer.GetSearchImageRealMemoryAllocated( )];
-    double* correlation_pixel_sum_of_squares = new double[data_sizer.GetSearchImageRealMemoryAllocated( )];
+
+    // FIXME: I really don't think a double is necessary here. Could optionally add a cascading summation
+    double* moments_array = new double[2 * data_sizer.GetNumberOfChunks( ) * data_sizer.GetSearchImageRealMemoryAllocated( )];
+    ZeroArray(moments_array, 2 * data_sizer.GetNumberOfChunks( ) * data_sizer.GetSearchImageRealMemoryAllocated( ));
+
+    std::vector<double*> correlation_pixel_sum;
+    std::vector<double*> correlation_pixel_sum_of_squares;
+    for ( int i_chunk = 0; i_chunk < data_sizer.GetNumberOfChunks( ); i_chunk++ ) {
+        correlation_pixel_sum.push_back(&moments_array[i_chunk * data_sizer.GetSearchImageRealMemoryAllocated( )]);
+        correlation_pixel_sum_of_squares.push_back(&moments_array[(i_chunk + data_sizer.GetNumberOfChunks( )) * data_sizer.GetSearchImageRealMemoryAllocated( )]);
+    }
 
     padded_reference.SetToConstant(0.f);
-
-    ZeroArray(correlation_pixel_sum, data_sizer.GetSearchImageRealMemoryAllocated( ));
-    ZeroArray(correlation_pixel_sum_of_squares, data_sizer.GetSearchImageRealMemoryAllocated( ));
 
     histogram_data = new long[histogram_number_of_points];
 
@@ -511,9 +534,9 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     CTF input_ctf;
     input_ctf.Init(voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, 0.0, 0.0, 0.0, wanted_pre_projection_pixel_size, deg_2_rad(phase_shift));
-    projection_filter.Allocate(wanted_pre_projection_template_size, wanted_pre_projection_template_size, false);
     template_reconstruction.Allocate(wanted_pre_projection_template_size, wanted_pre_projection_template_size, wanted_pre_projection_template_size, true);
 
+    projection_filter.Allocate(wanted_pre_projection_template_size, wanted_pre_projection_template_size, 1, false);
     // We want the output projection to always be the search size
     current_projection.Allocate(data_sizer.GetTemplateSearchSizeX( ), data_sizer.GetTemplateSearchSizeX( ), false);
 
@@ -570,7 +593,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     wxDateTime my_time_in;
 
     profile_timing.start("PreProcessResizedInputImage");
-    data_sizer.PreProcessResizedInputImage( );
+    data_sizer.PreProcessResizedInputImage(input_image);
     profile_timing.lap("PreProcessResizedInputImage");
     // count total searches (lazy)
 
@@ -635,16 +658,18 @@ bool MatchTemplateApp::DoCalculation( ) {
     int  nThreads       = 2;
     int  nGPUs          = 1;
     int  nJobs          = last_search_position - first_search_position + 1;
-    if ( use_gpu && max_threads > nJobs ) {
-        SendInfo(wxString::Format("\n\tWarning, you request more threads (%d) than there are search positions (%d)\n", max_threads, nJobs));
-        max_threads = nJobs;
+    if ( use_gpu && n_threads_wanted > nJobs && data_sizer.GetNumberOfChunks( ) == 1 ) {
+        SendInfo(wxString::Format("\n\tWarning, you request more threads (%d) than there are search positions (%d)\n", n_threads_wanted, nJobs));
+        n_threads_wanted = nJobs;
     }
 
-    int minPos = first_search_position;
-    int maxPos = last_search_position;
-    int incPos = (nJobs) / (max_threads);
-
-    //    wxPrintf("First last and inc %d, %d, %d\n", minPos, maxPos, incPos);
+    int incPos{ };
+    if ( data_sizer.GetNumberOfChunks( ) == 1 ) {
+        incPos = (nJobs) / (n_threads_wanted);
+    }
+    else {
+        incPos = (nJobs) / (n_threads_wanted / data_sizer.GetNumberOfChunks( ));
+    }
 
 #ifdef ENABLEGPU
     profile_timing.start("Init GPU");
@@ -654,195 +679,217 @@ bool MatchTemplateApp::DoCalculation( ) {
 #endif
 
     if ( use_gpu ) {
-        total_correlation_positions_per_thread = total_correlation_positions / max_threads;
+        total_correlation_positions_per_thread = total_correlation_positions / (n_threads_wanted / data_sizer.GetNumberOfChunks( ));
+    }
 
 #ifdef ENABLEGPU
-        profile_timing.start("Init GPU");
-        GPU = new TemplateMatchingCore[max_threads];
-        gpuDev.Init(nGPUs);
-        profile_timing.lap("Init GPU");
-        //    wxPrintf("Host: %s is running\nnThreads: %d\nnGPUs: %d\n:nSearchPos %d \n",hostNameBuffer,nThreads, nGPUs, maxPos);
-
-        //    TemplateMatchingCore GPU(number_of_jobs_per_image_in_gui);
+    profile_timing.start("Init GPU");
+    GPU = new TemplateMatchingCore[n_threads_wanted];
+    gpuDev.Init(nGPUs);
+    profile_timing.lap("Init GPU");
 #endif
-    }
 
     if ( is_running_locally == true ) {
         my_progress = new ProgressBar(total_correlation_positions_per_thread);
     }
 
-    //    wxPrintf("Starting job\n");
-    // If we've split the image into chunks we need to loop on the outer. NOTE: if this is something we need to keep beyond the paper, processing a stack of images in the inner loop will
-    // be far more effecient, however, it will involve modifying FastFFT and TemplateMatchingCore which is beyond the scope of what I have time for now. Ideally,
-    // chunking is just a fall back and in all practical cases, the user should be able to downsample if they have a K3 and want to use FastFFT.
-    for ( int i_chunk = 0; i_chunk < data_sizer.GetNumberOfChunks( ); i_chunk++ ) {
-        for ( size_i = -myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i <= myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i++ ) {
-            profile_timing.start("ChangePixelSize");
-            // Manually set this so that if we do loop over the pixel size, it doesn't create any problems with the gpu branch
-            template_reconstruction.is_fft_centered_in_box = false;
-            input_reconstruction.ChangePixelSize(&template_reconstruction, (data_sizer.GetSearchPixelSize( ) + float(size_i) * pixel_size_step) / data_sizer.GetSearchPixelSize( ), 0.001f, true);
-            //    template_reconstruction.ForwardFFT();
-            template_reconstruction.ZeroCentralPixel( );
-            template_reconstruction.SwapRealSpaceQuadrants( );
-            profile_timing.lap("ChangePixelSize");
+    for ( size_i = -myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i <= myroundint(float(pixel_size_search_range) / float(pixel_size_step)); size_i++ ) {
+        profile_timing.start("ChangePixelSize");
+        // Manually set this so that if we do loop over the pixel size, it doesn't create any problems with the gpu branch
+        template_reconstruction.is_fft_centered_in_box = false;
+        input_reconstruction.ChangePixelSize(&template_reconstruction, (data_sizer.GetSearchPixelSize( ) + float(size_i) * pixel_size_step) / data_sizer.GetSearchPixelSize( ), 0.001f, true);
+        //    template_reconstruction.ForwardFFT();
+        template_reconstruction.ZeroCentralPixel( );
+        template_reconstruction.SwapRealSpaceQuadrants( );
+        profile_timing.lap("ChangePixelSize");
+
+        if ( use_gpu ) {
+#ifdef ENABLEGPU
+            std::shared_ptr<GpuImage> template_reconstruction_gpu;
+            if ( use_gpu_prj ) {
+
+                // FIXME: move this (and the above CPU steps) into a method to prepare the 3d reference.
+                profile_timing.start("Swap Fourier Quadrants");
+                template_reconstruction.BackwardFFT( );
+                template_reconstruction.SwapFourierSpaceQuadrants(false);
+                profile_timing.lap("Swap Fourier Quadrants");
+                // We only want to have one copy of the 3d template in texture memory that each thread can then reference.
+                // First allocate a shared pointer and construct the GpuImage based on the CPU template
+                // TODO: Initially, i had this set to use
+                // GpuImage::InitializeBasedOnCpuImage(tmp_vol, false, true); where the memory is instructed not to be pinned.
+                // This should be fine now, but .
+                profile_timing.start("CopyHostToDeviceTextureComplex");
+
+                template_reconstruction_gpu = std::make_shared<GpuImage>(template_reconstruction);
+                template_reconstruction_gpu->CopyHostToDeviceTextureComplex<3>(template_reconstruction);
+
+                profile_timing.lap("CopyHostToDeviceTextureComplex");
+            }
+
+#pragma omp parallel num_threads(n_threads_wanted)
+            {
+                int t_IDX = ReturnThreadNumberOfCurrentThread( );
+                int chunk_IDX;
+                if ( data_sizer.GetNumberOfChunks( ) > 1 ) {
+                    chunk_IDX = t_IDX % data_sizer.GetNumberOfChunks( );
+                }
+                else {
+                    chunk_IDX = 0;
+                }
+                gpuDev.SetGpu( );
+
+                if ( first_gpu_loop ) {
+
+#ifdef USE_LERP_NOT_FOURIER_RESIZING
+                    std::cerr << "\n\nUsing LERP\n\n";
+                    GPU[t_IDX].use_lerp_for_resizing = true;
+                    GPU[t_IDX].binning_factor        = data_sizer.GetFullBinningFactor( );
+#endif
+                    int t_first_search_position{ };
+                    int t_last_search_position{ };
+
+                    if ( n_threads_wanted / data_sizer.GetNumberOfChunks( ) == 1 ) {
+                        t_first_search_position = first_search_position;
+                        t_last_search_position  = last_search_position;
+                    }
+                    else if ( data_sizer.GetNumberOfChunks( ) > 1 && n_threads_wanted / data_sizer.GetNumberOfChunks( ) >= 2 ) {
+                        t_first_search_position = first_search_position + (chunk_IDX * incPos);
+                        t_last_search_position  = first_search_position + (incPos - 1) + (chunk_IDX * incPos);
+                        if ( t_IDX % data_sizer.GetNumberOfChunks( ) == 1 )
+                            t_last_search_position = last_search_position;
+                    }
+                    else {
+                        t_first_search_position = first_search_position + (t_IDX * incPos);
+                        t_last_search_position  = first_search_position + (incPos - 1) + (t_IDX * incPos);
+                        if ( t_IDX == (n_threads_wanted - 1) )
+                            t_last_search_position = last_search_position;
+                    }
+
+                    wxPrintf("Chunk %d Size is %d %d\n", chunk_IDX, data_sizer.pre_processed_image.at(chunk_IDX).logical_x_dimension, data_sizer.pre_processed_image.at(chunk_IDX).logical_y_dimension);
+                    profile_timing.start("Init GPU");
+                    GPU[t_IDX].Init(this,
+                                    template_reconstruction_gpu,
+                                    &data_sizer.pre_processed_image.at(chunk_IDX),
+                                    current_projection,
+                                    psi_max,
+                                    psi_start,
+                                    psi_step,
+                                    angles,
+                                    global_euler_search,
+                                    data_sizer.GetPrePadding(chunk_IDX),
+                                    data_sizer.GetRoi(chunk_IDX),
+                                    histogram_sampling,
+                                    stats_sampling,
+                                    t_first_search_position,
+                                    t_last_search_position,
+                                    my_progress,
+                                    total_correlation_positions_per_thread,
+                                    is_running_locally,
+                                    use_fast_fft,
+                                    use_gpu_prj);
+                    profile_timing.lap("Init GPU");
+                    if ( ! use_gpu_prj ) {
+                        GPU[t_IDX].SetCpuTemplate(&template_reconstruction);
+                    }
+#pragma omp critical
+                    {
+                        wxPrintf("Staring TemplateMatchingCore object %d to work on position range %d-%d\n", t_IDX, t_first_search_position, t_last_search_position);
+                    }
+                    first_gpu_loop = false;
+                }
+                else {
+                    GPU[t_IDX].template_gpu_shared = template_reconstruction_gpu;
+                }
+            } // end of omp block
+#endif
+        }
+
+        for ( defocus_i = -myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i <= myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i++ ) {
+
+            profile_timing.start("Ctf and whitening filter");
+            // make the projection filter, which will be CTF * whitening filter
+            input_ctf.SetDefocus((defocus1 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
+                                 (defocus2 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
+                                 deg_2_rad(defocus_angle));
+            // Reset this bool since we will overwrite all values in the CTF image.
+            projection_filter.is_fft_centered_in_box = false;
+            projection_filter.CalculateCTFImage(input_ctf);
+            projection_filter.ApplyCurveFilter(data_sizer.whitening_filter_ptr.get( ));
+            // Rather than multiplying the projection by the ctf_image, we will interpolate from it
+            // This allows intra projection down sampling and also keeps the ctf in fast read only cache.
+            // As with the 3d volume, we have to swap the fourier space quadrants and shift x by 1 to have spatially local interp
+            if ( use_gpu && use_gpu_prj )
+                projection_filter.SwapFourierSpaceQuadrants(false, true);
+
+            profile_timing.lap("Ctf and whitening filter");
 
             if ( use_gpu ) {
 #ifdef ENABLEGPU
-                std::shared_ptr<GpuImage> template_reconstruction_gpu;
-                if ( use_gpu_prj ) {
 
-                    // FIXME: move this (and the above CPU steps) into a method to prepare the 3d reference.
-                    profile_timing.start("Swap Fourier Quadrants");
-                    template_reconstruction.BackwardFFT( );
-                    template_reconstruction.SwapFourierSpaceQuadrants(false);
-                    profile_timing.lap("Swap Fourier Quadrants");
-                    // We only want to have one copy of the 3d template in texture memory that each thread can then reference.
-                    // First allocate a shared pointer and construct the GpuImage based on the CPU template
-                    // TODO: Initially, i had this set to use
-                    // GpuImage::InitializeBasedOnCpuImage(tmp_vol, false, true); where the memory is instructed not to be pinned.
-                    // This should be fine now, but .
-                    profile_timing.start("CopyHostToDeviceTextureComplex");
-
-                    template_reconstruction_gpu = std::make_shared<GpuImage>(template_reconstruction);
-                    template_reconstruction_gpu->CopyHostToDeviceTextureComplex<3>(template_reconstruction);
-
-                    profile_timing.lap("CopyHostToDeviceTextureComplex");
-                }
-
-#pragma omp parallel num_threads(max_threads)
+#pragma omp parallel num_threads(n_threads_wanted)
                 {
-                    int tIDX = ReturnThreadNumberOfCurrentThread( );
-                    gpuDev.SetGpu( );
-
-                    if ( first_gpu_loop ) {
-
-#ifdef USE_LERP_NOT_FOURIER_RESIZING
-                        std::cerr << "\n\nUsing LERP\n\n";
-                        GPU[tIDX].use_lerp_for_resizing = true;
-                        GPU[tIDX].binning_factor        = data_sizer.GetFullBinningFactor( );
-#endif
-
-                        int t_first_search_position = first_search_position + (tIDX * incPos);
-                        int t_last_search_position  = first_search_position + (incPos - 1) + (tIDX * incPos);
-                        if ( tIDX == (max_threads - 1) )
-                            t_last_search_position = maxPos;
-                        profile_timing.start("Init GPU");
-                        GPU[tIDX].Init(this,
-                                       template_reconstruction_gpu,
-                                       data_sizer.GetProcessedInputImage(i_chunk),
-                                       current_projection,
-                                       psi_max,
-                                       psi_start,
-                                       psi_step,
-                                       angles,
-                                       global_euler_search,
-                                       data_sizer.GetPrePadding( ),
-                                       data_sizer.GetRoi( ),
-                                       histogram_sampling,
-                                       stats_sampling,
-                                       t_first_search_position,
-                                       t_last_search_position,
-                                       my_progress,
-                                       total_correlation_positions_per_thread,
-                                       is_running_locally,
-                                       use_fast_fft,
-                                       use_gpu_prj);
-                        profile_timing.lap("Init GPU");
-                        if ( ! use_gpu_prj ) {
-                            GPU[tIDX].SetCpuTemplate(&template_reconstruction);
-                        }
-
-                        wxPrintf("%d\n", tIDX);
-                        wxPrintf("%d\n", t_first_search_position);
-                        wxPrintf("%d\n", t_last_search_position);
-                        wxPrintf("Staring TemplateMatchingCore object %d to work on position range %d-%d\n", tIDX, t_first_search_position, t_last_search_position);
-
-                        first_gpu_loop = false;
+                    int t_IDX = ReturnThreadNumberOfCurrentThread( );
+                    int chunk_IDX;
+                    if ( data_sizer.GetNumberOfChunks( ) > 1 ) {
+                        chunk_IDX = t_IDX % data_sizer.GetNumberOfChunks( );
                     }
                     else {
-                        GPU[tIDX].template_gpu_shared = template_reconstruction_gpu;
+                        chunk_IDX = 0;
                     }
-                } // end of omp block
-#endif
-            }
-            for ( defocus_i = -myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i <= myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i++ ) {
+                    gpuDev.SetGpu( );
 
-                profile_timing.start("Ctf and whitening filter");
-                // make the projection filter, which will be CTF * whitening filter
-                input_ctf.SetDefocus((defocus1 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
-                                     (defocus2 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
-                                     deg_2_rad(defocus_angle));
-                // Reset this bool since we will overwrite all values in the CTF image.
-                projection_filter.is_fft_centered_in_box = false;
-                projection_filter.CalculateCTFImage(input_ctf);
-                for ( int i = 0; i < 1; i++ )
-                    projection_filter.ApplyCurveFilter(data_sizer.whitening_filter_ptr.get( ));
-
-                profile_timing.lap("Ctf and whitening filter");
-
-                if ( use_gpu ) {
-#ifdef ENABLEGPU
-                    // Rather than multiplying the projection by the ctf_image, we will interpolate from it
-                    // This allows intra projection down sampling and also keeps the ctf in fast read only cache.
-                    // As with the 3d volume, we have to swap the fourier space quadrants and shift x by 1 to have spatially local interp
-                    if ( use_gpu_prj )
-                        projection_filter.SwapFourierSpaceQuadrants(false, true);
-
-#pragma omp parallel num_threads(max_threads)
-                    {
-                        int tIDX = ReturnThreadNumberOfCurrentThread( );
-                        gpuDev.SetGpu( );
-
-                        profile_timing.start("RunInnerLoop");
-                        GPU[tIDX].RunInnerLoop(projection_filter, tIDX, current_correlation_position);
-                        profile_timing.lap("RunInnerLoop");
+                    profile_timing.start("RunInnerLoop");
+                    GPU[t_IDX].RunInnerLoop(projection_filter, data_sizer.GetNumberOfChunks( ), current_correlation_position);
+                    profile_timing.lap("RunInnerLoop");
 
 #pragma omp critical
-                        {
-                            profile_timing.start("Transfer data back to host");
-                            Image mip_buffer   = GPU[tIDX].d_max_intensity_projection.CopyDeviceToNewHost(true, false);
-                            Image psi_buffer   = GPU[tIDX].d_best_psi.CopyDeviceToNewHost(true, false);
-                            Image phi_buffer   = GPU[tIDX].d_best_phi.CopyDeviceToNewHost(true, false);
-                            Image theta_buffer = GPU[tIDX].d_best_theta.CopyDeviceToNewHost(true, false);
+                    {
+                        profile_timing.start("Transfer data back to host");
+                        Image mip_buffer   = GPU[t_IDX].d_max_intensity_projection.CopyDeviceToNewHost(true, false);
+                        Image psi_buffer   = GPU[t_IDX].d_best_psi.CopyDeviceToNewHost(true, false);
+                        Image phi_buffer   = GPU[t_IDX].d_best_phi.CopyDeviceToNewHost(true, false);
+                        Image theta_buffer = GPU[t_IDX].d_best_theta.CopyDeviceToNewHost(true, false);
 
-                            Image sum   = GPU[tIDX].d_sum2.CopyDeviceToNewHost(true, false);
-                            Image sumSq = GPU[tIDX].d_sumSq2.CopyDeviceToNewHost(true, false);
+                        Image sum   = GPU[t_IDX].d_sum2.CopyDeviceToNewHost(true, false);
+                        Image sumSq = GPU[t_IDX].d_sumSq2.CopyDeviceToNewHost(true, false);
 
-                            // Note: even if we have ignored some invalid boundary values, copy over everything here
-                            for ( current_y = data_sizer.GetPrePaddingY( ); current_y < data_sizer.GetPrePaddingY( ) + data_sizer.GetRoiY( ); current_y++ ) {
-                                for ( current_x = data_sizer.GetPrePaddingX( ); current_x < data_sizer.GetPrePaddingX( ) + data_sizer.GetRoiX( ); current_x++ ) {
-                                    // first mip
-                                    long address = outputs.at(max_intensity_projection)[i_chunk].ReturnReal1DAddressFromPhysicalCoord(current_x, current_y, 0);
+                        // Note: even if we have ignored some invalid boundary values, copy over everything here
+                        for ( current_y = data_sizer.GetPrePaddingY(chunk_IDX); current_y < data_sizer.GetPrePaddingY(chunk_IDX) + data_sizer.GetRoiY(chunk_IDX); current_y++ ) {
+                            for ( current_x = data_sizer.GetPrePaddingX(chunk_IDX); current_x < data_sizer.GetPrePaddingX(chunk_IDX) + data_sizer.GetRoiX(chunk_IDX); current_x++ ) {
+                                // first mip
+                                long address = outputs.at(max_intensity_projection)[chunk_IDX].ReturnReal1DAddressFromPhysicalCoord(current_x, current_y, 0);
 
-                                    if ( mip_buffer.real_values[address] > outputs.at(max_intensity_projection)[i_chunk].real_values[address] ) {
-                                        outputs.at(max_intensity_projection)[i_chunk].real_values[address] = mip_buffer.real_values[address];
-                                        outputs.at(best_psi)[i_chunk].real_values[address]                 = psi_buffer.real_values[address];
-                                        outputs.at(best_theta)[i_chunk].real_values[address]               = theta_buffer.real_values[address];
-                                        outputs.at(best_phi)[i_chunk].real_values[address]                 = phi_buffer.real_values[address];
-                                        outputs.at(best_defocus)[i_chunk].real_values[address]             = float(defocus_i) * defocus_step;
-                                        outputs.at(best_pixel_size)[i_chunk].real_values[address]          = float(size_i) * pixel_size_step;
-                                    }
-
-                                    correlation_pixel_sum[address] += (double)sum.real_values[address];
-                                    correlation_pixel_sum_of_squares[address] += (double)sumSq.real_values[address];
+                                if ( mip_buffer.real_values[address] > outputs.at(max_intensity_projection)[chunk_IDX].real_values[address] ) {
+                                    outputs.at(max_intensity_projection)[chunk_IDX].real_values[address] = mip_buffer.real_values[address];
+                                    outputs.at(best_psi)[chunk_IDX].real_values[address]                 = psi_buffer.real_values[address];
+                                    outputs.at(best_theta)[chunk_IDX].real_values[address]               = theta_buffer.real_values[address];
+                                    outputs.at(best_phi)[chunk_IDX].real_values[address]                 = phi_buffer.real_values[address];
+                                    outputs.at(best_defocus)[chunk_IDX].real_values[address]             = float(defocus_i) * defocus_step;
+                                    outputs.at(best_pixel_size)[chunk_IDX].real_values[address]          = float(size_i) * pixel_size_step;
                                 }
+
+                                correlation_pixel_sum[chunk_IDX][address] += (double)sum.real_values[address];
+                                correlation_pixel_sum_of_squares[chunk_IDX][address] += (double)sumSq.real_values[address];
                             }
+                        }
 
-                            // GPU[tIDX].histogram.CopyToHostAndAdd(histogram_data);
-                            GPU[tIDX].my_dist->CopyToHostAndAdd(histogram_data);
+                        // GPU[t_IDX].histogram.CopyToHostAndAdd(histogram_data);
+                        GPU[t_IDX].my_dist->CopyToHostAndAdd(histogram_data);
 
-                            //                    current_correlation_position += GPU[tIDX].total_number_of_cccs_calculated;
-                            actual_number_of_angles_searched += GPU[tIDX].total_number_of_cccs_calculated;
-                            total_number_of_histogram_samples += GPU[tIDX].total_number_of_histogram_samples;
-                            total_number_of_stats_samples += GPU[tIDX].total_number_of_stats_samples;
-                            profile_timing.lap("Transfer data back to host");
-                        } // end of omp critical block
-                    } // end of parallel block
-
-                    continue;
+                        //                    current_correlation_position += GPU[t_IDX].total_number_of_cccs_calculated;
+                        actual_number_of_angles_searched += GPU[t_IDX].total_number_of_cccs_calculated;
+                        total_number_of_histogram_samples[chunk_IDX] += GPU[t_IDX].total_number_of_histogram_samples;
+                        total_number_of_stats_samples[chunk_IDX] += GPU[t_IDX].total_number_of_stats_samples;
+                        profile_timing.lap("Transfer data back to host");
+                    } // end of omp critical block
+                } // end of parallel block
 
 #endif
-                }
+            }
+            else {
+                // FIXME: if implementing chunking on cpu
+                int t_IDX = 0;
+
                 profile_timing.start("RunInnerLoop cpu");
                 for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
                     //loop over each rotation angle
@@ -898,17 +945,17 @@ bool MatchTemplateApp::DoCalculation( ) {
 
                         // update mip, and histogram..
 
-                        for ( current_y = data_sizer.GetPrePaddingY( ); current_y < data_sizer.GetPrePaddingY( ) + data_sizer.GetRoiY( ); current_y++ ) {
-                            for ( current_x = data_sizer.GetPrePaddingX( ); current_x < data_sizer.GetPrePaddingX( ) + data_sizer.GetRoiX( ); current_x++ ) {
+                        for ( current_y = data_sizer.GetPrePaddingY(t_IDX); current_y < data_sizer.GetPrePaddingY(t_IDX) + data_sizer.GetRoiY(t_IDX); current_y++ ) {
+                            for ( current_x = data_sizer.GetPrePaddingX(t_IDX); current_x < data_sizer.GetPrePaddingX(t_IDX) + data_sizer.GetRoiX(t_IDX); current_x++ ) {
                                 // first mip
-                                long address = outputs.at(max_intensity_projection)[i_chunk].ReturnReal1DAddressFromPhysicalCoord(current_x, current_y, 0);
-                                if ( padded_reference.real_values[address] > outputs.at(max_intensity_projection)[i_chunk].real_values[address] ) {
-                                    outputs.at(max_intensity_projection)[i_chunk].real_values[address] = padded_reference.real_values[address];
-                                    outputs.at(best_psi)[i_chunk].real_values[address]                 = current_psi;
-                                    outputs.at(best_theta)[i_chunk].real_values[address]               = global_euler_search.list_of_search_parameters[current_search_position][1];
-                                    outputs.at(best_phi)[i_chunk].real_values[address]                 = global_euler_search.list_of_search_parameters[current_search_position][0];
-                                    outputs.at(best_defocus)[i_chunk].real_values[address]             = float(defocus_i) * defocus_step;
-                                    outputs.at(best_pixel_size)[i_chunk].real_values[address]          = float(size_i) * pixel_size_step;
+                                long address = outputs.at(max_intensity_projection)[t_IDX].ReturnReal1DAddressFromPhysicalCoord(current_x, current_y, 0);
+                                if ( padded_reference.real_values[address] > outputs.at(max_intensity_projection)[t_IDX].real_values[address] ) {
+                                    outputs.at(max_intensity_projection)[t_IDX].real_values[address] = padded_reference.real_values[address];
+                                    outputs.at(best_psi)[t_IDX].real_values[address]                 = current_psi;
+                                    outputs.at(best_theta)[t_IDX].real_values[address]               = global_euler_search.list_of_search_parameters[current_search_position][1];
+                                    outputs.at(best_phi)[t_IDX].real_values[address]                 = global_euler_search.list_of_search_parameters[current_search_position][0];
+                                    outputs.at(best_defocus)[t_IDX].real_values[address]             = float(defocus_i) * defocus_step;
+                                    outputs.at(best_pixel_size)[t_IDX].real_values[address]          = float(size_i) * pixel_size_step;
                                     //                                if (size_i != 0) wxPrintf("size_i = %i\n", size_i);
                                     //                                correlation_pixel_sum[pixel_counter] = variance;
                                 }
@@ -921,8 +968,8 @@ bool MatchTemplateApp::DoCalculation( ) {
                                 if ( current_bin >= 0 && current_bin <= histogram_number_of_points ) {
                                     histogram_data[current_bin] += 1;
                                 }
-                                correlation_pixel_sum[address] += mip_value;
-                                correlation_pixel_sum_of_squares[address] += mip_value * mip_value;
+                                correlation_pixel_sum[t_IDX][address] += mip_value;
+                                correlation_pixel_sum_of_squares[t_IDX][address] += mip_value * mip_value;
                             }
                         }
 
@@ -936,8 +983,8 @@ bool MatchTemplateApp::DoCalculation( ) {
                         if ( is_running_locally == false ) {
                             actual_number_of_angles_searched++;
                             // Currently there is no subsampling in the CPU implementation
-                            total_number_of_histogram_samples++;
-                            total_number_of_stats_samples++;
+                            total_number_of_histogram_samples[t_IDX]++;
+                            total_number_of_stats_samples[t_IDX]++;
                             temp_float             = current_correlation_position;
                             JobResult* temp_result = new JobResult;
                             temp_result->SetResult(1, &temp_float);
@@ -946,29 +993,38 @@ bool MatchTemplateApp::DoCalculation( ) {
                     }
                 }
                 profile_timing.lap("RunInnerLoop cpu");
-            }
-        }
+            } // else on gpu vs cpu inner loop
+        } // defocus loop
+    } // pixel size loop
 
-        // We may have rotated or re-sized the image for performance. To map the results back, it will be
-        // easiest to convert the statistical arrays back to images.
+    // We may have rotated or re-sized the image for performance. To map the results back, it will be
+    // easiest to convert the statistical arrays back to images.
+
+    for ( int i_chunk = 0; i_chunk < data_sizer.GetNumberOfChunks( ); i_chunk++ ) {
         for ( pixel_counter = 0; pixel_counter < data_sizer.GetSearchImageRealMemoryAllocated( ); pixel_counter++ ) {
-            outputs.at(correlation_pixel_sum_image)[i_chunk].real_values[pixel_counter]            = (float)correlation_pixel_sum[pixel_counter];
-            outputs.at(correlation_pixel_sum_of_squares_image)[i_chunk].real_values[pixel_counter] = (float)correlation_pixel_sum_of_squares[pixel_counter];
+            outputs.at(correlation_pixel_sum_image)[i_chunk].real_values[pixel_counter]            = (float)correlation_pixel_sum[i_chunk][pixel_counter];
+            outputs.at(correlation_pixel_sum_of_squares_image)[i_chunk].real_values[pixel_counter] = (float)correlation_pixel_sum_of_squares[i_chunk][pixel_counter];
         }
         // Remove any unwanted values in the padding area
         outputs.at(correlation_pixel_sum_image)[i_chunk].ZeroFFTWPadding( );
-        outputs.at(correlation_pixel_sum_of_squares_image)[i_chunk].ZeroFFTWPadding( )
-
-    } // search loop over chunks
+        outputs.at(correlation_pixel_sum_of_squares_image)[i_chunk].ZeroFFTWPadding( );
+    }
 
     // FIXME: this timing needs to be moved
     wxPrintf("\n\n\tTimings: Overall: %s\n", (wxDateTime::Now( ) - overall_start).Format( ));
 
     profile_timing.start("Resize_postSearch");
 
-    data_sizer.ResizeImage_postSearch(outputs);
+    float adjusted_stats_sampling    = data_sizer.ResizeImage_postSearch(outputs, total_number_of_stats_samples);
+    total_number_of_stats_samples[0] = long(adjusted_stats_sampling);
+    for ( int i = 1; i < data_sizer.GetNumberOfChunks( ); i++ ) {
+        total_number_of_histogram_samples[0] += total_number_of_histogram_samples[i];
+    }
+    total_number_of_histogram_samples[0] /= data_sizer.GetNumberOfChunks( );
 
     // If we have split the image into chunks, we should have re-assembled it in the prior step. All the stats arrays will be at outputs.ptr[0]
+    // Note: the sampling of the stats arrays and histograms should be roughly equal even if we split it into chunks, but it is random, so there could be some error introduced.
+    // It might be better to track this and scale the individual chunks by the relative number of samples.
 
     profile_timing.lap("Resize_postSearch");
     profile_timing.print_times( );
@@ -976,15 +1032,15 @@ bool MatchTemplateApp::DoCalculation( ) {
         delete my_progress;
 
         // Adjust the MIP by the measured mean and stddev of the full search CCC which is an estimate for the moments of the noise distribution of CCCs.
-        Image scaled_mip = max_intensity_projection;
-        RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(&max_intensity_projection,
+        Image scaled_mip = outputs.at(max_intensity_projection)[0];
+        RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(&outputs.at(max_intensity_projection)[0],
                                                             &scaled_mip,
-                                                            correlation_pixel_sum_image.real_values,
-                                                            correlation_pixel_sum_of_squares_image.real_values,
+                                                            outputs.at(correlation_pixel_sum_image)[0].real_values,
+                                                            outputs.at(correlation_pixel_sum_of_squares_image)[0].real_values,
                                                             histogram_data,
                                                             total_correlation_positions,
-                                                            total_number_of_histogram_samples,
-                                                            total_number_of_stats_samples);
+                                                            total_number_of_histogram_samples[0],
+                                                            total_number_of_stats_samples[0]);
         // calculate the expected threshold (from peter's paper)
         const float CCG_NOISE_STDDEV = 1.0;
         double      temp_threshold;
@@ -996,7 +1052,7 @@ bool MatchTemplateApp::DoCalculation( ) {
 #endif
         expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
 
-        temp_image.CopyFrom(&max_intensity_projection);
+        temp_image.CopyFrom(&outputs.at(max_intensity_projection)[0]);
         MRCFile mip_out(mip_output_file.ToStdString( ), true);
         mip_out.SetPixelSize(data_sizer.GetPixelSize( ));
 #ifdef USE_FP16_PARTICLE_STACKS
@@ -1016,49 +1072,49 @@ bool MatchTemplateApp::DoCalculation( ) {
 #ifdef USE_FP16_PARTICLE_STACKS
         correlation_pixel_sum_output_mrcfile.SetOutputToFP16( );
 #endif
-        correlation_pixel_sum_image.WriteSlice(&correlation_pixel_sum_output_mrcfile, 1);
+        outputs.at(correlation_pixel_sum_image)[0].WriteSlice(&correlation_pixel_sum_output_mrcfile, 1);
 
         MRCFile correlation_pixel_sum_of_squares_output_mrcfile(correlation_std_output_file.ToStdString( ), true);
         correlation_pixel_sum_of_squares_output_mrcfile.SetPixelSize(data_sizer.GetPixelSize( ));
 #ifdef USE_FP16_PARTICLE_STACKS
         correlation_pixel_sum_of_squares_output_mrcfile.SetOutputToFP16( );
 #endif
-        correlation_pixel_sum_of_squares_image.WriteSlice(&correlation_pixel_sum_of_squares_output_mrcfile, 1);
+        outputs.at(correlation_pixel_sum_of_squares_image)[0].WriteSlice(&correlation_pixel_sum_of_squares_output_mrcfile, 1);
 
         MRCFile best_psi_output_mrcfile(best_psi_output_file.ToStdString( ), true);
         best_psi_output_mrcfile.SetPixelSize(data_sizer.GetPixelSize( ));
 #ifdef USE_FP16_PARTICLE_STACKS
         best_psi_output_mrcfile.SetOutputToFP16( );
 #endif
-        best_psi.WriteSlice(&best_psi_output_mrcfile, 1);
+        outputs.at(best_psi)[0].WriteSlice(&best_psi_output_mrcfile, 1);
 
         MRCFile best_theta_output_mrcfile(best_theta_output_file.ToStdString( ), true);
         best_theta_output_mrcfile.SetPixelSize(data_sizer.GetPixelSize( ));
 #ifdef USE_FP16_PARTICLE_STACKS
         best_theta_output_mrcfile.SetOutputToFP16( );
 #endif
-        best_theta.WriteSlice(&best_theta_output_mrcfile, 1);
+        outputs.at(best_theta)[0].WriteSlice(&best_theta_output_mrcfile, 1);
 
         MRCFile best_phi_output_mrcfile(best_phi_output_file.ToStdString( ), true);
         best_phi_output_mrcfile.SetPixelSize(data_sizer.GetPixelSize( ));
 #ifdef USE_FP16_PARTICLE_STACKS
         best_phi_output_mrcfile.SetOutputToFP16( );
 #endif
-        best_phi.WriteSlice(&best_phi_output_mrcfile, 1);
+        outputs.at(best_phi)[0].WriteSlice(&best_phi_output_mrcfile, 1);
 
         MRCFile best_defocus_output_mrcfile(best_defocus_output_file.ToStdString( ), true);
         best_defocus_output_mrcfile.SetPixelSize(data_sizer.GetPixelSize( ));
 #ifdef USE_FP16_PARTICLE_STACKS
         best_defocus_output_mrcfile.SetOutputToFP16( );
 #endif
-        best_defocus.WriteSlice(&best_defocus_output_mrcfile, 1);
+        outputs.at(best_defocus)[0].WriteSlice(&best_defocus_output_mrcfile, 1);
 
         MRCFile best_pixel_size_output_mrcfile(best_pixel_size_output_file.ToStdString( ), true);
         best_pixel_size_output_mrcfile.SetPixelSize(data_sizer.GetPixelSize( ));
 #ifdef USE_FP16_PARTICLE_STACKS
         best_pixel_size_output_mrcfile.SetOutputToFP16( );
 #endif
-        best_pixel_size.WriteSlice(&best_pixel_size_output_mrcfile, 1);
+        outputs.at(best_pixel_size)[0].WriteSlice(&best_pixel_size_output_mrcfile, 1);
 
         // write out histogram..
 
@@ -1107,7 +1163,7 @@ bool MatchTemplateApp::DoCalculation( ) {
         pointer_to_histogram_data = (float*)histogram_data;
 
         // Make sure there is enough space allocated for all results
-        number_of_result_floats += max_intensity_projection.real_memory_allocated * cistem::match_template::number_of_output_images;
+        number_of_result_floats += outputs.at(max_intensity_projection)[0].real_memory_allocated * cistem::match_template::number_of_output_images;
         number_of_result_floats += histogram_number_of_points * sizeof(long) / sizeof(float); // histogram are longs
 
         float* result = new float[number_of_result_floats];
@@ -1117,57 +1173,57 @@ bool MatchTemplateApp::DoCalculation( ) {
         {
             using cm_t = cistem::match_template::Enum;
 
-            result[cm_t::image_size_x]                  = max_intensity_projection.logical_x_dimension;
-            result[cm_t::image_size_y]                  = max_intensity_projection.logical_y_dimension;
-            result[cm_t::image_real_memory_allocated]   = max_intensity_projection.real_memory_allocated;
+            result[cm_t::image_size_x]                  = outputs.at(max_intensity_projection)[0].logical_x_dimension;
+            result[cm_t::image_size_y]                  = outputs.at(max_intensity_projection)[0].logical_y_dimension;
+            result[cm_t::image_real_memory_allocated]   = outputs.at(max_intensity_projection)[0].real_memory_allocated;
             result[cm_t::number_of_histogram_bins]      = histogram_number_of_points;
             result[cm_t::number_of_angles_searched]     = actual_number_of_angles_searched;
-            result[cm_t::number_of_histogram_samples]   = total_number_of_histogram_samples;
-            result[cm_t::number_of_stats_samples]       = total_number_of_stats_samples;
+            result[cm_t::number_of_histogram_samples]   = total_number_of_histogram_samples[0];
+            result[cm_t::number_of_stats_samples]       = total_number_of_stats_samples[0];
             result[cm_t::ccc_scalar]                    = 1.0f; // (float)sqrt_input_pixels is redundant, but we need all the results to calculate the scaling from the global CCC moments
             result[cm_t::input_pixel_size]              = data_sizer.GetPixelSize( );
             result[cm_t::number_of_valid_search_pixels] = data_sizer.GetNumberOfValidSearchPixels( );
         }
 
-        result_array_counter = cistem::match_template::number_of_meta_data_values;
-
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = max_intensity_projection.real_values[pixel_counter];
+        result_array_counter                = cistem::match_template::number_of_meta_data_values;
+        const int mip_real_memory_allocated = outputs.at(max_intensity_projection)[0].real_memory_allocated;
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(max_intensity_projection)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = best_psi.real_values[pixel_counter];
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(best_psi)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = best_theta.real_values[pixel_counter];
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(best_theta)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = best_phi.real_values[pixel_counter];
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(best_phi)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = best_defocus.real_values[pixel_counter];
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(best_defocus)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = best_pixel_size.real_values[pixel_counter];
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(best_pixel_size)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = correlation_pixel_sum_image.real_values[pixel_counter];
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(correlation_pixel_sum_image)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
-        for ( pixel_counter = 0; pixel_counter < max_intensity_projection.real_memory_allocated; pixel_counter++ ) {
-            result[result_array_counter] = correlation_pixel_sum_of_squares_image.real_values[pixel_counter];
+        for ( pixel_counter = 0; pixel_counter < mip_real_memory_allocated; pixel_counter++ ) {
+            result[result_array_counter] = outputs.at(correlation_pixel_sum_of_squares_image)[0].real_values[pixel_counter];
             result_array_counter++;
         }
 
@@ -1182,8 +1238,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     }
 
     delete[] histogram_data;
-    delete[] correlation_pixel_sum;
-    delete[] correlation_pixel_sum_of_squares;
+    delete[] moments_array;
 #ifdef ENABLEGPU
     if ( use_gpu ) {
         delete[] GPU;
@@ -1274,7 +1329,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         ImageFile input_reconstruction_file;
         input_reconstruction_file.OpenFile(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[1].ReturnStringArgument( ), false);
-        // FIXME: this is not correct BROKEN needs to use valid area (add to constants and reference here based on data_sizer)
         int   image_size_x                  = aggregated_results[array_location].collated_data_array[cistem::match_template::image_size_x];
         int   image_size_y                  = aggregated_results[array_location].collated_data_array[cistem::match_template::image_size_y];
         int   image_real_memory_allocated   = aggregated_results[array_location].collated_data_array[cistem::match_template::image_real_memory_allocated];
@@ -1591,8 +1645,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
                 result_image.InsertOtherImageAtSpecifiedPosition(&current_projection, current_peak.x - result_image.physical_address_of_box_center_x, current_peak.y - result_image.physical_address_of_box_center_y, 0, 0.0f);
                 all_peak_infos.Add(temp_peak_info);
-
-                //current_projection.QuickAndDirtyWriteSlice("/tmp/projs.mrc", all_peak_infos.GetCount());
             }
             else {
                 SendInfo("WARNING: More than 1000 peaks above threshold were found. Limiting results to 1000 peaks.\n");

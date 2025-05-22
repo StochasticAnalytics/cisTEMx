@@ -13,7 +13,7 @@ measure pixel similarity between replicates with various metrics.
 """
 
 import annoying_hack
-import sys
+
 from os.path import join, exists
 from os import makedirs
 import cistem_test_utils.args as tmArgs
@@ -24,7 +24,7 @@ import numpy as np
 import tempfile
 import os
 import shutil
-import subprocess
+import sys
 
 # By default the "_gpu" suffix will be added unless the --old-cistem flag is used
 # or the --cpu flag is used
@@ -50,24 +50,24 @@ def main():
                 # Use Apoferritin dataset with image 0
                 config = tmArgs.get_config(args, 'Apoferritin', 0, 0)
                 
+                # Create a unique output file prefix for each replicate
+                original_prefix = config['output_file_prefix']
+                config['output_file_prefix'] = join(temp_dir, f"replicate_{replicate+1}")
+                makedirs(config['output_file_prefix'], exist_ok=True)
+                
                 # Run the template matching
                 tmp_filename_match_template, tmp_filename_make_template_results = mktmp.make_tmp_runfile(config)
                 elapsed_time[replicate] = runner.run_job(tmp_filename_match_template)
                 runner.run_job(tmp_filename_make_template_results)
                 
-                # Copy the MIP file to our temp directory with a unique name
-                mip_src = join(config['output_file_prefix'], 'mip.mrc')
+                # The MIP file is already in our temp directory with the unique replicate prefix
+                mip_file = join(config['output_file_prefix'], 'mip.mrc')
                 
-                # Check if source file exists
-                if not exists(mip_src):
-                    raise FileNotFoundError(f"MIP file not found at {mip_src}")
+                # Check if MIP file exists
+                if not exists(mip_file):
+                    raise FileNotFoundError(f"MIP file not found at {mip_file}")
                 
-                mip_dst = join(temp_dir, f"mip_replicate_{replicate+1}.mrc")
-                
-                # Use copy2 from shutil to preserve metadata
-                shutil.copy2(mip_src, mip_dst)
-                mip_filenames.append(mip_dst)
-                
+                mip_filenames.append(mip_file)
                 print(f"Completed replicate {replicate+1}, time: {elapsed_time[replicate]:.2f}s")
                 
             except Exception as e:

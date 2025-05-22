@@ -9,6 +9,17 @@ def match_template(config):
         use_gpu = "no"
     else:
         use_gpu = "yes"
+        
+    # Check if fast_fft is requested but GPU is not enabled
+    if config.get('fast_fft') and use_gpu == "no":
+        print("Error: --fast_fft option requires GPU to be enabled. Cannot use fast FFT with CPU.")
+        exit(1)
+        
+    # Set the use_fast_fft parameter based on the fast_fft flag
+    if config.get('fast_fft'):
+        use_fast_fft = "yes"
+    else:
+        use_fast_fft = "no"
 
     high_res_limit = 2*config.get('data')[config.get('img_number')].get('pixel_size')
 
@@ -46,6 +57,7 @@ def match_template(config):
         str(config.get('mask_radius')),
         str(config.get('model')[config.get('ref_number')].get('symmetry')),
         use_gpu,
+        use_fast_fft,
         str(config.get('max_threads'))]
 
     pre_process_cmd = " "

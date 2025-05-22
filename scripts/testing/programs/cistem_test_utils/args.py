@@ -107,6 +107,10 @@ def parse_TM_args(wanted_binary_name):
                         help='Use this flag if you are using the cpu version of cisTEM')
     args_to_check.append('cpu')
 
+    parser.add_argument('--fast_fft', action='store_true', default=True,
+                        help='Use fast FFT implementation (default: True)')
+    args_to_check.append('fast_fft')
+
     args = parser.parse_args()
 
     args.binary_name = wanted_binary_name

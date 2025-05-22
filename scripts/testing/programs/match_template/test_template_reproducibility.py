@@ -26,10 +26,44 @@ import tempfile
 import os
 import shutil
 import sys
+import re
 
 # By default the "_gpu" suffix will be added unless the --old-cistem flag is used
 # or the --cpu flag is used
 wanted_binary_name = 'match_template'
+
+
+def extract_threshold_value(hist_file_path):
+    """
+    Extract the threshold value from the histogram text file.
+    
+    The threshold value is in the first line of the file, which starts with
+    "# Expected". This function extracts the numerical value following this marker.
+    
+    Args:
+        hist_file_path (str): Path to the histogram text file
+        
+    Returns:
+        float: The extracted threshold value
+        
+    Raises:
+        FileNotFoundError: If the file doesn't exist
+        ValueError: If the threshold value cannot be found or parsed
+    """
+    if not exists(hist_file_path):
+        raise FileNotFoundError(f"Histogram file not found at {hist_file_path}")
+    
+    with open(hist_file_path, 'r') as f:
+        first_line = f.readline().strip()
+        
+    # Use regex to extract the threshold value from the line
+    # Looking for a pattern like "# Expected max is: 0.12345"
+    match = re.search(r'# Expected max is: ([\d.e+-]+)', first_line)
+    if not match:
+        raise ValueError(f"Could not find threshold value in {hist_file_path}")
+    
+    threshold_value = float(match.group(1))
+    return threshold_value
 
 
 def main():
@@ -61,6 +95,8 @@ def main():
         # We'll run template matching 3 times to generate replicates
         elapsed_time = [0, 0, 0]
         mip_filenames = []
+        hist_filenames = []
+        threshold_values = []
         
         # Run the template matching 3 times
         for replicate in range(0, 3):
@@ -85,8 +121,16 @@ def main():
                 if not exists(mip_file):
                     raise FileNotFoundError(f"MIP file not found at {mip_file}")
                 
+                # Get the histogram file path and extract the threshold value
+                hist_file = join(config['output_file_prefix'], 'hist.txt')
+                threshold_value = extract_threshold_value(hist_file)
+                
                 mip_filenames.append(mip_file)
+                hist_filenames.append(hist_file)
+                threshold_values.append(threshold_value)
+                
                 print(f"Completed replicate {replicate+1}, time: {elapsed_time[replicate]:.2f}s")
+                print(f"  Threshold value: {threshold_value:.6e}")
                 
             except Exception as e:
                 print(f"Error during replicate {replicate+1}: {str(e)}")
@@ -114,6 +158,20 @@ def main():
         if len(mip_data) < 2:
             print("Failed to load at least 2 MIP files. Cannot perform comparison.")
             return 1
+            
+        # Verify all threshold values are the same
+        if threshold_values:
+            if not all(abs(v - threshold_values[0]) < 1e-10 for v in threshold_values):
+                print("Warning: Threshold values differ between replicates:")
+                for i, val in enumerate(threshold_values):
+                    print(f"  Replicate {i+1}: {val:.6e}")
+            
+            # Use the first threshold value for calculations
+            threshold_value = threshold_values[0]
+            print(f"\nThreshold value: {threshold_value:.6e}")
+        else:
+            print("Warning: No threshold values were extracted.")
+            threshold_value = None
         
         # Compute similarity metrics between replicates
         print("\nReproducibility Analysis:")
@@ -136,6 +194,14 @@ def main():
                 mean_abs_diff = np.mean(np.abs(mip_data[i] - mip_data[j]))
                 all_mean_abs_diffs.append(mean_abs_diff)
                 
+                # Calculate relative error if threshold value is available
+                if threshold_value and threshold_value > 0:
+                    relative_error = mean_abs_diff / threshold_value
+                    relative_error_ppm = relative_error * 1e6  # Parts per million
+                else:
+                    relative_error = None
+                    relative_error_ppm = None
+                
                 # Calculate peak signal to noise ratio (PSNR)
                 mse = np.mean((mip_data[i] - mip_data[j]) ** 2)
                 max_pixel = max(np.max(mip_data[i]), np.max(mip_data[j]))
@@ -146,6 +212,12 @@ def main():
                 print(f"Comparing replicate {i+1} vs {j+1}:")
                 print(f"  Correlation coefficient: {correlation:.6f}")
                 print(f"  Mean absolute difference: {mean_abs_diff:.6f}")
+                
+                # Print relative error if available
+                if relative_error is not None:
+                    print(f"  Relative error (scientific): {relative_error:.6e}")
+                    print(f"  Relative error (ppm): {relative_error_ppm:.2f} ppm")
+                
                 print(f"  Peak signal-to-noise ratio (PSNR): {psnr:.2f} dB")
                 
             except Exception as e:
@@ -158,6 +230,14 @@ def main():
             print(f"  Min correlation: {np.min(all_correlations):.6f}")
             print(f"  Max correlation: {np.max(all_correlations):.6f}")
             print(f"  Mean absolute diff (avg): {np.mean(all_mean_abs_diffs):.6f}")
+            
+            # Calculate average relative error if threshold is available
+            if threshold_value and threshold_value > 0:
+                mean_rel_error = np.mean(all_mean_abs_diffs) / threshold_value
+                mean_rel_error_ppm = mean_rel_error * 1e6
+                print(f"  Relative error (avg, scientific): {mean_rel_error:.6e}")
+                print(f"  Relative error (avg, ppm): {mean_rel_error_ppm:.2f} ppm")
+            
             print(f"  PSNR (avg): {np.mean(all_psnrs):.2f} dB")
         
         # Print the directory where files are saved

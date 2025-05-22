@@ -77,6 +77,16 @@ def parse_TM_args(wanted_binary_name):
     # To help check, we'll keep this dict to use as a check.
     args_to_check = []
     parser = argparse.ArgumentParser(description='Test the k3 rotation binary')
+    
+    # Temp directory management arguments
+    temp_management_group = parser.add_argument_group('Temporary Directory Management')
+    temp_management_group.add_argument('--list-temp-dirs', action='store_true',
+                                     help='List all tracked temporary directories')
+    temp_management_group.add_argument('--rm-temp-dir', type=int, metavar='INDEX',
+                                     help='Remove a specific temporary directory by index')
+    temp_management_group.add_argument('--rm-all-temp-dirs', action='store_true',
+                                     help='Remove all tracked temporary directories')
+    
     # Required argument
     parser.add_argument(
         '--binary_path', help='Path to the directory with the binary to be tested (Required)', required=True)
@@ -108,7 +118,7 @@ def parse_TM_args(wanted_binary_name):
     args_to_check.append('cpu')
 
     parser.add_argument('--fast_fft', action='store_true', default=True,
-                        help='Use fast FFT implementation (default: True)')
+                        help='Use FastFFT implementation (default: True)')
     args_to_check.append('fast_fft')
 
     args = parser.parse_args()

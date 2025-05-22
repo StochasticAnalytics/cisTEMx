@@ -19,6 +19,7 @@ from os import makedirs
 import cistem_test_utils.args as tmArgs
 import cistem_test_utils.make_tmp_runfile as mktmp
 import cistem_test_utils.run_job as runner
+import cistem_test_utils.temp_dir_manager as temp_dir_manager
 import mrcfile
 import numpy as np
 import tempfile
@@ -35,9 +36,26 @@ def main():
     try:
         # Parse command-line arguments
         args = tmArgs.parse_TM_args(wanted_binary_name)
+        
+        # Handle temp directory management options
+        if args.list_temp_dirs:
+            temp_dir_manager.print_temp_dirs()
+            return 0
+        
+        if args.rm_temp_dir is not None:
+            success, message = temp_dir_manager.remove_temp_dir(args.rm_temp_dir)
+            print(message)
+            return 0 if success else 1
+        
+        if args.rm_all_temp_dirs:
+            success_count, failure_count = temp_dir_manager.remove_all_temp_dirs()
+            print(f"Successfully removed {success_count} temporary directories.")
+            if failure_count > 0:
+                print(f"Failed to remove {failure_count} temporary directories.")
+            return 0 if failure_count == 0 else 1
 
-        # Create a temporary directory to store our replicate MIPs
-        temp_dir = tempfile.mkdtemp(dir="/tmp", prefix="template_match_reproducibility_")
+        # Create a temporary directory to store our replicate MIPs and track it
+        temp_dir = temp_dir_manager.create_temp_dir(prefix="template_match_reproducibility_")
         print(f"Temporary directory created at: {temp_dir}")
         
         # We'll run template matching 3 times to generate replicates
@@ -144,6 +162,9 @@ def main():
         
         # Print the directory where files are saved
         print(f"\nMIP files saved in: {temp_dir}")
+        print("To list temp directories: --list-temp-dirs")
+        print("To remove this directory: --rm-temp-dir INDEX")
+        print("To remove all temp directories: --rm-all-temp-dirs")
         
         return 0
     

@@ -38,7 +38,7 @@ def extract_threshold_value(hist_file_path):
     Extract the threshold value from the histogram text file.
     
     The threshold value is in the first line of the file, which starts with
-    "# Expected". This function extracts the numerical value following this marker.
+    "# Expected threshold = ". This function extracts the numerical value following this marker.
     
     Args:
         hist_file_path (str): Path to the histogram text file
@@ -57,8 +57,8 @@ def extract_threshold_value(hist_file_path):
         first_line = f.readline().strip()
         
     # Use regex to extract the threshold value from the line
-    # Looking for a pattern like "# Expected max is: 0.12345"
-    match = re.search(r'# Expected max is: ([\d.e+-]+)', first_line)
+    # Looking for a pattern like "# Expected threshold = 6.90"
+    match = re.search(r'# Expected threshold = ([\d.e+-]+)', first_line)
     if not match:
         raise ValueError(f"Could not find threshold value in {hist_file_path}")
     

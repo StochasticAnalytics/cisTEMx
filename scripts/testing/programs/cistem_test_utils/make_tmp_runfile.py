@@ -21,7 +21,10 @@ def match_template(config):
     else:
         use_fast_fft = "no"
 
-    high_res_limit = 2*config.get('data')[config.get('img_number')].get('pixel_size')
+    # Calculate high resolution limit with binning factor
+    high_res_limit = 2 * config.get('data')[config.get('img_number')].get('pixel_size') * config.get('binning', 1.0)
+    # Ensure high_res_limit is formatted with at least 4 decimal places
+    high_res_limit_str = f"{high_res_limit:.4f}"
 
     # make a string that will then be used to create a temporary file for feading to stdin
     # TODO: optional output dir
@@ -46,7 +49,7 @@ def match_template(config):
         str(config.get('data')[config.get('img_number')].get('ctf').get('defocus_2')),
         str(config.get('data')[config.get('img_number')].get('ctf').get('defocus_angle')),
         str(config.get('data')[config.get('img_number')].get('ctf').get('extra_phase_shift')),
-        str(high_res_limit),
+        high_res_limit_str,
         str(config.get('out_of_plane_angle')),
         str(config.get('in_plane_angle')),
         str(config.get('defocus_range')),

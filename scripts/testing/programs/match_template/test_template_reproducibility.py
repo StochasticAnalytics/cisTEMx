@@ -34,7 +34,7 @@ import re
 wanted_binary_name = 'match_template'
 
 # Define the number of replicates to run
-NUM_REPLICATES = 4
+NUM_REPLICATES = 5
 
 
 def main():
@@ -77,6 +77,10 @@ def main():
             try:
                 # Use Apoferritin dataset with image 0
                 config = tmArgs.get_config(args, 'Apoferritin', 0, 0)
+                
+                # Set the angular sampling step to 3 degrees to speed up testing
+                config['out_of_plane_angle'] = 3.0
+                config['in_plane_angle'] = 3.0
 
                 # Create a unique output file prefix for each replicate
                 original_prefix = config['output_file_prefix']
@@ -105,9 +109,9 @@ def main():
 
                 # Print threshold value only for the first replicate
                 if replicate == 0:
-                    print(f"Threshold value: {threshold_value:.6e}")
+                    print(f"Threshold value: {threshold_value:.3f}")
 
-                print(f"Completed replicate {replicate+1}, time: {elapsed_time[replicate]:.2f}s")
+                print(f"Completed replicate {replicate+1}/{NUM_REPLICATES}, time: {elapsed_time[replicate]:.2f}s")
 
             except Exception as e:
                 print(f"Error during replicate {replicate+1}: {str(e)}")
@@ -156,15 +160,10 @@ def main():
         # Pairwise comparisons of available replicates
         pairs = [(i, j) for i in range(len(mip_data)) for j in range(i+1, len(mip_data))]
 
-        all_correlations = []
         all_mean_abs_diffs = []
 
         for i, j in pairs:
             try:
-                # Calculate correlation coefficient
-                correlation = np.corrcoef(mip_data[i].flatten(), mip_data[j].flatten())[0,1]
-                all_correlations.append(correlation)
-
                 # Calculate mean absolute difference
                 mean_abs_diff = np.mean(np.abs(mip_data[i] - mip_data[j]))
                 all_mean_abs_diffs.append(mean_abs_diff)
@@ -177,28 +176,24 @@ def main():
 
                 # Print results for this pair
                 print(f"Comparing replicate {i+1} vs {j+1}:")
-                print(f"  Correlation coefficient: {correlation:.6f}")
                 print(f"  Mean absolute difference: {mean_abs_diff:.6f}")
 
                 # Print relative error if available
                 if relative_error_ppm is not None:
-                    print(f"  Relative error: {relative_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.6e})")
+                    print(f"  Relative error: {relative_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.3f})")
 
             except Exception as e:
                 print(f"Error comparing replicates {i+1} and {j+1}: {str(e)}")
 
         # Overall similarity across all replicates
-        if all_correlations:
+        if all_mean_abs_diffs:
             print("\nOverall reproducibility:")
-            print(f"  Mean correlation: {np.mean(all_correlations):.6f}")
-            print(f"  Min correlation: {np.min(all_correlations):.6f}")
-            print(f"  Max correlation: {np.max(all_correlations):.6f}")
             print(f"  Mean absolute diff (avg): {np.mean(all_mean_abs_diffs):.6f}")
 
             # Calculate average relative error if threshold is available
             if threshold_value and threshold_value > 0:
                 mean_rel_error_ppm = (np.mean(all_mean_abs_diffs) / threshold_value) * 1e6
-                print(f"  Relative error (avg): {mean_rel_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.6e})")
+                print(f"  Relative error (avg): {mean_rel_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.3f})")
 
         # Print the directory where files are saved
         print(f"\nMIP files saved in: {temp_dir}")

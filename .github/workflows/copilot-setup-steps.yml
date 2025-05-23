@@ -5,14 +5,21 @@ on: workflow_dispatch
 jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
   copilot-setup-steps:
-    runs-on: [self-hosted, gpu-test-runner, gpu-test-sa]
+    runs-on: gpu-test-runner
     container:
       image: ubuntu:latest
       options: --gpus all
+      
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Display CUDA and GPU information
+        run: |
+          nvidia-smi || echo "nvidia-smi not available"
+          echo "CUDA_HOME: $CUDA_HOME"
+          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
       - name: Download GPU artifacts
         uses: actions/download-artifact@v4
@@ -26,12 +33,6 @@ jobs:
         run: |
           chmod +x ./gpu-binaries/*
           echo "$PWD/gpu-binaries" >> $GITHUB_PATH
-
-      - name: Display CUDA and GPU information
-        run: |
-          nvidia-smi || echo "nvidia-smi not available"
-          echo "CUDA_HOME: $CUDA_HOME"
-          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
       - name: Verify GPU access
         run: |

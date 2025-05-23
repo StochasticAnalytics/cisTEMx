@@ -22,7 +22,7 @@ def match_template(config):
         use_fast_fft = "no"
 
     # Calculate high resolution limit with binning factor
-    high_res_limit = 2 * config.get('data')[config.get('img_number')].get('pixel_size') * config.get('binning', 1.0)
+    high_res_limit = 2 * config.get('data')[config.get('img_number')].get('pixel_size') * config.get('binning')
     # Ensure high_res_limit is formatted with at least 4 decimal places
     high_res_limit_str = f"{high_res_limit:.4f}"
 

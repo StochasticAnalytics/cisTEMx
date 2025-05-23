@@ -51,6 +51,7 @@ def get_config(args, data_dir: str, ref_number: int, img_number: int):
     config['padding_factor'] = 1.0
     config['mask_radius'] = 0
     config['max_threads'] = 2
+    config['binning'] = 1.0
 
     # some default search args that may be overwritten in a given test make_template_results
     config['results_mip_to_use'] = 'mip_scaled.mrc'
@@ -116,10 +117,6 @@ def parse_TM_args(wanted_binary_name):
     parser.add_argument('--fast-fft', dest='fast_fft', action='store_true', default=True,
                         help='Use FastFFT implementation (default: True)')
     args_to_check.append('fast_fft')
-    
-    parser.add_argument('--binning', dest='binning', type=float, default=1.0,
-                        help='Binning factor for image processing (default: 1.0)')
-    args_to_check.append('binning')
 
     args = parser.parse_args()
 

@@ -3,6 +3,7 @@ import sys
 import argparse
 import toml
 # If we are in the container
+from cistem_test_utils.temp_dir_manager import TempDirManager
 
 default_data_dir = '/cisTEMdev/cistem_reference_images/TM_tests'
 
@@ -78,14 +79,9 @@ def parse_TM_args(wanted_binary_name):
     args_to_check = []
     parser = argparse.ArgumentParser(description='Test the k3 rotation binary')
 
-    # Temp directory management arguments
-    temp_management_group = parser.add_argument_group('Temporary Directory Management')
-    temp_management_group.add_argument('--list-temp-dirs', action='store_true',
-                                     help='List all tracked temporary directories')
-    temp_management_group.add_argument('--rm-temp-dir', type=int, metavar='INDEX',
-                                     help='Remove a specific temporary directory by index')
-    temp_management_group.add_argument('--rm-all-temp-dirs', action='store_true',
-                                     help='Remove all tracked temporary directories')
+    # Add temp directory management arguments using the TempDirManager class
+    temp_manager = TempDirManager()
+    temp_manager.add_arguments(parser)
 
     # Binary path argument (required for running tests, optional for temp dir management)
     parser.add_argument(

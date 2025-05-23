@@ -2,7 +2,7 @@
 """
 Template Matching Reproducibility Test
 
-This script runs the cisTEM template matching GPU binary three times using the same input data
+This script runs the cisTEM template matching GPU binary multiple times using the same input data
 and parameters, then analyzes the reproducibility by comparing the resulting MIP images.
 
 It uses the Apoferritin dataset for testing, and saves the MIP (Maximum Intensity Projection)
@@ -19,7 +19,8 @@ from os import makedirs
 import cistem_test_utils.args as tmArgs
 import cistem_test_utils.make_tmp_runfile as mktmp
 import cistem_test_utils.run_job as runner
-import cistem_test_utils.temp_dir_manager as temp_dir_manager
+from cistem_test_utils.temp_dir_manager import TempDirManager
+from cistem_test_utils.threshold_utils import extract_threshold_value
 import mrcfile
 import numpy as np
 import tempfile
@@ -32,74 +33,47 @@ import re
 # or the --cpu flag is used
 wanted_binary_name = 'match_template'
 
-
-def extract_threshold_value(hist_file_path):
-    """
-    Extract the threshold value from the histogram text file.
-
-    The threshold value is in the first line of the file, which starts with
-    "# Expected threshold = ". This function extracts the numerical value following this marker.
-
-    Args:
-        hist_file_path (str): Path to the histogram text file
-
-    Returns:
-        float: The extracted threshold value
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist
-        ValueError: If the threshold value cannot be found or parsed
-    """
-    if not exists(hist_file_path):
-        raise FileNotFoundError(f"Histogram file not found at {hist_file_path}")
-
-    with open(hist_file_path, 'r') as f:
-        first_line = f.readline().strip()
-
-    # Use regex to extract the threshold value from the line
-    # Looking for a pattern like "# Expected threshold = 6.90"
-    match = re.search(r'# Expected threshold = ([\d.e+-]+)', first_line)
-    if not match:
-        raise ValueError(f"Could not find threshold value in {hist_file_path}")
-
-    threshold_value = float(match.group(1))
-    return threshold_value
+# Define the number of replicates to run
+NUM_REPLICATES = 4
 
 
 def main():
     try:
+        # Create a temp_dir_manager instance
+        temp_manager = TempDirManager()
+        
         # Parse command-line arguments
         args = tmArgs.parse_TM_args(wanted_binary_name)
 
         # Handle temp directory management options
         if args.list_temp_dirs:
-            temp_dir_manager.print_temp_dirs()
+            temp_manager.print_temp_dirs()
             return 0
 
         if args.rm_temp_dir is not None:
-            success, message = temp_dir_manager.remove_temp_dir(args.rm_temp_dir)
+            success, message = temp_manager.remove_temp_dir(args.rm_temp_dir)
             print(message)
             return 0 if success else 1
 
         if args.rm_all_temp_dirs:
-            success_count, failure_count = temp_dir_manager.remove_all_temp_dirs()
+            success_count, failure_count = temp_manager.remove_all_temp_dirs()
             print(f"Successfully removed {success_count} temporary directories.")
             if failure_count > 0:
                 print(f"Failed to remove {failure_count} temporary directories.")
             return 0 if failure_count == 0 else 1
 
         # Create a temporary directory to store our replicate MIPs and track it
-        temp_dir = temp_dir_manager.create_temp_dir(prefix="template_match_reproducibility_")
+        temp_dir = temp_manager.create_temp_dir(prefix="template_match_reproducibility_")
         print(f"Temporary directory created at: {temp_dir}")
 
-        # We'll run template matching 3 times to generate replicates
-        elapsed_time = [0, 0, 0]
+        # We'll run template matching for the defined number of replicates
+        elapsed_time = [0] * NUM_REPLICATES
         mip_filenames = []
         hist_filenames = []
         threshold_values = []
 
-        # Run the template matching 3 times
-        for replicate in range(0, 3):
+        # Run the template matching for each replicate
+        for replicate in range(NUM_REPLICATES):
             try:
                 # Use Apoferritin dataset with image 0
                 config = tmArgs.get_config(args, 'Apoferritin', 0, 0)
@@ -139,12 +113,11 @@ def main():
                 print(f"Error during replicate {replicate+1}: {str(e)}")
                 continue
 
-        # Check if we have all three replicates
-        if len(mip_filenames) != 3:
-            print(f"Warning: Only {len(mip_filenames)} replicates were successfully processed")
-            if len(mip_filenames) < 2:
-                print("At least 2 replicates are required for comparison. Exiting.")
-                return 1
+        # Check if we have at least 2 replicates
+        if len(mip_filenames) < 2:
+            print(f"Error: Only {len(mip_filenames)} replicates were successfully processed")
+            print("At least 2 replicates are required for comparison. Exiting.")
+            return 1
 
         # Now load the MIP files and compare them
         print("\nLoading MIP files for analysis...")
@@ -172,19 +145,19 @@ def main():
             # Use the first threshold value for calculations
             threshold_value = threshold_values[0]
         else:
-            print("Warning: No threshold values were extracted.")
-            threshold_value = None
+            print("Error: No threshold values were extracted.")
+            return 1
 
         # Compute similarity metrics between replicates
         print("\nReproducibility Analysis:")
         print("========================")
+        print(f"Number of replicates analyzed: {len(mip_data)}")
 
         # Pairwise comparisons of available replicates
         pairs = [(i, j) for i in range(len(mip_data)) for j in range(i+1, len(mip_data))]
 
         all_correlations = []
         all_mean_abs_diffs = []
-        all_psnrs = []
 
         for i, j in pairs:
             try:
@@ -198,17 +171,9 @@ def main():
 
                 # Calculate relative error if threshold value is available
                 if threshold_value and threshold_value > 0:
-                    relative_error = mean_abs_diff / threshold_value
-                    relative_error_ppm = relative_error * 1e6  # Parts per million
+                    relative_error_ppm = (mean_abs_diff / threshold_value) * 1e6  # Parts per million
                 else:
-                    relative_error = None
                     relative_error_ppm = None
-
-                # Calculate peak signal to noise ratio (PSNR)
-                mse = np.mean((mip_data[i] - mip_data[j]) ** 2)
-                max_pixel = max(np.max(mip_data[i]), np.max(mip_data[j]))
-                psnr = 20 * np.log10(max_pixel) - 10 * np.log10(mse) if mse > 0 else float('inf')
-                all_psnrs.append(psnr)
 
                 # Print results for this pair
                 print(f"Comparing replicate {i+1} vs {j+1}:")
@@ -216,11 +181,8 @@ def main():
                 print(f"  Mean absolute difference: {mean_abs_diff:.6f}")
 
                 # Print relative error if available
-                if relative_error is not None:
-                    print(f"  Relative error (scientific): {relative_error:.6e}")
-                    print(f"  Relative error (ppm): {relative_error_ppm:.2f} ppm")
-
-                print(f"  Peak signal-to-noise ratio (PSNR): {psnr:.2f} dB")
+                if relative_error_ppm is not None:
+                    print(f"  Relative error: {relative_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.6e})")
 
             except Exception as e:
                 print(f"Error comparing replicates {i+1} and {j+1}: {str(e)}")
@@ -235,12 +197,8 @@ def main():
 
             # Calculate average relative error if threshold is available
             if threshold_value and threshold_value > 0:
-                mean_rel_error = np.mean(all_mean_abs_diffs) / threshold_value
-                mean_rel_error_ppm = mean_rel_error * 1e6
-                print(f"  Relative error (avg, scientific): {mean_rel_error:.6e}")
-                print(f"  Relative error (avg, ppm): {mean_rel_error_ppm:.2f} ppm")
-
-            print(f"  PSNR (avg): {np.mean(all_psnrs):.2f} dB")
+                mean_rel_error_ppm = (np.mean(all_mean_abs_diffs) / threshold_value) * 1e6
+                print(f"  Relative error (avg): {mean_rel_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.6e})")
 
         # Print the directory where files are saved
         print(f"\nMIP files saved in: {temp_dir}")

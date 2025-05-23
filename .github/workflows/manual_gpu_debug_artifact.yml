@@ -3,6 +3,7 @@ name: Manual GPU Debug Artifact Build
 on:
   workflow_dispatch:
     # This enables manual triggering only
+    # This workflow creates GPU debug artifacts for testing purposes
 
 jobs:
   build:

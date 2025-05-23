@@ -1,0 +1,43 @@
+---
+name: Copilot GPU Setup
+
+on:
+  workflow_dispatch: true
+  # Manually triggered for Copilot testing
+
+jobs:
+  setup:
+    runs-on: [self-hosted, gpu-test-runner, gpu-test-sa]
+    container:
+      image: ubuntu:latest
+      options: --gpus all
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download GPU artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cistem-gpu-test-artifact
+          path: ./gpu-binaries
+          workflow: manual_gpu_debug_artifact.yml
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make binaries executable and add to PATH
+        run: |
+          chmod +x ./gpu-binaries/*
+          echo "$PWD/gpu-binaries" >> $GITHUB_PATH
+
+      - name: Display CUDA and GPU information
+        run: |
+          nvidia-smi || echo "nvidia-smi not available"
+          echo "CUDA_HOME: $CUDA_HOME"
+          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+
+      - name: Verify GPU access
+        run: |
+          echo "Current PATH: $PATH"
+          which gpu_devices || echo "gpu_devices not found in PATH"
+          ls -la ./gpu-binaries/
+          ./gpu-binaries/gpu_devices

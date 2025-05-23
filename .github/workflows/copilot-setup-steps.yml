@@ -8,9 +8,7 @@ jobs:
     runs-on: gpu-test-runner
     container:
       image: ubuntu:latest
-      options: --gpus all
       
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

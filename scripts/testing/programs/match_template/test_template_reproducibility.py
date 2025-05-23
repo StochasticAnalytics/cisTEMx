@@ -12,7 +12,11 @@ The script loads the MIP images using the mrcfile package and compares them usin
 measure pixel similarity between replicates with various metrics.
 """
 
-import annoying_hack
+# Add cisTEM programs directory to Python path
+import os, sys
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 from os.path import join, exists
 from os import makedirs

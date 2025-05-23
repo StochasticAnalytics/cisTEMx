@@ -1,0 +1,2 @@
+commit_message_guidelines: |
+  All commit messages (including the initial commit for an issue or PR) **must** end with [skip ci] to prevent CI from running. This applies to every commit, including 'Initial plan for issue'.

@@ -117,6 +117,10 @@ def parse_TM_args(wanted_binary_name):
     parser.add_argument('--fast-fft', dest='fast_fft', action='store_true', default=True,
                         help='Use FastFFT implementation (default: True)')
     args_to_check.append('fast_fft')
+    
+    parser.add_argument('--max-threads', dest='max_threads', type=int, default=2,
+                        help='Maximum number of threads to use (default: 2)')
+    args_to_check.append('max_threads')
 
     args = parser.parse_args()
 

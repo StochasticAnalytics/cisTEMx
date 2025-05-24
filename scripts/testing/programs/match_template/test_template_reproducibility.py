@@ -62,6 +62,18 @@ def main():
         # Parse command-line arguments
         args = tmArgs.parse_TM_args(wanted_binary_name)
 
+        # Print non-default configuration parameters
+        print("Configuration parameters:")
+        print(f"  max_threads: {args.max_threads}")
+        if args.fast_fft != True:  # Default is True
+            print(f"  fast_fft: {args.fast_fft}")
+        if hasattr(args, 'gpu_idx') and args.gpu_idx != 0:  # Default is 0
+            print(f"  gpu_idx: {args.gpu_idx}")
+        if args.cpu:  # Default is False
+            print("  Using CPU implementation")
+        if args.old_cistem:  # Default is False
+            print("  Using old cisTEM implementation")
+
         # Handle temp directory management options
         if args.list_temp_dirs:
             temp_manager.print_temp_dirs()
@@ -190,7 +202,7 @@ def main():
             print(f"python3 scripts/testing/programs/image_replicate_analysis.py --image-list {mip_list_file} --threshold {threshold_value:.3f}")
             
             print("\nOr to extract the threshold value directly from histogram files:")
-            print(f"threshold=$(awk '/Threshold/{{print $NF; exit}}' {hist_filenames[0]})")
+            print(f"threshold=$(awk '/threshold/{{print $NF; exit}}' {hist_filenames[0]})")
             print(f"python3 scripts/testing/programs/image_replicate_analysis.py --image-list {mip_list_file} --threshold $threshold")
 
         # Print the directory where files are saved

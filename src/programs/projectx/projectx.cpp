@@ -162,7 +162,7 @@ bool MyGuiApp::OnInit( ) {
     // The other panels will be "stolen" from actions_panel_spa by "Reparenting" when the menu
     // item is selected in MainFrame.cpp
     match_template_panel         = new MatchTemplatePanel(actions_panel_tm->ActionsBook);
-    match_template_results_panel = new MatchTemplateResultsPanel(actions_panel_tm->ActionsBook);
+    match_template_results_panel = new MatchTemplateResultsPanel(results_panel->ResultsBook);
     refine_template_panel        = new RefineTemplatePanel(actions_panel_tm->ActionsBook);
 #ifdef EXPERIMENTAL
     refine_template_dev_panel = new RefineTemplateDevPanel(experimental_panel->ExperimentalBook);
@@ -310,7 +310,6 @@ bool MyGuiApp::OnInit( ) {
     actions_panel_tm->ActionsBook->AddPage(findctf_panel, "Find CTF", false, 1);
     actions_panel_tm->ActionsBook->AddPage(match_template_panel, "Match Templates", false, 2);
     actions_panel_tm->ActionsBook->AddPage(refine_template_panel, "Refine Template", false, 3);
-    actions_panel_tm->ActionsBook->AddPage(match_template_results_panel, "MT Results", false, 2);
     actions_panel_tm->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 4);
     actions_panel_tm->ActionsBook->AddPage(sharpen_3d_panel, "Sharpen 3D", false, 5);
 
@@ -319,6 +318,7 @@ bool MyGuiApp::OnInit( ) {
     results_panel->ResultsBook->AddPage(picking_results_panel, "Find Particles", false, 2);
     results_panel->ResultsBook->AddPage(refine2d_results_panel, "2D Classify", false, 3);
     results_panel->ResultsBook->AddPage(refinement_results_panel, "3D Refinement", false, 4);
+    results_panel->ResultsBook->AddPage(match_template_results_panel, "MT Results", false, 5);
 
     settings_panel->SettingsBook->AddPage(run_profiles_panel, "Run Profiles", true, 0);
 

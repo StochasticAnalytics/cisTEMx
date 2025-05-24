@@ -210,7 +210,12 @@ void MyMainFrame::OnMenuBookChange(wxBookCtrlEvent& event) {
         movie_asset_panel->Refresh( );
     }
     else if ( event.GetSelection( ) == 2 ) {
-        actions_panel->ActionsBook->Refresh( );
+        // Refresh the appropriate actions panel based on the current workflow
+        if (current_workflow == cistem::workflow::template_matching) {
+            actions_panel_tm->ActionsBook->Refresh( );
+        } else {
+            actions_panel_spa->ActionsBook->Refresh( );
+        }
         align_movies_panel->Layout( );
         align_movies_panel->Refresh( );
     }

@@ -24,6 +24,7 @@ import cistem_test_utils.make_tmp_runfile as mktmp
 import cistem_test_utils.run_job as runner
 from cistem_test_utils.temp_dir_manager import TempDirManager
 from cistem_test_utils.threshold_utils import extract_threshold_value
+from cistem_test_utils.image_replicate_analysis import ImageReplicateAnalysis
 import mrcfile
 import numpy as np
 import tempfile
@@ -142,22 +143,6 @@ def main():
                 print("At least 2 replicates are required for comparison. Exiting.")
                 return 1
 
-            # Now load the MIP files and compare them
-            print("\nLoading MIP files for analysis...")
-            mip_data = []
-            for filename in mip_filenames:
-                try:
-                    with mrcfile.open(filename) as mrc:
-                        mip_data.append(mrc.data)
-                        print(f"Loaded {filename}, shape: {mrc.data.shape}, dtype: {mrc.data.dtype}")
-                except Exception as e:
-                    print(f"Error loading {filename}: {str(e)}")
-
-            # Check if we have at least 2 MIP files loaded
-            if len(mip_data) < 2:
-                print("Failed to load at least 2 MIP files. Cannot perform comparison.")
-                return 1
-
             # Verify all threshold values are the same
             if threshold_values:
                 if not all(abs(v - threshold_values[0]) < 1e-10 for v in threshold_values):
@@ -170,50 +155,27 @@ def main():
             else:
                 print("Error: No threshold values were extracted.")
                 return 1
-
-            # Compute similarity metrics between replicates
-            print("\nReproducibility Analysis:")
-            print("========================")
-            print(f"Number of replicates analyzed: {len(mip_data)}")
+                
             print(f"Binning value: {binning_value}")
-
-            # Pairwise comparisons of available replicates
-            pairs = [(i, j) for i in range(len(mip_data)) for j in range(i+1, len(mip_data))]
-
-            all_mean_abs_diffs = []
-
-            for i, j in pairs:
-                try:
-                    # Calculate mean absolute difference
-                    mean_abs_diff = np.mean(np.abs(mip_data[i] - mip_data[j]))
-                    all_mean_abs_diffs.append(mean_abs_diff)
-
-                    # Calculate relative error if threshold value is available
-                    if threshold_value and threshold_value > 0:
-                        relative_error_ppm = (mean_abs_diff / threshold_value) * 1e6  # Parts per million
-                    else:
-                        relative_error_ppm = None
-
-                    # Print results for this pair
-                    print(f"Comparing replicate {i+1} vs {j+1}:")
-                    print(f"  Mean absolute difference: {mean_abs_diff:.6f}")
-
-                    # Print relative error if available
-                    if relative_error_ppm is not None:
-                        print(f"  Relative error: {relative_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.3f})")
-
-                except Exception as e:
-                    print(f"Error comparing replicates {i+1} and {j+1}: {str(e)}")
-
-            # Overall similarity across all replicates
-            if all_mean_abs_diffs:
-                print("\nOverall reproducibility:")
-                print(f"  Mean absolute diff (avg): {np.mean(all_mean_abs_diffs):.6f}")
-
-                # Calculate average relative error if threshold is available
-                if threshold_value and threshold_value > 0:
-                    mean_rel_error_ppm = (np.mean(all_mean_abs_diffs) / threshold_value) * 1e6
-                    print(f"  Relative error (avg): {mean_rel_error_ppm:.2f} ppm (relative to threshold value: {threshold_value:.3f})")
+                
+            # Use the ImageReplicateAnalysis class for image comparison
+            try:
+                # Create analyzer instance with MIP filenames and threshold value
+                analyzer = ImageReplicateAnalysis(mip_filenames, threshold_value)
+                
+                # Load the images
+                print("\nLoading MIP files for analysis...")
+                analyzer.load_images()
+                
+                # Run the analysis and print the results
+                results = analyzer.analyze_replicates()
+                analyzer.print_analysis(results)
+                
+            except Exception as e:
+                print(f"Error during image replicate analysis: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                return 1
 
         # Print the directory where files are saved
         print(f"\nMIP files saved in: {temp_dir}")

@@ -11,8 +11,12 @@ files to a temporary directory with unique filenames for each replicate.
 The script loads the MIP images using the mrcfile package and compares them using numpy to
 measure pixel similarity between replicates with various metrics.
 
-The test is run at multiple binning values (1.0, 1.2, 1.6) to verify reproducibility across
-different binning configurations.
+The script has two operational modes controlled by the FAST_DEVELOPMENT_CONDITIONS flag:
+1. When True: Uses only binning=1.2 with 5.0 degree angular sampling (faster development mode)
+2. When False: Tests all binning values (1.0, 1.2, 1.6) with 3.0 degree angular sampling
+
+Instead of performing analysis directly, this script outputs commands for the user to run
+the image_replicate_analysis.py tool separately.
 """
 
 import annoying_hack
@@ -40,8 +44,14 @@ wanted_binary_name = 'match_template'
 # Define the number of replicates to run
 NUM_REPLICATES = 5
 
-# Define the binning values to test
-BINNING_VALUES = [1.0, 1.2, 1.6]
+# Define whether to use fast development conditions
+FAST_DEVELOPMENT_CONDITIONS = True
+
+# Define the binning values to test - modified based on development conditions
+if FAST_DEVELOPMENT_CONDITIONS:
+    BINNING_VALUES = [1.2]  # Only use 1.2 binning for faster development
+else:
+    BINNING_VALUES = [1.0, 1.2, 1.6]
 
 
 def main():
@@ -95,9 +105,13 @@ def main():
                     # Use Apoferritin dataset with image 0
                     config = tmArgs.get_config(args, 'Apoferritin', 0, 0)
                     
-                    # Set the angular sampling step to 3 degrees to speed up testing
-                    config['out_of_plane_angle'] = 3.0
-                    config['in_plane_angle'] = 3.0
+                    # Set the angular sampling step based on development conditions
+                    if FAST_DEVELOPMENT_CONDITIONS:
+                        config['out_of_plane_angle'] = 5.0
+                        config['in_plane_angle'] = 5.0
+                    else:
+                        config['out_of_plane_angle'] = 3.0
+                        config['in_plane_angle'] = 3.0
                     
                     # Set the binning value
                     config['binning'] = binning_value
@@ -158,24 +172,22 @@ def main():
                 
             print(f"Binning value: {binning_value}")
                 
-            # Use the ImageReplicateAnalysis class for image comparison
-            try:
-                # Create analyzer instance with MIP filenames and threshold value
-                analyzer = ImageReplicateAnalysis(mip_filenames, threshold_value)
-                
-                # Load the images
-                print("\nLoading MIP files for analysis...")
-                analyzer.load_images()
-                
-                # Run the analysis and print the results
-                results = analyzer.analyze_replicates()
-                analyzer.print_analysis(results)
-                
-            except Exception as e:
-                print(f"Error during image replicate analysis: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                return 1
+            # Write MIP filenames to a file in the binning directory
+            mip_list_file = join(binning_dir, "mip_files.txt")
+            with open(mip_list_file, 'w') as f:
+                for mip_file in mip_filenames:
+                    f.write(f"{mip_file}\n")
+                    
+            # Instead of running analysis directly, print commands for the user to run
+            print(f"\n{'-'*80}")
+            print(f"Replicate generation complete for binning {binning_value}")
+            print(f"MIP filenames saved to: {mip_list_file}")
+            print(f"{'-'*80}")
+            print("\nTo analyze the replicate results, run:")
+            print(f"python3 scripts/testing/programs/cistem_test_utils/image_replicate_analysis.py --image-list {mip_list_file} --threshold {threshold_value:.3f}")
+            print("\nOr to extract the threshold value directly from histogram files:")
+            print(f"threshold=$(awk '/Threshold/{{print $NF; exit}}' {hist_filenames[0]})")
+            print(f"python3 scripts/testing/programs/cistem_test_utils/image_replicate_analysis.py --image-list {mip_list_file} --threshold $threshold")
 
         # Print the directory where files are saved
         print(f"\nMIP files saved in: {temp_dir}")

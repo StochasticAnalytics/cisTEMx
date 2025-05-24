@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       status:
-        description: 'Status of workflows to delete (default: action_required)'
+        description: 'Status of workflows to delete (default: action required)'
         required: false
-        default: 'action_required'
+        default: 'action required'
         type: string
 
 jobs:
@@ -20,9 +20,30 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const status = core.getInput('status') || 'action_required';
+            // Get input status and map common formats to API status values
+            let inputStatus = core.getInput('status') || 'action required';
             
-            console.log(`Looking for workflow runs with status: ${status}`);
+            // Map of human-friendly status names to API values
+            const statusMap = {
+              'action required': 'action_required',
+              'in progress': 'in_progress',
+              'cancelled': 'cancelled',
+              'failure': 'failure',
+              'success': 'success',
+              'queued': 'queued',
+              'waiting': 'waiting',
+              'completed': 'completed',
+              'neutral': 'neutral',
+              'skipped': 'skipped',
+              'timed out': 'timed_out',
+              'requested': 'requested',
+              'pending': 'pending'
+            };
+            
+            // Convert to API status if needed
+            const status = statusMap[inputStatus.toLowerCase()] || inputStatus;
+            
+            console.log(`Looking for workflow runs with status: ${inputStatus} (API: ${status})`);
             
             // Get list of all workflows
             const workflows = await github.rest.actions.listRepoWorkflows({
@@ -104,4 +125,4 @@ jobs:
               }
             }
             
-            console.log(`Operation complete. Processed ${processedWorkflows} workflows, canceled ${canceledRuns} runs, and deleted ${deletedRuns} workflow runs with status "${status}".`);
+            console.log(`Operation complete. Processed ${processedWorkflows} workflows, canceled ${canceledRuns} runs, and deleted ${deletedRuns} workflow runs with status "${inputStatus}" (API: "${status}")`);

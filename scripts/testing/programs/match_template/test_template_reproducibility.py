@@ -172,22 +172,26 @@ def main():
                 
             print(f"Binning value: {binning_value}")
                 
-            # Write MIP filenames to a file in the binning directory
-            mip_list_file = join(binning_dir, "mip_files.txt")
-            with open(mip_list_file, 'w') as f:
-                for mip_file in mip_filenames:
-                    f.write(f"{mip_file}\n")
-                    
             # Instead of running analysis directly, print commands for the user to run
             print(f"\n{'-'*80}")
             print(f"Replicate generation complete for binning {binning_value}")
-            print(f"MIP filenames saved to: {mip_list_file}")
             print(f"{'-'*80}")
-            print("\nTo analyze the replicate results, run:")
-            print(f"python3 scripts/testing/programs/cistem_test_utils/image_replicate_analysis.py --image-list {mip_list_file} --threshold {threshold_value:.3f}")
+            
+            # Suggest a list file location but don't create it - let user do it with wildcards
+            mip_list_file = join(binning_dir, "mip_files.txt")
+            
+            print("\nTo create a list of MIP files for analysis:")
+            print(f"find {binning_dir} -name 'mip.mrc' > {mip_list_file}")
+            
+            print("\nOr to analyze other image types, like theta maps:")
+            print(f"find {binning_dir} -name 'theta.mrc' > {binning_dir}/theta_files.txt")
+            
+            print("\nTo analyze the replicate results with the saved MIP list:")
+            print(f"python3 scripts/testing/programs/image_replicate_analysis.py --image-list {mip_list_file} --threshold {threshold_value:.3f}")
+            
             print("\nOr to extract the threshold value directly from histogram files:")
             print(f"threshold=$(awk '/Threshold/{{print $NF; exit}}' {hist_filenames[0]})")
-            print(f"python3 scripts/testing/programs/cistem_test_utils/image_replicate_analysis.py --image-list {mip_list_file} --threshold $threshold")
+            print(f"python3 scripts/testing/programs/image_replicate_analysis.py --image-list {mip_list_file} --threshold $threshold")
 
         # Print the directory where files are saved
         print(f"\nMIP files saved in: {temp_dir}")

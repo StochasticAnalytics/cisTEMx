@@ -33,7 +33,9 @@ extern Sharpen3DPanel*       sharpen_3d_panel;
 extern MySettingsPanel*    settings_panel;
 extern MyRunProfilesPanel* run_profiles_panel;
 
-extern MyResultsPanel*            results_panel;
+extern ResultsPanelSpa*          results_panel_spa;
+extern ResultsPanelTm*           results_panel_tm;
+extern MyResultsPanel*           results_panel;
 extern MyMovieAlignResultsPanel*  movie_results_panel;
 extern MyFindCTFResultsPanel*     ctf_results_panel;
 extern MyPickingResultsPanel*     picking_results_panel;
@@ -220,7 +222,12 @@ void MyMainFrame::OnMenuBookChange(wxBookCtrlEvent& event) {
         align_movies_panel->Refresh( );
     }
     else if ( event.GetSelection( ) == 3 ) {
-        results_panel->ResultsBook->Refresh( );
+        // Refresh the appropriate results panel based on the current workflow
+        if (current_workflow == cistem::workflow::template_matching) {
+            results_panel_tm->ResultsBook->Refresh( );
+        } else {
+            results_panel_spa->ResultsBook->Refresh( );
+        }
         movie_results_panel->Layout( );
         movie_results_panel->Refresh( );
     }
@@ -940,15 +947,14 @@ void MyMainFrame::SetSingleParticleWorkflow(bool triggered_by_gui_event) {
             case cistem::workflow::template_matching: {
                 UpdateWorkflow(actions_panel_tm, actions_panel_spa, "Actions");
                 
-                // Remove the MT Results panel from the Results tab when switching to SPA workflow
-                extern MatchTemplateResultsPanel* match_template_results_panel;
-                int mt_results_page_index = results_panel->ResultsBook->FindPage(match_template_results_panel);
-                if (mt_results_page_index != wxNOT_FOUND) {
-                    results_panel->ResultsBook->RemovePage(mt_results_page_index);
-                }
-
-                // If other panels, e.g. results is a likely next candidate, it should go here.
-                // TODO: if there are multiple panels to switch, we'll need to only do the update and set the icon for the LAST call in this sequence.
+                // Also update the results panel
+                int displayed_page_idx = MenuBook->FindPage(MenuBook->GetCurrentPage());
+                int current_page_idx = MenuBook->FindPage(results_panel_tm);
+                MenuBook->RemovePage(current_page_idx);
+                MenuBook->InsertPage(current_page_idx, results_panel_spa, "Results", false, current_page_idx);
+                results_panel = results_panel_spa;
+                MenuBook->SetSelection(displayed_page_idx);
+                
                 break;
             }
             default: {
@@ -975,13 +981,13 @@ void MyMainFrame::SetTemplateMatchingWorkflow(bool triggered_by_gui_event) {
         previous_workflow = current_workflow;
         UpdateWorkflow(actions_panel_spa, actions_panel_tm, "Actions");
         
-        // Add the MT Results panel to the Results tab when switching to TM workflow if it's not already there
-        extern MatchTemplateResultsPanel* match_template_results_panel;
-        extern wxImageList* ResultsBookIconImages;
-        int mt_results_page_index = results_panel->ResultsBook->FindPage(match_template_results_panel);
-        if (mt_results_page_index == wxNOT_FOUND) {
-            results_panel->ResultsBook->AddPage(match_template_results_panel, "MT Results", false, 5);
-        }
+        // Also update the results panel
+        int displayed_page_idx = MenuBook->FindPage(MenuBook->GetCurrentPage());
+        int current_page_idx = MenuBook->FindPage(results_panel_spa);
+        MenuBook->RemovePage(current_page_idx);
+        MenuBook->InsertPage(current_page_idx, results_panel_tm, "Results", false, current_page_idx);
+        results_panel = results_panel_tm;
+        MenuBook->SetSelection(displayed_page_idx);
         
         current_workflow = cistem::workflow::template_matching;
         if ( current_project.is_open == true )

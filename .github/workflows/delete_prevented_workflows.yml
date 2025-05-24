@@ -1,0 +1,169 @@
+name: Delete Prevented Workflows
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Age in minutes after which inactive workflows should be deleted (default: 30)'
+        required: false
+        default: '30'
+        type: string
+
+jobs:
+  delete_prevented_workflows:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write  # Needed to delete workflow runs
+      contents: read  # Default permission to read repository contents
+    steps:
+      - name: Delete prevented and inactive workflow runs
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Function to normalize status strings for comparison
+            // This will strip spaces, dashes, and underscores and convert to lowercase
+            function normalizeStatus(statusString) {
+              if (!statusString) return '';
+              return statusString.toLowerCase().replace(/[- _]/g, '');
+            }
+            
+            // Get input for age threshold in minutes
+            const ageThresholdMinutes = parseInt(core.getInput('minutes')) || 30;
+            
+            // Calculate cutoff time for age-based filtering
+            const cutoffDate = new Date();
+            cutoffDate.setMinutes(cutoffDate.getMinutes() - ageThresholdMinutes);
+            
+            console.log(`Looking for workflows that meet either of these criteria:`);
+            console.log(`1. Workflows with "action_required" status (prevented from running)`);
+            console.log(`2. Workflows older than ${ageThresholdMinutes} minutes (before ${cutoffDate.toISOString()}) that are not queued and haven't used resources`);
+            console.log(`\nWill print actual API status values for all workflow runs to help troubleshoot...`);
+            
+            // Get list of all workflows
+            const workflows = await github.rest.actions.listRepoWorkflows({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            
+            let deletedRuns = 0;
+            let canceledRuns = 0;
+            let processedWorkflows = 0;
+            let uniqueStatusesFound = new Set();  // Track unique status values for debugging
+            
+            // Process each workflow
+            for (const workflow of workflows.data.workflows) {
+              processedWorkflows++;
+              console.log(`Processing workflow: ${workflow.name} (${workflow.id})`);
+              
+              let page = 1;
+              let hasMorePages = true;
+              
+              while (hasMorePages) {
+                // Get workflow runs with pagination
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: workflow.id,
+                  per_page: 100,
+                  page: page
+                });
+                
+                if (runs.data.workflow_runs.length === 0) {
+                  hasMorePages = false;
+                  continue;
+                }
+                
+                // Process runs on this page
+                for (const run of runs.data.workflow_runs) {
+                  // Debug: Print the actual status of each run to help troubleshoot
+                  console.log(`Run #${run.id} for workflow "${workflow.name}" has actual API status: "${run.status}"`);
+                  
+                  // Track unique status values for debugging
+                  if (run.status) {
+                    uniqueStatusesFound.add(run.status);
+                  }
+                  
+                  const runStatus = run.status || '';
+                  const normalizedRunStatus = normalizeStatus(runStatus);
+                  const createdAt = new Date(run.created_at);
+                  let shouldDelete = false;
+                  let deleteReason = '';
+                  
+                  // Check if this run should be deleted based on our criteria
+                  // Criterion 1: Action Required status (prevented from running)
+                  if (normalizedRunStatus === 'actionrequired') {
+                    shouldDelete = true;
+                    deleteReason = 'action required status (prevented from running)';
+                  }
+                  
+                  // Criterion 2: Older than threshold and not actively running
+                  if (!shouldDelete && createdAt < cutoffDate) {
+                    // Check if the workflow hasn't used resources
+                    // We define "not used resources" as workflows that:
+                    // 1. Are not in 'queued' or 'in_progress' status
+                    // 2. Have a conclusion of null (haven't completed)
+                    if (!['queued', 'in_progress'].includes(runStatus) && !run.conclusion) {
+                      shouldDelete = true;
+                      deleteReason = `older than ${ageThresholdMinutes} minutes and hasn't used resources`;
+                    }
+                  }
+                  
+                  if (shouldDelete) {
+                    console.log(`Found run #${run.id} to delete: ${deleteReason}`);
+                    console.log(`Status: "${runStatus}", Created at: ${createdAt.toISOString()}`);
+                    
+                    // If the workflow is still in progress, cancel it first
+                    if (!['completed', 'cancelled', 'failure', 'success'].includes(runStatus)) {
+                      console.log(`Canceling run #${run.id} for workflow "${workflow.name}"`);
+                      try {
+                        await github.rest.actions.cancelWorkflowRun({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          run_id: run.id
+                        });
+                        canceledRuns++;
+                        console.log(`Successfully canceled run #${run.id}`);
+                      } catch (error) {
+                        console.log(`Error canceling run #${run.id}: ${error.message}`);
+                      }
+                    }
+                    
+                    // Delete the run
+                    console.log(`Deleting run #${run.id} for workflow "${workflow.name}"`);
+                    try {
+                      await github.rest.actions.deleteWorkflowRun({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        run_id: run.id
+                      });
+                      deletedRuns++;
+                      console.log(`Successfully deleted run #${run.id}`);
+                    } catch (error) {
+                      console.log(`Error deleting run #${run.id}: ${error.message}`);
+                    }
+                  }
+                }
+                
+                // Check if we need to process more pages
+                if (runs.data.workflow_runs.length < 100) {
+                  hasMorePages = false;
+                } else {
+                  page++;
+                }
+              }
+            }
+            
+            console.log(`Operation complete. Processed ${processedWorkflows} workflows, canceled ${canceledRuns} runs, and deleted ${deletedRuns} workflow runs.`);
+            
+            // Print summary of all unique statuses found for debugging purposes
+            console.log(`\nUNIQUE API STATUS VALUES FOUND:`);
+            const uniqueStatusesArray = Array.from(uniqueStatusesFound).sort();
+            for (const uniqueStatus of uniqueStatusesArray) {
+              console.log(`  - "${uniqueStatus}"`);
+            }
+            console.log(`Total unique status values: ${uniqueStatusesArray.length}`);
+            
+            if (deletedRuns === 0) {
+              console.log(`\nNo matching workflow runs found to delete.`);
+              console.log(`Check the criteria or try different parameters.`);
+            }

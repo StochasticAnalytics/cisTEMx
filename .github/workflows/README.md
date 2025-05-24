@@ -35,6 +35,21 @@ Common workflow statuses include:
 - `queued` - Workflows waiting to be run
 - `waiting` - Workflows waiting for conditions or approval
 
+### Delete Prevented Workflows
+
+The `delete_prevented_workflows.yml` workflow specifically targets workflow runs that either:
+1. Have been prevented from running (with "action required" status), or
+2. Are older than a specified time threshold and have not run or used any resources
+
+This is particularly useful for cleaning up workflows that are stuck and taking up space in the Actions tab.
+
+To use:
+1. Go to "Actions" tab in GitHub
+2. Select "Delete Prevented Workflows" workflow
+3. Click "Run workflow"
+4. Optional: Enter the age in minutes after which inactive workflows should be deleted (default: 30)
+5. Click "Run workflow"
+
 When the workflow runs, it will print out all unique API status values found in your workflow history, which can be helpful for troubleshooting. If the workflow doesn't find any matching runs, you can try running it again using the exact API status value shown in the output.
 
 ### Status Matching Logic

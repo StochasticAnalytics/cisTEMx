@@ -2,32 +2,6 @@
 
 This directory contains test scripts and utilities for testing cisTEM functionality.
 
-## Setup
-
-To properly use these test scripts, you should install the `cistem_test_utils` package in development mode:
-
-```bash
-# Navigate to the testing directory
-cd /path/to/cisTEM/scripts/testing
-
-# Install the package in development mode
-pip install -e .
-```
-
-## Required Dependencies
-
-The test scripts require the following Python packages:
-
-- mrcfile
-- toml
-- numpy
-
-These can be installed via:
-
-```bash
-pip install mrcfile toml numpy
-```
-
 ## Running Tests
 
 Each test can be run individually from their respective directories. For example:

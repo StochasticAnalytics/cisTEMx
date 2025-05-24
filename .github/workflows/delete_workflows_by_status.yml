@@ -20,28 +20,60 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            // Get input status and map common formats to API status values
+            // Function to normalize status strings for comparison
+            // This will strip spaces, dashes, and underscores and convert to lowercase
+            // to help match different variations of the same status
+            function normalizeStatus(statusString) {
+              if (!statusString) return '';
+              return statusString.toLowerCase().replace(/[- _]/g, '');
+            }
+            
+            // Get input status and map common formats to API values
             let inputStatus = core.getInput('status') || 'action required';
             
             // Map of human-friendly status names to API values
             const statusMap = {
               // Common human-readable to API mappings
               'action required': 'action_required',
+              'action_required': 'action_required', // Already in API format
+              'actionrequired': 'action_required',  // Without space
+              
               'in progress': 'in_progress',
+              'in_progress': 'in_progress',         // Already in API format
+              'inprogress': 'in_progress',          // Without space
+              
               'cancelled': 'cancelled',
-              'canceled': 'cancelled',  // Alternative spelling
+              'canceled': 'cancelled',              // Alternative spelling
+              
               'failure': 'failure',
-              'failed': 'failure',      // Alternative wording
+              'failed': 'failure',                  // Alternative wording
+              'fail': 'failure',                    // Short form
+              
               'success': 'success',
-              'successful': 'success',  // Alternative wording
+              'successful': 'success',              // Alternative wording
+              'succeeded': 'success',               // Alternative wording
+              
               'queued': 'queued',
+              
               'waiting': 'waiting',
+              'wait': 'waiting',                    // Short form
+              
               'completed': 'completed',
+              'complete': 'completed',              // Alternative form
+              
               'neutral': 'neutral',
+              
               'skipped': 'skipped',
+              'skip': 'skipped',                    // Short form
+              
               'timed out': 'timed_out',
-              'timeout': 'timed_out',   // Alternative wording
+              'timed_out': 'timed_out',             // Already in API format
+              'timeout': 'timed_out',               // Alternative wording
+              'timedout': 'timed_out',              // Without space
+              
               'requested': 'requested',
+              'request': 'requested',               // Short form
+              
               'pending': 'pending'
             };
             
@@ -52,6 +84,7 @@ jobs:
             }
             
             // Convert to API status if needed - handle case insensitive matching
+            // Try to find a match in the status map, if not found, use the input as is
             const status = statusMap[inputStatus.toLowerCase()] || inputStatus;
             
             console.log(`Looking for workflow runs with status: "${inputStatus}" (API: "${status}")`);
@@ -101,12 +134,25 @@ jobs:
                     uniqueStatusesFound.add(run.status);
                   }
                   
-                  // Check if this run matches the requested status (case insensitive)
-                  if (run.status && (run.status.toLowerCase() === status.toLowerCase())) {
-                    console.log(`Found run #${run.id} with matching status "${status}" for workflow "${workflow.name}"`);
+                  // Check if this run matches the requested status
+                  // Try three different matching methods:
+                  // 1. Exact match (case insensitive)
+                  // 2. Normalized match (removing spaces, underscores, dashes)
+                  // 3. Check if one contains the other (for partial matches)
+                  const runStatus = run.status || '';
+                  const normalizedRunStatus = normalizeStatus(runStatus);
+                  const normalizedTargetStatus = normalizeStatus(status);
+                  
+                  if (runStatus.toLowerCase() === status.toLowerCase() || 
+                      normalizedRunStatus === normalizedTargetStatus || 
+                      normalizedRunStatus.includes(normalizedTargetStatus) || 
+                      normalizedTargetStatus.includes(normalizedRunStatus)) {
+                      
+                    console.log(`Found run #${run.id} with matching status "${runStatus}" for workflow "${workflow.name}"`);
+                    console.log(`Match details: Run status="${runStatus}" (normalized: "${normalizedRunStatus}"), Target="${status}" (normalized: "${normalizedTargetStatus}")`);
                     
                     // If the workflow is still in progress, cancel it first
-                    if (!['completed', 'cancelled', 'failure', 'success'].includes(run.status)) {
+                    if (!['completed', 'cancelled', 'failure', 'success'].includes(runStatus)) {
                       console.log(`Canceling run #${run.id} for workflow "${workflow.name}"`);
                       try {
                         await github.rest.actions.cancelWorkflowRun({

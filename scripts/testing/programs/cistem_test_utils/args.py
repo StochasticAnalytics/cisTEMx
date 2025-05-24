@@ -62,7 +62,25 @@ def get_config(args, data_dir: str, ref_number: int, img_number: int):
     config['result_ignore_n_pixels_from_edge'] = -1
 
     for arg_val in args.args_to_check:
-        config[arg_val] = getattr(args, arg_val)
+        # Store the default value for comparison
+        default_val = config.get(arg_val)
+        # Get the value from args
+        arg_val_value = getattr(args, arg_val)
+        
+        # Compare with default value if it exists in config and the type matches
+        if arg_val in config and arg_val_value != default_val:
+            # Handle string vs numeric comparison
+            if (isinstance(default_val, (int, float)) and isinstance(arg_val_value, (int, float))) or \
+               (isinstance(default_val, str) and isinstance(arg_val_value, str)) or \
+               (isinstance(default_val, bool) and isinstance(arg_val_value, bool)):
+                print(f"User has set {arg_val} to value {arg_val_value}. Changing from default {default_val}")
+            else:
+                # Different types or one is None, just print if both are not None
+                if default_val is not None and arg_val_value is not None:
+                    print(f"User has set {arg_val} to value {arg_val_value}. Changing from default {default_val}")
+        
+        # Update the config with the new value
+        config[arg_val] = arg_val_value
 
     config['output_file_prefix'] = os.path.abspath(os.path.join(args.output_file_prefix, config.get('data')[img_number]['img_name']))
     os.makedirs(config['output_file_prefix'], exist_ok=True)

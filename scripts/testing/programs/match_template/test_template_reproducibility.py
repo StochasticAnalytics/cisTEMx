@@ -62,18 +62,6 @@ def main():
         # Parse command-line arguments
         args = tmArgs.parse_TM_args(wanted_binary_name)
 
-        # Print non-default configuration parameters
-        print("Configuration parameters:")
-        print(f"  max_threads: {args.max_threads}")
-        if args.fast_fft != True:  # Default is True
-            print(f"  fast_fft: {args.fast_fft}")
-        if hasattr(args, 'gpu_idx') and args.gpu_idx != 0:  # Default is 0
-            print(f"  gpu_idx: {args.gpu_idx}")
-        if args.cpu:  # Default is False
-            print("  Using CPU implementation")
-        if args.old_cistem:  # Default is False
-            print("  Using old cisTEM implementation")
-
         # Handle temp directory management options
         if args.list_temp_dirs:
             temp_manager.print_temp_dirs()

@@ -934,6 +934,13 @@ void MyMainFrame::SetSingleParticleWorkflow(bool triggered_by_gui_event) {
         switch ( current_workflow ) {
             case cistem::workflow::template_matching: {
                 UpdateWorkflow(actions_panel_tm, actions_panel_spa, "Actions");
+                
+                // Remove the MT Results panel from the Results tab when switching to SPA workflow
+                extern MatchTemplateResultsPanel* match_template_results_panel;
+                int mt_results_page_index = results_panel->ResultsBook->FindPage(match_template_results_panel);
+                if (mt_results_page_index != wxNOT_FOUND) {
+                    results_panel->ResultsBook->RemovePage(mt_results_page_index);
+                }
 
                 // If other panels, e.g. results is a likely next candidate, it should go here.
                 // TODO: if there are multiple panels to switch, we'll need to only do the update and set the icon for the LAST call in this sequence.
@@ -962,6 +969,15 @@ void MyMainFrame::SetTemplateMatchingWorkflow(bool triggered_by_gui_event) {
     if ( current_workflow != cistem::workflow::template_matching ) {
         previous_workflow = current_workflow;
         UpdateWorkflow(actions_panel_spa, actions_panel_tm, "Actions");
+        
+        // Add the MT Results panel to the Results tab when switching to TM workflow if it's not already there
+        extern MatchTemplateResultsPanel* match_template_results_panel;
+        extern wxImageList* ResultsBookIconImages;
+        int mt_results_page_index = results_panel->ResultsBook->FindPage(match_template_results_panel);
+        if (mt_results_page_index == wxNOT_FOUND) {
+            results_panel->ResultsBook->AddPage(match_template_results_panel, "MT Results", false, 5);
+        }
+        
         current_workflow = cistem::workflow::template_matching;
         if ( current_project.is_open == true )
             current_project.RecordCurrentWorkflowInDB(current_workflow);

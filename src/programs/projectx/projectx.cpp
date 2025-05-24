@@ -318,7 +318,7 @@ bool MyGuiApp::OnInit( ) {
     results_panel->ResultsBook->AddPage(picking_results_panel, "Find Particles", false, 2);
     results_panel->ResultsBook->AddPage(refine2d_results_panel, "2D Classify", false, 3);
     results_panel->ResultsBook->AddPage(refinement_results_panel, "3D Refinement", false, 4);
-    results_panel->ResultsBook->AddPage(match_template_results_panel, "MT Results", false, 5);
+    // MT Results panel will be added dynamically based on the selected workflow
 
     settings_panel->SettingsBook->AddPage(run_profiles_panel, "Run Profiles", true, 0);
 

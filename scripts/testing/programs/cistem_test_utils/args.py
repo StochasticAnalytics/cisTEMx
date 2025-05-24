@@ -67,17 +67,11 @@ def get_config(args, data_dir: str, ref_number: int, img_number: int):
         # Get the value from args
         arg_val_value = getattr(args, arg_val)
         
-        # Compare with default value if it exists in config and the type matches
+        # Compare with default value if it exists in config and the arg value is not None
         if arg_val in config and arg_val_value != default_val:
-            # Handle string vs numeric comparison
-            if (isinstance(default_val, (int, float)) and isinstance(arg_val_value, (int, float))) or \
-               (isinstance(default_val, str) and isinstance(arg_val_value, str)) or \
-               (isinstance(default_val, bool) and isinstance(arg_val_value, bool)):
+            # Only print if both values are not None
+            if default_val is not None and arg_val_value is not None:
                 print(f"User has set {arg_val} to value {arg_val_value}. Changing from default {default_val}")
-            else:
-                # Different types or one is None, just print if both are not None
-                if default_val is not None and arg_val_value is not None:
-                    print(f"User has set {arg_val} to value {arg_val_value}. Changing from default {default_val}")
         
         # Update the config with the new value
         config[arg_val] = arg_val_value

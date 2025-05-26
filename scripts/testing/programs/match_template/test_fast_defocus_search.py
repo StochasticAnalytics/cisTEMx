@@ -18,7 +18,7 @@ def main():
     # 2 is the 6Q8Y_mature_60S.mrc template
     config = tmArgs.get_config(args, 'Yeast', 2, 0)
 
-    # We want to do a defocus search to catch potential memory errors or bugs that only show up 
+    # We want to do a defocus search to catch potential memory errors or bugs that only show up
     # when the TM core object is used multiple times.
     config['defocus_range'] = 600
     config['defocus_step'] = 300

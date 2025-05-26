@@ -32,6 +32,18 @@
             "label": "BUILD cisTEM DEBUG",
             "type": "shell",
             "command": "cd ${build_dir}/intel-gpu-debug-static && make -j${input:compile_cores}"
+        },
+        // Tasks for github copilot agent. This is the most common configuration for development in cisTEM.
+        {
+            "label": "ghcpConfig",
+            "type": "shell",
+            "command": "mkdir -p ${build_dir}/ghcp_build && cd ${build_dir}/ghcp_build && CC=icc CXX=icpc ../../configure  --enable-debugmode --enable-gpu-debug --with-wx-config=/opt/WX/icc-static/bin/wx-config --enable-staticmode --with-cuda=${cuda_dir} ${experimental_algo_flags} ${common_optional_programs}  ${common_flags} "
+        },
+        // Sticking with the default name "build" so ghcp is able to find it with less difficulty.
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "cd ${build_dir}/ghcp_build && make -j8"
         }
         {
             "label": "Configure cisTEM DEBUG build TMPVALUE",

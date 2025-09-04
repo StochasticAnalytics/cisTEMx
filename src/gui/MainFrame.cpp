@@ -311,12 +311,12 @@ void MyMainFrame::DirtyVolumes( ) {
     sharpen_3d_panel->volumes_are_dirty     = true;
     refine_ctf_panel->volumes_are_dirty     = true;
 
-    if ( current_workflow == "Template Matching" ) {
-        match_template_panel->volumes_are_dirty = true;
+    // Always mark template matching panels as dirty, regardless of current workflow
+    // This ensures volumes are available when user switches to Template Matching workflow
+    match_template_panel->volumes_are_dirty = true;
 #ifdef EXPERIMENTAL
-        refine_template_panel->volumes_are_dirty = true;
+    refine_template_panel->volumes_are_dirty = true;
 #endif
-    }
 }
 
 void MyMainFrame::DirtyAtomicCoordinates( ) {
@@ -337,11 +337,11 @@ void MyMainFrame::DirtyImageGroups( ) {
     findparticles_panel->group_combo_is_dirty   = true;
     picking_results_panel->group_combo_is_dirty = true;
 
-    if ( current_workflow == "Template Matching" ) {
-        match_template_panel->group_combo_is_dirty         = true;
-        match_template_results_panel->group_combo_is_dirty = true;
-        refine_template_panel->group_combo_is_dirty        = true;
-    }
+    // Always mark template matching panels as dirty, regardless of current workflow
+    // This ensures image groups are available when user switches to Template Matching workflow
+    match_template_panel->group_combo_is_dirty         = true;
+    match_template_results_panel->group_combo_is_dirty = true;
+    refine_template_panel->group_combo_is_dirty        = true;
 }
 
 void MyMainFrame::DirtyParticlePositionGroups( ) {

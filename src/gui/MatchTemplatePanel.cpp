@@ -404,7 +404,7 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
             ReferenceSelectPanel->Enable(true);
 
             if ( RunProfileComboBox->GetCount( ) > 0 ) {
-                if ( image_asset_panel->ReturnGroupSize(GroupComboBox->GetSelection( )) > 0 && run_profiles_panel->run_profile_manager.ReturnTotalJobs(RunProfileComboBox->GetSelection( )) > 0 && all_images_have_defocus_values == true ) {
+                if ( image_asset_panel->ReturnGroupSize(GroupComboBox->GetSelection( )) > 0 && run_profiles_panel->run_profile_manager.ReturnTotalJobs(RunProfileComboBox->GetSelection( )) > 0 && all_images_have_defocus_values == true && ReferenceSelectPanel->GetSelection( ) >= 0 ) {
                     StartEstimationButton->Enable(true);
                 }
                 else
@@ -558,6 +558,12 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 }
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
+
+    // Safety check: ensure a volume is selected before proceeding
+    if ( ReferenceSelectPanel->GetSelection( ) < 0 ) {
+        wxMessageBox("Please select a reference volume before starting the job.", "No Reference Volume Selected", wxOK | wxICON_ERROR);
+        return;
+    }
 
     active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
 

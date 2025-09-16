@@ -90,6 +90,7 @@ public:
     void OnMoveDownClick(wxCommandEvent& event);
     void OnRemoveSelectedClick(wxCommandEvent& event);
     void OnSelectionChanged(wxDataViewEvent& event);
+    void OnItemValueChanged(wxDataViewEvent& event);
 
     // Load/Save queue from database
     void LoadQueueFromDatabase();

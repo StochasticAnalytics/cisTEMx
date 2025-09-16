@@ -4,6 +4,7 @@
 BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
     EVT_BUTTON(wxID_ANY, TemplateMatchQueueManager::OnRunSelectedClick)
     EVT_DATAVIEW_SELECTION_CHANGED(wxID_ANY, TemplateMatchQueueManager::OnSelectionChanged)
+    EVT_DATAVIEW_ITEM_VALUE_CHANGED(wxID_ANY, TemplateMatchQueueManager::OnItemValueChanged)
 END_EVENT_TABLE()
 
 TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
@@ -23,7 +24,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
     queue_list_ctrl->AppendTextColumn("ID", wxDATAVIEW_CELL_INERT, 60);
     queue_list_ctrl->AppendTextColumn("Job Name", wxDATAVIEW_CELL_INERT, 200);
     queue_list_ctrl->AppendTextColumn("Status", wxDATAVIEW_CELL_INERT, 100);
-    queue_list_ctrl->AppendTextColumn("CLI Args", wxDATAVIEW_CELL_INERT, 140);
+    queue_list_ctrl->AppendTextColumn("CLI Args", wxDATAVIEW_CELL_EDITABLE, 140);  // Make editable
 
     // Create button panel
     wxPanel* button_panel = new wxPanel(this, wxID_ANY);
@@ -255,6 +256,34 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
     remove_selected_button->Enable(has_selection);
     run_selected_button->Enable(has_selection &&
                                execution_queue[selected].queue_status == "pending");
+}
+
+void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
+    // Get the row and column that was edited
+    wxDataViewItem item = event.GetItem();
+    if (!item.IsOk()) {
+        return;
+    }
+
+    int row = queue_list_ctrl->ItemToRow(item);
+    int col = event.GetColumn();
+
+    // Check if this is the CLI Args column (column 3)
+    if (col == 3 && row >= 0 && row < execution_queue.size()) {
+        // Get the new value
+        wxVariant value;
+        queue_list_ctrl->GetValue(value, row, col);
+        wxString new_cli_args = value.GetString();
+
+        // TODO: Validate CLI flags here before accepting changes
+        // Should check for valid flags, syntax, and dangerous options
+
+        // Update the queue item
+        execution_queue[row].custom_cli_args = new_cli_args;
+
+        // Save to database if needed
+        SaveQueueToDatabase();
+    }
 }
 
 void TemplateMatchQueueManager::LoadQueueFromDatabase() {

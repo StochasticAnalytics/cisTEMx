@@ -287,32 +287,90 @@ void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
 }
 
 void TemplateMatchQueueManager::LoadQueueFromDatabase() {
-    // Load incomplete jobs from TEMPLATE_MATCH_LIST where QUEUE_STATUS != 'complete'
+    // Load all jobs that are not complete (pending, running, failed)
     extern MyMainFrame* main_frame;
     if (main_frame && main_frame->current_project.is_open) {
-        // Query for incomplete jobs
-        wxString query = "SELECT TEMPLATE_MATCH_ID, JOB_NAME, QUEUE_STATUS, CUSTOM_CLI_ARGS, "
-                        "IMAGE_ASSET_ID, REFERENCE_VOLUME_ASSET_ID "
-                        "FROM TEMPLATE_MATCH_LIST WHERE QUEUE_STATUS IN ('pending', 'running')";
+        execution_queue.clear();
 
-        // TODO: Execute query and populate execution_queue
-        // main_frame->current_project.database can be used to execute queries
-        // For now, just update display
+        // Query for all non-complete jobs
+        wxString query = "SELECT TEMPLATE_MATCH_ID, JOB_NAME, QUEUE_STATUS, CUSTOM_CLI_ARGS, "
+                        "IMAGE_ASSET_ID, REFERENCE_VOLUME_ASSET_ID, USED_SYMMETRY, "
+                        "USED_PIXEL_SIZE, USED_VOLTAGE, USED_SPHERICAL_ABERRATION, "
+                        "USED_AMPLITUDE_CONTRAST, USED_DEFOCUS1, USED_DEFOCUS2, "
+                        "USED_DEFOCUS_ANGLE, USED_PHASE_SHIFT, LOW_RESOLUTION_LIMIT, "
+                        "HIGH_RESOLUTION_LIMIT, OUT_OF_PLANE_ANGULAR_STEP, "
+                        "IN_PLANE_ANGULAR_STEP, DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
+                        "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, REFINEMENT_THRESHOLD, "
+                        "REF_BOX_SIZE_IN_ANGSTROMS, MASK_RADIUS, MIN_PEAK_RADIUS, "
+                        "XY_CHANGE_THRESHOLD, EXCLUDE_ABOVE_XY_THRESHOLD "
+                        "FROM TEMPLATE_MATCH_LIST WHERE QUEUE_STATUS != 'complete' "
+                        "ORDER BY TEMPLATE_MATCH_ID";
+
+        // Execute query and populate execution_queue
+        main_frame->current_project.database.BeginBatchSelect(query.ToUTF8().data());
+
+        while (main_frame->current_project.database.GetFromBatchSelect(
+            "ltttiitrrrrrrrrrrrrrrrrrrri",
+            &execution_queue.emplace_back().template_match_id,
+            &execution_queue.back().job_name,
+            &execution_queue.back().queue_status,
+            &execution_queue.back().custom_cli_args,
+            &execution_queue.back().image_asset_id,
+            &execution_queue.back().reference_volume_asset_id,
+            &execution_queue.back().symmetry,
+            &execution_queue.back().pixel_size,
+            &execution_queue.back().voltage,
+            &execution_queue.back().spherical_aberration,
+            &execution_queue.back().amplitude_contrast,
+            &execution_queue.back().defocus1,
+            &execution_queue.back().defocus2,
+            &execution_queue.back().defocus_angle,
+            &execution_queue.back().phase_shift,
+            &execution_queue.back().low_resolution_limit,
+            &execution_queue.back().high_resolution_limit,
+            &execution_queue.back().out_of_plane_angular_step,
+            &execution_queue.back().in_plane_angular_step,
+            &execution_queue.back().defocus_search_range,
+            &execution_queue.back().defocus_step,
+            &execution_queue.back().pixel_size_search_range,
+            &execution_queue.back().pixel_size_step,
+            &execution_queue.back().refinement_threshold,
+            &execution_queue.back().ref_box_size_in_angstroms,
+            &execution_queue.back().mask_radius,
+            &execution_queue.back().min_peak_radius,
+            &execution_queue.back().xy_change_threshold,
+            &execution_queue.back().exclude_above_xy_threshold)) {
+            // Successfully loaded one row
+        }
+
+        // Remove the last empty element if no results were found
+        if (!execution_queue.empty() && execution_queue.back().template_match_id == -1) {
+            execution_queue.pop_back();
+        }
+
+        main_frame->current_project.database.EndBatchSelect();
+
+        // Update display
         UpdateQueueDisplay();
     }
 }
 
 void TemplateMatchQueueManager::SaveQueueToDatabase() {
-    // Update QUEUE_STATUS in database for all items in queue
+    // Update QUEUE_STATUS and CUSTOM_CLI_ARGS in database for all items in queue
     extern MyMainFrame* main_frame;
     if (main_frame && main_frame->current_project.is_open) {
+        main_frame->current_project.database.Begin();
+
         for (const auto& item : execution_queue) {
             wxString update_query = wxString::Format(
                 "UPDATE TEMPLATE_MATCH_LIST SET QUEUE_STATUS = '%s', CUSTOM_CLI_ARGS = '%s' "
                 "WHERE TEMPLATE_MATCH_ID = %ld",
                 item.queue_status, item.custom_cli_args, item.template_match_id);
 
-            // TODO: Execute update query using main_frame->current_project.database
+            // Execute update query
+            main_frame->current_project.database.ExecuteSQL(update_query.ToUTF8().data());
         }
+
+        main_frame->current_project.database.Commit();
     }
 }

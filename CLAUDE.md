@@ -135,6 +135,8 @@ The project includes CUDA code for GPU acceleration. GPU-related files are prima
 - **Formatting:** Project uses `.clang-format` in the root directory for consistent code formatting
 - **Philosophy:** Incremental modernization - update and unify style as code is modified rather than wholesale changes
 - **Legacy Compatibility:** Many legacy features exist; maintain compatibility while gradually improving
+- **Preprocessor Defines:** All project-specific preprocessor defines should be prefixed with `cisTEM_` to avoid naming collisions (e.g., `cisTEM_ENABLE_FEATURE` not `ENABLE_FEATURE`)
+- **Temporary Files:** All temporary files (scripts, plans, documentation drafts) should be created in `.claude/cache/` directory. Create this directory if it doesn't exist. This keeps the project root clean and makes it easy to identify Claude-generated temporary content
 
 ## Environment Variables
 

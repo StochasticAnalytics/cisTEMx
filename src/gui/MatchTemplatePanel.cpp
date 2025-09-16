@@ -1297,54 +1297,71 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 
 // Queue functionality implementation
 void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
-    // Test implementation - show queue manager in a dialog
-    wxDialog* test_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                         wxDefaultPosition, wxSize(600, 400),
-                                         wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+    // Validate that no job is currently running
+    if (!running_job) {
+        // Create a new queue item with current GUI parameters
+        TemplateMatchQueueItem new_job;
 
-    // Create queue manager panel
-    TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(test_dialog);
+        // Generate unique job name with timestamp
+        wxDateTime now = wxDateTime::Now();
+        new_job.job_name = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
+        new_job.queue_status = "pending";
+        new_job.custom_cli_args = "";  // Can be set by user later
 
-    // Add test items to demonstrate functionality
-    TemplateMatchQueueItem test_item1;
-    test_item1.template_match_id = 1;
-    test_item1.job_name = "Test Job 1 - Pending";
-    test_item1.queue_status = "pending";
-    test_item1.custom_cli_args = "--test-flag";
-    queue_manager->AddToQueue(test_item1);
+        // For now, set placeholder values for required parameters
+        // TODO: Collect actual parameters from GUI controls once control names are verified
+        new_job.template_match_id = -1;  // Will be assigned when stored to database
+        new_job.image_asset_id = 1;  // Placeholder
+        new_job.reference_volume_asset_id = 1;  // Placeholder
 
-    TemplateMatchQueueItem test_item2;
-    test_item2.template_match_id = 2;
-    test_item2.job_name = "Test Job 2 - Running";
-    test_item2.queue_status = "running";
-    test_item2.custom_cli_args = "";
-    queue_manager->AddToQueue(test_item2);
+        // Set some default parameters for testing
+        new_job.symmetry = SymmetryComboBox ? SymmetryComboBox->GetValue() : "C1";
+        new_job.pixel_size = 1.0;
+        new_job.voltage = 300.0;
+        new_job.spherical_aberration = 2.7;
+        new_job.amplitude_contrast = 0.07;
+        new_job.low_resolution_limit = 30.0;
+        new_job.high_resolution_limit = 5.0;
+        new_job.out_of_plane_angular_step = 5.0;
+        new_job.in_plane_angular_step = 2.0;
+        new_job.defocus_search_range = 5000.0;
+        new_job.defocus_step = 500.0;
+        new_job.pixel_size_search_range = 0.0;
+        new_job.pixel_size_step = 0.0;
+        new_job.ref_box_size_in_angstroms = 200.0;
+        new_job.mask_radius = 80.0;
+        new_job.min_peak_radius = 10.0;
 
-    TemplateMatchQueueItem test_item3;
-    test_item3.template_match_id = 3;
-    test_item3.job_name = "Test Job 3 - Complete";
-    test_item3.queue_status = "complete";
-    test_item3.custom_cli_args = "";
-    queue_manager->AddToQueue(test_item3);
+        // TODO: Store in database with actual parameters
+        // For now, show the queue manager with the new job
+        wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
+                                             wxDefaultPosition, wxSize(600, 400),
+                                             wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
-    // Layout
-    wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
-    dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
+        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
 
-    // Add Close button
-    wxButton* close_button = new wxButton(test_dialog, wxID_CLOSE, "Close");
-    dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
+        // Add the new job to the queue
+        queue_manager->AddToQueue(new_job);
 
-    test_dialog->SetSizer(dialog_sizer);
-    test_dialog->ShowModal();
-    test_dialog->Destroy();
+        // Add success message
+        wxMessageBox(wxString::Format("Job '%s' added to queue", new_job.job_name),
+                    "Job Queued", wxOK | wxICON_INFORMATION);
 
-    // TODO: Implement actual queue functionality
-    // 1. Collect all parameters from GUI
-    // 2. Generate job_id
-    // 3. Store in database with IS_ACTIVE = 0
-    // 4. Add to Results Panel as pending
-    // 5. Update queue manager UI if visible
+        // Layout
+        wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
+        dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
+
+        wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
+        dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
+
+        queue_dialog->SetSizer(dialog_sizer);
+        queue_dialog->ShowModal();
+        queue_dialog->Destroy();
+    }
+    else {
+        wxMessageBox("A job is currently running. Please wait for it to complete before queuing new jobs.",
+                    "Job Running", wxOK | wxICON_WARNING);
+    }
 }
 
 void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {

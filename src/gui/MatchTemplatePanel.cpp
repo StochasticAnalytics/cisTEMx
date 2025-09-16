@@ -1393,6 +1393,7 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
                                              wxDefaultPosition, wxSize(600, 400),
                                              wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
+        // Create queue manager for this dialog
         TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
 
         // Add the new job to the queue
@@ -1425,7 +1426,7 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
                                           wxDefaultPosition, wxSize(600, 400),
                                           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
-    // Create queue manager panel
+    // Create queue manager for this dialog
     TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
 
     // Load existing queue from database
@@ -1446,7 +1447,7 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
 
     // Add Close button
-    wxButton* close_button = new wxButton(queue_dialog, wxID_CLOSE, "Close");
+    wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
     dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
 
     queue_dialog->SetSizer(dialog_sizer);

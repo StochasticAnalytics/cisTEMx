@@ -11,6 +11,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
     : wxPanel(parent, wxID_ANY) {
 
     currently_running_id = -1;
+    needs_database_load = true;  // Need to load from database on first access
 
     // Create the main sizer
     wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
@@ -62,8 +63,8 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
     remove_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRemoveSelectedClick, this);
     clear_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnClearQueueClick, this);
 
-    // Load any existing queue items from database
-    LoadQueueFromDatabase();
+    // Don't load from database in constructor - it may be called during workflow switch
+    // when main_frame is in an inconsistent state
 }
 
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
@@ -338,6 +339,11 @@ void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
 }
 
 void TemplateMatchQueueManager::LoadQueueFromDatabase() {
+    // Only load if we need to (haven't loaded yet)
+    if (!needs_database_load) {
+        return;  // Already loaded from database
+    }
+
     // Load all jobs that are not complete (pending, running, failed)
     extern MyMainFrame* main_frame;
     if (main_frame && main_frame->current_project.is_open) {
@@ -401,6 +407,9 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
 
         main_frame->current_project.database.EndBatchSelect();
 
+        // Mark that we've loaded from database
+        needs_database_load = false;
+
         // Update display
         UpdateQueueDisplay();
     }
@@ -423,5 +432,8 @@ void TemplateMatchQueueManager::SaveQueueToDatabase() {
         }
 
         main_frame->current_project.database.Commit();
+
+        // After saving, we need to reload from DB next time
+        needs_database_load = true;
     }
 }

@@ -60,6 +60,7 @@ private:
 
     std::deque<TemplateMatchQueueItem> execution_queue;
     long currently_running_id;
+    bool needs_database_load;  // True if we haven't loaded from DB yet
 
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();

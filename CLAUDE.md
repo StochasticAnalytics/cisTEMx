@@ -139,6 +139,54 @@ The project includes CUDA code for GPU acceleration. GPU-related files are prima
 - **Include Guards:** Use the full path from project root in uppercase with underscores for header file include guards (e.g., `_SRC_GUI_MYHEADER_H_` for `src/gui/MyHeader.h`, not `__MyHeader__`)
 - **Temporary Files:** All temporary files (scripts, plans, documentation drafts) should be created in `.claude/cache/` directory. Create this directory if it doesn't exist. This keeps the project root clean and makes it easy to identify Claude-generated temporary content
 
+## wxWidgets Best Practices for cisTEM
+
+### Memory Management
+- **Widget Ownership:** Create widgets with clear parent-child relationships. Parent widgets automatically delete their children.
+- **Avoid Complex Member Widgets:** Don't use `std::unique_ptr` or member variables for widgets that may outlive workflow switches. Instead, create them locally in dialogs.
+- **Dialog-Scoped Resources:** For temporary UI elements (like queue managers), create them as children of dialogs rather than panel members.
+
+Example:
+```cpp
+// GOOD: Dialog owns the widget
+wxDialog* dialog = new wxDialog(parent, ...);
+MyWidget* widget = new MyWidget(dialog);  // Dialog will delete it
+
+// AVOID: Complex lifecycle management
+class Panel {
+    std::unique_ptr<MyWidget> persistent_widget;  // Risky during workflow switches
+};
+```
+
+### Database Access Patterns
+- **Defer Database Operations:** Never access the database in constructors, especially during workflow switching when `main_frame` might be invalid.
+- **Use Lazy Loading:** Implement a flag-based approach for database operations.
+
+Example:
+```cpp
+// GOOD: Lazy loading pattern
+class MyWidget {
+    bool needs_database_load = true;
+
+    void OnFirstUse() {
+        if (needs_database_load && main_frame && main_frame->current_project.is_open) {
+            LoadFromDatabase();
+            needs_database_load = false;
+        }
+    }
+};
+```
+
+### Workflow Switching Robustness
+- **Design for Destruction:** Panels are destroyed and recreated during workflow switches. Don't assume persistence.
+- **State in Database:** Keep complex state in the database rather than in memory.
+- **Avoid Destructor Logic:** Don't put complex logic in destructors; wxWidgets handles most cleanup automatically.
+
+### Build System Tips
+- **Parallel Builds:** Use `make -j16` (or available thread count) for faster compilation
+- **Force Rebuilds:** Delete dependency files to force rebuild: `rm gui/.deps/cisTEM-TargetFile.*`
+- **VS Code Quirks:** Git diffs may need manual refresh in VS Code after file changes
+
 ## Environment Variables
 
 - `WX_CONFIG` - Path to wx-config for specifying wxWidgets installation

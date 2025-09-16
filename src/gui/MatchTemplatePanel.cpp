@@ -1,6 +1,7 @@
 //#include "../core/core_headers.h"
 #include "../constants/constants.h"
 #include "../core/gui_core_headers.h"
+#include "TemplateMatchQueueManager.h"
 
 // extern MyMovieAssetPanel *movie_asset_panel;
 extern MyImageAssetPanel*         image_asset_panel;
@@ -1296,14 +1297,47 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 
 // Queue functionality implementation
 void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
-    // Stub implementation for testing
-    wxMessageDialog* dialog = new wxMessageDialog(this,
-                                                  "Add To Queue button successfully implemented!\n\n"
-                                                  "This will queue the current template matching job for later execution.",
-                                                  "Queue Implementation Test",
-                                                  wxOK | wxICON_INFORMATION);
-    dialog->ShowModal();
-    delete dialog;
+    // Test implementation - show queue manager in a dialog
+    wxDialog* test_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
+                                         wxDefaultPosition, wxSize(600, 400),
+                                         wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+
+    // Create queue manager panel
+    TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(test_dialog);
+
+    // Add test items to demonstrate functionality
+    TemplateMatchQueueItem test_item1;
+    test_item1.template_match_id = 1;
+    test_item1.job_name = "Test Job 1 - Pending";
+    test_item1.queue_status = "pending";
+    test_item1.custom_cli_args = "--test-flag";
+    queue_manager->AddToQueue(test_item1);
+
+    TemplateMatchQueueItem test_item2;
+    test_item2.template_match_id = 2;
+    test_item2.job_name = "Test Job 2 - Running";
+    test_item2.queue_status = "running";
+    test_item2.custom_cli_args = "";
+    queue_manager->AddToQueue(test_item2);
+
+    TemplateMatchQueueItem test_item3;
+    test_item3.template_match_id = 3;
+    test_item3.job_name = "Test Job 3 - Complete";
+    test_item3.queue_status = "complete";
+    test_item3.custom_cli_args = "";
+    queue_manager->AddToQueue(test_item3);
+
+    // Layout
+    wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
+    dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
+
+    // Add Close button
+    wxButton* close_button = new wxButton(test_dialog, wxID_CLOSE, "Close");
+    dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
+
+    test_dialog->SetSizer(dialog_sizer);
+    test_dialog->ShowModal();
+    test_dialog->Destroy();
 
     // TODO: Implement actual queue functionality
     // 1. Collect all parameters from GUI
@@ -1311,4 +1345,39 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
     // 3. Store in database with IS_ACTIVE = 0
     // 4. Add to Results Panel as pending
     // 5. Update queue manager UI if visible
+}
+
+void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
+    // Open queue manager dialog without adding new items
+    wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
+                                          wxDefaultPosition, wxSize(600, 400),
+                                          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+
+    // Create queue manager panel
+    TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
+
+    // Load existing queue from database
+    queue_manager->LoadQueueFromDatabase();
+
+    // For testing, add sample items if queue is empty
+    if (!queue_manager->HasPendingJobs()) {
+        TemplateMatchQueueItem sample_item;
+        sample_item.template_match_id = 101;
+        sample_item.job_name = "Sample Job - Pending";
+        sample_item.queue_status = "pending";
+        sample_item.custom_cli_args = "";
+        queue_manager->AddToQueue(sample_item);
+    }
+
+    // Layout
+    wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
+    dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
+
+    // Add Close button
+    wxButton* close_button = new wxButton(queue_dialog, wxID_CLOSE, "Close");
+    dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
+
+    queue_dialog->SetSizer(dialog_sizer);
+    queue_dialog->ShowModal();
+    queue_dialog->Destroy();
 }

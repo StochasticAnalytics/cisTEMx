@@ -108,6 +108,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // Queue functionality
     void        OnAddToQueueClick(wxCommandEvent& event);
+    void        OnOpenQueueClick(wxCommandEvent& event);
 };
 
 #endif

@@ -151,6 +151,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MyExperimentalPanel.h \
                  gui/MatchTemplateResultsPanel.h \
                  gui/MatchTemplatePanel.h \
+                 gui/TemplateMatchQueueManager.h \
                  gui/RefineTemplatePanel.h \
                  gui/icons/action_icon.cpp \
                  gui/icons/assets_icon.cpp \
@@ -740,6 +741,7 @@ cisTEM_SOURCES = programs/projectx/projectx.cpp \
                 gui/ShowTemplateMatchResultsPanel.cpp \
                 gui/MatchTemplatePanel.cpp \
                 gui/MatchTemplateResultsPanel.cpp \
+                gui/TemplateMatchQueueManager.cpp \
                 gui/RefineTemplatePanel.cpp \
                 gui/CombineRefinementPackagesWizard.cpp \
                 gui/AtomicCoordinatesAssetPanel.cpp \

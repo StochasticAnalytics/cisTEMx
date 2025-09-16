@@ -954,6 +954,11 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 	AddToQueueButton = new wxButton( StartPanel, wxID_ANY, wxT("Add To Queue"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer60->Add( AddToQueueButton, 0, wxALL, 5 );
 
+	OpenQueueButton = new wxButton( StartPanel, wxID_ANY, wxT("Open Queue"), wxDefaultPosition, wxDefaultSize, 0 );
+	OpenQueueButton->SetToolTip( wxT("Open the queue manager to view and manage queued jobs") );
+
+	bSizer60->Add( OpenQueueButton, 0, wxALL, 5 );
+
 
 	bSizer58->Add( bSizer60, 50, wxEXPAND, 5 );
 
@@ -983,6 +988,7 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 	CancelAlignmentButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::TerminateButtonClick ), NULL, this );
 	StartEstimationButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::StartEstimationClick ), NULL, this );
 	AddToQueueButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
+	OpenQueueButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
 	ResumeRunCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::ResumeRunCheckBoxOnCheckBox ), NULL, this );
 }
 
@@ -996,6 +1002,7 @@ MatchTemplatePanelParent::~MatchTemplatePanelParent()
 	CancelAlignmentButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::TerminateButtonClick ), NULL, this );
 	StartEstimationButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::StartEstimationClick ), NULL, this );
 	AddToQueueButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
+	OpenQueueButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
 	ResumeRunCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::ResumeRunCheckBoxOnCheckBox ), NULL, this );
 
 }

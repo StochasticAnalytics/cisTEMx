@@ -78,9 +78,12 @@ public:
     // Execution methods
     void RunSelectedJob();
     void RunAllJobs();
+    void RunNextJob();
+    bool ExecuteJob(TemplateMatchQueueItem& job_to_run);
     void UpdateJobStatus(long template_match_id, const wxString& new_status);
     TemplateMatchQueueItem* GetNextPendingJob();
     bool HasPendingJobs();
+    bool IsJobRunning();
 
     // Event handlers
     void OnRunSelectedClick(wxCommandEvent& event);

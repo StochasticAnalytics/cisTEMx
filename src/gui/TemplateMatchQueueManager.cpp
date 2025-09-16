@@ -81,17 +81,24 @@ void TemplateMatchQueueManager::RemoveFromQueue(int index) {
 }
 
 void TemplateMatchQueueManager::ClearQueue() {
-    // Only clear pending items, keep running and completed
+    // Only clear pending items, keep running, completed, and failed
     auto it = execution_queue.begin();
     while (it != execution_queue.end()) {
         if (it->queue_status == "pending") {
+            // Also remove from database by setting status to 'cancelled'
+            extern MyMainFrame* main_frame;
+            if (main_frame && main_frame->current_project.is_open) {
+                wxString update_query = wxString::Format(
+                    "UPDATE TEMPLATE_MATCH_LIST SET QUEUE_STATUS = 'cancelled' "
+                    "WHERE TEMPLATE_MATCH_ID = %ld", it->template_match_id);
+                main_frame->current_project.database.ExecuteSQL(update_query.ToUTF8().data());
+            }
             it = execution_queue.erase(it);
         } else {
             ++it;
         }
     }
     UpdateQueueDisplay();
-    SaveQueueToDatabase();
 }
 
 void TemplateMatchQueueManager::MoveItemUp(int index) {
@@ -161,22 +168,66 @@ void TemplateMatchQueueManager::RunSelectedJob() {
     int selected = GetSelectedRow();
     if (selected >= 0 && selected < execution_queue.size()) {
         if (execution_queue[selected].queue_status == "pending") {
-            // Mark as running and execute
-            UpdateJobStatus(execution_queue[selected].template_match_id, "running");
-            // TODO: Trigger actual job execution
+            ExecuteJob(execution_queue[selected]);
         }
     }
 }
 
 void TemplateMatchQueueManager::RunAllJobs() {
-    // Find first pending job and run it
-    for (auto& item : execution_queue) {
-        if (item.queue_status == "pending") {
-            UpdateJobStatus(item.template_match_id, "running");
-            // TODO: Trigger actual job execution
-            break;
-        }
+    // Start running the first pending job
+    // When it completes, RunNextJob will be called to continue
+    RunNextJob();
+}
+
+void TemplateMatchQueueManager::RunNextJob() {
+    // Check if a job is already running
+    if (IsJobRunning()) {
+        return;
     }
+
+    // Find and run the next pending job
+    TemplateMatchQueueItem* next_job = GetNextPendingJob();
+    if (next_job != nullptr) {
+        ExecuteJob(*next_job);
+    }
+}
+
+bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
+    // Check if another job is already running
+    if (IsJobRunning()) {
+        wxMessageBox("A job is already running. Please wait for it to complete.",
+                    "Job Running", wxOK | wxICON_WARNING);
+        return false;
+    }
+
+    // Update status to running
+    UpdateJobStatus(job_to_run.template_match_id, "running");
+    currently_running_id = job_to_run.template_match_id;
+
+    // Get the parent MatchTemplatePanel to execute the job
+    extern MyMainFrame* main_frame;
+    if (main_frame) {
+        // TODO: Call the MatchTemplatePanel's execution method with the job parameters
+        // For now, we'll simulate job completion after a moment
+        wxMessageBox(wxString::Format("Starting job: %s\nJob ID: %ld\nCLI Args: %s",
+                                      job_to_run.job_name,
+                                      job_to_run.template_match_id,
+                                      job_to_run.custom_cli_args),
+                    "Job Started", wxOK | wxICON_INFORMATION);
+
+        // Simulate job completion for testing
+        UpdateJobStatus(job_to_run.template_match_id, "complete");
+        currently_running_id = -1;
+
+        // If we're running all jobs, start the next one
+        RunNextJob();
+    }
+
+    return true;
+}
+
+bool TemplateMatchQueueManager::IsJobRunning() {
+    return currently_running_id != -1;
 }
 
 void TemplateMatchQueueManager::UpdateJobStatus(long template_match_id, const wxString& new_status) {

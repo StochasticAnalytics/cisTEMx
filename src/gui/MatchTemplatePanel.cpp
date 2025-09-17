@@ -560,6 +560,17 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 }
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
+    // New queue-based architecture:
+    // 1. Add to queue (without dialog)
+    // 2. Setup job
+    // 3. Run job
+
+    // Step 1: Add to queue without dialog
+    TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
+    AddJobToQueue(new_job, false);  // No dialog for direct execution
+
+    // Step 2 & 3: Will be implemented in next steps
+    // For now, continue with existing execution logic
 
     active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
 
@@ -1304,102 +1315,10 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 // Queue functionality implementation
 void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
     // Validate that no job is currently running
-    if ( ! running_job ) {
-        // Create a new queue item with current GUI parameters
-        TemplateMatchQueueItem new_job;
-
-        // Generate unique job name with timestamp
-        wxDateTime now          = wxDateTime::Now( );
-        new_job.job_name        = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
-        new_job.queue_status    = "pending";
-        new_job.custom_cli_args = ""; // Can be set by user later
-
-        // Collect actual parameters from GUI controls
-        new_job.template_match_id         = -1; // Will be assigned when stored to database
-        new_job.image_group_id            = GroupComboBox->GetSelection();
-        new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
-
-        // Get symmetry and resolution parameters
-        new_job.symmetry                  = SymmetryComboBox->GetValue().Upper();
-        new_job.high_resolution_limit     = HighResolutionLimitNumericCtrl->ReturnValue();
-        new_job.low_resolution_limit      = 300.0f; // Currently hardcoded in template matching
-
-        // Angular search parameters
-        new_job.out_of_plane_angular_step = OutofPlaneStepNumericCtrl->ReturnValue();
-        new_job.in_plane_angular_step     = InPlaneStepNumericCtrl->ReturnValue();
-
-        // Defocus search parameters
-        if (DefocusSearchYesRadio->GetValue()) {
-            new_job.defocus_search_range = DefocusSearchRangeNumericCtrl->ReturnValue();
-            new_job.defocus_step         = DefocusSearchStepNumericCtrl->ReturnValue();
-        } else {
-            new_job.defocus_search_range = 0.0f;
-            new_job.defocus_step         = 0.0f;
-        }
-
-        // Pixel size search parameters
-        if (PixelSizeSearchYesRadio->GetValue()) {
-            new_job.pixel_size_search_range = PixelSizeSearchRangeNumericCtrl->ReturnValue();
-            new_job.pixel_size_step         = PixelSizeSearchStepNumericCtrl->ReturnValue();
-        } else {
-            new_job.pixel_size_search_range = 0.0f;
-            new_job.pixel_size_step         = 0.0f;
-        }
-
-        // Peak detection parameters
-        new_job.min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue();
-
-        // Get CTF parameters from the first image (these would need to be refined per image)
-        // For now, use placeholder values - will need to get from image assets
-        new_job.pixel_size                = 1.0;  // TODO: Get from selected image group
-        new_job.voltage                   = 300.0; // TODO: Get from CTF estimation
-        new_job.spherical_aberration      = 2.7;  // TODO: Get from CTF estimation
-        new_job.amplitude_contrast        = 0.07; // TODO: Get from CTF estimation
-        new_job.defocus1                   = 10000.0; // TODO: Get from CTF estimation
-        new_job.defocus2                   = 10000.0; // TODO: Get from CTF estimation
-        new_job.defocus_angle              = 0.0;    // TODO: Get from CTF estimation
-        new_job.phase_shift                = 0.0;    // TODO: Get from CTF estimation
-
-        // Get volume parameters
-        VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection());
-        if (current_volume) {
-            new_job.ref_box_size_in_angstroms = current_volume->x_size * current_volume->pixel_size;
-            new_job.mask_radius = current_volume->x_size * current_volume->pixel_size / 2.0f;
-        } else {
-            new_job.ref_box_size_in_angstroms = 200.0;
-            new_job.mask_radius = 80.0;
-        }
-
-        // Generate a unique ID using current timestamp
-        static long next_queue_id = 1000;
-        new_job.template_match_id = ++next_queue_id;
-
-        // Show the queue manager with the new job
-        wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                              wxDefaultPosition, wxSize(600, 400),
-                                              wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
-
-        // Create queue manager for this dialog
-        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, main_frame);
-
-        // Load existing queue from database first
-        queue_manager->LoadQueueFromDatabase();
-
-        // Add the new job to the queue
-        queue_manager->AddToQueue(new_job);
-
-        // Job added successfully - no popup needed
-
-        // Layout
-        wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
-        dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
-
-        wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
-        dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
-
-        queue_dialog->SetSizer(dialog_sizer);
-        queue_dialog->ShowModal( );
-        queue_dialog->Destroy( );
+    if (!running_job) {
+        // Collect job parameters from GUI and add to queue with dialog
+        TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
+        AddJobToQueue(new_job, true);
     }
     else {
         wxMessageBox("A job is currently running. Please wait for it to complete before queuing new jobs.",
@@ -1532,4 +1451,127 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     StartEstimationClick(fake_event);
 
     return true;
+}
+
+TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
+    TemplateMatchQueueItem new_job;
+
+    // Generate unique job name with timestamp
+    wxDateTime now          = wxDateTime::Now();
+    new_job.job_name        = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
+    new_job.queue_status    = "pending";
+    new_job.custom_cli_args = "";
+
+    // Collect actual parameters from GUI controls
+    new_job.template_match_id         = -1; // Will be assigned when stored to database
+    new_job.image_group_id            = GroupComboBox->GetSelection();
+    new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
+
+    // Get symmetry and resolution parameters
+    new_job.symmetry                  = SymmetryComboBox->GetValue().Upper();
+    new_job.high_resolution_limit     = HighResolutionLimitNumericCtrl->ReturnValue();
+    new_job.low_resolution_limit      = 300.0f; // Currently hardcoded in template matching
+
+    // Angular search parameters
+    new_job.out_of_plane_angular_step = OutofPlaneStepNumericCtrl->ReturnValue();
+    new_job.in_plane_angular_step     = InPlaneStepNumericCtrl->ReturnValue();
+
+    // Defocus search parameters
+    if (DefocusSearchYesRadio->GetValue()) {
+        new_job.defocus_search_range = DefocusSearchRangeNumericCtrl->ReturnValue();
+        new_job.defocus_step         = DefocusSearchStepNumericCtrl->ReturnValue();
+    } else {
+        new_job.defocus_search_range = 0.0f;
+        new_job.defocus_step         = 0.0f;
+    }
+
+    // Pixel size search parameters
+    if (PixelSizeSearchYesRadio->GetValue()) {
+        new_job.pixel_size_search_range = PixelSizeSearchRangeNumericCtrl->ReturnValue();
+        new_job.pixel_size_step         = PixelSizeSearchStepNumericCtrl->ReturnValue();
+    } else {
+        new_job.pixel_size_search_range = 0.0f;
+        new_job.pixel_size_step         = 0.0f;
+    }
+
+    // Peak detection parameters
+    new_job.min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue();
+
+    // Get CTF parameters from the first image (these would need to be refined per image)
+    // For now, use placeholder values - will need to get from image assets
+    new_job.pixel_size                = 1.0;  // TODO: Get from selected image group
+    new_job.voltage                   = 300.0; // TODO: Get from CTF estimation
+    new_job.spherical_aberration      = 2.7;  // TODO: Get from CTF estimation
+    new_job.amplitude_contrast        = 0.07; // TODO: Get from CTF estimation
+    new_job.defocus1                   = 10000.0; // TODO: Get from CTF estimation
+    new_job.defocus2                   = 10000.0; // TODO: Get from CTF estimation
+    new_job.defocus_angle              = 0.0;    // TODO: Get from CTF estimation
+    new_job.phase_shift                = 0.0;    // TODO: Get from CTF estimation
+
+    // Get volume parameters
+    VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection());
+    if (current_volume) {
+        new_job.ref_box_size_in_angstroms = current_volume->x_size * current_volume->pixel_size;
+        new_job.mask_radius = current_volume->x_size * current_volume->pixel_size / 2.0f;
+    } else {
+        new_job.ref_box_size_in_angstroms = 200.0;
+        new_job.mask_radius = 80.0;
+    }
+
+    // Additional parameters that might be missing
+    new_job.use_gpu = false;  // TODO: Get from GUI if available
+    new_job.use_fast_fft = false;  // TODO: Get from GUI if available
+    new_job.refinement_threshold = 0.0;  // TODO: Get from GUI if available
+    new_job.xy_change_threshold = 0.0;   // TODO: Get from GUI if available
+    new_job.exclude_above_xy_threshold = false;  // TODO: Get from GUI if available
+
+    return new_job;
+}
+
+void MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog) {
+    if (show_dialog) {
+        // Show the queue manager with the new job
+        wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
+                                              wxDefaultPosition, wxSize(600, 400),
+                                              wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+
+        // Create queue manager for this dialog
+        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, main_frame);
+
+        // Load existing queue from database first
+        queue_manager->LoadQueueFromDatabase();
+
+        // Add the new job to the queue
+        queue_manager->AddToQueue(job);
+
+        // Job added successfully - no popup needed
+
+        // Layout
+        wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
+        dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
+
+        wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
+        dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
+
+        queue_dialog->SetSizer(dialog_sizer);
+        queue_dialog->ShowModal();
+        queue_dialog->Destroy();
+    } else {
+        // Add to queue without dialog - use database directly
+        if (main_frame && main_frame->current_project.is_open) {
+            main_frame->current_project.database.AddToTemplateMatchQueue(
+                job.job_name, job.image_group_id, job.reference_volume_asset_id,
+                job.use_gpu, job.use_fast_fft, job.symmetry,
+                job.pixel_size, job.voltage, job.spherical_aberration, job.amplitude_contrast,
+                job.defocus1, job.defocus2, job.defocus_angle, job.phase_shift,
+                job.low_resolution_limit, job.high_resolution_limit,
+                job.out_of_plane_angular_step, job.in_plane_angular_step,
+                job.defocus_search_range, job.defocus_step,
+                job.pixel_size_search_range, job.pixel_size_step,
+                job.refinement_threshold, job.ref_box_size_in_angstroms,
+                job.mask_radius, job.min_peak_radius,
+                job.xy_change_threshold, job.exclude_above_xy_threshold,
+                job.custom_cli_args);
+        }
+    }
 }

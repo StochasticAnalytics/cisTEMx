@@ -120,7 +120,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // Shared job execution methods
     TemplateMatchQueueItem CollectJobParametersFromGui();
-    void        AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog = true);
+    long        AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog = true);
     bool        SetupJobFromQueueItem(const TemplateMatchQueueItem& job);
     bool        ExecuteCurrentJob();
 };

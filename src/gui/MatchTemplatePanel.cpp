@@ -333,12 +333,6 @@ void MatchTemplatePanel::SetInfo( ) {
 }
 
 void MatchTemplatePanel::FillGroupComboBox( ) {
-    // Called from constructor (when panel is created) or OnUpdateUI (when groups change)
-    // Return early if no project is open (can happen during workflow switching)
-    if ( ! main_frame->current_project.is_open ) {
-        return;
-    }
-
     GroupComboBox->FillComboBox(true);
 
     if ( GroupComboBox->GetCount( ) > 0 && main_frame->current_project.is_open == true )
@@ -690,7 +684,7 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     current_image_euler_search->CalculateGridSearchPositions(false);
 
     // Optionally split each image over multiple jobs (processes)
-    // The coordinating thread needs to process all the worker's results, so we can only process 1 image at a time, i.e. 
+    // The coordinating thread needs to process all the worker's results, so we can only process 1 image at a time, i.e.
     // the min number of jobs per image is number_of_processes
     if ( use_gpu ) {
         number_of_jobs_per_image_in_gui = number_of_processes; // Using two threads in each job
@@ -1298,115 +1292,93 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 // Queue functionality implementation
 void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
     // Validate that no job is currently running
-    if (!running_job) {
+    if ( ! running_job ) {
         // Create a new queue item with current GUI parameters
         TemplateMatchQueueItem new_job;
 
         // Generate unique job name with timestamp
-        wxDateTime now = wxDateTime::Now();
-        new_job.job_name = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
-        new_job.queue_status = "pending";
-        new_job.custom_cli_args = "";  // Can be set by user later
+        wxDateTime now          = wxDateTime::Now( );
+        new_job.job_name        = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
+        new_job.queue_status    = "pending";
+        new_job.custom_cli_args = ""; // Can be set by user later
 
-        // For now, set placeholder values for required parameters
-        // TODO: Collect actual parameters from GUI controls once control names are verified
-        new_job.template_match_id = -1;  // Will be assigned when stored to database
-        new_job.image_asset_id = 1;  // Placeholder
-        new_job.reference_volume_asset_id = 1;  // Placeholder
+        // Collect actual parameters from GUI controls
+        new_job.template_match_id         = -1; // Will be assigned when stored to database
+        new_job.image_asset_id            = GroupComboBox->GetSelection();
+        new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
 
-        // Set some default parameters for testing
-        new_job.symmetry = SymmetryComboBox ? SymmetryComboBox->GetValue() : "C1";
-        new_job.pixel_size = 1.0;
-        new_job.voltage = 300.0;
-        new_job.spherical_aberration = 2.7;
-        new_job.amplitude_contrast = 0.07;
-        new_job.low_resolution_limit = 30.0;
-        new_job.high_resolution_limit = 5.0;
-        new_job.out_of_plane_angular_step = 5.0;
-        new_job.in_plane_angular_step = 2.0;
-        new_job.defocus_search_range = 5000.0;
-        new_job.defocus_step = 500.0;
-        new_job.pixel_size_search_range = 0.0;
-        new_job.pixel_size_step = 0.0;
-        new_job.ref_box_size_in_angstroms = 200.0;
-        new_job.mask_radius = 80.0;
-        new_job.min_peak_radius = 10.0;
+        // Get symmetry and resolution parameters
+        new_job.symmetry                  = SymmetryComboBox->GetValue().Upper();
+        new_job.high_resolution_limit     = HighResolutionLimitNumericCtrl->ReturnValue();
+        new_job.low_resolution_limit      = 300.0f; // Currently hardcoded in template matching
 
-        // Store the job in the database
-        extern MyMainFrame* main_frame;
-        if (main_frame && main_frame->current_project.is_open) {
-            // Get next template match ID
-            long template_match_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
-            new_job.template_match_id = template_match_id;
+        // Angular search parameters
+        new_job.out_of_plane_angular_step = OutofPlaneStepNumericCtrl->ReturnValue();
+        new_job.in_plane_angular_step     = InPlaneStepNumericCtrl->ReturnValue();
 
-            // Insert the job into the database with queue status
-            main_frame->current_project.database.Begin();
-            main_frame->current_project.database.InsertOrReplace(
-                "TEMPLATE_MATCH_LIST",
-                "Ptllilllitrrrrrrrrrrrrrrrrrrrrrrittttttttttttt",
-                "TEMPLATE_MATCH_ID", template_match_id,
-                "JOB_NAME", new_job.job_name.ToUTF8().data(),
-                "DATETIME_OF_RUN", wxDateTime::Now().GetAsDOS(),
-                "TEMPLATE_MATCH_JOB_ID", 0L,  // Will be set when job runs
-                "JOB_TYPE_CODE", 0,
-                "INPUT_TEMPLATE_MATCH_ID", 0L,
-                "IMAGE_ASSET_ID", (long)new_job.image_asset_id,
-                "REFERENCE_VOLUME_ASSET_ID", (long)new_job.reference_volume_asset_id,
-                "IS_ACTIVE", 0,  // Not active until running
-                "USED_SYMMETRY", new_job.symmetry.ToUTF8().data(),
-                "USED_PIXEL_SIZE", new_job.pixel_size,
-                "USED_VOLTAGE", new_job.voltage,
-                "USED_SPHERICAL_ABERRATION", new_job.spherical_aberration,
-                "USED_AMPLITUDE_CONTRAST", new_job.amplitude_contrast,
-                "USED_DEFOCUS1", new_job.defocus1,
-                "USED_DEFOCUS2", new_job.defocus2,
-                "USED_DEFOCUS_ANGLE", new_job.defocus_angle,
-                "USED_PHASE_SHIFT", new_job.phase_shift,
-                "LOW_RESOLUTION_LIMIT", new_job.low_resolution_limit,
-                "HIGH_RESOLUTION_LIMIT", new_job.high_resolution_limit,
-                "OUT_OF_PLANE_ANGULAR_STEP", new_job.out_of_plane_angular_step,
-                "IN_PLANE_ANGULAR_STEP", new_job.in_plane_angular_step,
-                "DEFOCUS_SEARCH_RANGE", new_job.defocus_search_range,
-                "DEFOCUS_STEP", new_job.defocus_step,
-                "PIXEL_SIZE_SEARCH_RANGE", new_job.pixel_size_search_range,
-                "PIXEL_SIZE_STEP", new_job.pixel_size_step,
-                "REFINEMENT_THRESHOLD", new_job.refinement_threshold,
-                "USED_THRESHOLD", 0.0f,  // Will be calculated when job runs
-                "REF_BOX_SIZE_IN_ANGSTROMS", new_job.ref_box_size_in_angstroms,
-                "MASK_RADIUS", new_job.mask_radius,
-                "MIN_PEAK_RADIUS", new_job.min_peak_radius,
-                "XY_CHANGE_THRESHOLD", new_job.xy_change_threshold,
-                "EXCLUDE_ABOVE_XY_THRESHOLD", (int)new_job.exclude_above_xy_threshold,
-                "MIP_OUTPUT_FILE", "",
-                "SCALED_MIP_OUTPUT_FILE", "",
-                "AVG_OUTPUT_FILE", "",
-                "STD_OUTPUT_FILE", "",
-                "PSI_OUTPUT_FILE", "",
-                "THETA_OUTPUT_FILE", "",
-                "PHI_OUTPUT_FILE", "",
-                "DEFOCUS_OUTPUT_FILE", "",
-                "PIXEL_SIZE_OUTPUT_FILE", "",
-                "HISTOGRAM_OUTPUT_FILE", "",
-                "PROJECTION_RESULT_OUTPUT_FILE", "",
-                "CUSTOM_CLI_ARGS", new_job.custom_cli_args.ToUTF8().data(),
-                "QUEUE_STATUS", new_job.queue_status.ToUTF8().data()
-            );
-            main_frame->current_project.database.Commit();
+        // Defocus search parameters
+        if (DefocusSearchYesRadio->GetValue()) {
+            new_job.defocus_search_range = DefocusSearchRangeNumericCtrl->ReturnValue();
+            new_job.defocus_step         = DefocusSearchStepNumericCtrl->ReturnValue();
+        } else {
+            new_job.defocus_search_range = 0.0f;
+            new_job.defocus_step         = 0.0f;
         }
+
+        // Pixel size search parameters
+        if (PixelSizeSearchYesRadio->GetValue()) {
+            new_job.pixel_size_search_range = PixelSizeSearchRangeNumericCtrl->ReturnValue();
+            new_job.pixel_size_step         = PixelSizeSearchStepNumericCtrl->ReturnValue();
+        } else {
+            new_job.pixel_size_search_range = 0.0f;
+            new_job.pixel_size_step         = 0.0f;
+        }
+
+        // Peak detection parameters
+        new_job.min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue();
+
+        // Get CTF parameters from the first image (these would need to be refined per image)
+        // For now, use placeholder values - will need to get from image assets
+        new_job.pixel_size                = 1.0;  // TODO: Get from selected image group
+        new_job.voltage                   = 300.0; // TODO: Get from CTF estimation
+        new_job.spherical_aberration      = 2.7;  // TODO: Get from CTF estimation
+        new_job.amplitude_contrast        = 0.07; // TODO: Get from CTF estimation
+        new_job.defocus1                   = 10000.0; // TODO: Get from CTF estimation
+        new_job.defocus2                   = 10000.0; // TODO: Get from CTF estimation
+        new_job.defocus_angle              = 0.0;    // TODO: Get from CTF estimation
+        new_job.phase_shift                = 0.0;    // TODO: Get from CTF estimation
+
+        // Get volume parameters
+        VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection());
+        if (current_volume) {
+            new_job.ref_box_size_in_angstroms = current_volume->x_size * current_volume->pixel_size;
+            new_job.mask_radius = current_volume->x_size * current_volume->pixel_size / 2.0f;
+        } else {
+            new_job.ref_box_size_in_angstroms = 200.0;
+            new_job.mask_radius = 80.0;
+        }
+
+        // Generate a unique ID using current timestamp
+        static long next_queue_id = 1000;
+        new_job.template_match_id = ++next_queue_id;
 
         // Show the queue manager with the new job
         wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                             wxDefaultPosition, wxSize(600, 400),
-                                             wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+                                              wxDefaultPosition, wxSize(600, 400),
+                                              wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
+        // Create queue manager for this dialog
         TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
+
+        // Load existing queue from database first
+        queue_manager->LoadQueueFromDatabase();
 
         // Add the new job to the queue
         queue_manager->AddToQueue(new_job);
 
         // Add success message
         wxMessageBox(wxString::Format("Job '%s' added to queue", new_job.job_name),
-                    "Job Queued", wxOK | wxICON_INFORMATION);
+                     "Job Queued", wxOK | wxICON_INFORMATION);
 
         // Layout
         wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
@@ -1416,12 +1388,12 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
         dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
 
         queue_dialog->SetSizer(dialog_sizer);
-        queue_dialog->ShowModal();
-        queue_dialog->Destroy();
+        queue_dialog->ShowModal( );
+        queue_dialog->Destroy( );
     }
     else {
         wxMessageBox("A job is currently running. Please wait for it to complete before queuing new jobs.",
-                    "Job Running", wxOK | wxICON_WARNING);
+                     "Job Running", wxOK | wxICON_WARNING);
     }
 }
 
@@ -1431,31 +1403,100 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
                                           wxDefaultPosition, wxSize(600, 400),
                                           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
-    // Create queue manager panel
+    // Create queue manager for this dialog
     TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
 
     // Load existing queue from database
-    queue_manager->LoadQueueFromDatabase();
-
-    // For testing, add sample items if queue is empty
-    if (!queue_manager->HasPendingJobs()) {
-        TemplateMatchQueueItem sample_item;
-        sample_item.template_match_id = 101;
-        sample_item.job_name = "Sample Job - Pending";
-        sample_item.queue_status = "pending";
-        sample_item.custom_cli_args = "";
-        queue_manager->AddToQueue(sample_item);
-    }
+    queue_manager->LoadQueueFromDatabase( );
 
     // Layout
     wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
     dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
 
     // Add Close button
-    wxButton* close_button = new wxButton(queue_dialog, wxID_CLOSE, "Close");
+    wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
     dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
 
     queue_dialog->SetSizer(dialog_sizer);
-    queue_dialog->ShowModal();
-    queue_dialog->Destroy();
+    queue_dialog->ShowModal( );
+    queue_dialog->Destroy( );
+}
+
+void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item) {
+    // Populate GUI controls with values from the queue item
+
+    // Set the group and reference selections
+    if (GroupComboBox && item.image_asset_id >= 0) {
+        GroupComboBox->SetSelection(item.image_asset_id);
+    }
+
+    if (ReferenceSelectPanel && item.reference_volume_asset_id >= 0) {
+        ReferenceSelectPanel->SetSelection(item.reference_volume_asset_id);
+    }
+
+    // Set symmetry
+    if (SymmetryComboBox) {
+        SymmetryComboBox->SetValue(item.symmetry);
+    }
+
+    // Set resolution limits
+    if (HighResolutionLimitNumericCtrl) {
+        HighResolutionLimitNumericCtrl->SetValue(wxString::Format("%.2f", item.high_resolution_limit));
+    }
+
+    // Set angular steps
+    if (OutofPlaneStepNumericCtrl) {
+        OutofPlaneStepNumericCtrl->SetValue(wxString::Format("%.2f", item.out_of_plane_angular_step));
+    }
+
+    if (InPlaneStepNumericCtrl) {
+        InPlaneStepNumericCtrl->SetValue(wxString::Format("%.2f", item.in_plane_angular_step));
+    }
+
+    // Set defocus search parameters
+    if (item.defocus_search_range > 0) {
+        if (DefocusSearchYesRadio) DefocusSearchYesRadio->SetValue(true);
+        if (DefocusSearchNoRadio) DefocusSearchNoRadio->SetValue(false);
+        if (DefocusSearchRangeNumericCtrl) {
+            DefocusSearchRangeNumericCtrl->SetValue(wxString::Format("%.2f", item.defocus_search_range));
+            DefocusSearchRangeNumericCtrl->Enable(true);
+        }
+        if (DefocusSearchStepNumericCtrl) {
+            DefocusSearchStepNumericCtrl->SetValue(wxString::Format("%.2f", item.defocus_step));
+            DefocusSearchStepNumericCtrl->Enable(true);
+        }
+    } else {
+        if (DefocusSearchYesRadio) DefocusSearchYesRadio->SetValue(false);
+        if (DefocusSearchNoRadio) DefocusSearchNoRadio->SetValue(true);
+        if (DefocusSearchRangeNumericCtrl) DefocusSearchRangeNumericCtrl->Enable(false);
+        if (DefocusSearchStepNumericCtrl) DefocusSearchStepNumericCtrl->Enable(false);
+    }
+
+    // Set pixel size search parameters
+    if (item.pixel_size_search_range > 0) {
+        if (PixelSizeSearchYesRadio) PixelSizeSearchYesRadio->SetValue(true);
+        if (PixelSizeSearchNoRadio) PixelSizeSearchNoRadio->SetValue(false);
+        if (PixelSizeSearchRangeNumericCtrl) {
+            PixelSizeSearchRangeNumericCtrl->SetValue(wxString::Format("%.4f", item.pixel_size_search_range));
+            PixelSizeSearchRangeNumericCtrl->Enable(true);
+        }
+        if (PixelSizeSearchStepNumericCtrl) {
+            PixelSizeSearchStepNumericCtrl->SetValue(wxString::Format("%.4f", item.pixel_size_step));
+            PixelSizeSearchStepNumericCtrl->Enable(true);
+        }
+    } else {
+        if (PixelSizeSearchYesRadio) PixelSizeSearchYesRadio->SetValue(false);
+        if (PixelSizeSearchNoRadio) PixelSizeSearchNoRadio->SetValue(true);
+        if (PixelSizeSearchRangeNumericCtrl) PixelSizeSearchRangeNumericCtrl->Enable(false);
+        if (PixelSizeSearchStepNumericCtrl) PixelSizeSearchStepNumericCtrl->Enable(false);
+    }
+
+    // Set peak radius
+    if (MinPeakRadiusNumericCtrl) {
+        MinPeakRadiusNumericCtrl->SetValue(wxString::Format("%.2f", item.min_peak_radius));
+    }
+
+    // Refresh the GUI
+    Update();
+    Refresh();
 }

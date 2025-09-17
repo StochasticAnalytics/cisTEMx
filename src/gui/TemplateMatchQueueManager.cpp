@@ -364,45 +364,51 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
                         "ORDER BY TEMPLATE_MATCH_ID";
 
         // Execute query and populate execution_queue
-        main_frame->current_project.database.BeginBatchSelect(query.ToUTF8().data());
+        bool more_data;
+        TemplateMatchQueueItem temp_item;
 
-        while (main_frame->current_project.database.GetFromBatchSelect(
-            "ltttiitrrrrrrrrrrrrrrrrrrri",
-            &execution_queue.emplace_back().template_match_id,
-            &execution_queue.back().job_name,
-            &execution_queue.back().queue_status,
-            &execution_queue.back().custom_cli_args,
-            &execution_queue.back().image_asset_id,
-            &execution_queue.back().reference_volume_asset_id,
-            &execution_queue.back().symmetry,
-            &execution_queue.back().pixel_size,
-            &execution_queue.back().voltage,
-            &execution_queue.back().spherical_aberration,
-            &execution_queue.back().amplitude_contrast,
-            &execution_queue.back().defocus1,
-            &execution_queue.back().defocus2,
-            &execution_queue.back().defocus_angle,
-            &execution_queue.back().phase_shift,
-            &execution_queue.back().low_resolution_limit,
-            &execution_queue.back().high_resolution_limit,
-            &execution_queue.back().out_of_plane_angular_step,
-            &execution_queue.back().in_plane_angular_step,
-            &execution_queue.back().defocus_search_range,
-            &execution_queue.back().defocus_step,
-            &execution_queue.back().pixel_size_search_range,
-            &execution_queue.back().pixel_size_step,
-            &execution_queue.back().refinement_threshold,
-            &execution_queue.back().ref_box_size_in_angstroms,
-            &execution_queue.back().mask_radius,
-            &execution_queue.back().min_peak_radius,
-            &execution_queue.back().xy_change_threshold,
-            &execution_queue.back().exclude_above_xy_threshold)) {
-            // Successfully loaded one row
-        }
+        more_data = main_frame->current_project.database.BeginBatchSelect(query.ToUTF8().data());
 
-        // Remove the last empty element if no results were found
-        if (!execution_queue.empty() && execution_queue.back().template_match_id == -1) {
-            execution_queue.pop_back();
+        while (more_data == true) {
+            more_data = main_frame->current_project.database.GetFromBatchSelect(
+                "ltttiitrrrrrrrrrrrrrrrrrrrib",
+                &temp_item.template_match_id,
+                &temp_item.job_name,
+                &temp_item.queue_status,
+                &temp_item.custom_cli_args,
+                &temp_item.image_asset_id,
+                &temp_item.reference_volume_asset_id,
+                &temp_item.symmetry,
+                &temp_item.pixel_size,
+                &temp_item.voltage,
+                &temp_item.spherical_aberration,
+                &temp_item.amplitude_contrast,
+                &temp_item.defocus1,
+                &temp_item.defocus2,
+                &temp_item.defocus_angle,
+                &temp_item.phase_shift,
+                &temp_item.low_resolution_limit,
+                &temp_item.high_resolution_limit,
+                &temp_item.out_of_plane_angular_step,
+                &temp_item.in_plane_angular_step,
+                &temp_item.defocus_search_range,
+                &temp_item.defocus_step,
+                &temp_item.pixel_size_search_range,
+                &temp_item.pixel_size_step,
+                &temp_item.refinement_threshold,
+                &temp_item.ref_box_size_in_angstroms,
+                &temp_item.mask_radius,
+                &temp_item.min_peak_radius,
+                &temp_item.xy_change_threshold,
+                &temp_item.exclude_above_xy_threshold);
+
+            if (more_data == false && temp_item.template_match_id != -1) {
+                // Add the last item if it was successfully read
+                execution_queue.push_back(temp_item);
+            } else if (more_data == true) {
+                // Add the item for all other successful reads
+                execution_queue.push_back(temp_item);
+            }
         }
 
         main_frame->current_project.database.EndBatchSelect();

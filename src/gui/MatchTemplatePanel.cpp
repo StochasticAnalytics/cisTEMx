@@ -1326,66 +1326,9 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
         new_job.mask_radius               = 80.0;
         new_job.min_peak_radius           = 10.0;
 
-        // Store the job in the database
-        extern MyMainFrame* main_frame;
-        if ( main_frame && main_frame->current_project.is_open ) {
-            // Get next template match ID
-            long template_match_id    = main_frame->current_project.database.ReturnHighestTemplateMatchID( ) + 1;
-            new_job.template_match_id = template_match_id;
-
-            // Insert the job into the database with queue status
-            main_frame->current_project.database.Begin( );
-            main_frame->current_project.database.InsertOrReplace(
-                    "TEMPLATE_MATCH_LIST",
-                    "Ptllilllitrrrrrrrrrrrrrrrrrrrrrrittttttttttttt",
-                    "TEMPLATE_MATCH_ID", template_match_id,
-                    "JOB_NAME", new_job.job_name.ToUTF8( ).data( ),
-                    "DATETIME_OF_RUN", wxDateTime::Now( ).GetAsDOS( ),
-                    "TEMPLATE_MATCH_JOB_ID", 0L, // Will be set when job runs
-                    "JOB_TYPE_CODE", 0,
-                    "INPUT_TEMPLATE_MATCH_ID", 0L,
-                    "IMAGE_ASSET_ID", (long)new_job.image_asset_id,
-                    "REFERENCE_VOLUME_ASSET_ID", (long)new_job.reference_volume_asset_id,
-                    "IS_ACTIVE", 0, // Not active until running
-                    "USED_SYMMETRY", new_job.symmetry.ToUTF8( ).data( ),
-                    "USED_PIXEL_SIZE", new_job.pixel_size,
-                    "USED_VOLTAGE", new_job.voltage,
-                    "USED_SPHERICAL_ABERRATION", new_job.spherical_aberration,
-                    "USED_AMPLITUDE_CONTRAST", new_job.amplitude_contrast,
-                    "USED_DEFOCUS1", new_job.defocus1,
-                    "USED_DEFOCUS2", new_job.defocus2,
-                    "USED_DEFOCUS_ANGLE", new_job.defocus_angle,
-                    "USED_PHASE_SHIFT", new_job.phase_shift,
-                    "LOW_RESOLUTION_LIMIT", new_job.low_resolution_limit,
-                    "HIGH_RESOLUTION_LIMIT", new_job.high_resolution_limit,
-                    "OUT_OF_PLANE_ANGULAR_STEP", new_job.out_of_plane_angular_step,
-                    "IN_PLANE_ANGULAR_STEP", new_job.in_plane_angular_step,
-                    "DEFOCUS_SEARCH_RANGE", new_job.defocus_search_range,
-                    "DEFOCUS_STEP", new_job.defocus_step,
-                    "PIXEL_SIZE_SEARCH_RANGE", new_job.pixel_size_search_range,
-                    "PIXEL_SIZE_STEP", new_job.pixel_size_step,
-                    "REFINEMENT_THRESHOLD", new_job.refinement_threshold,
-                    "USED_THRESHOLD", 0.0f, // Will be calculated when job runs
-                    "REF_BOX_SIZE_IN_ANGSTROMS", new_job.ref_box_size_in_angstroms,
-                    "MASK_RADIUS", new_job.mask_radius,
-                    "MIN_PEAK_RADIUS", new_job.min_peak_radius,
-                    "XY_CHANGE_THRESHOLD", new_job.xy_change_threshold,
-                    "EXCLUDE_ABOVE_XY_THRESHOLD", (int)new_job.exclude_above_xy_threshold,
-                    "MIP_OUTPUT_FILE", "",
-                    "SCALED_MIP_OUTPUT_FILE", "",
-                    "AVG_OUTPUT_FILE", "",
-                    "STD_OUTPUT_FILE", "",
-                    "PSI_OUTPUT_FILE", "",
-                    "THETA_OUTPUT_FILE", "",
-                    "PHI_OUTPUT_FILE", "",
-                    "DEFOCUS_OUTPUT_FILE", "",
-                    "PIXEL_SIZE_OUTPUT_FILE", "",
-                    "HISTOGRAM_OUTPUT_FILE", "",
-                    "PROJECTION_RESULT_OUTPUT_FILE", "",
-                    "CUSTOM_CLI_ARGS", new_job.custom_cli_args.ToUTF8( ).data( ),
-                    "QUEUE_STATUS", new_job.queue_status.ToUTF8( ).data( ));
-            main_frame->current_project.database.Commit( );
-        }
+        // For now, skip database storage until we verify parameters
+        // TODO: Implement proper database storage once parameter collection is complete
+        new_job.template_match_id = 1001; // Temporary ID for testing
 
         // Show the queue manager with the new job
         wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",

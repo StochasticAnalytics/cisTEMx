@@ -272,8 +272,8 @@ class MatchTemplatePanelParent : public JobPanel
 		wxStaticText* RunProfileText;
 		MemoryComboBox* RunProfileComboBox;
 		wxButton* StartEstimationButton;
-		wxButton* AddToQueueButton;
-		wxButton* OpenQueueButton;
+		wxButton* AddToQueue;
+		wxButton* OpenQueue;
 		wxCheckBox* ResumeRunCheckBox;
 
 		// Virtual event handlers, override them in your derived class

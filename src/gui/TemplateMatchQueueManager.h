@@ -45,6 +45,46 @@ public:
         queue_status = "pending";
         image_asset_id = -1;
         reference_volume_asset_id = -1;
+
+        // Initialize other parameters to safe defaults
+        pixel_size = 0.0f;
+        voltage = 0.0f;
+        spherical_aberration = 0.0f;
+        amplitude_contrast = 0.0f;
+        defocus1 = 0.0f;
+        defocus2 = 0.0f;
+        defocus_angle = 0.0f;
+        phase_shift = 0.0f;
+        low_resolution_limit = 0.0f;
+        high_resolution_limit = 0.0f;
+        out_of_plane_angular_step = 0.0f;
+        in_plane_angular_step = 0.0f;
+        defocus_search_range = 0.0f;
+        defocus_step = 0.0f;
+        pixel_size_search_range = 0.0f;
+        pixel_size_step = 0.0f;
+        refinement_threshold = 0.0f;
+        ref_box_size_in_angstroms = 0.0f;
+        mask_radius = 0.0f;
+        min_peak_radius = 0.0f;
+        xy_change_threshold = 0.0f;
+        exclude_above_xy_threshold = false;
+    }
+
+    // Validation method to check if this queue item has all required parameters for job execution
+    bool AreJobParametersValid() const {
+        MyDebugAssertTrue(template_match_id >= 0, "template_match_id must be >= 0, got %ld", template_match_id);
+        MyDebugAssertTrue(image_asset_id >= 0, "image_asset_id must be >= 0, got %d", image_asset_id);
+        MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
+        MyDebugAssertTrue(pixel_size > 0.0f, "pixel_size must be > 0.0, got %f", pixel_size);
+        MyDebugAssertTrue(voltage > 0.0f, "voltage must be > 0.0, got %f", voltage);
+        MyDebugAssertTrue(spherical_aberration >= 0.0f, "spherical_aberration must be >= 0.0, got %f", spherical_aberration);
+        MyDebugAssertTrue(amplitude_contrast >= 0.0f && amplitude_contrast <= 1.0f, "amplitude_contrast must be 0.0-1.0, got %f", amplitude_contrast);
+        MyDebugAssertTrue(queue_status == "pending" || queue_status == "running" || queue_status == "complete" || queue_status == "failed",
+                         "Invalid queue_status: %s", queue_status.mb_str().data());
+        MyDebugAssertTrue(!job_name.IsEmpty(), "job_name cannot be empty");
+        MyDebugAssertFalse(symmetry.IsEmpty(), "symmetry cannot be empty");
+        return true;
     }
 };
 
@@ -87,6 +127,10 @@ public:
     TemplateMatchQueueItem* GetNextPendingJob();
     bool HasPendingJobs();
     bool IsJobRunning();
+    static bool IsJobRunningStatic();
+
+    // Validation methods
+    void ValidateQueueConsistency() const;
 
     // Event handlers
     void OnRunSelectedClick(wxCommandEvent& event);

@@ -2840,6 +2840,265 @@ bool Database::CheckIfCurrentWorkflowIsInteger( ) {
     return is_integer;
 }
 
+// Template Match Queue database operations
+
+long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id,
+                                      bool use_gpu, bool use_fast_fft, const wxString& symmetry,
+                                      float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
+                                      float defocus1, float defocus2, float defocus_angle, float phase_shift,
+                                      float low_resolution_limit, float high_resolution_limit,
+                                      float out_of_plane_angular_step, float in_plane_angular_step,
+                                      float defocus_search_range, float defocus_step,
+                                      float pixel_size_search_range, float pixel_size_step,
+                                      float refinement_threshold, float ref_box_size_in_angstroms,
+                                      float mask_radius, float min_peak_radius,
+                                      float xy_change_threshold, bool exclude_above_xy_threshold,
+                                      const wxString& custom_cli_args) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+    MyDebugAssertFalse(job_name.IsEmpty(), "Job name cannot be empty");
+    MyDebugAssertTrue(image_group_id >= 0, "Image group ID must be >= 0");
+    MyDebugAssertTrue(reference_volume_asset_id >= 0, "Reference volume asset ID must be >= 0");
+
+    // Get the next position in queue (max position + 1)
+    int queue_position = ReturnSingleIntFromSelectCommand("SELECT COALESCE(MAX(QUEUE_POSITION), 0) + 1 FROM TEMPLATE_MATCH_QUEUE;");
+
+    // Get current timestamp
+    wxDateTime current_time = wxDateTime::Now();
+
+    const char* sql = "INSERT INTO TEMPLATE_MATCH_QUEUE ("
+                     "JOB_NAME, QUEUE_STATUS, QUEUE_POSITION, DATETIME_QUEUED, "
+                     "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
+                     "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
+                     "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
+                     "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
+                     "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
+                     "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
+                     "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, "
+                     "REFINEMENT_THRESHOLD, REF_BOX_SIZE_IN_ANGSTROMS, "
+                     "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
+                     "EXCLUDE_ABOVE_XY_THRESHOLD, CUSTOM_CLI_ARGS"
+                     ") VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    // Bind all parameters
+    sqlite3_bind_text(stmt, 1, job_name.mb_str().data(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, queue_position);
+    sqlite3_bind_int64(stmt, 3, current_time.GetAsDOS());
+    sqlite3_bind_int(stmt, 4, image_group_id);
+    sqlite3_bind_int(stmt, 5, reference_volume_asset_id);
+    sqlite3_bind_int(stmt, 6, use_gpu ? 1 : 0);
+    sqlite3_bind_int(stmt, 7, use_fast_fft ? 1 : 0);
+    sqlite3_bind_text(stmt, 8, symmetry.mb_str().data(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 9, pixel_size);
+    sqlite3_bind_double(stmt, 10, voltage);
+    sqlite3_bind_double(stmt, 11, spherical_aberration);
+    sqlite3_bind_double(stmt, 12, amplitude_contrast);
+    sqlite3_bind_double(stmt, 13, defocus1);
+    sqlite3_bind_double(stmt, 14, defocus2);
+    sqlite3_bind_double(stmt, 15, defocus_angle);
+    sqlite3_bind_double(stmt, 16, phase_shift);
+    sqlite3_bind_double(stmt, 17, low_resolution_limit);
+    sqlite3_bind_double(stmt, 18, high_resolution_limit);
+    sqlite3_bind_double(stmt, 19, out_of_plane_angular_step);
+    sqlite3_bind_double(stmt, 20, in_plane_angular_step);
+    sqlite3_bind_double(stmt, 21, defocus_search_range);
+    sqlite3_bind_double(stmt, 22, defocus_step);
+    sqlite3_bind_double(stmt, 23, pixel_size_search_range);
+    sqlite3_bind_double(stmt, 24, pixel_size_step);
+    sqlite3_bind_double(stmt, 25, refinement_threshold);
+    sqlite3_bind_double(stmt, 26, ref_box_size_in_angstroms);
+    sqlite3_bind_double(stmt, 27, mask_radius);
+    sqlite3_bind_double(stmt, 28, min_peak_radius);
+    sqlite3_bind_double(stmt, 29, xy_change_threshold);
+    sqlite3_bind_int(stmt, 30, exclude_above_xy_threshold ? 1 : 0);
+    sqlite3_bind_text(stmt, 31, custom_cli_args.mb_str().data(), -1, SQLITE_TRANSIENT);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        sqlite3_finalize(stmt);
+        DEBUG_ABORT;
+    }
+
+    long queue_id = sqlite3_last_insert_rowid(sqlite_database);
+    sqlite3_finalize(stmt);
+
+    return queue_id;
+}
+
+wxArrayLong Database::GetQueuedTemplateMatchIDs() {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+
+    wxArrayLong queue_ids;
+    const char* sql = "SELECT QUEUE_ID FROM TEMPLATE_MATCH_QUEUE ORDER BY QUEUE_POSITION ASC;";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        queue_ids.Add(sqlite3_column_int64(stmt, 0));
+    }
+
+    sqlite3_finalize(stmt);
+    return queue_ids;
+}
+
+bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, wxString& custom_cli_args,
+                               int& image_group_id, int& reference_volume_asset_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
+                               float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
+                               float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
+                               float& low_resolution_limit, float& high_resolution_limit,
+                               float& out_of_plane_angular_step, float& in_plane_angular_step,
+                               float& defocus_search_range, float& defocus_step,
+                               float& pixel_size_search_range, float& pixel_size_step,
+                               float& refinement_threshold, float& ref_box_size_in_angstroms,
+                               float& mask_radius, float& min_peak_radius,
+                               float& xy_change_threshold, bool& exclude_above_xy_threshold) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+    MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
+
+    const char* sql = "SELECT JOB_NAME, QUEUE_STATUS, CUSTOM_CLI_ARGS, "
+                     "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
+                     "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
+                     "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
+                     "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
+                     "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
+                     "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
+                     "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, "
+                     "REFINEMENT_THRESHOLD, REF_BOX_SIZE_IN_ANGSTROMS, "
+                     "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
+                     "EXCLUDE_ABOVE_XY_THRESHOLD "
+                     "FROM TEMPLATE_MATCH_QUEUE WHERE QUEUE_ID = ?;";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_bind_int64(stmt, 1, queue_id);
+
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = true;
+
+        // Extract string values
+        job_name = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+        queue_status = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
+        custom_cli_args = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
+        symmetry = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
+
+        // Extract integer values
+        image_group_id = sqlite3_column_int(stmt, 3);
+        reference_volume_asset_id = sqlite3_column_int(stmt, 4);
+        use_gpu = sqlite3_column_int(stmt, 5) != 0;
+        use_fast_fft = sqlite3_column_int(stmt, 6) != 0;
+        exclude_above_xy_threshold = sqlite3_column_int(stmt, 29) != 0;
+
+        // Extract float values
+        pixel_size = float(sqlite3_column_double(stmt, 8));
+        voltage = float(sqlite3_column_double(stmt, 9));
+        spherical_aberration = float(sqlite3_column_double(stmt, 10));
+        amplitude_contrast = float(sqlite3_column_double(stmt, 11));
+        defocus1 = float(sqlite3_column_double(stmt, 12));
+        defocus2 = float(sqlite3_column_double(stmt, 13));
+        defocus_angle = float(sqlite3_column_double(stmt, 14));
+        phase_shift = float(sqlite3_column_double(stmt, 15));
+        low_resolution_limit = float(sqlite3_column_double(stmt, 16));
+        high_resolution_limit = float(sqlite3_column_double(stmt, 17));
+        out_of_plane_angular_step = float(sqlite3_column_double(stmt, 18));
+        in_plane_angular_step = float(sqlite3_column_double(stmt, 19));
+        defocus_search_range = float(sqlite3_column_double(stmt, 20));
+        defocus_step = float(sqlite3_column_double(stmt, 21));
+        pixel_size_search_range = float(sqlite3_column_double(stmt, 22));
+        pixel_size_step = float(sqlite3_column_double(stmt, 23));
+        refinement_threshold = float(sqlite3_column_double(stmt, 24));
+        ref_box_size_in_angstroms = float(sqlite3_column_double(stmt, 25));
+        mask_radius = float(sqlite3_column_double(stmt, 26));
+        min_peak_radius = float(sqlite3_column_double(stmt, 27));
+        xy_change_threshold = float(sqlite3_column_double(stmt, 28));
+    }
+
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+void Database::UpdateQueueStatus(long queue_id, const wxString& status) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+    MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
+    MyDebugAssertTrue(status == "pending" || status == "running" || status == "complete" || status == "failed",
+                     "Invalid status: %s", status.mb_str().data());
+
+    const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_STATUS = ? WHERE QUEUE_ID = ?;";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_bind_text(stmt, 1, status.mb_str().data(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, queue_id);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        sqlite3_finalize(stmt);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_finalize(stmt);
+}
+
+void Database::RemoveFromQueue(long queue_id) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+    MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
+
+    const char* sql = "DELETE FROM TEMPLATE_MATCH_QUEUE WHERE QUEUE_ID = ?;";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_bind_int64(stmt, 1, queue_id);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        sqlite3_finalize(stmt);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_finalize(stmt);
+}
+
+void Database::ClearTemplateMatchQueue() {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+
+    const char* sql = "DELETE FROM TEMPLATE_MATCH_QUEUE;";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        sqlite3_finalize(stmt);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_finalize(stmt);
+}
+
 BeginCommitLocker::BeginCommitLocker(Database* wanted_database) {
     active_database     = wanted_database;
     already_sent_commit = false;

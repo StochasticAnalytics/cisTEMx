@@ -1380,7 +1380,7 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
                                               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
         // Create queue manager for this dialog
-        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
+        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, main_frame);
 
         // Load existing queue from database first
         queue_manager->LoadQueueFromDatabase();
@@ -1388,9 +1388,7 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
         // Add the new job to the queue
         queue_manager->AddToQueue(new_job);
 
-        // Add success message
-        wxMessageBox(wxString::Format("Job '%s' added to queue", new_job.job_name),
-                     "Job Queued", wxOK | wxICON_INFORMATION);
+        // Job added successfully - no popup needed
 
         // Layout
         wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
@@ -1416,7 +1414,7 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
                                           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
     // Create queue manager for this dialog
-    TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
+    TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, main_frame);
 
     // Load existing queue from database
     queue_manager->LoadQueueFromDatabase( );

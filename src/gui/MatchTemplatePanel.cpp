@@ -763,15 +763,16 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     cached_results.Clear( );
 
-    // If this job was run from the queue, update its status
+    // If this job was run from the queue, update its status and continue with next job
     if (running_queue_job_id > 0) {
         // Update the queue manager that the job is complete
-        // We need to get a reference to any existing queue manager
-        // For now, directly update the static queue in TemplateMatchQueueManager
         TemplateMatchQueueManager::UpdateJobStatusStatic(running_queue_job_id, "complete");
 
         // Clear the queue job ID
         running_queue_job_id = -1;
+
+        // Continue with the next pending job in the queue
+        TemplateMatchQueueManager::ContinueQueueExecution();
     }
 
     // Kill the job (in case it isn't already dead)
@@ -928,7 +929,7 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
                                           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
     // Create queue manager for this dialog
-    TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, main_frame);
+    TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, this);
 
     // Load existing queue from database
     queue_manager->LoadQueueFromDatabase( );
@@ -1061,6 +1062,7 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
     new_job.template_match_id         = -1; // Will be assigned when stored to database
     new_job.image_group_id            = GroupComboBox->GetSelection();
     new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
+    new_job.run_profile_id            = RunProfileComboBox->GetSelection();
 
     // Get symmetry and resolution parameters
     new_job.symmetry                  = SymmetryComboBox->GetValue().Upper();
@@ -1144,6 +1146,19 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
     new_job.xy_change_threshold = 0.0;
     new_job.exclude_above_xy_threshold = false;
 
+    // revert - Debug print for run profile information
+    wxPrintf("\n=== DEBUG: Run Profile Information ===\n");
+    wxPrintf("Run Profile ID (stored in queue): %d\n", new_job.run_profile_id);
+    if (new_job.run_profile_id >= 0 && new_job.run_profile_id < RunProfileComboBox->GetCount()) {
+        wxString run_profile_name = RunProfileComboBox->GetString(new_job.run_profile_id);
+        wxPrintf("Run Profile Name: %s\n", run_profile_name);
+        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount());
+    } else {
+        wxPrintf("No run profile selected or invalid selection\n");
+        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount());
+    }
+    wxPrintf("=== END DEBUG ===\n\n");
+
     return new_job;
 }
 
@@ -1155,7 +1170,7 @@ void MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
                                               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
         // Create queue manager for this dialog
-        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, main_frame);
+        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, this);
 
         // Load existing queue from database first
         queue_manager->LoadQueueFromDatabase();
@@ -1179,7 +1194,7 @@ void MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         // Add to queue without dialog - use database directly
         if (main_frame && main_frame->current_project.is_open) {
             main_frame->current_project.database.AddToTemplateMatchQueue(
-                job.job_name, job.image_group_id, job.reference_volume_asset_id,
+                job.job_name, job.image_group_id, job.reference_volume_asset_id, job.run_profile_id,
                 job.use_gpu, job.use_fast_fft, job.symmetry,
                 job.pixel_size, job.voltage, job.spherical_aberration, job.amplitude_contrast,
                 job.defocus1, job.defocus2, job.defocus_angle, job.phase_shift,
@@ -1204,6 +1219,7 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     wxPrintf("Job Name: %s\n", job.job_name);
     wxPrintf("Image Group ID: %d\n", job.image_group_id);
     wxPrintf("Reference Volume Asset ID: %d\n", job.reference_volume_asset_id);
+    wxPrintf("Run Profile ID: %d\n", job.run_profile_id);
     wxPrintf("Use GPU: %s\n", job.use_gpu ? "true" : "false");
     wxPrintf("Use Fast FFT: %s\n", job.use_fast_fft ? "true" : "false");
     wxPrintf("Symmetry: %s\n", job.symmetry);

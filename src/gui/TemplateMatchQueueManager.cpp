@@ -5,6 +5,7 @@
 // Define static members
 std::deque<TemplateMatchQueueItem> TemplateMatchQueueManager::execution_queue;
 long TemplateMatchQueueManager::currently_running_id = -1;
+TemplateMatchQueueManager* TemplateMatchQueueManager::active_instance = nullptr;
 
 BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
     EVT_BUTTON(wxID_ANY, TemplateMatchQueueManager::OnRunSelectedClick)
@@ -12,8 +13,8 @@ BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
     EVT_DATAVIEW_ITEM_VALUE_CHANGED(wxID_ANY, TemplateMatchQueueManager::OnItemValueChanged)
 END_EVENT_TABLE()
 
-TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MyMainFrame* main_frame)
-    : wxPanel(parent, wxID_ANY), main_frame_ptr(main_frame) {
+TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel)
+    : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel) {
 
     // currently_running_id is static, initialized once
     needs_database_load = true;  // Need to load from database on first access
@@ -71,8 +72,18 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MyMainFra
     // Don't load from database in constructor - it may be called during workflow switch
     // when main_frame is in an inconsistent state
 
+    // Set this as the active instance for static method access
+    active_instance = this;
+
     // Display any existing queue items
     UpdateQueueDisplay();
+}
+
+TemplateMatchQueueManager::~TemplateMatchQueueManager() {
+    // Clear the active instance pointer if this is the active instance
+    if (active_instance == this) {
+        active_instance = nullptr;
+    }
 }
 
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
@@ -83,10 +94,10 @@ void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
     MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" || item.queue_status == "complete" || item.queue_status == "failed",
                      "Cannot add item with invalid queue_status: %s", item.queue_status.mb_str().data());
 
-    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+    if (match_template_panel_ptr && main_frame && main_frame->current_project.is_open) {
         // Add item to database and get the new queue ID
-        long new_queue_id = main_frame_ptr->current_project.database.AddToTemplateMatchQueue(
-            item.job_name, item.image_group_id, item.reference_volume_asset_id,
+        long new_queue_id = main_frame->current_project.database.AddToTemplateMatchQueue(
+            item.job_name, item.image_group_id, item.reference_volume_asset_id, item.run_profile_id,
             item.use_gpu, item.use_fast_fft, item.symmetry,
             item.pixel_size, item.voltage, item.spherical_aberration, item.amplitude_contrast,
             item.defocus1, item.defocus2, item.defocus_angle, item.phase_shift,
@@ -125,8 +136,8 @@ void TemplateMatchQueueManager::RemoveFromQueue(int index) {
                          "Cannot remove currently running job (ID: %ld)", execution_queue[index].template_match_id);
 
         // Remove from database first
-        if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
-            main_frame_ptr->current_project.database.RemoveFromQueue(execution_queue[index].template_match_id);
+        if (match_template_panel_ptr && main_frame && main_frame->current_project.is_open) {
+            main_frame->current_project.database.RemoveFromQueue(execution_queue[index].template_match_id);
         }
 
         execution_queue.erase(execution_queue.begin() + index);
@@ -136,10 +147,10 @@ void TemplateMatchQueueManager::RemoveFromQueue(int index) {
 
 void TemplateMatchQueueManager::ClearQueue() {
     // Clear all items and remove from database
-    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+    if (match_template_panel_ptr && main_frame && main_frame->current_project.is_open) {
         // Remove all items from database
         for (const auto& item : execution_queue) {
-            main_frame_ptr->current_project.database.RemoveFromQueue(item.template_match_id);
+            main_frame->current_project.database.RemoveFromQueue(item.template_match_id);
         }
     }
 
@@ -348,83 +359,42 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
     MyDebugAssertTrue(currently_running_id == job_to_run.template_match_id, "Failed to set currently_running_id correctly");
     MyDebugAssertTrue(IsJobRunning(), "Job should be marked as running after status update");
 
-    // Get the MatchTemplatePanel to execute the job
-    extern MatchTemplatePanel* match_template_panel;
-    MyDebugAssertTrue(match_template_panel != nullptr, "match_template_panel is null - cannot execute jobs");
+    // Use the stored MatchTemplatePanel pointer to execute the job
+    MyDebugAssertTrue(match_template_panel_ptr != nullptr, "match_template_panel_ptr is null - cannot execute jobs");
 
-    if (match_template_panel) {
-        MyPrintWithDetails("=== PHASE 2: INPUT PREPARATION AND VALIDATION (SKIP EXECUTION) ===");
+    if (match_template_panel_ptr) {
+        // Store the queue job ID so we can update its status when complete
+        match_template_panel_ptr->running_queue_job_id = job_to_run.template_match_id;
 
-        // Detailed parameter logging
-        wxPrintf("Job parameters for ID %ld:\n", job_to_run.template_match_id);
-        wxPrintf("  Job name: '%s'\n", job_to_run.job_name.mb_str().data());
-        wxPrintf("  Image group ID: %d\n", job_to_run.image_group_id);
-        wxPrintf("  Reference volume asset ID: %d\n", job_to_run.reference_volume_asset_id);
-        wxPrintf("  Symmetry: '%s'\n", job_to_run.symmetry.mb_str().data());
-        // revert - removed Unicode characters (Å, °) from format strings to fix wxPrintf segfault
-        wxPrintf("  Pixel size: %.3f A\n", job_to_run.pixel_size);
-        wxPrintf("  Voltage: %.1f kV\n", job_to_run.voltage);
-        wxPrintf("  Spherical aberration: %.2f mm\n", job_to_run.spherical_aberration);
-        wxPrintf("  Amplitude contrast: %.3f\n", job_to_run.amplitude_contrast);
-        wxPrintf("  Defocus1: %.1f A, Defocus2: %.1f A, Angle: %.1f deg\n",
-                 job_to_run.defocus1, job_to_run.defocus2, job_to_run.defocus_angle);
-        wxPrintf("  Phase shift: %.1f deg\n", job_to_run.phase_shift);
-        wxPrintf("  Resolution limits: %.1f - %.1f A\n", job_to_run.low_resolution_limit, job_to_run.high_resolution_limit);
-        wxPrintf("  Angular steps: Out-of-plane=%.1f deg, In-plane=%.1f deg\n",
-                 job_to_run.out_of_plane_angular_step, job_to_run.in_plane_angular_step);
-        wxPrintf("  Search ranges: Defocus=%.1f A (step=%.1f), Pixel size=%.3f A (step=%.3f)\n",
-                 job_to_run.defocus_search_range, job_to_run.defocus_step,
-                 job_to_run.pixel_size_search_range, job_to_run.pixel_size_step);
-        wxPrintf("  Refinement threshold: %.3f\n", job_to_run.refinement_threshold);
-        wxPrintf("  Reference box size: %.1f A\n", job_to_run.ref_box_size_in_angstroms);
-        wxPrintf("  Mask radius: %.1f A, Min peak radius: %.1f\n", job_to_run.mask_radius, job_to_run.min_peak_radius);
-        wxPrintf("  XY change threshold: %.2f (exclude above: %s)\n",
-                 job_to_run.xy_change_threshold, job_to_run.exclude_above_xy_threshold ? "YES" : "NO");
-        wxPrintf("  Custom CLI args: '%s'\n", job_to_run.custom_cli_args.mb_str().data());
+        // Use the same 2-step process as StartEstimationClick:
+        // 1. Setup job from queue item
+        // 2. Execute current job
 
-        // Call the validation method we added
-        wxPrintf("Validating job parameters...\n");
-        // revert - disabled AreJobParametersValid() call causing segfault in debug assertions, need to fix format specifiers or parameter initialization
-        // bool params_valid = job_to_run.AreJobParametersValid();
-        bool params_valid = true; // revert - temporarily skip validation to test rest of flow
-        wxPrintf("Parameter validation result: %s (validation temporarily disabled)\n", params_valid ? "PASSED" : "FAILED");
+        wxPrintf("Setting up job %ld from queue item...\n", job_to_run.template_match_id);
+        bool setup_success = match_template_panel_ptr->SetupJobFromQueueItem(job_to_run);
 
-        // Simulate preparation steps that would happen in actual execution
-        wxPrintf("=== SIMULATING INPUT PREPARATION ===\n");
+        if (setup_success) {
+            wxPrintf("Executing job %ld...\n", job_to_run.template_match_id);
+            bool execution_success = match_template_panel_ptr->ExecuteCurrentJob();
 
-        // Check if assets exist (this would be real validation)
-        wxPrintf("Checking image group %d availability...\n", job_to_run.image_group_id);
-        wxPrintf("Checking reference volume asset %d availability...\n", job_to_run.reference_volume_asset_id);
-
-        // Validate parameter ranges
-        bool validation_passed = true;
-        if (job_to_run.pixel_size <= 0.0f) {
-            wxPrintf("VALIDATION ERROR: Invalid pixel size %.3f\n", job_to_run.pixel_size);
-            validation_passed = false;
+            if (execution_success) {
+                wxPrintf("Job %ld started successfully\n", job_to_run.template_match_id);
+                // Job status will be updated to "complete" when the job finishes via ProcessAllJobsFinished
+                return true;
+            } else {
+                wxPrintf("Failed to start job %ld\n", job_to_run.template_match_id);
+                UpdateJobStatus(job_to_run.template_match_id, "failed");
+                currently_running_id = -1;
+                match_template_panel_ptr->running_queue_job_id = -1;
+                return false;
+            }
+        } else {
+            wxPrintf("Failed to setup job %ld\n", job_to_run.template_match_id);
+            UpdateJobStatus(job_to_run.template_match_id, "failed");
+            currently_running_id = -1;
+            match_template_panel_ptr->running_queue_job_id = -1;
+            return false;
         }
-        if (job_to_run.voltage <= 0.0f) {
-            wxPrintf("VALIDATION ERROR: Invalid voltage %.1f\n", job_to_run.voltage);
-            validation_passed = false;
-        }
-        if (job_to_run.spherical_aberration < 0.0f) {
-            wxPrintf("VALIDATION ERROR: Invalid spherical aberration %.2f\n", job_to_run.spherical_aberration);
-            validation_passed = false;
-        }
-
-        wxPrintf("Input validation result: %s\n", validation_passed ? "PASSED" : "FAILED");
-
-        // PHASE 2: Skip actual execution
-        MyPrintWithDetails("SKIPPING ACTUAL EXECUTION - This is phase 2 testing");
-
-        // Simulate successful completion for testing
-        wxPrintf("Simulating job completion...\n");
-        UpdateJobStatus(job_to_run.template_match_id, "complete");
-        currently_running_id = -1;
-
-        wxPrintf("Job %ld marked as complete, proceeding to next job\n", job_to_run.template_match_id);
-
-        // Continue with next job in batch mode
-        RunNextJob();
     } else {
         // Critical failure - template panel not available
         MyAssertTrue(false, "Critical error: match_template_panel not available for job execution");
@@ -660,13 +630,13 @@ void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
 }
 
 void TemplateMatchQueueManager::LoadQueueFromDatabase() {
-    MyDebugPrint("LoadQueueFromDatabase called. main_frame_ptr=%p", main_frame_ptr);
-    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+    MyDebugPrint("LoadQueueFromDatabase called. match_template_panel_ptr=%p", match_template_panel_ptr);
+    if (match_template_panel_ptr && main_frame && main_frame->current_project.is_open) {
         MyDebugPrint("Loading queue from database...");
         execution_queue.clear();
 
         // Get all queue IDs from database in order
-        wxArrayLong queue_ids = main_frame_ptr->current_project.database.GetQueuedTemplateMatchIDs();
+        wxArrayLong queue_ids = main_frame->current_project.database.GetQueuedTemplateMatchIDs();
         MyDebugPrint("Found %zu queue items in database", queue_ids.GetCount());
 
         // Load each queue item from database
@@ -675,13 +645,14 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
             temp_item.template_match_id = queue_ids[i];
 
             // Load item details from database
-            bool success = main_frame_ptr->current_project.database.GetQueueItemByID(
+            bool success = main_frame->current_project.database.GetQueueItemByID(
                 queue_ids[i],
                 temp_item.job_name,
                 temp_item.queue_status,
                 temp_item.custom_cli_args,
                 temp_item.image_group_id,
                 temp_item.reference_volume_asset_id,
+                temp_item.run_profile_id,
                 temp_item.use_gpu,
                 temp_item.use_fast_fft,
                 temp_item.symmetry,
@@ -722,10 +693,10 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
 }
 
 void TemplateMatchQueueManager::SaveQueueToDatabase() {
-    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+    if (match_template_panel_ptr && main_frame && main_frame->current_project.is_open) {
         // Update status for all items in queue
         for (const auto& item : execution_queue) {
-            main_frame_ptr->current_project.database.UpdateQueueStatus(item.template_match_id, item.queue_status);
+            main_frame->current_project.database.UpdateQueueStatus(item.template_match_id, item.queue_status);
         }
     }
 }
@@ -767,5 +738,25 @@ void TemplateMatchQueueManager::ValidateQueueConsistency() const {
     } else {
         MyDebugAssertTrue(currently_running_id == -1, "currently_running_id is %ld but no running jobs found", currently_running_id);
         MyDebugAssertFalse(IsJobRunningStatic(), "IsJobRunning() returns true but no running jobs found");
+    }
+}
+
+void TemplateMatchQueueManager::ContinueQueueExecution() {
+    // Static method to continue queue execution after a job completes
+    // This is called from ProcessAllJobsFinished to continue with the next job
+
+    if (IsJobRunningStatic()) {
+        // A job is already running, don't start another
+        MyDebugPrint("Job is still running, not continuing queue execution");
+        return;
+    }
+
+    // Use the active instance to continue execution
+    if (active_instance != nullptr) {
+        MyDebugPrint("Using active queue manager instance to continue execution");
+        active_instance->RunNextJob();
+    } else {
+        MyDebugPrint("No active queue manager instance - cannot continue execution");
+        MyDebugPrint("This may happen if the queue dialog was closed");
     }
 }

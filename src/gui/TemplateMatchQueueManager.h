@@ -16,6 +16,7 @@ public:
     // These will be populated when adding to queue
     int image_group_id;
     int reference_volume_asset_id;
+    int run_profile_id;
     bool use_gpu;
     bool use_fast_fft;
     wxString symmetry;
@@ -47,6 +48,7 @@ public:
         queue_status = "pending";
         image_group_id = -1;
         reference_volume_asset_id = -1;
+        run_profile_id = -1;
         use_gpu = false;
         use_fast_fft = false;
 
@@ -80,6 +82,7 @@ public:
         MyDebugAssertTrue(template_match_id >= 0, "template_match_id must be >= 0, got %ld", template_match_id);
         MyDebugAssertTrue(image_group_id >= 0, "image_group_id must be >= 0, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
+        MyDebugAssertTrue(run_profile_id >= 0, "run_profile_id must be >= 0, got %d", run_profile_id);
         MyDebugAssertTrue(pixel_size > 0.0f, "pixel_size must be > 0.0, got %f", pixel_size);
         MyDebugAssertTrue(voltage > 0.0f, "voltage must be > 0.0, got %f", voltage);
         MyDebugAssertTrue(spherical_aberration >= 0.0f, "spherical_aberration must be >= 0.0, got %f", spherical_aberration);
@@ -105,17 +108,19 @@ private:
     // Use static queue to persist across dialog instances
     static std::deque<TemplateMatchQueueItem> execution_queue;
     static long currently_running_id;
+    static TemplateMatchQueueManager* active_instance;  // For static method access
     bool needs_database_load;  // True if we haven't loaded from DB yet
 
-    // Pointer to main frame for database access
-    MyMainFrame* main_frame_ptr;
+    // Pointer to match template panel for job execution and database access
+    MatchTemplatePanel* match_template_panel_ptr;
 
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();
     int GetSelectedRow();
 
 public:
-    TemplateMatchQueueManager(wxWindow* parent, MyMainFrame* main_frame = nullptr);
+    TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel = nullptr);
+    ~TemplateMatchQueueManager();
 
     // Queue management methods
     void AddToQueue(const TemplateMatchQueueItem& item);
@@ -131,6 +136,7 @@ public:
     bool ExecuteJob(TemplateMatchQueueItem& job_to_run);
     void UpdateJobStatus(long template_match_id, const wxString& new_status);
     static void UpdateJobStatusStatic(long template_match_id, const wxString& new_status);
+    static void ContinueQueueExecution();
     TemplateMatchQueueItem* GetNextPendingJob();
     bool HasPendingJobs();
     bool IsJobRunning();

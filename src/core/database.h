@@ -396,7 +396,7 @@ class Database {
     long                    GetTemplateMatchIdForGivenJobId(long wanted_template_match_job_id);
 
     // Template Match Queue operations (using basic types to avoid GUI dependencies)
-    long            AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id,
+    long            AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
                                           bool use_gpu, bool use_fast_fft, const wxString& symmetry,
                                           float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
                                           float defocus1, float defocus2, float defocus_angle, float phase_shift,
@@ -410,7 +410,7 @@ class Database {
                                           const wxString& custom_cli_args);
     wxArrayLong     GetQueuedTemplateMatchIDs();
     bool            GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, wxString& custom_cli_args,
-                                   int& image_group_id, int& reference_volume_asset_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
+                                   int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
                                    float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
                                    float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
                                    float& low_resolution_limit, float& high_resolution_limit,

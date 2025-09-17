@@ -113,6 +113,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     void        OnAddToQueueClick(wxCommandEvent& event);
     void        OnOpenQueueClick(wxCommandEvent& event);
     void        PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item);
+    bool        RunQueuedTemplateMatch(TemplateMatchQueueItem& job);
 };
 
 #endif

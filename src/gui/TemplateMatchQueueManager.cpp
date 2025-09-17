@@ -212,23 +212,29 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
     UpdateJobStatus(job_to_run.template_match_id, "running");
     currently_running_id = job_to_run.template_match_id;
 
-    // Get the parent MatchTemplatePanel to execute the job
-    extern MyMainFrame* main_frame;
-    if (main_frame) {
-        // TODO: Call the MatchTemplatePanel's execution method with the job parameters
-        // For now, we'll simulate job completion after a moment
-        wxMessageBox(wxString::Format("Starting job: %s\nJob ID: %ld\nCLI Args: %s",
-                                      job_to_run.job_name,
-                                      job_to_run.template_match_id,
-                                      job_to_run.custom_cli_args),
-                    "Job Started", wxOK | wxICON_INFORMATION);
+    // Get the MatchTemplatePanel to execute the job
+    extern MatchTemplatePanel* match_template_panel;
+    if (match_template_panel) {
+        // Execute the job through the panel
+        bool success = match_template_panel->RunQueuedTemplateMatch(job_to_run);
 
-        // Simulate job completion for testing
-        UpdateJobStatus(job_to_run.template_match_id, "complete");
+        if (!success) {
+            // Job failed to start
+            UpdateJobStatus(job_to_run.template_match_id, "failed");
+            currently_running_id = -1;
+
+            wxMessageBox(wxString::Format("Failed to start job: %s", job_to_run.job_name),
+                        "Job Failed", wxOK | wxICON_ERROR);
+
+            // Try to run the next job if we're in batch mode
+            RunNextJob();
+        }
+        // Note: Status will be updated to "complete" when the job finishes
+        // via the panel's job completion callback
+    } else {
+        wxPrintf("Error: match_template_panel not available\n");
+        UpdateJobStatus(job_to_run.template_match_id, "failed");
         currently_running_id = -1;
-
-        // If we're running all jobs, start the next one
-        RunNextJob();
     }
 
     return true;

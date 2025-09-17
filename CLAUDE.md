@@ -200,3 +200,35 @@ The project is designed for development with Visual Studio Code using Docker con
 - VS Code settings linked via `.vscode` symlink to `.vscode_shared/CistemDev`
 - Container environment managed through `regenerate_containers.sh`
 - Build tasks pre-configured for different compiler and configuration combinations
+
+## Template Matching Queue Development Patterns
+
+### Static Members for Cross-Dialog Persistence
+When implementing features that need to persist across dialog instances (like queues), use static members rather than complex lifecycle management:
+```cpp
+// In header
+static std::deque<QueueItem> execution_queue;
+static long currently_running_id;
+
+// In cpp file - define static members
+std::deque<QueueItem> QueueManager::execution_queue;
+long QueueManager::currently_running_id = -1;
+```
+
+### Job Completion Tracking Pattern
+For async job tracking in panels, store the job ID when starting and check it in completion callbacks:
+```cpp
+// In job panel header
+long running_queue_job_id;  // -1 if not from queue
+
+// In job start
+running_queue_job_id = job.template_match_id;
+
+// In ProcessAllJobsFinished or similar
+if (running_queue_job_id > 0) {
+    UpdateQueueStatus(running_queue_job_id, "complete");
+    running_queue_job_id = -1;
+}
+```
+
+This pattern allows proper status updates without tight coupling between components.

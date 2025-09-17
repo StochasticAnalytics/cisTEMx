@@ -1291,8 +1291,6 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 
 // Queue functionality implementation
 void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
-    wxPrintf("Early return from add to queue\n");
-    return;
     // Validate that no job is currently running
     if ( ! running_job ) {
         // Create a new queue item with current GUI parameters
@@ -1422,8 +1420,6 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
-    wxPrintf("Early return from open to queue\n");
-    return;
     // Open queue manager dialog without adding new items
     wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
                                           wxDefaultPosition, wxSize(600, 400),

@@ -76,13 +76,35 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
 }
 
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
+    // Validate the queue item before adding
+    MyDebugAssertTrue(item.template_match_id >= 0, "Cannot add item with invalid template_match_id: %ld", item.template_match_id);
+    MyDebugAssertTrue(item.image_asset_id >= 0, "Cannot add item with invalid image_asset_id: %d", item.image_asset_id);
+    MyDebugAssertTrue(item.reference_volume_asset_id >= 0, "Cannot add item with invalid reference_volume_asset_id: %d", item.reference_volume_asset_id);
+    MyDebugAssertFalse(item.job_name.IsEmpty(), "Cannot add item with empty job_name");
+    MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" || item.queue_status == "complete" || item.queue_status == "failed",
+                     "Cannot add item with invalid queue_status: %s", item.queue_status.mb_str().data());
+
+    // Check for duplicate template_match_id in existing queue
+    for (const auto& existing_item : execution_queue) {
+        MyDebugAssertTrue(existing_item.template_match_id != item.template_match_id,
+                         "Attempted to add duplicate template_match_id %ld to queue", item.template_match_id);
+    }
+
     execution_queue.push_back(item);
     UpdateQueueDisplay();
     SaveQueueToDatabase();
 }
 
 void TemplateMatchQueueManager::RemoveFromQueue(int index) {
+    MyDebugAssertTrue(index >= 0, "RemoveFromQueue called with negative index: %d", index);
+    MyDebugAssertTrue(index < execution_queue.size(), "RemoveFromQueue called with index %d >= queue size %zu", index, execution_queue.size());
+    MyDebugAssertFalse(execution_queue.empty(), "Cannot remove from empty queue");
+
     if (index >= 0 && index < execution_queue.size()) {
+        // Don't allow removal of currently running jobs
+        MyDebugAssertTrue(execution_queue[index].queue_status != "running",
+                         "Cannot remove currently running job (ID: %ld)", execution_queue[index].template_match_id);
+
         execution_queue.erase(execution_queue.begin() + index);
         UpdateQueueDisplay();
         SaveQueueToDatabase();
@@ -111,7 +133,17 @@ void TemplateMatchQueueManager::ClearQueue() {
 }
 
 void TemplateMatchQueueManager::MoveItemUp(int index) {
+    MyDebugAssertTrue(index > 0, "MoveItemUp called with index %d, must be > 0", index);
+    MyDebugAssertTrue(index < execution_queue.size(), "MoveItemUp called with index %d >= queue size %zu", index, execution_queue.size());
+    MyDebugAssertFalse(execution_queue.empty(), "Cannot move items in empty queue");
+
     if (index > 0 && index < execution_queue.size()) {
+        // Don't allow moving running jobs
+        MyDebugAssertTrue(execution_queue[index].queue_status != "running" && execution_queue[index - 1].queue_status != "running",
+                         "Cannot move running jobs (current: %s, target: %s)",
+                         execution_queue[index].queue_status.mb_str().data(),
+                         execution_queue[index - 1].queue_status.mb_str().data());
+
         std::swap(execution_queue[index], execution_queue[index - 1]);
         UpdateQueueDisplay();
         SaveQueueToDatabase();
@@ -119,7 +151,17 @@ void TemplateMatchQueueManager::MoveItemUp(int index) {
 }
 
 void TemplateMatchQueueManager::MoveItemDown(int index) {
+    MyDebugAssertTrue(index >= 0, "MoveItemDown called with negative index: %d", index);
+    MyDebugAssertTrue(index < execution_queue.size() - 1, "MoveItemDown called with index %d, must be < %zu", index, execution_queue.size() - 1);
+    MyDebugAssertFalse(execution_queue.empty(), "Cannot move items in empty queue");
+
     if (index >= 0 && index < execution_queue.size() - 1) {
+        // Don't allow moving running jobs
+        MyDebugAssertTrue(execution_queue[index].queue_status != "running" && execution_queue[index + 1].queue_status != "running",
+                         "Cannot move running jobs (current: %s, target: %s)",
+                         execution_queue[index].queue_status.mb_str().data(),
+                         execution_queue[index + 1].queue_status.mb_str().data());
+
         std::swap(execution_queue[index], execution_queue[index + 1]);
         UpdateQueueDisplay();
         SaveQueueToDatabase();
@@ -139,9 +181,12 @@ wxColour TemplateMatchQueueManager::GetStatusColor(const wxString& status) {
 }
 
 void TemplateMatchQueueManager::UpdateQueueDisplay() {
+    MyDebugAssertTrue(queue_list_ctrl != nullptr, "queue_list_ctrl is null in UpdateQueueDisplay");
+
     queue_list_ctrl->DeleteAllItems();
 
     for (size_t i = 0; i < execution_queue.size(); ++i) {
+        MyDebugAssertTrue(i < execution_queue.size(), "Queue index %zu out of bounds (size: %zu)", i, execution_queue.size());
         wxVector<wxVariant> data;
         data.push_back(wxString::Format("%ld", execution_queue[i].template_match_id));
         data.push_back(execution_queue[i].job_name);
@@ -202,7 +247,15 @@ void TemplateMatchQueueManager::RunNextJob() {
 }
 
 bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
+    // Validate job parameters before execution
+    MyDebugAssertTrue(job_to_run.template_match_id >= 0, "Cannot execute job with invalid template_match_id: %ld", job_to_run.template_match_id);
+    MyDebugAssertTrue(job_to_run.queue_status == "pending", "Cannot execute job with status '%s', must be 'pending'", job_to_run.queue_status.mb_str().data());
+    MyDebugAssertFalse(job_to_run.job_name.IsEmpty(), "Cannot execute job with empty job_name");
+    MyDebugAssertTrue(job_to_run.image_asset_id >= 0, "Cannot execute job with invalid image_asset_id: %d", job_to_run.image_asset_id);
+    MyDebugAssertTrue(job_to_run.reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", job_to_run.reference_volume_asset_id);
+
     // Check if another job is already running
+    MyDebugAssertFalse(IsJobRunning(), "Attempted to execute job %ld while job %ld is already running", job_to_run.template_match_id, currently_running_id);
     if (IsJobRunning()) {
         wxMessageBox("A job is already running. Please wait for it to complete.",
                     "Job Running", wxOK | wxICON_WARNING);
@@ -213,16 +266,27 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
     UpdateJobStatus(job_to_run.template_match_id, "running");
     currently_running_id = job_to_run.template_match_id;
 
+    // Verify state change was successful
+    MyDebugAssertTrue(currently_running_id == job_to_run.template_match_id, "Failed to set currently_running_id correctly");
+    MyDebugAssertTrue(IsJobRunning(), "Job should be marked as running after status update");
+
     // Get the MatchTemplatePanel to execute the job
     extern MatchTemplatePanel* match_template_panel;
+    MyDebugAssertTrue(match_template_panel != nullptr, "match_template_panel is null - cannot execute jobs");
+
     if (match_template_panel) {
         // Execute the job through the panel
         bool success = match_template_panel->RunQueuedTemplateMatch(job_to_run);
 
         if (!success) {
-            // Job failed to start
+            // Job failed to start - validate cleanup
+            MyDebugAssertTrue(job_to_run.template_match_id == currently_running_id, "Job ID mismatch during failure cleanup");
+
             UpdateJobStatus(job_to_run.template_match_id, "failed");
             currently_running_id = -1;
+
+            // Verify cleanup was successful
+            MyDebugAssertFalse(IsJobRunning(), "Job should not be marked as running after failure");
 
             wxMessageBox(wxString::Format("Failed to start job: %s", job_to_run.job_name),
                         "Job Failed", wxOK | wxICON_ERROR);
@@ -233,6 +297,8 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
         // Note: Status will be updated to "complete" when the job finishes
         // via the panel's job completion callback
     } else {
+        // Critical failure - template panel not available
+        MyAssertTrue(false, "Critical error: match_template_panel not available for job execution");
         wxPrintf("Error: match_template_panel not available\n");
         UpdateJobStatus(job_to_run.template_match_id, "failed");
         currently_running_id = -1;
@@ -245,32 +311,78 @@ bool TemplateMatchQueueManager::IsJobRunning() {
     return currently_running_id != -1;
 }
 
+bool TemplateMatchQueueManager::IsJobRunningStatic() {
+    return currently_running_id != -1;
+}
+
 void TemplateMatchQueueManager::UpdateJobStatus(long template_match_id, const wxString& new_status) {
+    MyDebugAssertTrue(template_match_id >= 0, "Invalid template_match_id in UpdateJobStatus: %ld", template_match_id);
+    MyDebugAssertTrue(new_status == "pending" || new_status == "running" || new_status == "complete" || new_status == "failed",
+                     "Invalid new_status in UpdateJobStatus: %s", new_status.mb_str().data());
+
+    bool found_job = false;
     for (auto& item : execution_queue) {
         if (item.template_match_id == template_match_id) {
+            // Validate status transitions
+            MyDebugAssertTrue(item.queue_status != new_status, "Attempted to set status to same value: %s", new_status.mb_str().data());
+
+            // Validate allowed transitions
+            if (item.queue_status == "running" && (new_status == "complete" || new_status == "failed")) {
+                // Valid: running -> complete/failed
+                MyDebugAssertTrue(currently_running_id == template_match_id, "Status change from running but template_match_id %ld != currently_running_id %ld", template_match_id, currently_running_id);
+            } else if (item.queue_status == "pending" && new_status == "running") {
+                // Valid: pending -> running
+                MyDebugAssertFalse(IsJobRunning(), "Cannot start job %ld when job %ld is already running", template_match_id, currently_running_id);
+            } else {
+                MyDebugAssertTrue(false, "Invalid status transition: %s -> %s for job %ld",
+                                 item.queue_status.mb_str().data(), new_status.mb_str().data(), template_match_id);
+            }
+
             item.queue_status = new_status;
-            UpdateQueueDisplay();
-            SaveQueueToDatabase();
+            found_job = true;
             break;
         }
     }
+
+    MyDebugAssertTrue(found_job, "Job with template_match_id %ld not found in queue for status update", template_match_id);
+
+    UpdateQueueDisplay();
+    SaveQueueToDatabase();
 }
 
 void TemplateMatchQueueManager::UpdateJobStatusStatic(long template_match_id, const wxString& new_status) {
-    // Update status in the static queue
+    MyDebugAssertTrue(template_match_id >= 0, "Invalid template_match_id in UpdateJobStatusStatic: %ld", template_match_id);
+    MyDebugAssertTrue(new_status == "pending" || new_status == "running" || new_status == "complete" || new_status == "failed",
+                     "Invalid new_status in UpdateJobStatusStatic: %s", new_status.mb_str().data());
+
+    // This method is typically called from job completion callbacks
+    // Most common case is running -> complete/failed
+    if (new_status == "complete" || new_status == "failed") {
+        MyDebugAssertTrue(currently_running_id == template_match_id,
+                         "Job completion for %ld but currently_running_id is %ld", template_match_id, currently_running_id);
+    }
+
+    bool found_job = false;
     for (auto& item : execution_queue) {
         if (item.template_match_id == template_match_id) {
+            // Basic transition validation
+            MyDebugAssertTrue(item.queue_status != new_status, "Static update: Attempted to set status to same value: %s", new_status.mb_str().data());
+
             item.queue_status = new_status;
+            found_job = true;
             // Can't call UpdateQueueDisplay() here as we don't have a UI instance
             // The next time a queue manager is opened, it will show the updated status
             break;
         }
     }
 
+    MyDebugAssertTrue(found_job, "Static update: Job with template_match_id %ld not found in queue", template_match_id);
+
     // Clear the currently running ID if this job was running and is now complete/failed
     if (currently_running_id == template_match_id &&
         (new_status == "complete" || new_status == "failed")) {
         currently_running_id = -1;
+        MyDebugAssertTrue(currently_running_id == -1, "currently_running_id should be cleared after job completion");
     }
 
     // TODO: Check if there are any running queue manager instances and trigger next job
@@ -278,8 +390,13 @@ void TemplateMatchQueueManager::UpdateJobStatusStatic(long template_match_id, co
 }
 
 TemplateMatchQueueItem* TemplateMatchQueueManager::GetNextPendingJob() {
+    MyDebugAssertFalse(IsJobRunning(), "GetNextPendingJob called while job %ld is running", currently_running_id);
+
     for (auto& item : execution_queue) {
         if (item.queue_status == "pending") {
+            // Validate the job we're about to return
+            MyDebugAssertTrue(item.template_match_id >= 0, "Found pending job with invalid template_match_id: %ld", item.template_match_id);
+            MyDebugAssertFalse(item.job_name.IsEmpty(), "Found pending job with empty job_name");
             return &item;
         }
     }
@@ -338,6 +455,17 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
     int selected = GetSelectedRow();
     bool has_selection = (selected >= 0);
 
+    // Validate GUI components are available
+    MyDebugAssertTrue(move_up_button != nullptr, "move_up_button is null in OnSelectionChanged");
+    MyDebugAssertTrue(move_down_button != nullptr, "move_down_button is null in OnSelectionChanged");
+    MyDebugAssertTrue(remove_selected_button != nullptr, "remove_selected_button is null in OnSelectionChanged");
+    MyDebugAssertTrue(run_selected_button != nullptr, "run_selected_button is null in OnSelectionChanged");
+
+    // Validate selection bounds
+    if (has_selection) {
+        MyDebugAssertTrue(selected < execution_queue.size(), "Selected row %d >= queue size %zu", selected, execution_queue.size());
+    }
+
     move_up_button->Enable(has_selection && selected > 0);
     move_down_button->Enable(has_selection && selected < execution_queue.size() - 1);
     remove_selected_button->Enable(has_selection);
@@ -348,6 +476,8 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
     if (has_selection && selected < execution_queue.size()) {
         // Import the MatchTemplatePanel header to get access to the panel
         extern MatchTemplatePanel* match_template_panel;
+        MyDebugAssertTrue(match_template_panel != nullptr, "match_template_panel is null when trying to populate GUI");
+
         if (match_template_panel) {
             match_template_panel->PopulateGuiFromQueueItem(execution_queue[selected]);
         }
@@ -357,15 +487,27 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
 void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
     // Get the row and column that was edited
     wxDataViewItem item = event.GetItem();
+    MyDebugAssertTrue(item.IsOk(), "Invalid wxDataViewItem in OnItemValueChanged");
+
     if (!item.IsOk()) {
         return;
     }
 
+    MyDebugAssertTrue(queue_list_ctrl != nullptr, "queue_list_ctrl is null in OnItemValueChanged");
+
     int row = queue_list_ctrl->ItemToRow(item);
     int col = event.GetColumn();
 
+    MyDebugAssertTrue(row >= 0, "Invalid row %d in OnItemValueChanged", row);
+    MyDebugAssertTrue(row < execution_queue.size(), "Row %d >= queue size %zu in OnItemValueChanged", row, execution_queue.size());
+    MyDebugAssertTrue(col >= 0, "Invalid column %d in OnItemValueChanged", col);
+
     // Check if this is the CLI Args column (column 3)
     if (col == 3 && row >= 0 && row < execution_queue.size()) {
+        // Don't allow editing running jobs
+        MyDebugAssertTrue(execution_queue[row].queue_status != "running",
+                         "Cannot edit CLI args for running job (ID: %ld)", execution_queue[row].template_match_id);
+
         // Get the new value
         wxVariant value;
         queue_list_ctrl->GetValue(value, row, col);
@@ -487,7 +629,47 @@ void TemplateMatchQueueManager::SaveQueueToDatabase() {
 
         main_frame->current_project.database.Commit();
 
-        // After saving, we need to reload from DB next time
+            // After saving, we need to reload from DB next time
         needs_database_load = true;
+    }
+}
+
+void TemplateMatchQueueManager::ValidateQueueConsistency() const {
+    int running_jobs_count = 0;
+    long found_running_id = -1;
+
+    for (size_t i = 0; i < execution_queue.size(); ++i) {
+        const auto& item = execution_queue[i];
+
+        // Validate basic item consistency
+        MyDebugAssertTrue(item.template_match_id >= 0, "Queue item %zu has invalid template_match_id: %ld", i, item.template_match_id);
+        MyDebugAssertFalse(item.job_name.IsEmpty(), "Queue item %zu (ID: %ld) has empty job_name", i, item.template_match_id);
+        MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" ||
+                         item.queue_status == "complete" || item.queue_status == "failed",
+                         "Queue item %zu (ID: %ld) has invalid status: %s", i, item.template_match_id, item.queue_status.mb_str().data());
+
+        // Track running jobs
+        if (item.queue_status == "running") {
+            running_jobs_count++;
+            found_running_id = item.template_match_id;
+        }
+
+        // Check for duplicate IDs
+        for (size_t j = i + 1; j < execution_queue.size(); ++j) {
+            MyDebugAssertTrue(execution_queue[j].template_match_id != item.template_match_id,
+                             "Duplicate template_match_id %ld found at indices %zu and %zu", item.template_match_id, i, j);
+        }
+    }
+
+    // Validate running state consistency
+    MyDebugAssertTrue(running_jobs_count <= 1, "Multiple running jobs found (%d), should be at most 1", running_jobs_count);
+
+    if (running_jobs_count == 1) {
+        MyDebugAssertTrue(currently_running_id == found_running_id,
+                         "currently_running_id (%ld) doesn't match running job ID (%ld)", currently_running_id, found_running_id);
+        MyDebugAssertTrue(IsJobRunningStatic(), "IsJobRunning() returns false but running job exists");
+    } else {
+        MyDebugAssertTrue(currently_running_id == -1, "currently_running_id is %ld but no running jobs found", currently_running_id);
+        MyDebugAssertFalse(IsJobRunningStatic(), "IsJobRunning() returns true but no running jobs found");
     }
 }

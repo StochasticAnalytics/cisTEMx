@@ -133,6 +133,8 @@ The project includes CUDA code for GPU acceleration. GPU-related files are prima
 ## Code Style and Standards
 
 - **Formatting:** Project uses `.clang-format` in the root directory for consistent code formatting
+- **wxWidgets Printf Formatting:** Be careful with format specifiers in wxPrintf and debug assertions. Common issue: `long` vs `int` mismatches can cause segfaults in wxFormatConverterBase. Always match format specifiers exactly to variable types (e.g., `%ld` for `long`, `%d` for `int`, `%f` for `float`)
+- **Temporary Debugging Changes:** All temporary debugging code (debug prints, commented-out code, test modifications) must be marked with `// revert - <description of change and reason>` to ensure cleanup before commits. Search for "revert" to find all temporary changes.
 - **Philosophy:** Incremental modernization - update and unify style as code is modified rather than wholesale changes
 - **Legacy Compatibility:** Many legacy features exist; maintain compatibility while gradually improving
 - **Preprocessor Defines:** All project-specific preprocessor defines should be prefixed with `cisTEM_` to avoid naming collisions (e.g., `cisTEM_ENABLE_FEATURE` not `ENABLE_FEATURE`)

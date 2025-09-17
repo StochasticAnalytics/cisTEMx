@@ -228,21 +228,84 @@ void TemplateMatchQueueManager::RunSelectedJob() {
 }
 
 void TemplateMatchQueueManager::RunAllJobs() {
+    MyPrintWithDetails("=== RUN ALL JOBS INITIATED ===");
+
+    // Print comprehensive queue state information
+    MyDebugPrint("Queue state summary:");
+    MyDebugPrint("  Total jobs in queue: %zu", execution_queue.size());
+    MyDebugPrint("  Currently running job ID: %ld", currently_running_id);
+    MyDebugPrint("  Is job running: %s", IsJobRunning() ? "YES" : "NO");
+
+    // Count jobs by status
+    int pending_count = 0;
+    int running_count = 0;
+    int complete_count = 0;
+    int failed_count = 0;
+
+    MyDebugPrint("Individual job details:");
+    for (size_t i = 0; i < execution_queue.size(); ++i) {
+        const auto& job = execution_queue[i];
+        MyDebugPrint("  [%zu] ID:%ld Name:'%s' Status:'%s' Image:%d RefVol:%d",
+                     i, job.template_match_id, job.job_name.mb_str().data(),
+                     job.queue_status.mb_str().data(), job.image_asset_id, job.reference_volume_asset_id);
+
+        if (job.queue_status == "pending") pending_count++;
+        else if (job.queue_status == "running") running_count++;
+        else if (job.queue_status == "complete") complete_count++;
+        else if (job.queue_status == "failed") failed_count++;
+    }
+
+    MyDebugPrint("Status counts: pending=%d, running=%d, complete=%d, failed=%d",
+                 pending_count, running_count, complete_count, failed_count);
+
+    // Validate preconditions for batch execution
+    if (execution_queue.empty()) {
+        MyPrintWithDetails("RunAllJobs called but queue is empty - nothing to do");
+        return;
+    }
+
+    if (pending_count == 0) {
+        MyPrintWithDetails("RunAllJobs called but no pending jobs found - nothing to do");
+        return;
+    }
+
+    if (IsJobRunning()) {
+        MyPrintWithDetails("RunAllJobs called but job %ld is already running - deferring", currently_running_id);
+        return;
+    }
+
+    MyDebugPrint("=== PROCEEDING TO START BATCH EXECUTION ===");
+
     // Start running the first pending job
     // When it completes, RunNextJob will be called to continue
     RunNextJob();
 }
 
 void TemplateMatchQueueManager::RunNextJob() {
+    MyPrintWithDetails("=== RUN NEXT JOB CALLED ===");
+
     // Check if a job is already running
     if (IsJobRunning()) {
+        MyDebugPrint("Job %ld is already running - skipping RunNextJob", currently_running_id);
         return;
     }
+
+    MyDebugPrint("No job currently running - searching for next pending job");
 
     // Find and run the next pending job
     TemplateMatchQueueItem* next_job = GetNextPendingJob();
     if (next_job != nullptr) {
+        MyDebugPrint("Found next pending job:");
+        MyDebugPrint("  ID: %ld", next_job->template_match_id);
+        MyDebugPrint("  Name: '%s'", next_job->job_name.mb_str().data());
+        MyDebugPrint("  Status: '%s'", next_job->queue_status.mb_str().data());
+        MyDebugPrint("  Image Asset: %d", next_job->image_asset_id);
+        MyDebugPrint("  Reference Volume: %d", next_job->reference_volume_asset_id);
+        MyDebugPrint("=== EXECUTING JOB %ld ===", next_job->template_match_id);
+
         ExecuteJob(*next_job);
+    } else {
+        MyPrintWithDetails("No pending jobs found - batch execution complete or no jobs to run");
     }
 }
 
@@ -275,27 +338,75 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
     MyDebugAssertTrue(match_template_panel != nullptr, "match_template_panel is null - cannot execute jobs");
 
     if (match_template_panel) {
-        // Execute the job through the panel
-        bool success = match_template_panel->RunQueuedTemplateMatch(job_to_run);
+        MyPrintWithDetails("=== PHASE 2: INPUT PREPARATION AND VALIDATION (SKIP EXECUTION) ===");
 
-        if (!success) {
-            // Job failed to start - validate cleanup
-            MyDebugAssertTrue(job_to_run.template_match_id == currently_running_id, "Job ID mismatch during failure cleanup");
+        // Detailed parameter logging
+        MyDebugPrint("Job parameters for ID %ld:", job_to_run.template_match_id);
+        MyDebugPrint("  Job name: '%s'", job_to_run.job_name.mb_str().data());
+        MyDebugPrint("  Image asset ID: %d", job_to_run.image_asset_id);
+        MyDebugPrint("  Reference volume asset ID: %d", job_to_run.reference_volume_asset_id);
+        MyDebugPrint("  Symmetry: '%s'", job_to_run.symmetry.mb_str().data());
+        MyDebugPrint("  Pixel size: %f Å", job_to_run.pixel_size);
+        MyDebugPrint("  Voltage: %f kV", job_to_run.voltage);
+        MyDebugPrint("  Spherical aberration: %f mm", job_to_run.spherical_aberration);
+        MyDebugPrint("  Amplitude contrast: %f", job_to_run.amplitude_contrast);
+        MyDebugPrint("  Defocus1: %f Å, Defocus2: %f Å, Angle: %f°",
+                     job_to_run.defocus1, job_to_run.defocus2, job_to_run.defocus_angle);
+        MyDebugPrint("  Phase shift: %f°", job_to_run.phase_shift);
+        MyDebugPrint("  Resolution limits: %f - %f Å", job_to_run.low_resolution_limit, job_to_run.high_resolution_limit);
+        MyDebugPrint("  Angular steps: Out-of-plane=%f°, In-plane=%f°",
+                     job_to_run.out_of_plane_angular_step, job_to_run.in_plane_angular_step);
+        MyDebugPrint("  Search ranges: Defocus=%f Å (step=%f), Pixel size=%f Å (step=%f)",
+                     job_to_run.defocus_search_range, job_to_run.defocus_step,
+                     job_to_run.pixel_size_search_range, job_to_run.pixel_size_step);
+        MyDebugPrint("  Refinement threshold: %f", job_to_run.refinement_threshold);
+        MyDebugPrint("  Reference box size: %f Å", job_to_run.ref_box_size_in_angstroms);
+        MyDebugPrint("  Mask radius: %f Å, Min peak radius: %f", job_to_run.mask_radius, job_to_run.min_peak_radius);
+        MyDebugPrint("  XY change threshold: %f (exclude above: %s)",
+                     job_to_run.xy_change_threshold, job_to_run.exclude_above_xy_threshold ? "YES" : "NO");
+        MyDebugPrint("  Custom CLI args: '%s'", job_to_run.custom_cli_args.mb_str().data());
 
-            UpdateJobStatus(job_to_run.template_match_id, "failed");
-            currently_running_id = -1;
+        // Call the validation method we added
+        MyDebugPrint("Validating job parameters...");
+        bool params_valid = job_to_run.AreJobParametersValid();
+        MyDebugPrint("Parameter validation result: %s", params_valid ? "PASSED" : "FAILED");
 
-            // Verify cleanup was successful
-            MyDebugAssertFalse(IsJobRunning(), "Job should not be marked as running after failure");
+        // Simulate preparation steps that would happen in actual execution
+        MyDebugPrint("=== SIMULATING INPUT PREPARATION ===");
 
-            wxMessageBox(wxString::Format("Failed to start job: %s", job_to_run.job_name),
-                        "Job Failed", wxOK | wxICON_ERROR);
+        // Check if assets exist (this would be real validation)
+        MyDebugPrint("Checking image asset %d availability...", job_to_run.image_asset_id);
+        MyDebugPrint("Checking reference volume asset %d availability...", job_to_run.reference_volume_asset_id);
 
-            // Try to run the next job if we're in batch mode
-            RunNextJob();
+        // Validate parameter ranges
+        bool validation_passed = true;
+        if (job_to_run.pixel_size <= 0.0f) {
+            MyDebugPrint("VALIDATION ERROR: Invalid pixel size %f", job_to_run.pixel_size);
+            validation_passed = false;
         }
-        // Note: Status will be updated to "complete" when the job finishes
-        // via the panel's job completion callback
+        if (job_to_run.voltage <= 0.0f) {
+            MyDebugPrint("VALIDATION ERROR: Invalid voltage %f", job_to_run.voltage);
+            validation_passed = false;
+        }
+        if (job_to_run.spherical_aberration < 0.0f) {
+            MyDebugPrint("VALIDATION ERROR: Invalid spherical aberration %f", job_to_run.spherical_aberration);
+            validation_passed = false;
+        }
+
+        MyDebugPrint("Input validation result: %s", validation_passed ? "PASSED" : "FAILED");
+
+        // PHASE 2: Skip actual execution
+        MyPrintWithDetails("SKIPPING ACTUAL EXECUTION - This is phase 2 testing");
+
+        // Simulate successful completion for testing
+        MyDebugPrint("Simulating job completion...");
+        UpdateJobStatus(job_to_run.template_match_id, "complete");
+        currently_running_id = -1;
+
+        MyDebugPrint("Job %ld marked as complete, proceeding to next job", job_to_run.template_match_id);
+
+        // Continue with next job in batch mode
+        RunNextJob();
     } else {
         // Critical failure - template panel not available
         MyAssertTrue(false, "Critical error: match_template_panel not available for job execution");

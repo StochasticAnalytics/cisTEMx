@@ -78,7 +78,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
     // Validate the queue item before adding
     MyDebugAssertTrue(item.template_match_id >= 0, "Cannot add item with invalid template_match_id: %ld", item.template_match_id);
-    MyDebugAssertTrue(item.image_asset_id >= 0, "Cannot add item with invalid image_asset_id: %d", item.image_asset_id);
+    MyDebugAssertTrue(item.image_group_id >= 0, "Cannot add item with invalid image_group_id: %d", item.image_group_id);
     MyDebugAssertTrue(item.reference_volume_asset_id >= 0, "Cannot add item with invalid reference_volume_asset_id: %d", item.reference_volume_asset_id);
     MyDebugAssertFalse(item.job_name.IsEmpty(), "Cannot add item with empty job_name");
     MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" || item.queue_status == "complete" || item.queue_status == "failed",
@@ -245,9 +245,9 @@ void TemplateMatchQueueManager::RunAllJobs() {
     MyDebugPrint("Individual job details:");
     for (size_t i = 0; i < execution_queue.size(); ++i) {
         const auto& job = execution_queue[i];
-        MyDebugPrint("  [%zu] ID:%ld Name:'%s' Status:'%s' Image:%d RefVol:%d",
+        MyDebugPrint("  [%zu] ID:%ld Name:'%s' Status:'%s' ImageGroup:%d RefVol:%d",
                      i, job.template_match_id, job.job_name.mb_str().data(),
-                     job.queue_status.mb_str().data(), job.image_asset_id, job.reference_volume_asset_id);
+                     job.queue_status.mb_str().data(), job.image_group_id, job.reference_volume_asset_id);
 
         if (job.queue_status == "pending") pending_count++;
         else if (job.queue_status == "running") running_count++;
@@ -299,7 +299,7 @@ void TemplateMatchQueueManager::RunNextJob() {
         MyDebugPrint("  ID: %ld", next_job->template_match_id);
         MyDebugPrint("  Name: '%s'", next_job->job_name.mb_str().data());
         MyDebugPrint("  Status: '%s'", next_job->queue_status.mb_str().data());
-        MyDebugPrint("  Image Asset: %d", next_job->image_asset_id);
+        MyDebugPrint("  Image Group: %d", next_job->image_group_id);
         MyDebugPrint("  Reference Volume: %d", next_job->reference_volume_asset_id);
         MyDebugPrint("=== EXECUTING JOB %ld ===", next_job->template_match_id);
 
@@ -314,7 +314,7 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
     MyDebugAssertTrue(job_to_run.template_match_id >= 0, "Cannot execute job with invalid template_match_id: %ld", job_to_run.template_match_id);
     MyDebugAssertTrue(job_to_run.queue_status == "pending", "Cannot execute job with status '%s', must be 'pending'", job_to_run.queue_status.mb_str().data());
     MyDebugAssertFalse(job_to_run.job_name.IsEmpty(), "Cannot execute job with empty job_name");
-    MyDebugAssertTrue(job_to_run.image_asset_id >= 0, "Cannot execute job with invalid image_asset_id: %d", job_to_run.image_asset_id);
+    MyDebugAssertTrue(job_to_run.image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", job_to_run.image_group_id);
     MyDebugAssertTrue(job_to_run.reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", job_to_run.reference_volume_asset_id);
 
     // Check if another job is already running
@@ -343,7 +343,7 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
         // Detailed parameter logging
         wxPrintf("Job parameters for ID %ld:\n", job_to_run.template_match_id);
         wxPrintf("  Job name: '%s'\n", job_to_run.job_name.mb_str().data());
-        wxPrintf("  Image asset ID: %d\n", job_to_run.image_asset_id);
+        wxPrintf("  Image group ID: %d\n", job_to_run.image_group_id);
         wxPrintf("  Reference volume asset ID: %d\n", job_to_run.reference_volume_asset_id);
         wxPrintf("  Symmetry: '%s'\n", job_to_run.symmetry.mb_str().data());
         // revert - removed Unicode characters (Å, °) from format strings to fix wxPrintf segfault
@@ -378,7 +378,7 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
         wxPrintf("=== SIMULATING INPUT PREPARATION ===\n");
 
         // Check if assets exist (this would be real validation)
-        wxPrintf("Checking image asset %d availability...\n", job_to_run.image_asset_id);
+        wxPrintf("Checking image group %d availability...\n", job_to_run.image_group_id);
         wxPrintf("Checking reference volume asset %d availability...\n", job_to_run.reference_volume_asset_id);
 
         // Validate parameter ranges
@@ -676,7 +676,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
                 &temp_item.job_name,
                 &temp_item.queue_status,
                 &temp_item.custom_cli_args,
-                &temp_item.image_asset_id,
+                &temp_item.image_group_id,
                 &temp_item.reference_volume_asset_id,
                 &temp_item.symmetry,
                 &temp_item.pixel_size,

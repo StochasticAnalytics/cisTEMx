@@ -395,6 +395,24 @@ class Database {
     TemplateMatchJobResults GetTemplateMatchingResultByID(long wanted_template_match_id);
     long                    GetTemplateMatchIdForGivenJobId(long wanted_template_match_job_id);
 
+    // Template Match Queue operations (using basic types to avoid GUI dependencies)
+    long            AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id,
+                                          bool use_gpu, bool use_fast_fft, const wxString& symmetry,
+                                          float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
+                                          float defocus1, float defocus2, float defocus_angle, float phase_shift,
+                                          float low_resolution_limit, float high_resolution_limit,
+                                          float out_of_plane_angular_step, float in_plane_angular_step,
+                                          float defocus_search_range, float defocus_step,
+                                          float pixel_size_search_range, float pixel_size_step,
+                                          float refinement_threshold, float ref_box_size_in_angstroms,
+                                          float mask_radius, float min_peak_radius,
+                                          float xy_change_threshold, bool exclude_above_xy_threshold,
+                                          const wxString& custom_cli_args);
+    wxArrayLong     GetQueuedTemplateMatchIDs();
+    void            UpdateQueueStatus(long queue_id, const wxString& status);
+    void            RemoveFromQueue(long queue_id);
+    void            ClearTemplateMatchQueue();
+
     void AddRefinementAngularDistribution(AngularDistributionHistogram& histogram_to_add, long refinement_id, int class_number);
     void CopyRefinementAngularDistributions(long refinement_id_to_copy, long refinement_id_to_copy_to, int wanted_class_number);
     void GetRefinementAngularDistributionHistogramData(long wanted_refinement_id, int wanted_class_number, AngularDistributionHistogram& histogram_to_fill);

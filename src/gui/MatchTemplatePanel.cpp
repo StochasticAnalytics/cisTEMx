@@ -1316,7 +1316,7 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
 
         // Collect actual parameters from GUI controls
         new_job.template_match_id         = -1; // Will be assigned when stored to database
-        new_job.image_asset_id            = GroupComboBox->GetSelection();
+        new_job.image_group_id            = GroupComboBox->GetSelection();
         new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
 
         // Get symmetry and resolution parameters
@@ -1438,8 +1438,8 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
     // Populate GUI controls with values from the queue item
 
     // Set the group and reference selections
-    if (GroupComboBox && item.image_asset_id >= 0) {
-        GroupComboBox->SetSelection(item.image_asset_id);
+    if (GroupComboBox && item.image_group_id >= 0) {
+        GroupComboBox->SetSelection(item.image_group_id);
     }
 
     if (ReferenceSelectPanel && item.reference_volume_asset_id >= 0) {

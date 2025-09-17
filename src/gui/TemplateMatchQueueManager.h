@@ -60,7 +60,8 @@ private:
 
     // Use static queue to persist across dialog instances
     static std::deque<TemplateMatchQueueItem> execution_queue;
-    long currently_running_id;
+    static long currently_running_id;
+    bool needs_database_load;  // True if we haven't loaded from DB yet
 
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();
@@ -82,6 +83,7 @@ public:
     void RunNextJob();
     bool ExecuteJob(TemplateMatchQueueItem& job_to_run);
     void UpdateJobStatus(long template_match_id, const wxString& new_status);
+    static void UpdateJobStatusStatic(long template_match_id, const wxString& new_status);
     TemplateMatchQueueItem* GetNextPendingJob();
     bool HasPendingJobs();
     bool IsJobRunning();

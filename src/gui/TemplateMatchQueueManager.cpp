@@ -2,8 +2,9 @@
 #include "TemplateMatchQueueManager.h"
 #include "MatchTemplatePanel.h"
 
-// Define static member
+// Define static members
 std::deque<TemplateMatchQueueItem> TemplateMatchQueueManager::execution_queue;
+long TemplateMatchQueueManager::currently_running_id = -1;
 
 BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
     EVT_BUTTON(wxID_ANY, TemplateMatchQueueManager::OnRunSelectedClick)
@@ -14,7 +15,7 @@ END_EVENT_TABLE()
 TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
     : wxPanel(parent, wxID_ANY) {
 
-    currently_running_id = -1;
+    // currently_running_id is static, initialized once
     needs_database_load = true;  // Need to load from database on first access
 
     // Create the main sizer
@@ -253,6 +254,27 @@ void TemplateMatchQueueManager::UpdateJobStatus(long template_match_id, const wx
             break;
         }
     }
+}
+
+void TemplateMatchQueueManager::UpdateJobStatusStatic(long template_match_id, const wxString& new_status) {
+    // Update status in the static queue
+    for (auto& item : execution_queue) {
+        if (item.template_match_id == template_match_id) {
+            item.queue_status = new_status;
+            // Can't call UpdateQueueDisplay() here as we don't have a UI instance
+            // The next time a queue manager is opened, it will show the updated status
+            break;
+        }
+    }
+
+    // Clear the currently running ID if this job was running and is now complete/failed
+    if (currently_running_id == template_match_id &&
+        (new_status == "complete" || new_status == "failed")) {
+        currently_running_id = -1;
+    }
+
+    // TODO: Check if there are any running queue manager instances and trigger next job
+    // For now, this will be handled when the queue manager is opened again
 }
 
 TemplateMatchQueueItem* TemplateMatchQueueManager::GetNextPendingJob() {

@@ -16,6 +16,7 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
 
     my_job_id   = -1;
     running_job = false;
+    running_queue_job_id = -1;  // Not running from queue
 
     group_combo_is_dirty   = false;
     run_profiles_are_dirty = false;
@@ -1156,6 +1157,17 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     cached_results.Clear( );
 
+    // If this job was run from the queue, update its status
+    if (running_queue_job_id > 0) {
+        // Update the queue manager that the job is complete
+        // We need to get a reference to any existing queue manager
+        // For now, directly update the static queue in TemplateMatchQueueManager
+        TemplateMatchQueueManager::UpdateJobStatusStatic(running_queue_job_id, "complete");
+
+        // Clear the queue job ID
+        running_queue_job_id = -1;
+    }
+
     // Kill the job (in case it isn't already dead)
     main_frame->job_controller.KillJob(my_job_id);
 
@@ -1508,6 +1520,9 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
         return false;
     }
 
+    // Store the queue job ID so we can update its status when complete
+    running_queue_job_id = job.template_match_id;
+
     // Populate the GUI with the queued job's parameters
     PopulateGuiFromQueueItem(job);
 
@@ -1517,9 +1532,6 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     // Trigger the template matching execution
     wxCommandEvent fake_event;
     StartEstimationClick(fake_event);
-
-    // Store the queue job ID so we can update its status when complete
-    // TODO: Track this job's queue ID for status updates
 
     return true;
 }

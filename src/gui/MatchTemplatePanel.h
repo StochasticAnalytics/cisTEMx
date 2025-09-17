@@ -64,6 +64,9 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     int template_match_id;
     int template_match_job_id;
 
+    // Queue tracking
+    long running_queue_job_id;  // -1 if not running from queue
+
     // methods
     void WriteResultToDataBase( );
     void OnUpdateUI(wxUpdateUIEvent& event);

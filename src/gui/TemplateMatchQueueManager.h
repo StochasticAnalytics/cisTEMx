@@ -136,6 +136,7 @@ public:
     bool ExecuteJob(TemplateMatchQueueItem& job_to_run);
     void UpdateJobStatus(long template_match_id, const wxString& new_status);
     static void UpdateJobStatusStatic(long template_match_id, const wxString& new_status);
+    static void SetCurrentlyRunningIdStatic(long template_match_id);
     static void ContinueQueueExecution();
     TemplateMatchQueueItem* GetNextPendingJob();
     bool HasPendingJobs();

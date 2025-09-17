@@ -565,9 +565,22 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     // 2. Setup job from queue item
     // 3. Execute job
 
-    // Step 1: Add to queue without dialog
+    // Step 1: Add to queue without dialog and capture queue ID
     TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
-    AddJobToQueue(new_job, false);  // No dialog for direct execution
+    long queue_id = AddJobToQueue(new_job, false);  // No dialog for direct execution
+
+    // Set the running queue job ID so we can update status when complete
+    if (queue_id > 0) {
+        running_queue_job_id = queue_id;
+        // Also update the job object with the queue ID for consistency
+        new_job.template_match_id = queue_id;
+        // Set the static currently_running_id so the queue manager knows what's running
+        TemplateMatchQueueManager::SetCurrentlyRunningIdStatic(queue_id);
+        // TODO: Remove once unified architecture eliminates need for static sync
+        wxPrintf("Set running_queue_job_id to %ld for job run from Start Estimate\n", queue_id);
+    } else {
+        wxPrintf("Warning: Failed to get valid queue ID from AddJobToQueue\n");
+    }
 
     // Step 2: Setup job using extracted method
     if (!SetupJobFromQueueItem(new_job)) {
@@ -959,6 +972,12 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
         ReferenceSelectPanel->SetSelection(item.reference_volume_asset_id);
     }
 
+    // Set run profile
+    if (RunProfileComboBox && item.run_profile_id >= 0) {
+        RunProfileComboBox->SetSelection(item.run_profile_id);
+        wxPrintf("Set RunProfileComboBox to selection %d from queue item\n", item.run_profile_id);
+    }
+
     // Set symmetry
     if (SymmetryComboBox) {
         SymmetryComboBox->SetValue(item.symmetry);
@@ -1146,7 +1165,7 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
     new_job.xy_change_threshold = 0.0;
     new_job.exclude_above_xy_threshold = false;
 
-    // revert - Debug print for run profile information
+    // Debug print for run profile information
     wxPrintf("\n=== DEBUG: Run Profile Information ===\n");
     wxPrintf("Run Profile ID (stored in queue): %d\n", new_job.run_profile_id);
     if (new_job.run_profile_id >= 0 && new_job.run_profile_id < RunProfileComboBox->GetCount()) {
@@ -1162,7 +1181,7 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
     return new_job;
 }
 
-void MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog) {
+long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog) {
     if (show_dialog) {
         // Show the queue manager with the new job
         wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
@@ -1190,10 +1209,13 @@ void MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         queue_dialog->SetSizer(dialog_sizer);
         queue_dialog->ShowModal();
         queue_dialog->Destroy();
+
+        // Return -1 for dialog mode since we don't track the specific queue ID
+        return -1;
     } else {
         // Add to queue without dialog - use database directly
         if (main_frame && main_frame->current_project.is_open) {
-            main_frame->current_project.database.AddToTemplateMatchQueue(
+            long queue_id = main_frame->current_project.database.AddToTemplateMatchQueue(
                 job.job_name, job.image_group_id, job.reference_volume_asset_id, job.run_profile_id,
                 job.use_gpu, job.use_fast_fft, job.symmetry,
                 job.pixel_size, job.voltage, job.spherical_aberration, job.amplitude_contrast,
@@ -1206,7 +1228,19 @@ void MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
                 job.mask_radius, job.min_peak_radius,
                 job.xy_change_threshold, job.exclude_above_xy_threshold,
                 job.custom_cli_args);
+
+            if (queue_id > 0) {
+                // Create a copy with the assigned queue ID and add to static queue
+                TemplateMatchQueueItem job_with_id = job;
+                job_with_id.template_match_id = queue_id;
+                job_with_id.queue_status = "pending";
+
+                // TODO: Need to add to static queue - will be addressed in unified architecture refactor
+            }
+
+            return queue_id;
         }
+        return -1;
     }
 }
 
@@ -1214,7 +1248,7 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     // First populate GUI with the job parameters
     PopulateGuiFromQueueItem(job);
 
-    // revert - Debug prints to check job parameters
+    // Debug prints to check job parameters
     wxPrintf("\n=== DEBUG: SetupJobFromQueueItem Parameters ===\n");
     wxPrintf("Job Name: %s\n", job.job_name);
     wxPrintf("Image Group ID: %d\n", job.image_group_id);
@@ -1563,10 +1597,21 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
 }
 
 bool MatchTemplatePanel::ExecuteCurrentJob() {
+    // Get the run profile to use - the GUI should be populated correctly by PopulateGuiFromQueueItem
+    int run_profile_to_use = RunProfileComboBox->GetSelection();
+
+    // Debug print to verify run profile is correctly set
+    if (running_queue_job_id > 0) {
+        wxPrintf("Executing queue job %ld with run profile selection %d\n",
+                 running_queue_job_id, run_profile_to_use);
+    } else {
+        wxPrintf("Executing GUI job with run profile selection %d\n", run_profile_to_use);
+    }
+
     // Launch the job controller
     my_job_id = main_frame->job_controller.AddJob(this,
-        run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection()].manager_command,
-        run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection()].gui_address);
+        run_profiles_panel->run_profile_manager.run_profiles[run_profile_to_use].manager_command,
+        run_profiles_panel->run_profile_manager.run_profiles[run_profile_to_use].gui_address);
 
     if (my_job_id != -1) {
         SetNumberConnectedTextToZeroAndStartTracking();

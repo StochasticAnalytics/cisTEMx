@@ -449,6 +449,15 @@ void TemplateMatchQueueManager::UpdateJobStatus(long template_match_id, const wx
     SaveQueueToDatabase();
 }
 
+void TemplateMatchQueueManager::SetCurrentlyRunningIdStatic(long template_match_id) {
+    MyDebugAssertTrue(template_match_id >= 0, "Invalid template_match_id in SetCurrentlyRunningIdStatic: %ld", template_match_id);
+
+    wxPrintf("SetCurrentlyRunningIdStatic: setting currently_running_id from %ld to %ld\n",
+             currently_running_id, template_match_id);
+
+    currently_running_id = template_match_id;
+}
+
 void TemplateMatchQueueManager::UpdateJobStatusStatic(long template_match_id, const wxString& new_status) {
     MyDebugAssertTrue(template_match_id >= 0, "Invalid template_match_id in UpdateJobStatusStatic: %ld", template_match_id);
     MyDebugAssertTrue(new_status == "pending" || new_status == "running" || new_status == "complete" || new_status == "failed",

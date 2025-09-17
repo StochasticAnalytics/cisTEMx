@@ -14,8 +14,10 @@ public:
 
     // Store all the parameters needed to run the job
     // These will be populated when adding to queue
-    int image_asset_id;
+    int image_group_id;
     int reference_volume_asset_id;
+    bool use_gpu;
+    bool use_fast_fft;
     wxString symmetry;
     float pixel_size;
     float voltage;
@@ -43,8 +45,10 @@ public:
     TemplateMatchQueueItem() {
         template_match_id = -1;
         queue_status = "pending";
-        image_asset_id = -1;
+        image_group_id = -1;
         reference_volume_asset_id = -1;
+        use_gpu = false;
+        use_fast_fft = false;
 
         // Initialize other parameters to safe defaults
         pixel_size = 0.0f;
@@ -74,7 +78,7 @@ public:
     // Validation method to check if this queue item has all required parameters for job execution
     bool AreJobParametersValid() const {
         MyDebugAssertTrue(template_match_id >= 0, "template_match_id must be >= 0, got %ld", template_match_id);
-        MyDebugAssertTrue(image_asset_id >= 0, "image_asset_id must be >= 0, got %d", image_asset_id);
+        MyDebugAssertTrue(image_group_id >= 0, "image_group_id must be >= 0, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
         MyDebugAssertTrue(pixel_size > 0.0f, "pixel_size must be > 0.0, got %f", pixel_size);
         MyDebugAssertTrue(voltage > 0.0f, "voltage must be > 0.0, got %f", voltage);

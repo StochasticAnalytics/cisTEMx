@@ -133,13 +133,24 @@ The project includes CUDA code for GPU acceleration. GPU-related files are prima
 ## Code Style and Standards
 
 - **Formatting:** Project uses `.clang-format` in the root directory for consistent code formatting
-- **wxWidgets Printf Formatting:** Be careful with format specifiers in wxPrintf and debug assertions. Common issue: `long` vs `int` mismatches can cause segfaults in wxFormatConverterBase. Always match format specifiers exactly to variable types (e.g., `%ld` for `long`, `%d` for `int`, `%f` for `float`)
+- **Type Casting:** Always use modern C++ functional cast style (`int(variable)`, `long(variable)`, `float(variable)`) instead of C-style casts (`(int)variable`, `(long)variable`, `(float)variable`)
+- **wxWidgets Printf Formatting:**
+  - Always match format specifiers exactly to variable types (e.g., `%ld` for `long`, `%d` for `int`, `%f` for `float`) - mismatches cause segfaults in wxFormatConverterBase
+  - Never use Unicode characters (Å, °, etc.) in format strings as they cause segmentation faults - use ASCII equivalents instead (A, deg, etc.)
 - **Temporary Debugging Changes:** All temporary debugging code (debug prints, commented-out code, test modifications) must be marked with `// revert - <description of change and reason>` to ensure cleanup before commits. Search for "revert" to find all temporary changes.
 - **Philosophy:** Incremental modernization - update and unify style as code is modified rather than wholesale changes
 - **Legacy Compatibility:** Many legacy features exist; maintain compatibility while gradually improving
 - **Preprocessor Defines:** All project-specific preprocessor defines should be prefixed with `cisTEM_` to avoid naming collisions (e.g., `cisTEM_ENABLE_FEATURE` not `ENABLE_FEATURE`)
 - **Include Guards:** Use the full path from project root in uppercase with underscores for header file include guards (e.g., `_SRC_GUI_MYHEADER_H_` for `src/gui/MyHeader.h`, not `__MyHeader__`)
 - **Temporary Files:** All temporary files (scripts, plans, documentation drafts) should be created in `.claude/cache/` directory. Create this directory if it doesn't exist. This keeps the project root clean and makes it easy to identify Claude-generated temporary content
+
+## Commit Best Practices
+
+- **Compilation Requirement:** Every commit must compile successfully without errors. This is essential for maintaining a clean git history that supports effective debugging with `git bisect`
+- **Frequent Commits:** Commit work frequently, especially when completing discrete tasks or todo items. Small, focused commits are easier to review and debug
+- **Clean Up Before Committing:** Remove all temporary debugging code marked with `// revert` comments before committing
+- **Descriptive Messages:** Write clear, concise commit messages that explain what was changed and why
+- **Test Before Commit:** Verify that changes work as expected before committing
 
 ## wxWidgets Best Practices for cisTEM
 

@@ -1149,7 +1149,7 @@ void Database::AddNextMovieAssetMetadata(MovieMetadataAsset asset) {
                      asset.image_shift_x,
                      asset.image_shift_y,
                      asset.exposure_dose,
-                     (asset.acquisition_time.IsValid( )) ? asset.acquisition_time.GetAsDOS( ) : -1);
+                     (asset.acquisition_time.IsValid( )) ? long(asset.acquisition_time.GetAsDOS( )) : -1);
 }
 
 void Database::EndMovieAssetMetadataInsert( ) {
@@ -2688,37 +2688,58 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
     MyDebugAssertTrue(is_open == true, "database not open!");
     TableChanges  missing_tables;
     ColumnChanges missing_columns;
+
+    // Optimized schema check using batch queries
+
+    // First, get all existing tables in one query
+    wxArrayString all_tables = ReturnStringArrayFromSelectCommand("SELECT name FROM sqlite_master WHERE type='table';");
+
+    // Helper function to check if a string exists in wxArrayString
+    auto string_exists_in_array = [](const wxArrayString& array, const wxString& str) -> bool {
+        for ( size_t i = 0; i < array.GetCount(); i++ ) {
+            if ( array[i].IsSameAs(str) ) return true;
+        }
+        return false;
+    };
+
     // Check Static Tables
-    wxArrayString return_strings;
-    int           count;
-    int           counter;
-    int           col_counter;
     for ( TableData& table : static_tables ) {
 #ifdef PRINT_FOR_SLOW_DEBUG
-        // Print out a line so I know something is happening using std::cerr including the current and total number of tables determined from static_tables without using counter variable
-        std::cerr << "Working on table " << (&table - &static_tables[0] + 1) << " / " << static_tables.size( ) << ": " << std::get<0>(table) << std::endl;
-
+        std::cerr << "Working on static table " << (&table - &static_tables[0] + 1) << " / " << static_tables.size( ) << ": " << std::get<0>(table) << std::endl;
 #endif
-        return_strings = ReturnStringArrayFromSelectCommand(wxString::Format("SELECT name FROM sqlite_master WHERE type='table' AND name='%s';", std::get<0>(table)));
-        if ( return_strings.IsEmpty( ) ) {
+        wxString table_name = std::get<0>(table);
+        if ( !string_exists_in_array(all_tables, table_name) ) {
             missing_tables.push_back(std::get<TABLE_NAME>(table));
             continue;
         }
-        for ( col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {
-            auto& column = std::get<TABLE_COLUMNS>(table)[col_counter];
-            char  type   = std::get<TABLE_TYPES>(table)[col_counter];
 
-            count = ReturnSingleIntFromSelectCommand(wxString::Format("SELECT COUNT(*) AS CNTREC FROM pragma_table_info('%s') WHERE name='%s';", std::get<0>(table), column));
-            if ( count < 1 ) {
-                missing_columns.push_back(ColumnChange(std::get<TABLE_NAME>(table), column, type));
+        // Batch check all columns for this table in one query
+        if ( std::get<TABLE_COLUMNS>(table).size() > 0 ) {
+            wxString column_list = "";
+            for ( size_t col_idx = 0; col_idx < std::get<TABLE_COLUMNS>(table).size(); col_idx++ ) {
+                if ( col_idx > 0 ) column_list += ",";
+                column_list += "'" + std::get<TABLE_COLUMNS>(table)[col_idx] + "'";
+            }
+
+            wxArrayString existing_columns = ReturnStringArrayFromSelectCommand(
+                wxString::Format("SELECT name FROM pragma_table_info('%s') WHERE name IN (%s);",
+                               table_name, column_list));
+
+            for ( size_t col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {
+                auto& column = std::get<TABLE_COLUMNS>(table)[col_counter];
+                char  type   = std::get<TABLE_TYPES>(table)[col_counter];
+
+                if ( !string_exists_in_array(existing_columns, column) ) {
+                    missing_columns.push_back(ColumnChange(std::get<TABLE_NAME>(table), column, type));
+                }
             }
         }
     }
 
+    // Check Dynamic Tables - optimized approach
     for ( TableData& table : dynamic_tables ) {
 #ifdef PRINT_FOR_SLOW_DEBUG
-        // Print out a line so I know something is happening using std::cerr including the current and total number of tables
-        std::cerr << "Working on table " << (&table - &dynamic_tables[0] + 1) << " / " << dynamic_tables.size( ) << ": " << std::get<0>(table) << std::endl;
+        std::cerr << "Working on dynamic table " << (&table - &dynamic_tables[0] + 1) << " / " << dynamic_tables.size( ) << ": " << std::get<0>(table) << std::endl;
 #ifdef SKIP_TM_TABLE_CHECK
         if ( std::get<0>(table) == "TEMPLATE_MATCH_PEAK_LIST_" ) {
             std::cerr << "Skipping table TEMPLATE_MATCH_PEAK_LIST_ check." << std::endl;
@@ -2730,18 +2751,49 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
         }
 #endif
 #endif
-        return_strings = ReturnStringArrayFromSelectCommand(wxString::Format("SELECT name FROM sqlite_master WHERE type='table' AND name  LIKE '%s_%';", std::get<0>(table)));
-        for ( counter = 0; counter < return_strings.GetCount( ); counter++ ) {
-            // Make sure it is not any of the static columns that happen to match
-            if ( any_of(static_tables.begin( ), static_tables.end( ), [&](TableData& table) { return return_strings[counter].IsSameAs(std::get<0>(table)); }) ) {
-                continue;
+
+        // Find matching dynamic tables
+        wxArrayString matching_tables;
+        wxString pattern = std::get<0>(table);
+        for ( size_t i = 0; i < all_tables.GetCount(); i++ ) {
+            const wxString& existing_table = all_tables[i];
+            if ( existing_table.StartsWith(pattern) && existing_table.length() > pattern.length() &&
+                 existing_table[pattern.length()] == '_' ) {
+                // Make sure it's not a static table that happens to match
+                bool is_static = false;
+                for ( const auto& static_table : static_tables ) {
+                    if ( existing_table.IsSameAs(std::get<0>(static_table)) ) {
+                        is_static = true;
+                        break;
+                    }
+                }
+                if ( !is_static ) {
+                    matching_tables.Add(existing_table);
+                }
             }
-            for ( col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {
-                auto& column = std::get<TABLE_COLUMNS>(table)[col_counter];
-                char  type   = std::get<TABLE_TYPES>(table)[col_counter];
-                count        = ReturnSingleIntFromSelectCommand(wxString::Format("SELECT COUNT(*) AS CNTREC FROM pragma_table_info('%s') WHERE name='%s';", return_strings[counter], column));
-                if ( count < 1 ) {
-                    missing_columns.push_back(ColumnChange(return_strings[counter], column, type));
+        }
+
+        // Batch check columns for all matching tables
+        if ( matching_tables.GetCount() > 0 && std::get<TABLE_COLUMNS>(table).size() > 0 ) {
+            wxString column_list = "";
+            for ( size_t col_idx = 0; col_idx < std::get<TABLE_COLUMNS>(table).size(); col_idx++ ) {
+                if ( col_idx > 0 ) column_list += ",";
+                column_list += "'" + std::get<TABLE_COLUMNS>(table)[col_idx] + "'";
+            }
+
+            for ( size_t table_idx = 0; table_idx < matching_tables.GetCount(); table_idx++ ) {
+                const wxString& matching_table = matching_tables[table_idx];
+                wxArrayString existing_columns = ReturnStringArrayFromSelectCommand(
+                    wxString::Format("SELECT name FROM pragma_table_info('%s') WHERE name IN (%s);",
+                                   matching_table, column_list));
+
+                for ( size_t col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {
+                    auto& column = std::get<TABLE_COLUMNS>(table)[col_counter];
+                    char  type   = std::get<TABLE_TYPES>(table)[col_counter];
+
+                    if ( !string_exists_in_array(existing_columns, column) ) {
+                        missing_columns.push_back(ColumnChange(matching_table, column, type));
+                    }
                 }
             }
         }

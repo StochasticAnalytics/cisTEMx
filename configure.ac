@@ -67,7 +67,7 @@ CPP_STANDARD=17
 #   --enable-build-program will add the additional program(s)
 #     these flags have no meaning unles --disable-build-all is set
 #
-AX_ADDITIONAL_PROGRAMS
+NON_ESSENTIAL_PROGRAMS_TO_BE_COMPILED
 
 # if test "$want_cuda" = "yes" ; then
 #   CPP_STANDARD=17

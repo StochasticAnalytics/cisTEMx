@@ -1,6 +1,9 @@
 #ifndef __MatchTemplatePanel__
 #define __MatchTemplatePanel__
 
+// Forward declaration
+class TemplateMatchQueueItem;
+
 class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // The results and actions panels need to talk to each other.
@@ -109,6 +112,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     // Queue functionality
     void        OnAddToQueueClick(wxCommandEvent& event);
     void        OnOpenQueueClick(wxCommandEvent& event);
+    void        PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item);
 };
 
 #endif

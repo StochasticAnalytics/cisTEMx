@@ -1302,33 +1302,65 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
         new_job.queue_status    = "pending";
         new_job.custom_cli_args = ""; // Can be set by user later
 
-        // For now, set placeholder values for required parameters
-        // TODO: Collect actual parameters from GUI controls once control names are verified
+        // Collect actual parameters from GUI controls
         new_job.template_match_id         = -1; // Will be assigned when stored to database
-        new_job.image_asset_id            = 1; // Placeholder
-        new_job.reference_volume_asset_id = 1; // Placeholder
+        new_job.image_asset_id            = GroupComboBox->GetSelection();
+        new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
 
-        // Set some default parameters for testing
-        new_job.symmetry                  = SymmetryComboBox ? SymmetryComboBox->GetValue( ) : "C1";
-        new_job.pixel_size                = 1.0;
-        new_job.voltage                   = 300.0;
-        new_job.spherical_aberration      = 2.7;
-        new_job.amplitude_contrast        = 0.07;
-        new_job.low_resolution_limit      = 30.0;
-        new_job.high_resolution_limit     = 5.0;
-        new_job.out_of_plane_angular_step = 5.0;
-        new_job.in_plane_angular_step     = 2.0;
-        new_job.defocus_search_range      = 5000.0;
-        new_job.defocus_step              = 500.0;
-        new_job.pixel_size_search_range   = 0.0;
-        new_job.pixel_size_step           = 0.0;
-        new_job.ref_box_size_in_angstroms = 200.0;
-        new_job.mask_radius               = 80.0;
-        new_job.min_peak_radius           = 10.0;
+        // Get symmetry and resolution parameters
+        new_job.symmetry                  = SymmetryComboBox->GetValue().Upper();
+        new_job.high_resolution_limit     = HighResolutionLimitNumericCtrl->ReturnValue();
+        new_job.low_resolution_limit      = 300.0f; // Currently hardcoded in template matching
 
-        // For now, skip database storage until we verify parameters
-        // TODO: Implement proper database storage once parameter collection is complete
-        new_job.template_match_id = 1001; // Temporary ID for testing
+        // Angular search parameters
+        new_job.out_of_plane_angular_step = OutofPlaneStepNumericCtrl->ReturnValue();
+        new_job.in_plane_angular_step     = InPlaneStepNumericCtrl->ReturnValue();
+
+        // Defocus search parameters
+        if (DefocusSearchYesRadio->GetValue()) {
+            new_job.defocus_search_range = DefocusSearchRangeNumericCtrl->ReturnValue();
+            new_job.defocus_step         = DefocusSearchStepNumericCtrl->ReturnValue();
+        } else {
+            new_job.defocus_search_range = 0.0f;
+            new_job.defocus_step         = 0.0f;
+        }
+
+        // Pixel size search parameters
+        if (PixelSizeSearchYesRadio->GetValue()) {
+            new_job.pixel_size_search_range = PixelSizeSearchRangeNumericCtrl->ReturnValue();
+            new_job.pixel_size_step         = PixelSizeSearchStepNumericCtrl->ReturnValue();
+        } else {
+            new_job.pixel_size_search_range = 0.0f;
+            new_job.pixel_size_step         = 0.0f;
+        }
+
+        // Peak detection parameters
+        new_job.min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue();
+
+        // Get CTF parameters from the first image (these would need to be refined per image)
+        // For now, use placeholder values - will need to get from image assets
+        new_job.pixel_size                = 1.0;  // TODO: Get from selected image group
+        new_job.voltage                   = 300.0; // TODO: Get from CTF estimation
+        new_job.spherical_aberration      = 2.7;  // TODO: Get from CTF estimation
+        new_job.amplitude_contrast        = 0.07; // TODO: Get from CTF estimation
+        new_job.defocus1                   = 10000.0; // TODO: Get from CTF estimation
+        new_job.defocus2                   = 10000.0; // TODO: Get from CTF estimation
+        new_job.defocus_angle              = 0.0;    // TODO: Get from CTF estimation
+        new_job.phase_shift                = 0.0;    // TODO: Get from CTF estimation
+
+        // Get volume parameters
+        VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection());
+        if (current_volume) {
+            new_job.ref_box_size_in_angstroms = current_volume->x_size * current_volume->pixel_size;
+            new_job.mask_radius = current_volume->x_size * current_volume->pixel_size / 2.0f;
+        } else {
+            new_job.ref_box_size_in_angstroms = 200.0;
+            new_job.mask_radius = 80.0;
+        }
+
+        // Generate a unique ID using current timestamp
+        static long next_queue_id = 1000;
+        new_job.template_match_id = ++next_queue_id;
 
         // Show the queue manager with the new job
         wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
@@ -1337,6 +1369,9 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
 
         // Create queue manager for this dialog
         TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog);
+
+        // Load existing queue from database first
+        queue_manager->LoadQueueFromDatabase();
 
         // Add the new job to the queue
         queue_manager->AddToQueue(new_job);
@@ -1374,16 +1409,6 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     // Load existing queue from database
     queue_manager->LoadQueueFromDatabase( );
 
-    // For testing, add sample items if queue is empty
-    if ( ! queue_manager->HasPendingJobs( ) ) {
-        TemplateMatchQueueItem sample_item;
-        sample_item.template_match_id = 101;
-        sample_item.job_name          = "Sample Job - Pending";
-        sample_item.queue_status      = "pending";
-        sample_item.custom_cli_args   = "";
-        queue_manager->AddToQueue(sample_item);
-    }
-
     // Layout
     wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
     dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
@@ -1395,4 +1420,83 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     queue_dialog->SetSizer(dialog_sizer);
     queue_dialog->ShowModal( );
     queue_dialog->Destroy( );
+}
+
+void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item) {
+    // Populate GUI controls with values from the queue item
+
+    // Set the group and reference selections
+    if (GroupComboBox && item.image_asset_id >= 0) {
+        GroupComboBox->SetSelection(item.image_asset_id);
+    }
+
+    if (ReferenceSelectPanel && item.reference_volume_asset_id >= 0) {
+        ReferenceSelectPanel->SetSelection(item.reference_volume_asset_id);
+    }
+
+    // Set symmetry
+    if (SymmetryComboBox) {
+        SymmetryComboBox->SetValue(item.symmetry);
+    }
+
+    // Set resolution limits
+    if (HighResolutionLimitNumericCtrl) {
+        HighResolutionLimitNumericCtrl->SetValue(wxString::Format("%.2f", item.high_resolution_limit));
+    }
+
+    // Set angular steps
+    if (OutofPlaneStepNumericCtrl) {
+        OutofPlaneStepNumericCtrl->SetValue(wxString::Format("%.2f", item.out_of_plane_angular_step));
+    }
+
+    if (InPlaneStepNumericCtrl) {
+        InPlaneStepNumericCtrl->SetValue(wxString::Format("%.2f", item.in_plane_angular_step));
+    }
+
+    // Set defocus search parameters
+    if (item.defocus_search_range > 0) {
+        if (DefocusSearchYesRadio) DefocusSearchYesRadio->SetValue(true);
+        if (DefocusSearchNoRadio) DefocusSearchNoRadio->SetValue(false);
+        if (DefocusSearchRangeNumericCtrl) {
+            DefocusSearchRangeNumericCtrl->SetValue(wxString::Format("%.2f", item.defocus_search_range));
+            DefocusSearchRangeNumericCtrl->Enable(true);
+        }
+        if (DefocusSearchStepNumericCtrl) {
+            DefocusSearchStepNumericCtrl->SetValue(wxString::Format("%.2f", item.defocus_step));
+            DefocusSearchStepNumericCtrl->Enable(true);
+        }
+    } else {
+        if (DefocusSearchYesRadio) DefocusSearchYesRadio->SetValue(false);
+        if (DefocusSearchNoRadio) DefocusSearchNoRadio->SetValue(true);
+        if (DefocusSearchRangeNumericCtrl) DefocusSearchRangeNumericCtrl->Enable(false);
+        if (DefocusSearchStepNumericCtrl) DefocusSearchStepNumericCtrl->Enable(false);
+    }
+
+    // Set pixel size search parameters
+    if (item.pixel_size_search_range > 0) {
+        if (PixelSizeSearchYesRadio) PixelSizeSearchYesRadio->SetValue(true);
+        if (PixelSizeSearchNoRadio) PixelSizeSearchNoRadio->SetValue(false);
+        if (PixelSizeSearchRangeNumericCtrl) {
+            PixelSizeSearchRangeNumericCtrl->SetValue(wxString::Format("%.4f", item.pixel_size_search_range));
+            PixelSizeSearchRangeNumericCtrl->Enable(true);
+        }
+        if (PixelSizeSearchStepNumericCtrl) {
+            PixelSizeSearchStepNumericCtrl->SetValue(wxString::Format("%.4f", item.pixel_size_step));
+            PixelSizeSearchStepNumericCtrl->Enable(true);
+        }
+    } else {
+        if (PixelSizeSearchYesRadio) PixelSizeSearchYesRadio->SetValue(false);
+        if (PixelSizeSearchNoRadio) PixelSizeSearchNoRadio->SetValue(true);
+        if (PixelSizeSearchRangeNumericCtrl) PixelSizeSearchRangeNumericCtrl->Enable(false);
+        if (PixelSizeSearchStepNumericCtrl) PixelSizeSearchStepNumericCtrl->Enable(false);
+    }
+
+    // Set peak radius
+    if (MinPeakRadiusNumericCtrl) {
+        MinPeakRadiusNumericCtrl->SetValue(wxString::Format("%.2f", item.min_peak_radius));
+    }
+
+    // Refresh the GUI
+    Update();
+    Refresh();
 }

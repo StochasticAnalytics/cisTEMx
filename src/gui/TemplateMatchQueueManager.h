@@ -58,7 +58,8 @@ private:
     wxButton* move_down_button;
     wxButton* remove_selected_button;
 
-    std::deque<TemplateMatchQueueItem> execution_queue;
+    // Use static queue to persist across dialog instances
+    static std::deque<TemplateMatchQueueItem> execution_queue;
     long currently_running_id;
     bool needs_database_load;  // True if we haven't loaded from DB yet
 

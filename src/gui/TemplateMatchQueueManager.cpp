@@ -1,5 +1,9 @@
 #include "../core/gui_core_headers.h"
 #include "TemplateMatchQueueManager.h"
+#include "MatchTemplatePanel.h"
+
+// Define static member
+std::deque<TemplateMatchQueueItem> TemplateMatchQueueManager::execution_queue;
 
 BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
     EVT_BUTTON(wxID_ANY, TemplateMatchQueueManager::OnRunSelectedClick)
@@ -65,6 +69,9 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
 
     // Don't load from database in constructor - it may be called during workflow switch
     // when main_frame is in an inconsistent state
+
+    // Display any existing queue items
+    UpdateQueueDisplay();
 }
 
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
@@ -308,6 +315,15 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
     remove_selected_button->Enable(has_selection);
     run_selected_button->Enable(has_selection &&
                                execution_queue[selected].queue_status == "pending");
+
+    // Populate the GUI with the selected item's parameters
+    if (has_selection && selected < execution_queue.size()) {
+        // Import the MatchTemplatePanel header to get access to the panel
+        extern MatchTemplatePanel* match_template_panel;
+        if (match_template_panel) {
+            match_template_panel->PopulateGuiFromQueueItem(execution_queue[selected]);
+        }
+    }
 }
 
 void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
@@ -339,14 +355,14 @@ void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
 }
 
 void TemplateMatchQueueManager::LoadQueueFromDatabase() {
-    // Only load if we need to (haven't loaded yet)
-    if (!needs_database_load) {
-        return;  // Already loaded from database
-    }
+    // TODO: Implement database loading once TEMPLATE_MATCH_LIST table is created
+    // For now, use in-memory storage only
+    needs_database_load = false;
+    return;
 
     // Load all jobs that are not complete (pending, running, failed)
     extern MyMainFrame* main_frame;
-    if (main_frame && main_frame->current_project.is_open) {
+    if (false && main_frame && main_frame->current_project.is_open) {
         execution_queue.clear();
 
         // Query for all non-complete jobs
@@ -422,9 +438,13 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
 }
 
 void TemplateMatchQueueManager::SaveQueueToDatabase() {
+    // TODO: Implement database saving once TEMPLATE_MATCH_LIST table is created
+    // For now, use in-memory storage only
+    return;
+
     // Update QUEUE_STATUS and CUSTOM_CLI_ARGS in database for all items in queue
     extern MyMainFrame* main_frame;
-    if (main_frame && main_frame->current_project.is_open) {
+    if (false && main_frame && main_frame->current_project.is_open) {
         main_frame->current_project.database.Begin();
 
         for (const auto& item : execution_queue) {

@@ -107,12 +107,15 @@ private:
     static long currently_running_id;
     bool needs_database_load;  // True if we haven't loaded from DB yet
 
+    // Pointer to main frame for database access
+    MyMainFrame* main_frame_ptr;
+
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();
     int GetSelectedRow();
 
 public:
-    TemplateMatchQueueManager(wxWindow* parent);
+    TemplateMatchQueueManager(wxWindow* parent, MyMainFrame* main_frame = nullptr);
 
     // Queue management methods
     void AddToQueue(const TemplateMatchQueueItem& item);

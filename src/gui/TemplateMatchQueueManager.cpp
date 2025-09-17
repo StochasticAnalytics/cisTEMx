@@ -12,8 +12,8 @@ BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
     EVT_DATAVIEW_ITEM_VALUE_CHANGED(wxID_ANY, TemplateMatchQueueManager::OnItemValueChanged)
 END_EVENT_TABLE()
 
-TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
-    : wxPanel(parent, wxID_ANY) {
+TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MyMainFrame* main_frame)
+    : wxPanel(parent, wxID_ANY), main_frame_ptr(main_frame) {
 
     // currently_running_id is static, initialized once
     needs_database_load = true;  // Need to load from database on first access
@@ -77,22 +77,41 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent)
 
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
     // Validate the queue item before adding
-    MyDebugAssertTrue(item.template_match_id >= 0, "Cannot add item with invalid template_match_id: %ld", item.template_match_id);
     MyDebugAssertTrue(item.image_group_id >= 0, "Cannot add item with invalid image_group_id: %d", item.image_group_id);
     MyDebugAssertTrue(item.reference_volume_asset_id >= 0, "Cannot add item with invalid reference_volume_asset_id: %d", item.reference_volume_asset_id);
     MyDebugAssertFalse(item.job_name.IsEmpty(), "Cannot add item with empty job_name");
     MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" || item.queue_status == "complete" || item.queue_status == "failed",
                      "Cannot add item with invalid queue_status: %s", item.queue_status.mb_str().data());
 
-    // Check for duplicate template_match_id in existing queue
-    for (const auto& existing_item : execution_queue) {
-        MyDebugAssertTrue(existing_item.template_match_id != item.template_match_id,
-                         "Attempted to add duplicate template_match_id %ld to queue", item.template_match_id);
-    }
+    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+        // Add item to database and get the new queue ID
+        long new_queue_id = main_frame_ptr->current_project.database.AddToTemplateMatchQueue(
+            item.job_name, item.image_group_id, item.reference_volume_asset_id,
+            item.use_gpu, item.use_fast_fft, item.symmetry,
+            item.pixel_size, item.voltage, item.spherical_aberration, item.amplitude_contrast,
+            item.defocus1, item.defocus2, item.defocus_angle, item.phase_shift,
+            item.low_resolution_limit, item.high_resolution_limit,
+            item.out_of_plane_angular_step, item.in_plane_angular_step,
+            item.defocus_search_range, item.defocus_step,
+            item.pixel_size_search_range, item.pixel_size_step,
+            item.refinement_threshold, item.ref_box_size_in_angstroms,
+            item.mask_radius, item.min_peak_radius,
+            item.xy_change_threshold, item.exclude_above_xy_threshold,
+            item.custom_cli_args);
 
-    execution_queue.push_back(item);
-    UpdateQueueDisplay();
-    SaveQueueToDatabase();
+        // Create a copy with the new database ID and add to in-memory queue
+        TemplateMatchQueueItem new_item = item;
+        new_item.template_match_id = new_queue_id;
+        execution_queue.push_back(new_item);
+
+        UpdateQueueDisplay();
+
+        // Highlight the newly added item (last item in queue)
+        if (queue_list_ctrl && execution_queue.size() > 0) {
+            int new_row = execution_queue.size() - 1;
+            queue_list_ctrl->SelectRow(new_row);
+        }
+    }
 }
 
 void TemplateMatchQueueManager::RemoveFromQueue(int index) {
@@ -105,30 +124,26 @@ void TemplateMatchQueueManager::RemoveFromQueue(int index) {
         MyDebugAssertTrue(execution_queue[index].queue_status != "running",
                          "Cannot remove currently running job (ID: %ld)", execution_queue[index].template_match_id);
 
+        // Remove from database first
+        if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+            main_frame_ptr->current_project.database.RemoveFromQueue(execution_queue[index].template_match_id);
+        }
+
         execution_queue.erase(execution_queue.begin() + index);
         UpdateQueueDisplay();
-        SaveQueueToDatabase();
     }
 }
 
 void TemplateMatchQueueManager::ClearQueue() {
-    // Only clear pending items, keep running, completed, and failed
-    auto it = execution_queue.begin();
-    while (it != execution_queue.end()) {
-        if (it->queue_status == "pending") {
-            // Also remove from database by setting status to 'cancelled'
-            extern MyMainFrame* main_frame;
-            if (main_frame && main_frame->current_project.is_open) {
-                wxString update_query = wxString::Format(
-                    "UPDATE TEMPLATE_MATCH_LIST SET QUEUE_STATUS = 'cancelled' "
-                    "WHERE TEMPLATE_MATCH_ID = %ld", it->template_match_id);
-                main_frame->current_project.database.ExecuteSQL(update_query.ToUTF8().data());
-            }
-            it = execution_queue.erase(it);
-        } else {
-            ++it;
+    // Clear all items and remove from database
+    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+        // Remove all items from database
+        for (const auto& item : execution_queue) {
+            main_frame_ptr->current_project.database.RemoveFromQueue(item.template_match_id);
         }
     }
+
+    execution_queue.clear();
     UpdateQueueDisplay();
 }
 
@@ -561,7 +576,13 @@ void TemplateMatchQueueManager::OnMoveDownClick(wxCommandEvent& event) {
 void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
     int selected = GetSelectedRow();
     if (selected >= 0) {
-        RemoveFromQueue(selected);
+        wxString job_name = execution_queue[selected].job_name;
+        wxMessageDialog dialog(this,
+                              wxString::Format("Remove job '%s' from the queue?", job_name),
+                              "Confirm Remove", wxYES_NO | wxICON_QUESTION);
+        if (dialog.ShowModal() == wxID_YES) {
+            RemoveFromQueue(selected);
+        }
     }
 }
 
@@ -639,79 +660,58 @@ void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
 }
 
 void TemplateMatchQueueManager::LoadQueueFromDatabase() {
-    // TODO: Implement database loading once TEMPLATE_MATCH_LIST table is created
-    // For now, use in-memory storage only
-    needs_database_load = false;
-    return;
-
-    // Load all jobs that are not complete (pending, running, failed)
-    extern MyMainFrame* main_frame;
-    if (false && main_frame && main_frame->current_project.is_open) {
+    MyDebugPrint("LoadQueueFromDatabase called. main_frame_ptr=%p", main_frame_ptr);
+    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+        MyDebugPrint("Loading queue from database...");
         execution_queue.clear();
 
-        // Query for all non-complete jobs
-        wxString query = "SELECT TEMPLATE_MATCH_ID, JOB_NAME, QUEUE_STATUS, CUSTOM_CLI_ARGS, "
-                        "IMAGE_ASSET_ID, REFERENCE_VOLUME_ASSET_ID, USED_SYMMETRY, "
-                        "USED_PIXEL_SIZE, USED_VOLTAGE, USED_SPHERICAL_ABERRATION, "
-                        "USED_AMPLITUDE_CONTRAST, USED_DEFOCUS1, USED_DEFOCUS2, "
-                        "USED_DEFOCUS_ANGLE, USED_PHASE_SHIFT, LOW_RESOLUTION_LIMIT, "
-                        "HIGH_RESOLUTION_LIMIT, OUT_OF_PLANE_ANGULAR_STEP, "
-                        "IN_PLANE_ANGULAR_STEP, DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
-                        "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, REFINEMENT_THRESHOLD, "
-                        "REF_BOX_SIZE_IN_ANGSTROMS, MASK_RADIUS, MIN_PEAK_RADIUS, "
-                        "XY_CHANGE_THRESHOLD, EXCLUDE_ABOVE_XY_THRESHOLD "
-                        "FROM TEMPLATE_MATCH_LIST WHERE QUEUE_STATUS != 'complete' "
-                        "ORDER BY TEMPLATE_MATCH_ID";
+        // Get all queue IDs from database in order
+        wxArrayLong queue_ids = main_frame_ptr->current_project.database.GetQueuedTemplateMatchIDs();
+        MyDebugPrint("Found %zu queue items in database", queue_ids.GetCount());
 
-        // Execute query and populate execution_queue
-        bool more_data;
-        TemplateMatchQueueItem temp_item;
+        // Load each queue item from database
+        for (size_t i = 0; i < queue_ids.GetCount(); i++) {
+            TemplateMatchQueueItem temp_item;
+            temp_item.template_match_id = queue_ids[i];
 
-        more_data = main_frame->current_project.database.BeginBatchSelect(query.ToUTF8().data());
+            // Load item details from database
+            bool success = main_frame_ptr->current_project.database.GetQueueItemByID(
+                queue_ids[i],
+                temp_item.job_name,
+                temp_item.queue_status,
+                temp_item.custom_cli_args,
+                temp_item.image_group_id,
+                temp_item.reference_volume_asset_id,
+                temp_item.use_gpu,
+                temp_item.use_fast_fft,
+                temp_item.symmetry,
+                temp_item.pixel_size,
+                temp_item.voltage,
+                temp_item.spherical_aberration,
+                temp_item.amplitude_contrast,
+                temp_item.defocus1,
+                temp_item.defocus2,
+                temp_item.defocus_angle,
+                temp_item.phase_shift,
+                temp_item.low_resolution_limit,
+                temp_item.high_resolution_limit,
+                temp_item.out_of_plane_angular_step,
+                temp_item.in_plane_angular_step,
+                temp_item.defocus_search_range,
+                temp_item.defocus_step,
+                temp_item.pixel_size_search_range,
+                temp_item.pixel_size_step,
+                temp_item.refinement_threshold,
+                temp_item.ref_box_size_in_angstroms,
+                temp_item.mask_radius,
+                temp_item.min_peak_radius,
+                temp_item.xy_change_threshold,
+                temp_item.exclude_above_xy_threshold);
 
-        while (more_data == true) {
-            more_data = main_frame->current_project.database.GetFromBatchSelect(
-                "ltttiitrrrrrrrrrrrrrrrrrrrib",
-                &temp_item.template_match_id,
-                &temp_item.job_name,
-                &temp_item.queue_status,
-                &temp_item.custom_cli_args,
-                &temp_item.image_group_id,
-                &temp_item.reference_volume_asset_id,
-                &temp_item.symmetry,
-                &temp_item.pixel_size,
-                &temp_item.voltage,
-                &temp_item.spherical_aberration,
-                &temp_item.amplitude_contrast,
-                &temp_item.defocus1,
-                &temp_item.defocus2,
-                &temp_item.defocus_angle,
-                &temp_item.phase_shift,
-                &temp_item.low_resolution_limit,
-                &temp_item.high_resolution_limit,
-                &temp_item.out_of_plane_angular_step,
-                &temp_item.in_plane_angular_step,
-                &temp_item.defocus_search_range,
-                &temp_item.defocus_step,
-                &temp_item.pixel_size_search_range,
-                &temp_item.pixel_size_step,
-                &temp_item.refinement_threshold,
-                &temp_item.ref_box_size_in_angstroms,
-                &temp_item.mask_radius,
-                &temp_item.min_peak_radius,
-                &temp_item.xy_change_threshold,
-                &temp_item.exclude_above_xy_threshold);
-
-            if (more_data == false && temp_item.template_match_id != -1) {
-                // Add the last item if it was successfully read
-                execution_queue.push_back(temp_item);
-            } else if (more_data == true) {
-                // Add the item for all other successful reads
+            if (success) {
                 execution_queue.push_back(temp_item);
             }
         }
-
-        main_frame->current_project.database.EndBatchSelect();
 
         // Mark that we've loaded from database
         needs_database_load = false;
@@ -722,29 +722,11 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
 }
 
 void TemplateMatchQueueManager::SaveQueueToDatabase() {
-    // TODO: Implement database saving once TEMPLATE_MATCH_LIST table is created
-    // For now, use in-memory storage only
-    return;
-
-    // Update QUEUE_STATUS and CUSTOM_CLI_ARGS in database for all items in queue
-    extern MyMainFrame* main_frame;
-    if (false && main_frame && main_frame->current_project.is_open) {
-        main_frame->current_project.database.Begin();
-
+    if (main_frame_ptr && main_frame_ptr->current_project.is_open) {
+        // Update status for all items in queue
         for (const auto& item : execution_queue) {
-            wxString update_query = wxString::Format(
-                "UPDATE TEMPLATE_MATCH_LIST SET QUEUE_STATUS = '%s', CUSTOM_CLI_ARGS = '%s' "
-                "WHERE TEMPLATE_MATCH_ID = %ld",
-                item.queue_status, item.custom_cli_args, item.template_match_id);
-
-            // Execute update query
-            main_frame->current_project.database.ExecuteSQL(update_query.ToUTF8().data());
+            main_frame_ptr->current_project.database.UpdateQueueStatus(item.template_match_id, item.queue_status);
         }
-
-        main_frame->current_project.database.Commit();
-
-            // After saving, we need to reload from DB next time
-        needs_database_load = true;
     }
 }
 

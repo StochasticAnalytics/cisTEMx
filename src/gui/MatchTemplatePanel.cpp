@@ -1500,3 +1500,26 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
     Update();
     Refresh();
 }
+
+bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
+    // Check if we're ready to run
+    if (running_job) {
+        wxPrintf("Cannot run queued job - another job is already running\n");
+        return false;
+    }
+
+    // Populate the GUI with the queued job's parameters
+    PopulateGuiFromQueueItem(job);
+
+    // Give the GUI a chance to update
+    wxYield();
+
+    // Trigger the template matching execution
+    wxCommandEvent fake_event;
+    StartEstimationClick(fake_event);
+
+    // Store the queue job ID so we can update its status when complete
+    // TODO: Track this job's queue ID for status updates
+
+    return true;
+}

@@ -160,14 +160,19 @@ void MatchTemplatePanel::ResetDefaults( ) {
     SymmetryComboBox->SetValue("C1");
 
     if ( main_frame->current_project.is_open ) {
-        ResumeRunCheckBox->SetValue(false);
+        // deprecated - remove: Resume run functionality replaced by Queue Manager
+        // ResumeRunCheckBox->SetValue(false);
+        // deprecated - remove: Resume run functionality replaced by Queue Manager
+        /*
         if ( match_template_results_panel->template_match_job_ids.empty( ) )
             ResumeRunCheckBox->Enable(true);
         else
             ResumeRunCheckBox->Enable(false);
+        */
     }
     else {
-        ResumeRunCheckBox->Enable(false);
+        // deprecated - remove: Resume run functionality replaced by Queue Manager
+        // ResumeRunCheckBox->Enable(false);
     }
 
 #ifdef SHOW_CISTEM_GPU_OPTIONS
@@ -391,14 +396,17 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
         GroupComboBox->Enable(false);
         StartEstimationButton->Enable(false);
         ReferenceSelectPanel->Enable(false);
-        ResumeRunCheckBox->Enable(false);
+        // deprecated - remove: Resume run functionality replaced by Queue Manager
+        // ResumeRunCheckBox->Enable(false);
     }
     else {
         if ( match_template_results_panel->template_match_job_ids.empty( ) ) {
-            ResumeRunCheckBox->Enable(true);
+            // deprecated - remove: Resume run functionality replaced by Queue Manager
+            // ResumeRunCheckBox->Enable(true);
         }
         else {
-            ResumeRunCheckBox->Enable(false);
+            // deprecated - remove: Resume run functionality replaced by Queue Manager
+            // ResumeRunCheckBox->Enable(false);
         }
 
         if ( running_job == false ) {
@@ -483,9 +491,12 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
     if ( set_up_to_resume_job ) {
         // We want to disable user inputs so the job run matches the intial state.
         enable_value = false;
-        ResumeRunCheckBox->Show(true);
-        ResumeRunCheckBox->SetValue(true);
-        ResumeRunCheckBox->Enable(true);
+        // deprecated - remove: Resume run functionality replaced by Queue Manager
+        // ResumeRunCheckBox->Show(true);
+        // deprecated - remove: Resume run functionality replaced by Queue Manager
+        // ResumeRunCheckBox->SetValue(true);
+        // deprecated - remove: Resume run functionality replaced by Queue Manager
+        // ResumeRunCheckBox->Enable(true);
         ResetAllDefaultsButton->Enable(false);
 
         // We want to set the controls to the values of the job to be resumed.
@@ -826,6 +837,8 @@ void MatchTemplatePanel::UpdateProgressBar( ) {
     TimeRemainingText->SetLabel(my_job_tracker.ReturnRemainingTime( ).Format("Time Remaining : %Hh:%Mm:%Ss"));
 }
 
+// deprecated - remove: Resume run functionality replaced by Queue Manager
+/*
 void MatchTemplatePanel::ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event) {
     if ( event.IsChecked( ) ) {
         CheckForUnfinishedWork(true, true);
@@ -834,6 +847,7 @@ void MatchTemplatePanel::ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event) {
         CheckForUnfinishedWork(false, true);
     }
 }
+*/
 
 /** 
  * This may be called when the user clicks the resume run checkbox.
@@ -888,7 +902,8 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
                                                                                      active_job_id, "Please Confirm", wxOK));
                 check_dialog->ShowModal( );
             }
-            ResumeRunCheckBox->SetValue(false);
+            // deprecated - remove: Resume run functionality replaced by Queue Manager
+        // ResumeRunCheckBox->SetValue(false);
             SetInputsForPossibleReRun(false);
         }
         else {
@@ -957,6 +972,81 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
 
     queue_dialog->ShowModal( );
     queue_dialog->Destroy( );
+}
+
+void MatchTemplatePanel::OnHeaderClickAddToQueue() {
+    // Get the active job ID from the results panel
+    int active_job_id = match_template_results_panel->ResultDataView->ReturnActiveJobID();
+
+    if (active_job_id <= 0) {
+        wxMessageBox("No active template match job selected. Please click on a result row first.",
+                     "No Active Job", wxOK | wxICON_WARNING);
+        return;
+    }
+
+    // Ask user if they want to add this job to the Queue Manager
+    wxMessageDialog dialog(this,
+                           wxString::Format("Add Template Match Job %d to Queue Manager?\n\n"
+                                            "The job will be added to the Available Jobs table where you can "
+                                            "configure parameters and move it to the execution queue.",
+                                            active_job_id),
+                           "Add to Queue Manager", wxYES_NO | wxICON_QUESTION);
+
+    if (dialog.ShowModal() == wxID_YES) {
+        // Check if this job is already in the queue
+        // TODO: Implement queue check logic
+
+        // For now, create a basic queue item from the active job
+        TemplateMatchQueueItem queue_item;
+        queue_item.template_match_id = active_job_id;
+        queue_item.job_name = wxString::Format("TM_%ld", wxDateTime::Now().GetTicks());
+        queue_item.queue_status = "pending";
+        queue_item.queue_order = -1; // Add to available jobs table
+
+        // Use existing resume logic to determine if job is complete
+        wxArrayLong unfinished_ids = CheckForUnfinishedWork(true, false);
+        if (unfinished_ids.IsEmpty()) {
+            queue_item.queue_status = "complete";
+        }
+
+        // Collect current GUI parameters for the job
+        TemplateMatchQueueItem gui_params = CollectJobParametersFromGui();
+
+        // Copy relevant parameters from GUI to queue item
+        queue_item.image_group_id = gui_params.image_group_id;
+        queue_item.reference_volume_asset_id = gui_params.reference_volume_asset_id;
+        queue_item.run_profile_id = gui_params.run_profile_id;
+        queue_item.use_gpu = gui_params.use_gpu;
+        queue_item.use_fast_fft = gui_params.use_fast_fft;
+        queue_item.symmetry = gui_params.symmetry;
+        queue_item.pixel_size = gui_params.pixel_size;
+        queue_item.voltage = gui_params.voltage;
+        queue_item.spherical_aberration = gui_params.spherical_aberration;
+        queue_item.amplitude_contrast = gui_params.amplitude_contrast;
+        queue_item.defocus1 = gui_params.defocus1;
+        queue_item.defocus2 = gui_params.defocus2;
+        queue_item.defocus_angle = gui_params.defocus_angle;
+        queue_item.phase_shift = gui_params.phase_shift;
+        queue_item.low_resolution_limit = gui_params.low_resolution_limit;
+        queue_item.high_resolution_limit = gui_params.high_resolution_limit;
+        queue_item.out_of_plane_angular_step = gui_params.out_of_plane_angular_step;
+        queue_item.in_plane_angular_step = gui_params.in_plane_angular_step;
+        queue_item.defocus_search_range = gui_params.defocus_search_range;
+        queue_item.defocus_step = gui_params.defocus_step;
+        queue_item.pixel_size_search_range = gui_params.pixel_size_search_range;
+        queue_item.pixel_size_step = gui_params.pixel_size_step;
+        queue_item.refinement_threshold = gui_params.refinement_threshold;
+        queue_item.ref_box_size_in_angstroms = gui_params.ref_box_size_in_angstroms;
+        queue_item.mask_radius = gui_params.mask_radius;
+        queue_item.min_peak_radius = gui_params.min_peak_radius;
+        queue_item.xy_change_threshold = gui_params.xy_change_threshold;
+        queue_item.exclude_above_xy_threshold = gui_params.exclude_above_xy_threshold;
+
+        // Add to queue and show queue manager
+        AddJobToQueue(queue_item, true);
+
+        wxPrintf("Added Template Match Job %d to Queue Manager\n", active_job_id);
+    }
 }
 
 void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item) {

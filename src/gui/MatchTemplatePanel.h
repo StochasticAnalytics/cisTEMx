@@ -110,13 +110,15 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
         control_to_disable->Enable(set_to);
     }
 
-    void        ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event);
+    // deprecated - remove: Resume run functionality replaced by Queue Manager
+    // void        ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event);
     wxArrayLong CheckForUnfinishedWork(bool is_checked, bool is_from_check_box);
 
     // Queue functionality
     void        OnAddToQueueClick(wxCommandEvent& event);
     void        OnOpenQueueClick(wxCommandEvent& event);
     void        PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item);
+    void        OnHeaderClickAddToQueue(); // New header click behavior for Queue Manager
     bool        RunQueuedTemplateMatch(TemplateMatchQueueItem& job);
 
     // Shared job execution methods

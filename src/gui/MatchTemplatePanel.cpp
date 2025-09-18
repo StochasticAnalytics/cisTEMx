@@ -560,9 +560,21 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 }
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
-    // Execute job directly from GUI (no queue_item needed)
-    if (!ExecuteJob()) {
-        wxMessageBox("Failed to start job", "Error", wxOK | wxICON_ERROR);
+    // Add to queue silently (without dialog), then execute
+    TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
+    long queue_id = AddJobToQueue(new_job, false);  // No dialog for direct execution
+
+    if (queue_id > 0) {
+        // Update the job with the queue ID
+        new_job.template_match_id = queue_id;
+
+        // Execute the job via unified method
+        if (!ExecuteJob(&new_job)) {
+            wxMessageBox("Failed to start job", "Error", wxOK | wxICON_ERROR);
+            return;
+        }
+    } else {
+        wxMessageBox("Failed to add job to queue", "Error", wxOK | wxICON_ERROR);
         return;
     }
 }
@@ -746,12 +758,20 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     cached_results.Clear( );
 
-    // Queue job completion is now handled by the queue manager directly
+    // Update queue status if this was a queue job
     if (running_queue_job_id > 0) {
-        wxPrintf("Queue job %ld completed\n", running_queue_job_id);
+        wxPrintf("Queue job %ld completed - updating status\n", running_queue_job_id);
+
+        // Update job status in database directly (since queue manager may not be open)
+        if (main_frame && main_frame->current_project.is_open) {
+            main_frame->current_project.database.UpdateQueueStatus(running_queue_job_id, "complete");
+        }
+
         // Clear the queue job ID
         running_queue_job_id = -1;
-        // Note: Queue continuation is handled by the queue manager that initiated this job
+
+        // Note: If queue manager is open, it should refresh to show updated status
+        // Queue continuation would need to be handled by an open queue manager instance
     }
 
     // Kill the job (in case it isn't already dead)

@@ -166,6 +166,74 @@ void TemplateMatchQueueManager::ClearQueue() {
     UpdateQueueDisplay();
 }
 
+void TemplateMatchQueueManager::SetJobPosition(int job_index, int new_position) {
+    // Validate inputs
+    MyDebugAssertTrue(job_index >= 0 && job_index < execution_queue.size(),
+                     "Invalid job_index: %d (queue size: %zu)", job_index, execution_queue.size());
+    MyDebugAssertTrue(new_position >= 1 && new_position <= execution_queue.size(),
+                     "Invalid new_position: %d (valid range: 1-%zu)", new_position, execution_queue.size());
+
+    int current_position = execution_queue[job_index].queue_order;
+    if (current_position == new_position) {
+        return; // No change needed
+    }
+
+    // Update queue orders for all affected jobs
+    if (current_position < new_position) {
+        // Moving job to a later position - decrement jobs between current and new position
+        for (auto& item : execution_queue) {
+            if (item.queue_order > current_position && item.queue_order <= new_position) {
+                item.queue_order--;
+            }
+        }
+    } else {
+        // Moving job to an earlier position - increment jobs between new and current position
+        for (auto& item : execution_queue) {
+            if (item.queue_order >= new_position && item.queue_order < current_position) {
+                item.queue_order++;
+            }
+        }
+    }
+
+    // Set the moved job to its new position
+    execution_queue[job_index].queue_order = new_position;
+
+    wxPrintf("SetJobPosition: Moved job %ld from position %d to %d\n",
+             execution_queue[job_index].template_match_id, current_position, new_position);
+}
+
+void TemplateMatchQueueManager::ProgressQueue() {
+    // Find the job with queue_order = 1 (next to run)
+    TemplateMatchQueueItem* next_job = nullptr;
+    for (auto& item : execution_queue) {
+        if (item.queue_order == 1 && item.queue_status == "pending") {
+            next_job = &item;
+            break;
+        }
+    }
+
+    if (next_job) {
+        // Set the next job to running (queue_order = 0)
+        next_job->queue_order = 0;
+        next_job->queue_status = "running";
+        currently_running_id = next_job->template_match_id;
+
+        // Decrement all other jobs' queue orders
+        for (auto& item : execution_queue) {
+            if (item.queue_order > 0) {
+                item.queue_order--;
+            }
+        }
+
+        wxPrintf("ProgressQueue: Started job %ld, decremented all other positions\n", next_job->template_match_id);
+
+        // Execute the next job
+        ExecuteJob(*next_job);
+    } else {
+        wxPrintf("ProgressQueue: No pending jobs found with queue_order = 1\n");
+    }
+}
+
 // Old MoveItem methods removed - replaced with queue order system
 
 wxColour TemplateMatchQueueManager::GetStatusColor(const wxString& status) {
@@ -246,10 +314,11 @@ int TemplateMatchQueueManager::GetSelectedRow() {
 }
 
 void TemplateMatchQueueManager::RunSelectedJob() {
-    // Populate selection queue from currently selected UI items
-    PopulateSelectionQueueFromUI();
+    // Get currently selected UI items
+    wxDataViewItemArray selected_items;
+    int selection_count = queue_list_ctrl->GetSelections(selected_items);
 
-    if (selected_jobs_for_execution.empty()) {
+    if (selection_count == 0) {
         wxMessageBox("No jobs selected for execution", "No Selection", wxOK | wxICON_WARNING);
         return;
     }
@@ -259,12 +328,31 @@ void TemplateMatchQueueManager::RunSelectedJob() {
         return;
     }
 
-    // Mark that we're starting execution to preserve selection queue
-    execution_in_progress = true;
-    wxPrintf("Starting execution of %zu selected jobs\n", selected_jobs_for_execution.size());
+    // Collect selected job indices and reorder them to start from position 1
+    std::vector<int> selected_indices;
+    for (int i = 0; i < selection_count; i++) {
+        int row = queue_list_ctrl->ItemToRow(selected_items[i]);
+        if (row != wxNOT_FOUND && row < int(execution_queue.size())) {
+            if (execution_queue[row].queue_status == "pending") {
+                selected_indices.push_back(row);
+            }
+        }
+    }
 
-    // Start executing the first job in selection queue
-    RunNextSelectedJob();
+    if (selected_indices.empty()) {
+        wxMessageBox("No pending jobs selected", "No Pending Jobs", wxOK | wxICON_WARNING);
+        return;
+    }
+
+    // Reorder selected jobs to positions 1, 2, 3, etc.
+    for (int i = 0; i < selected_indices.size(); i++) {
+        SetJobPosition(selected_indices[i], i + 1);
+    }
+
+    // Start the first job (position 1 → 0)
+    ProgressQueue();
+
+    wxPrintf("Started execution of %zu selected jobs\n", selected_indices.size());
 }
 
 // RunAllJobs method removed - use Run Selected with multi-selection instead
@@ -458,9 +546,14 @@ void TemplateMatchQueueManager::OnSetPositionClick(wxCommandEvent& event) {
         return;
     }
 
-    // TODO: Implement position reordering logic
-    wxMessageBox(wxString::Format("Would move job from position %d to %d", current_position, desired_position),
-                 "Debug", wxOK | wxICON_INFORMATION);
+    // Reorder jobs in the queue
+    SetJobPosition(selected, desired_position);
+
+    // Update display and save to database
+    UpdateQueueDisplay();
+    SaveQueueToDatabase();
+
+    wxPrintf("Moved job from position %d to %d\n", current_position, desired_position);
 }
 
 void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
@@ -737,14 +830,8 @@ void TemplateMatchQueueManager::OnJobCompleted(long template_match_id, bool succ
     // Update the display to show new status
     UpdateQueueDisplay();
 
-    // Continue with next job if we have jobs in selection queue
-    if (HasJobsInSelectionQueue()) {
-        wxPrintf("Found jobs in selection queue - continuing execution\n");
-        RunNextSelectedJob();
-    } else {
-        wxPrintf("No jobs in selection queue - execution complete\n");
-        execution_in_progress = false;  // Allow selection queue updates again
-    }
+    // Progress to next job in queue order system
+    ProgressQueue();
 }
 
 void TemplateMatchQueueManager::PopulateSelectionQueueFromUI() {

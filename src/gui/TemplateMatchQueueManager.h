@@ -131,6 +131,8 @@ public:
     void AddToQueue(const TemplateMatchQueueItem& item);
     void RemoveFromQueue(int index);
     void ClearQueue();
+    void SetJobPosition(int job_index, int new_position);
+    void ProgressQueue();  // Promote next job and decrement all others
 
     // Execution methods
     void RunSelectedJob();

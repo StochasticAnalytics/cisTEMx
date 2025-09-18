@@ -13,8 +13,9 @@ END_EVENT_TABLE()
 TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel)
     : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel), currently_running_id(-1) {
 
-    // currently_running_id is now instance variable, initialized in constructor
+    // Initialize state variables
     needs_database_load = true;  // Need to load from database on first access
+    execution_in_progress = false;  // No jobs running initially
 
     // Create the main sizer
     wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
@@ -202,6 +203,18 @@ wxColour TemplateMatchQueueManager::GetStatusColor(const wxString& status) {
 void TemplateMatchQueueManager::UpdateQueueDisplay() {
     MyDebugAssertTrue(queue_list_ctrl != nullptr, "queue_list_ctrl is null in UpdateQueueDisplay");
 
+    // Preserve current selections before rebuilding
+    wxDataViewItemArray selected_items;
+    std::vector<int> selected_template_ids;
+    int selection_count = queue_list_ctrl->GetSelections(selected_items);
+
+    for (int i = 0; i < selection_count; i++) {
+        int row = queue_list_ctrl->ItemToRow(selected_items[i]);
+        if (row != wxNOT_FOUND && row < int(execution_queue.size())) {
+            selected_template_ids.push_back(execution_queue[row].template_match_id);
+        }
+    }
+
     queue_list_ctrl->DeleteAllItems();
 
     for (size_t i = 0; i < execution_queue.size(); ++i) {
@@ -227,6 +240,20 @@ void TemplateMatchQueueManager::UpdateQueueDisplay() {
 
         queue_list_ctrl->AppendItem(data);
     }
+
+    // Restore selections after rebuilding
+    for (int template_id : selected_template_ids) {
+        for (size_t i = 0; i < execution_queue.size(); ++i) {
+            if (execution_queue[i].template_match_id == template_id) {
+                wxDataViewItem item = queue_list_ctrl->RowToItem(int(i));
+                if (item.IsOk()) {
+                    queue_list_ctrl->Select(item);
+                    wxPrintf("Restored selection for job %d (row %zu)\n", template_id, i);
+                }
+                break;
+            }
+        }
+    }
 }
 
 int TemplateMatchQueueManager::GetSelectedRow() {
@@ -250,6 +277,10 @@ void TemplateMatchQueueManager::RunSelectedJob() {
         wxMessageBox("A job is already running. Please wait for it to complete.", "Job Running", wxOK | wxICON_WARNING);
         return;
     }
+
+    // Mark that we're starting execution to preserve selection queue
+    execution_in_progress = true;
+    wxPrintf("Starting execution of %zu selected jobs\n", selected_jobs_for_execution.size());
 
     // Start executing the first job in selection queue
     RunNextSelectedJob();
@@ -446,9 +477,31 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
     MyDebugAssertTrue(remove_selected_button != nullptr, "remove_selected_button is null in OnSelectionChanged");
     MyDebugAssertTrue(run_selected_button != nullptr, "run_selected_button is null in OnSelectionChanged");
 
-    // Get current selection state using the same logic as RunSelected
-    PopulateSelectionQueueFromUI();
-    bool has_selection = !selected_jobs_for_execution.empty();
+    // Get current selection state, but don't interfere with execution queue
+    bool has_selection = false;
+    std::vector<int> current_ui_selection;  // Temporary selection for button enabling
+
+    if (!execution_in_progress) {
+        // Not executing - safe to update selection queue from UI
+        PopulateSelectionQueueFromUI();
+        has_selection = !selected_jobs_for_execution.empty();
+
+        // Copy selection queue for button logic
+        current_ui_selection.assign(selected_jobs_for_execution.begin(), selected_jobs_for_execution.end());
+    } else {
+        // Execution in progress - get current UI selection without modifying execution queue
+        wxDataViewItemArray selected_items;
+        int selection_count = queue_list_ctrl->GetSelections(selected_items);
+        has_selection = (selection_count > 0);
+
+        // Convert to template_match_ids for button logic
+        for (int i = 0; i < selection_count; i++) {
+            int row = queue_list_ctrl->ItemToRow(selected_items[i]);
+            if (row != wxNOT_FOUND && row < int(execution_queue.size())) {
+                current_ui_selection.push_back(execution_queue[row].template_match_id);
+            }
+        }
+    }
 
     // Check selection status for button enabling
     bool any_running = false;
@@ -457,8 +510,8 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
     int last_selected_index = -1;
 
     if (has_selection) {
-        // Find the queue indices for the selected template_match_ids
-        for (int template_match_id : selected_jobs_for_execution) {
+        // Find the queue indices for the currently selected template_match_ids
+        for (int template_match_id : current_ui_selection) {
             for (int i = 0; i < execution_queue.size(); i++) {
                 if (execution_queue[i].template_match_id == template_match_id) {
                     if (first_selected_index == -1) first_selected_index = i;
@@ -474,8 +527,8 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
 
     // Enable buttons based on selection and job status
     // Move operations only work with single selection and non-running jobs
-    move_up_button->Enable(selected_jobs_for_execution.size() == 1 && first_selected_index > 0 && !any_running);
-    move_down_button->Enable(selected_jobs_for_execution.size() == 1 && last_selected_index < execution_queue.size() - 1 && !any_running);
+    move_up_button->Enable(current_ui_selection.size() == 1 && first_selected_index > 0 && !any_running);
+    move_down_button->Enable(current_ui_selection.size() == 1 && last_selected_index < execution_queue.size() - 1 && !any_running);
     remove_selected_button->Enable(has_selection && !any_running);
     run_selected_button->Enable(has_selection && all_pending);
 
@@ -676,6 +729,7 @@ void TemplateMatchQueueManager::OnJobCompleted(long template_match_id, bool succ
         RunNextSelectedJob();
     } else {
         wxPrintf("No jobs in selection queue - execution complete\n");
+        execution_in_progress = false;  // Allow selection queue updates again
     }
 }
 

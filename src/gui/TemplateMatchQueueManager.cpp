@@ -22,7 +22,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Create the list control
     queue_list_ctrl = new wxDataViewListCtrl(this, wxID_ANY,
                                             wxDefaultPosition, wxSize(500, 200),
-                                            wxDV_SINGLE | wxDV_ROW_LINES);
+                                            wxDV_MULTIPLE | wxDV_ROW_LINES);
 
     // Add columns
     queue_list_ctrl->AppendTextColumn("ID", wxDATAVIEW_CELL_INERT, 60);
@@ -37,7 +37,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     move_up_button = new wxButton(button_panel, wxID_ANY, "Move Up");
     move_down_button = new wxButton(button_panel, wxID_ANY, "Move Down");
     run_selected_button = new wxButton(button_panel, wxID_ANY, "Run Selected");
-    run_all_button = new wxButton(button_panel, wxID_ANY, "Run All");
     remove_selected_button = new wxButton(button_panel, wxID_ANY, "Remove");
     clear_queue_button = new wxButton(button_panel, wxID_ANY, "Clear Queue");
 
@@ -45,7 +44,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     button_sizer->Add(move_down_button, 0, wxALL, 5);
     button_sizer->AddSpacer(20);
     button_sizer->Add(run_selected_button, 0, wxALL, 5);
-    button_sizer->Add(run_all_button, 0, wxALL, 5);
     button_sizer->AddSpacer(20);
     button_sizer->Add(remove_selected_button, 0, wxALL, 5);
     button_sizer->Add(clear_queue_button, 0, wxALL, 5);
@@ -62,7 +60,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     move_up_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnMoveUpClick, this);
     move_down_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnMoveDownClick, this);
     run_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRunSelectedClick, this);
-    run_all_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRunAllClick, this);
     remove_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRemoveSelectedClick, this);
     clear_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnClearQueueClick, this);
 
@@ -76,7 +73,10 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 }
 
 TemplateMatchQueueManager::~TemplateMatchQueueManager() {
-    // No cleanup needed with unified architecture
+    // Clear completion callback if we set one
+    if (match_template_panel_ptr) {
+        match_template_panel_ptr->ClearQueueCompletionCallback();
+    }
 }
 
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
@@ -238,67 +238,24 @@ int TemplateMatchQueueManager::GetSelectedRow() {
 }
 
 void TemplateMatchQueueManager::RunSelectedJob() {
-    int selected = GetSelectedRow();
-    if (selected >= 0 && selected < execution_queue.size()) {
-        if (execution_queue[selected].queue_status == "pending") {
-            ExecuteJob(execution_queue[selected]);
-        }
-    }
-}
+    // Populate selection queue from currently selected UI items
+    PopulateSelectionQueueFromUI();
 
-void TemplateMatchQueueManager::RunAllJobs() {
-    MyPrintWithDetails("=== RUN ALL JOBS INITIATED ===");
-
-    // Print comprehensive queue state information
-    MyDebugPrint("Queue state summary:");
-    MyDebugPrint("  Total jobs in queue: %zu", execution_queue.size());
-    MyDebugPrint("  Currently running job ID: %ld", currently_running_id);
-    MyDebugPrint("  Is job running: %s", IsJobRunning() ? "YES" : "NO");
-
-    // Count jobs by status
-    int pending_count = 0;
-    int running_count = 0;
-    int complete_count = 0;
-    int failed_count = 0;
-
-    MyDebugPrint("Individual job details:");
-    for (size_t i = 0; i < execution_queue.size(); ++i) {
-        const auto& job = execution_queue[i];
-        MyDebugPrint("  [%zu] ID:%ld Name:'%s' Status:'%s' ImageGroup:%d RefVol:%d",
-                     i, job.template_match_id, job.job_name.mb_str().data(),
-                     job.queue_status.mb_str().data(), job.image_group_id, job.reference_volume_asset_id);
-
-        if (job.queue_status == "pending") pending_count++;
-        else if (job.queue_status == "running") running_count++;
-        else if (job.queue_status == "complete") complete_count++;
-        else if (job.queue_status == "failed") failed_count++;
-    }
-
-    MyDebugPrint("Status counts: pending=%d, running=%d, complete=%d, failed=%d",
-                 pending_count, running_count, complete_count, failed_count);
-
-    // Validate preconditions for batch execution
-    if (execution_queue.empty()) {
-        MyPrintWithDetails("RunAllJobs called but queue is empty - nothing to do");
-        return;
-    }
-
-    if (pending_count == 0) {
-        MyPrintWithDetails("RunAllJobs called but no pending jobs found - nothing to do");
+    if (selected_jobs_for_execution.empty()) {
+        wxMessageBox("No jobs selected for execution", "No Selection", wxOK | wxICON_WARNING);
         return;
     }
 
     if (IsJobRunning()) {
-        MyPrintWithDetails("RunAllJobs called but job %ld is already running - deferring", currently_running_id);
+        wxMessageBox("A job is already running. Please wait for it to complete.", "Job Running", wxOK | wxICON_WARNING);
         return;
     }
 
-    MyDebugPrint("=== PROCEEDING TO START BATCH EXECUTION ===");
-
-    // Start running the first pending job
-    // When it completes, RunNextJob will be called to continue
-    RunNextJob();
+    // Start executing the first job in selection queue
+    RunNextSelectedJob();
 }
+
+// RunAllJobs method removed - use Run Selected with multi-selection instead
 
 void TemplateMatchQueueManager::RunNextJob() {
     MyPrintWithDetails("=== RUN NEXT JOB CALLED ===");
@@ -343,6 +300,9 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
     MyDebugAssertTrue(match_template_panel_ptr != nullptr, "match_template_panel_ptr is null - cannot execute jobs");
 
     if (match_template_panel_ptr) {
+        // Register this queue manager for completion callbacks
+        match_template_panel_ptr->SetQueueCompletionCallback(this);
+
         // Use TMP's unified ExecuteJob method
         wxPrintf("Executing job %ld via unified method...\n", job_to_run.template_match_id);
         bool execution_success = match_template_panel_ptr->ExecuteJob(&job_to_run);
@@ -440,9 +400,7 @@ void TemplateMatchQueueManager::OnRunSelectedClick(wxCommandEvent& event) {
     RunSelectedJob();
 }
 
-void TemplateMatchQueueManager::OnRunAllClick(wxCommandEvent& event) {
-    RunAllJobs();
-}
+// OnRunAllClick removed - use Run Selected with multi-selection instead
 
 void TemplateMatchQueueManager::OnClearQueueClick(wxCommandEvent& event) {
     wxMessageDialog dialog(this, "Clear all pending jobs from the queue?",
@@ -482,34 +440,51 @@ void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
 }
 
 void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
-    int selected = GetSelectedRow();
-    bool has_selection = (selected >= 0);
-
     // Validate GUI components are available
     MyDebugAssertTrue(move_up_button != nullptr, "move_up_button is null in OnSelectionChanged");
     MyDebugAssertTrue(move_down_button != nullptr, "move_down_button is null in OnSelectionChanged");
     MyDebugAssertTrue(remove_selected_button != nullptr, "remove_selected_button is null in OnSelectionChanged");
     MyDebugAssertTrue(run_selected_button != nullptr, "run_selected_button is null in OnSelectionChanged");
 
-    // Validate selection bounds
+    // Get current selection state using the same logic as RunSelected
+    PopulateSelectionQueueFromUI();
+    bool has_selection = !selected_jobs_for_execution.empty();
+
+    // Check selection status for button enabling
+    bool any_running = false;
+    bool all_pending = true;
+    int first_selected_index = -1;
+    int last_selected_index = -1;
+
     if (has_selection) {
-        MyDebugAssertTrue(selected < execution_queue.size(), "Selected row %d >= queue size %zu", selected, execution_queue.size());
+        // Find the queue indices for the selected template_match_ids
+        for (int template_match_id : selected_jobs_for_execution) {
+            for (int i = 0; i < execution_queue.size(); i++) {
+                if (execution_queue[i].template_match_id == template_match_id) {
+                    if (first_selected_index == -1) first_selected_index = i;
+                    last_selected_index = i;
+
+                    if (IsJobRunning(i)) any_running = true;
+                    if (!IsJobPending(i)) all_pending = false;
+                    break;
+                }
+            }
+        }
     }
 
-    move_up_button->Enable(has_selection && selected > 0);
-    move_down_button->Enable(has_selection && selected < execution_queue.size() - 1);
-    remove_selected_button->Enable(has_selection);
-    run_selected_button->Enable(has_selection &&
-                               execution_queue[selected].queue_status == "pending");
+    // Enable buttons based on selection and job status
+    // Move operations only work with single selection and non-running jobs
+    move_up_button->Enable(selected_jobs_for_execution.size() == 1 && first_selected_index > 0 && !any_running);
+    move_down_button->Enable(selected_jobs_for_execution.size() == 1 && last_selected_index < execution_queue.size() - 1 && !any_running);
+    remove_selected_button->Enable(has_selection && !any_running);
+    run_selected_button->Enable(has_selection && all_pending);
 
-    // Populate the GUI with the selected item's parameters
-    if (has_selection && selected < execution_queue.size()) {
-        // Import the MatchTemplatePanel header to get access to the panel
-        extern MatchTemplatePanel* match_template_panel;
-        MyDebugAssertTrue(match_template_panel != nullptr, "match_template_panel is null when trying to populate GUI");
+    // Populate the GUI with the first selected item's parameters
+    if (has_selection && first_selected_index >= 0 && first_selected_index < execution_queue.size()) {
+        MyDebugAssertTrue(match_template_panel_ptr != nullptr, "match_template_panel_ptr is null when trying to populate GUI");
 
-        if (match_template_panel) {
-            match_template_panel->PopulateGuiFromQueueItem(execution_queue[selected]);
+        if (match_template_panel_ptr) {
+            match_template_panel_ptr->PopulateGuiFromQueueItem(execution_queue[first_selected_index]);
         }
     }
 }
@@ -535,7 +510,7 @@ void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
     // Check if this is the CLI Args column (column 3)
     if (col == 3 && row >= 0 && row < execution_queue.size()) {
         // Don't allow editing running jobs
-        MyDebugAssertTrue(execution_queue[row].queue_status != "running",
+        MyDebugAssertTrue(!IsJobRunning(row),
                          "Cannot edit CLI args for running job (ID: %ld)", execution_queue[row].template_match_id);
 
         // Get the new value
@@ -679,4 +654,123 @@ void TemplateMatchQueueManager::ContinueQueueExecution() {
     // Continue execution using this instance
     MyDebugPrint("Continuing queue execution with next job");
     RunNextJob();
+}
+
+void TemplateMatchQueueManager::OnJobCompleted(long template_match_id, bool success) {
+    wxPrintf("Queue manager received job completion notification for job %ld (success: %s)\n",
+             template_match_id, success ? "true" : "false");
+
+    // Update job status in our queue
+    const wxString& status = success ? "complete" : "failed";
+    UpdateJobStatus(template_match_id, status);
+
+    // Clear currently running ID since job is done
+    currently_running_id = -1;
+
+    // Update the display to show new status
+    UpdateQueueDisplay();
+
+    // Continue with next job if we have jobs in selection queue
+    if (HasJobsInSelectionQueue()) {
+        wxPrintf("Found jobs in selection queue - continuing execution\n");
+        RunNextSelectedJob();
+    } else {
+        wxPrintf("No jobs in selection queue - execution complete\n");
+    }
+}
+
+void TemplateMatchQueueManager::PopulateSelectionQueueFromUI() {
+    // Clear existing selection queue
+    selected_jobs_for_execution.clear();
+
+    // Get all selected items from the UI
+    wxDataViewItemArray selected_items;
+    int selection_count = queue_list_ctrl->GetSelections(selected_items);
+
+    wxPrintf("Populating selection queue from %d selected UI items\n", selection_count);
+
+    // Add template_match_id for each selected item to execution queue
+    for (int i = 0; i < selection_count; i++) {
+        int row = queue_list_ctrl->ItemToRow(selected_items[i]);
+        if (row != wxNOT_FOUND && row < int(execution_queue.size())) {
+            int template_match_id = execution_queue[row].template_match_id;
+            selected_jobs_for_execution.push_back(template_match_id);
+            wxPrintf("  Added job %d to selection queue\n", template_match_id);
+        }
+    }
+
+    wxPrintf("Selection queue populated with %zu jobs\n", selected_jobs_for_execution.size());
+}
+
+void TemplateMatchQueueManager::RemoveJobFromSelectionQueue(int template_match_id) {
+    auto it = std::find(selected_jobs_for_execution.begin(), selected_jobs_for_execution.end(), template_match_id);
+    if (it != selected_jobs_for_execution.end()) {
+        selected_jobs_for_execution.erase(it);
+        wxPrintf("Removed job %d from selection queue (%zu remaining)\n", template_match_id, selected_jobs_for_execution.size());
+    }
+}
+
+bool TemplateMatchQueueManager::HasJobsInSelectionQueue() const {
+    return !selected_jobs_for_execution.empty();
+}
+
+void TemplateMatchQueueManager::RunNextSelectedJob() {
+    if (selected_jobs_for_execution.empty()) {
+        wxPrintf("No jobs in selection queue - execution complete\n");
+        return;
+    }
+
+    if (IsJobRunning()) {
+        wxPrintf("Job already running - cannot start next selected job\n");
+        return;
+    }
+
+    // Get next job ID from selection queue
+    int next_job_id = selected_jobs_for_execution.front();
+
+    // Find the job in the main queue
+    for (auto& job : execution_queue) {
+        if (job.template_match_id == next_job_id) {
+            if (job.queue_status == "pending") {
+                wxPrintf("Starting next selected job %d\n", next_job_id);
+
+                // Remove from selection queue (job is starting)
+                selected_jobs_for_execution.pop_front();
+
+                // Deselect the job in the UI since it's now running
+                DeselectJobInUI(next_job_id);
+
+                // Execute the job
+                ExecuteJob(job);
+                return;
+            } else {
+                wxPrintf("Skipping job %d - status is '%s', not 'pending'\n",
+                        next_job_id, job.queue_status.mb_str().data());
+                // Remove from selection queue and try next
+                selected_jobs_for_execution.pop_front();
+                RunNextSelectedJob();  // Recursive call to try next job
+                return;
+            }
+        }
+    }
+
+    // Job not found - remove from selection queue and try next
+    wxPrintf("Job %d not found in queue - removing from selection\n", next_job_id);
+    selected_jobs_for_execution.pop_front();
+    RunNextSelectedJob();  // Recursive call to try next job
+}
+
+void TemplateMatchQueueManager::DeselectJobInUI(int template_match_id) {
+    // Find the row corresponding to this job ID
+    for (size_t i = 0; i < execution_queue.size(); ++i) {
+        if (execution_queue[i].template_match_id == template_match_id) {
+            wxDataViewItem item = queue_list_ctrl->RowToItem(int(i));
+            if (item.IsOk()) {
+                queue_list_ctrl->Unselect(item);
+                wxPrintf("Deselected job %d from UI (row %zu)\n", template_match_id, i);
+            }
+            return;
+        }
+    }
+    wxPrintf("Could not find job %d to deselect in UI\n", template_match_id);
 }

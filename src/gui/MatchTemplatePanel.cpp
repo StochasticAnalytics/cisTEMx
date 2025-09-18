@@ -17,6 +17,7 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     my_job_id   = -1;
     running_job = false;
     running_queue_job_id = -1;  // Not running from queue
+    queue_completion_callback = nullptr;  // No callback initially
 
     group_combo_is_dirty   = false;
     run_profiles_are_dirty = false;
@@ -767,15 +768,22 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             main_frame->current_project.database.UpdateQueueStatus(running_queue_job_id, "complete");
         }
 
+        // Notify queue manager if callback is registered
+        if (queue_completion_callback) {
+            wxPrintf("Notifying queue manager of job completion\n");
+            queue_completion_callback->OnJobCompleted(running_queue_job_id, true);
+        }
+
         // Clear the queue job ID
         running_queue_job_id = -1;
-
-        // Note: If queue manager is open, it should refresh to show updated status
-        // Queue continuation would need to be handled by an open queue manager instance
     }
 
     // Kill the job (in case it isn't already dead)
     main_frame->job_controller.KillJob(my_job_id);
+
+    // Reset job state to allow next job to start
+    running_job = false;
+    my_job_id = -1;
 
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);
@@ -1663,4 +1671,14 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
 
     // Execute the job (current ExecuteCurrentJob logic)
     return ExecuteCurrentJob();
+}
+
+void MatchTemplatePanel::SetQueueCompletionCallback(TemplateMatchQueueManager* queue_manager) {
+    queue_completion_callback = queue_manager;
+    wxPrintf("Queue completion callback set for queue manager %p\n", queue_manager);
+}
+
+void MatchTemplatePanel::ClearQueueCompletionCallback() {
+    wxPrintf("Queue completion callback cleared\n");
+    queue_completion_callback = nullptr;
 }

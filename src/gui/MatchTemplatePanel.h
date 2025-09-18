@@ -66,6 +66,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // Queue tracking
     long running_queue_job_id;  // -1 if not running from queue
+    class TemplateMatchQueueManager* queue_completion_callback;  // For live queue updates
 
     // methods
     void WriteResultToDataBase( );
@@ -124,6 +125,10 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     bool        SetupJobFromQueueItem(const TemplateMatchQueueItem& job);
     bool        ExecuteCurrentJob();
     bool        ExecuteJob(const TemplateMatchQueueItem* queue_item = nullptr);
+
+    // Queue completion callback support
+    void        SetQueueCompletionCallback(class TemplateMatchQueueManager* queue_manager);
+    void        ClearQueueCompletionCallback();
 };
 
 #endif

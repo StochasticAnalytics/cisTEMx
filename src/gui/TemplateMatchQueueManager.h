@@ -99,7 +99,6 @@ class TemplateMatchQueueManager : public wxPanel {
 private:
     wxDataViewListCtrl* queue_list_ctrl;
     wxButton* run_selected_button;
-    wxButton* run_all_button;
     wxButton* clear_queue_button;
     wxButton* move_up_button;
     wxButton* move_down_button;
@@ -108,6 +107,9 @@ private:
     // Queue instance variables
     std::deque<TemplateMatchQueueItem> execution_queue;
     long currently_running_id;
+
+    // Selection-based execution tracking
+    std::deque<int> selected_jobs_for_execution;  // Queue IDs selected for execution
     bool needs_database_load;  // True if we haven't loaded from DB yet
 
     // Pointer to match template panel for job execution and database access
@@ -116,6 +118,7 @@ private:
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();
     int GetSelectedRow();
+    void DeselectJobInUI(int template_match_id);
 
 public:
     TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel = nullptr);
@@ -130,21 +133,50 @@ public:
 
     // Execution methods
     void RunSelectedJob();
-    void RunAllJobs();
     void RunNextJob();
+    void RunNextSelectedJob();
     bool ExecuteJob(TemplateMatchQueueItem& job_to_run);
     void UpdateJobStatus(long template_match_id, const wxString& new_status);
     void ContinueQueueExecution();
     TemplateMatchQueueItem* GetNextPendingJob();
+
+    // Job completion callback
+    void OnJobCompleted(long template_match_id, bool success);
+
+    // Selection management
+    void PopulateSelectionQueueFromUI();
+    void RemoveJobFromSelectionQueue(int template_match_id);
+    bool HasJobsInSelectionQueue() const;
     bool HasPendingJobs();
     bool IsJobRunning() const;
 
     // Validation methods
     void ValidateQueueConsistency() const;
 
+    // Inline job status helper methods
+    inline bool IsJobRunning(int queue_index) const {
+        return queue_index >= 0 && queue_index < execution_queue.size() &&
+               execution_queue[queue_index].queue_status == "running";
+    }
+
+    inline bool IsJobPending(int queue_index) const {
+        return queue_index >= 0 && queue_index < execution_queue.size() &&
+               execution_queue[queue_index].queue_status == "pending";
+    }
+
+    inline bool IsJobComplete(int queue_index) const {
+        return queue_index >= 0 && queue_index < execution_queue.size() &&
+               execution_queue[queue_index].queue_status == "complete";
+    }
+
+    inline bool IsJobFailed(int queue_index) const {
+        return queue_index >= 0 && queue_index < execution_queue.size() &&
+               execution_queue[queue_index].queue_status == "failed";
+    }
+
     // Event handlers
     void OnRunSelectedClick(wxCommandEvent& event);
-    void OnRunAllClick(wxCommandEvent& event);
+    // OnRunAllClick removed - use Run Selected with multiple selection instead
     void OnClearQueueClick(wxCommandEvent& event);
     void OnMoveUpClick(wxCommandEvent& event);
     void OnMoveDownClick(wxCommandEvent& event);

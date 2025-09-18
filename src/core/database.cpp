@@ -2952,7 +2952,7 @@ wxArrayLong Database::GetQueuedTemplateMatchIDs() {
     return queue_ids;
 }
 
-bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, wxString& custom_cli_args,
+bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, int& queue_position, wxString& custom_cli_args,
                                int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
                                float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
                                float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
@@ -2966,7 +2966,7 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& que
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
 
-    const char* sql = "SELECT JOB_NAME, QUEUE_STATUS, CUSTOM_CLI_ARGS, "
+    const char* sql = "SELECT JOB_NAME, QUEUE_STATUS, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
@@ -2994,39 +2994,40 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& que
         // Extract string values
         job_name = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
         queue_status = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
-        custom_cli_args = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
-        symmetry = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)));
+        custom_cli_args = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
+        symmetry = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
 
         // Extract integer values
-        image_group_id = sqlite3_column_int(stmt, 3);
-        reference_volume_asset_id = sqlite3_column_int(stmt, 4);
-        run_profile_id = sqlite3_column_int(stmt, 5);
-        use_gpu = sqlite3_column_int(stmt, 6) != 0;
-        use_fast_fft = sqlite3_column_int(stmt, 7) != 0;
-        exclude_above_xy_threshold = sqlite3_column_int(stmt, 30) != 0;
+        queue_position = sqlite3_column_int(stmt, 2);
+        image_group_id = sqlite3_column_int(stmt, 4);
+        reference_volume_asset_id = sqlite3_column_int(stmt, 5);
+        run_profile_id = sqlite3_column_int(stmt, 6);
+        use_gpu = sqlite3_column_int(stmt, 7) != 0;
+        use_fast_fft = sqlite3_column_int(stmt, 8) != 0;
+        exclude_above_xy_threshold = sqlite3_column_int(stmt, 31) != 0;
 
         // Extract float values
-        pixel_size = float(sqlite3_column_double(stmt, 9));
-        voltage = float(sqlite3_column_double(stmt, 10));
-        spherical_aberration = float(sqlite3_column_double(stmt, 11));
-        amplitude_contrast = float(sqlite3_column_double(stmt, 12));
-        defocus1 = float(sqlite3_column_double(stmt, 13));
-        defocus2 = float(sqlite3_column_double(stmt, 14));
-        defocus_angle = float(sqlite3_column_double(stmt, 15));
-        phase_shift = float(sqlite3_column_double(stmt, 16));
-        low_resolution_limit = float(sqlite3_column_double(stmt, 17));
-        high_resolution_limit = float(sqlite3_column_double(stmt, 18));
-        out_of_plane_angular_step = float(sqlite3_column_double(stmt, 19));
-        in_plane_angular_step = float(sqlite3_column_double(stmt, 20));
-        defocus_search_range = float(sqlite3_column_double(stmt, 21));
-        defocus_step = float(sqlite3_column_double(stmt, 22));
-        pixel_size_search_range = float(sqlite3_column_double(stmt, 23));
-        pixel_size_step = float(sqlite3_column_double(stmt, 24));
-        refinement_threshold = float(sqlite3_column_double(stmt, 25));
-        ref_box_size_in_angstroms = float(sqlite3_column_double(stmt, 26));
-        mask_radius = float(sqlite3_column_double(stmt, 27));
-        min_peak_radius = float(sqlite3_column_double(stmt, 28));
-        xy_change_threshold = float(sqlite3_column_double(stmt, 29));
+        pixel_size = float(sqlite3_column_double(stmt, 10));
+        voltage = float(sqlite3_column_double(stmt, 11));
+        spherical_aberration = float(sqlite3_column_double(stmt, 12));
+        amplitude_contrast = float(sqlite3_column_double(stmt, 13));
+        defocus1 = float(sqlite3_column_double(stmt, 14));
+        defocus2 = float(sqlite3_column_double(stmt, 15));
+        defocus_angle = float(sqlite3_column_double(stmt, 16));
+        phase_shift = float(sqlite3_column_double(stmt, 17));
+        low_resolution_limit = float(sqlite3_column_double(stmt, 18));
+        high_resolution_limit = float(sqlite3_column_double(stmt, 19));
+        out_of_plane_angular_step = float(sqlite3_column_double(stmt, 20));
+        in_plane_angular_step = float(sqlite3_column_double(stmt, 21));
+        defocus_search_range = float(sqlite3_column_double(stmt, 22));
+        defocus_step = float(sqlite3_column_double(stmt, 23));
+        pixel_size_search_range = float(sqlite3_column_double(stmt, 24));
+        pixel_size_step = float(sqlite3_column_double(stmt, 25));
+        refinement_threshold = float(sqlite3_column_double(stmt, 26));
+        ref_box_size_in_angstroms = float(sqlite3_column_double(stmt, 27));
+        mask_radius = float(sqlite3_column_double(stmt, 28));
+        min_peak_radius = float(sqlite3_column_double(stmt, 29));
+        xy_change_threshold = float(sqlite3_column_double(stmt, 30));
     }
 
     sqlite3_finalize(stmt);
@@ -3048,6 +3049,31 @@ void Database::UpdateQueueStatus(long queue_id, const wxString& status) {
     }
 
     sqlite3_bind_text(stmt, 1, status.mb_str().data(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, queue_id);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        sqlite3_finalize(stmt);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_finalize(stmt);
+}
+
+void Database::UpdateQueuePosition(long queue_id, int position) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+    MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
+    MyDebugAssertTrue(position >= 0, "Invalid position: %d", position);
+
+    const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_POSITION = ? WHERE QUEUE_ID = ?;";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_bind_int(stmt, 1, position);
     sqlite3_bind_int64(stmt, 2, queue_id);
 
     if (sqlite3_step(stmt) != SQLITE_DONE) {

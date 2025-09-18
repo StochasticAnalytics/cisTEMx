@@ -932,7 +932,7 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
 void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     // Open queue manager dialog without adding new items
     wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                          wxDefaultPosition, wxSize(600, 400),
+                                          wxDefaultPosition, wxSize(900, 700),
                                           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
     // Create queue manager for this dialog
@@ -950,6 +950,11 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
 
     queue_dialog->SetSizer(dialog_sizer);
+
+    // Force layout update for proper visibility of both tables
+    queue_dialog->Layout();
+    queue_dialog->Fit(); // Auto-size dialog to fit content
+
     queue_dialog->ShowModal( );
     queue_dialog->Destroy( );
 }
@@ -1179,7 +1184,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
     if (show_dialog) {
         // Show the queue manager with the new job
         wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                              wxDefaultPosition, wxSize(600, 400),
+                                              wxDefaultPosition, wxSize(900, 700),
                                               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
         // Create queue manager for this dialog
@@ -1201,6 +1206,11 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
 
         queue_dialog->SetSizer(dialog_sizer);
+
+        // Force layout update for proper visibility of both tables
+        queue_dialog->Layout();
+        queue_dialog->Fit(); // Auto-size dialog to fit content
+
         queue_dialog->ShowModal();
         queue_dialog->Destroy();
 

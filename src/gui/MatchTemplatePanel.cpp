@@ -1604,7 +1604,7 @@ bool MatchTemplatePanel::ExecuteCurrentJob() {
 
 bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
     // If queue_item is provided, we're being called from the queue and need to setup the job parameters.
-    // If queue_item is null, we're being called from StartEstimationClick which has already setup the GUI.
+    // If queue_item is null, we're being called from StartEstimationClick and need to setup from GUI.
     if (queue_item) {
         // Validate job parameters before execution
         MyDebugAssertTrue(queue_item->template_match_id >= 0, "Cannot execute job with invalid template_match_id: %ld", queue_item->template_match_id);
@@ -1630,6 +1630,13 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         if (!setup_success) {
             wxPrintf("Failed to setup job %ld\n", queue_item->template_match_id);
             running_queue_job_id = -1;
+            return false;
+        }
+    } else {
+        // GUI job - need to setup from current GUI state first
+        TemplateMatchQueueItem gui_job = CollectJobParametersFromGui();
+        if (!SetupJobFromQueueItem(gui_job)) {
+            wxPrintf("Failed to setup GUI job\n");
             return false;
         }
     }

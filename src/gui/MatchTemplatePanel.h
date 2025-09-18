@@ -123,6 +123,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     long        AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog = true);
     bool        SetupJobFromQueueItem(const TemplateMatchQueueItem& job);
     bool        ExecuteCurrentJob();
+    bool        ExecuteJob(const TemplateMatchQueueItem* queue_item = nullptr);
 };
 
 #endif

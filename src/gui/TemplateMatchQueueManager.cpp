@@ -253,7 +253,7 @@ void TemplateMatchQueueManager::UpdateQueueDisplay() {
 
     // Preserve current selections before rebuilding
     wxDataViewItemArray selected_items;
-    std::vector<int> selected_template_ids;
+    std::vector<long> selected_template_ids;
     int selection_count = queue_list_ctrl->GetSelections(selected_items);
 
     for (int i = 0; i < selection_count; i++) {
@@ -291,13 +291,13 @@ void TemplateMatchQueueManager::UpdateQueueDisplay() {
     }
 
     // Restore selections after rebuilding
-    for (int template_id : selected_template_ids) {
+    for (long template_id : selected_template_ids) {
         for (size_t i = 0; i < execution_queue.size(); ++i) {
             if (execution_queue[i].template_match_id == template_id) {
                 wxDataViewItem item = queue_list_ctrl->RowToItem(int(i));
                 if (item.IsOk()) {
                     queue_list_ctrl->Select(item);
-                    wxPrintf("Restored selection for job %d (row %zu)\n", template_id, i);
+                    wxPrintf("Restored selection for job %ld (row %zu)\n", template_id, i);
                 }
                 break;
             }
@@ -851,20 +851,20 @@ void TemplateMatchQueueManager::PopulateSelectionQueueFromUI() {
     for (int i = 0; i < selection_count; i++) {
         int row = queue_list_ctrl->ItemToRow(selected_items[i]);
         if (row != wxNOT_FOUND && row < int(execution_queue.size())) {
-            int template_match_id = execution_queue[row].template_match_id;
+            long template_match_id = execution_queue[row].template_match_id;
             selected_jobs_for_execution.push_back(template_match_id);
-            wxPrintf("  Added job %d to selection queue\n", template_match_id);
+            wxPrintf("  Added job %ld to selection queue\n", template_match_id);
         }
     }
 
     wxPrintf("Selection queue populated with %zu jobs\n", selected_jobs_for_execution.size());
 }
 
-void TemplateMatchQueueManager::RemoveJobFromSelectionQueue(int template_match_id) {
+void TemplateMatchQueueManager::RemoveJobFromSelectionQueue(long template_match_id) {
     auto it = std::find(selected_jobs_for_execution.begin(), selected_jobs_for_execution.end(), template_match_id);
     if (it != selected_jobs_for_execution.end()) {
         selected_jobs_for_execution.erase(it);
-        wxPrintf("Removed job %d from selection queue (%zu remaining)\n", template_match_id, selected_jobs_for_execution.size());
+        wxPrintf("Removed job %ld from selection queue (%zu remaining)\n", template_match_id, selected_jobs_for_execution.size());
     }
 }
 
@@ -884,13 +884,13 @@ void TemplateMatchQueueManager::RunNextSelectedJob() {
     }
 
     // Get next job ID from selection queue
-    int next_job_id = selected_jobs_for_execution.front();
+    long next_job_id = selected_jobs_for_execution.front();
 
     // Find the job in the main queue
     for (auto& job : execution_queue) {
         if (job.template_match_id == next_job_id) {
             if (job.queue_status == "pending") {
-                wxPrintf("Starting next selected job %d\n", next_job_id);
+                wxPrintf("Starting next selected job %ld\n", next_job_id);
 
                 // Remove from selection queue (job is starting)
                 selected_jobs_for_execution.pop_front();
@@ -902,7 +902,7 @@ void TemplateMatchQueueManager::RunNextSelectedJob() {
                 ExecuteJob(job);
                 return;
             } else {
-                wxPrintf("Skipping job %d - status is '%s', not 'pending'\n",
+                wxPrintf("Skipping job %ld - status is '%s', not 'pending'\n",
                         next_job_id, job.queue_status.mb_str().data());
                 // Remove from selection queue and try next
                 selected_jobs_for_execution.pop_front();
@@ -913,22 +913,22 @@ void TemplateMatchQueueManager::RunNextSelectedJob() {
     }
 
     // Job not found - remove from selection queue and try next
-    wxPrintf("Job %d not found in queue - removing from selection\n", next_job_id);
+    wxPrintf("Job %ld not found in queue - removing from selection\n", next_job_id);
     selected_jobs_for_execution.pop_front();
     RunNextSelectedJob();  // Recursive call to try next job
 }
 
-void TemplateMatchQueueManager::DeselectJobInUI(int template_match_id) {
+void TemplateMatchQueueManager::DeselectJobInUI(long template_match_id) {
     // Find the row corresponding to this job ID
     for (size_t i = 0; i < execution_queue.size(); ++i) {
         if (execution_queue[i].template_match_id == template_match_id) {
             wxDataViewItem item = queue_list_ctrl->RowToItem(int(i));
             if (item.IsOk()) {
                 queue_list_ctrl->Unselect(item);
-                wxPrintf("Deselected job %d from UI (row %zu)\n", template_match_id, i);
+                wxPrintf("Deselected job %ld from UI (row %zu)\n", template_match_id, i);
             }
             return;
         }
     }
-    wxPrintf("Could not find job %d to deselect in UI\n", template_match_id);
+    wxPrintf("Could not find job %ld to deselect in UI\n", template_match_id);
 }

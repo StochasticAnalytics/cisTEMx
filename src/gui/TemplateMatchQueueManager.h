@@ -111,7 +111,7 @@ private:
     long currently_running_id;
 
     // Selection-based execution tracking
-    std::deque<int> selected_jobs_for_execution;  // Queue IDs selected for execution
+    std::deque<long> selected_jobs_for_execution;  // Queue IDs selected for execution
     bool execution_in_progress;  // True while processing selection queue
     bool needs_database_load;  // True if we haven't loaded from DB yet
 
@@ -121,7 +121,7 @@ private:
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();
     int GetSelectedRow();
-    void DeselectJobInUI(int template_match_id);
+    void DeselectJobInUI(long template_match_id);
 
 public:
     TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel = nullptr);
@@ -148,7 +148,7 @@ public:
 
     // Selection management
     void PopulateSelectionQueueFromUI();
-    void RemoveJobFromSelectionQueue(int template_match_id);
+    void RemoveJobFromSelectionQueue(long template_match_id);
     bool HasJobsInSelectionQueue() const;
     bool HasPendingJobs();
     bool IsJobRunning() const;

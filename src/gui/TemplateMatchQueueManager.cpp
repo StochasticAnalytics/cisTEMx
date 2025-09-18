@@ -339,14 +339,6 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
         return false;
     }
 
-    // Update status to running
-    UpdateJobStatus(job_to_run.template_match_id, "running");
-    currently_running_id = job_to_run.template_match_id;
-
-    // Verify state change was successful
-    MyDebugAssertTrue(currently_running_id == job_to_run.template_match_id, "Failed to set currently_running_id correctly");
-    MyDebugAssertTrue(IsJobRunning(), "Job should be marked as running after status update");
-
     // Use the stored MatchTemplatePanel pointer to execute the job
     MyDebugAssertTrue(match_template_panel_ptr != nullptr, "match_template_panel_ptr is null - cannot execute jobs");
 
@@ -356,13 +348,15 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
         bool execution_success = match_template_panel_ptr->ExecuteJob(&job_to_run);
 
         if (execution_success) {
-            wxPrintf("Job %ld started successfully\n", job_to_run.template_match_id);
+            // Job executed successfully - now mark it as running and track it
+            UpdateJobStatus(job_to_run.template_match_id, "running");
+            currently_running_id = job_to_run.template_match_id;
+            wxPrintf("Job %ld started successfully and marked as running\n", job_to_run.template_match_id);
             // Job status will be updated to "complete" when the job finishes via ProcessAllJobsFinished
             return true;
         } else {
             wxPrintf("Failed to start job %ld\n", job_to_run.template_match_id);
             UpdateJobStatus(job_to_run.template_match_id, "failed");
-            currently_running_id = -1;
             return false;
         }
     } else {

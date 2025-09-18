@@ -110,6 +110,7 @@ private:
 
     // Selection-based execution tracking
     std::deque<int> selected_jobs_for_execution;  // Queue IDs selected for execution
+    bool execution_in_progress;  // True while processing selection queue
     bool needs_database_load;  // True if we haven't loaded from DB yet
 
     // Pointer to match template panel for job execution and database access

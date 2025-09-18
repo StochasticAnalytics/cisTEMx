@@ -80,8 +80,12 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Create available jobs section (bottom)
     wxStaticText* available_jobs_label = new wxStaticText(this, wxID_ANY, "Available Jobs (not queued for execution):");
     available_jobs_ctrl                = new wxListCtrl(this, wxID_ANY,
-                                                        wxDefaultPosition, wxSize(700, 200),
+                                                        wxDefaultPosition, wxSize(700, 150),
                                                         wxLC_REPORT | wxLC_SINGLE_SEL);
+
+    // Set minimum size to ensure visibility
+    available_jobs_ctrl->SetMinSize(wxSize(700, 150));
+    wxPrintf("Created available_jobs_ctrl: %p with min size 700x150\n", available_jobs_ctrl); // Debug output
 
     // Add columns to available jobs (no queue order column)
     available_jobs_ctrl->AppendColumn("ID", wxLIST_FORMAT_LEFT, 60);
@@ -101,16 +105,20 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     general_controls->SetSizer(general_sizer);
 
-    // Add all sections to main sizer (50/50 split with controls between)
+    // Add all sections to main sizer with adjusted proportions for better visibility
     main_sizer->Add(execution_queue_label, 0, wxEXPAND | wxALL, 5);
-    main_sizer->Add(execution_queue_ctrl, 1, wxEXPAND | wxALL, 5);
+    main_sizer->Add(execution_queue_ctrl, 2, wxEXPAND | wxALL, 5); // Slightly larger proportion
     main_sizer->Add(execution_controls, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(movement_controls, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(available_jobs_label, 0, wxEXPAND | wxALL, 5);
-    main_sizer->Add(available_jobs_ctrl, 1, wxEXPAND | wxALL, 5);
+    main_sizer->Add(available_jobs_ctrl, 1, wxEXPAND | wxALL, 5); // Smaller but still expandable
     main_sizer->Add(general_controls, 0, wxEXPAND | wxALL, 5);
 
     SetSizer(main_sizer);
+
+    // Force layout update - important for dialog visibility
+    Layout();
+    wxPrintf("TemplateMatchQueueManager: Layout() called\n");
 
     // Connect events
     assign_priority_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnAssignPriorityClick, this);
@@ -415,8 +423,55 @@ void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
         }
     }
 
+    // Update the available jobs table with items not in execution queue
+    UpdateAvailableJobsDisplay();
+
     // revert - Re-enable drag operations after display update is complete
     updating_display = false;
+}
+
+void TemplateMatchQueueManager::UpdateAvailableJobsDisplay() {
+    wxPrintf("UpdateAvailableJobsDisplay called\n");
+    MyDebugAssertTrue(available_jobs_ctrl != nullptr, "available_jobs_ctrl is null in UpdateAvailableJobsDisplay");
+
+    // Clear existing items
+    available_jobs_ctrl->DeleteAllItems();
+
+    // Add jobs with queue_order < 0 (not in execution queue)
+    int available_row = 0;
+    for (size_t i = 0; i < execution_queue.size(); ++i) {
+        if (execution_queue[i].queue_order < 0) {
+            // For wxListCtrl, add item with first column text then set other columns
+            long item_index = available_jobs_ctrl->InsertItem(available_row,
+                                                            wxString::Format("%ld", execution_queue[i].template_match_id));
+
+            // Set the remaining columns (no queue order column for available jobs)
+            available_jobs_ctrl->SetItem(item_index, 1, execution_queue[i].job_name);
+
+            // Add status with a colored indicator prefix
+            wxString status_display;
+            if (execution_queue[i].queue_status == "running") {
+                status_display = "● " + execution_queue[i].queue_status; // Green circle
+            }
+            else if (execution_queue[i].queue_status == "complete") {
+                status_display = "✓ " + execution_queue[i].queue_status; // Check mark
+            }
+            else if (execution_queue[i].queue_status == "failed") {
+                status_display = "✗ " + execution_queue[i].queue_status; // X mark
+            }
+            else { // pending
+                status_display = "○ " + execution_queue[i].queue_status; // Empty circle
+            }
+            available_jobs_ctrl->SetItem(item_index, 2, status_display);
+            available_jobs_ctrl->SetItem(item_index, 3, execution_queue[i].custom_cli_args);
+
+            available_row++;
+            wxPrintf("Added available job %ld: %s\n", execution_queue[i].template_match_id,
+                    execution_queue[i].job_name.mb_str().data());
+        }
+    }
+
+    wxPrintf("UpdateAvailableJobsDisplay: Added %d available jobs\n", available_row);
 }
 
 int TemplateMatchQueueManager::GetSelectedRow( ) {
@@ -822,11 +877,52 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
 
 
 void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
-    // TODO: Move selected jobs from available jobs table to execution queue
-    // For now, show placeholder message
-    wxMessageBox("Move selected jobs from Available Jobs to Execution Queue\n\n"
-                 "This will assign them queue positions and make them available to run.",
-                 "Add to Execution Queue", wxOK | wxICON_INFORMATION);
+    // Get selected jobs from available jobs table
+    std::vector<long> selected_rows;
+    long selected_item = available_jobs_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    while (selected_item != -1) {
+        selected_rows.push_back(selected_item);
+        selected_item = available_jobs_ctrl->GetNextItem(selected_item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    }
+
+    if (selected_rows.empty()) {
+        wxMessageBox("Please select jobs from the Available Jobs table to add to the execution queue.",
+                     "No Selection", wxOK | wxICON_WARNING);
+        return;
+    }
+
+    // Find the highest queue_order to append new jobs at the end
+    int next_queue_order = 0;
+    for (const auto& job : execution_queue) {
+        if (job.queue_order >= next_queue_order) {
+            next_queue_order = job.queue_order + 1;
+        }
+    }
+
+    // Move selected available jobs to execution queue
+    std::vector<long> selected_job_ids;
+    int available_row = 0;
+    for (size_t i = 0; i < execution_queue.size(); ++i) {
+        if (execution_queue[i].queue_order < 0) { // This is an available job
+            // Check if this available job row is selected
+            for (long selected_row : selected_rows) {
+                if (available_row == selected_row) {
+                    execution_queue[i].queue_order = next_queue_order++;
+                    selected_job_ids.push_back(execution_queue[i].template_match_id);
+                    wxPrintf("Moved job %ld to execution queue with order %d\n",
+                            execution_queue[i].template_match_id, execution_queue[i].queue_order);
+                    break;
+                }
+            }
+            available_row++;
+        }
+    }
+
+    if (!selected_job_ids.empty()) {
+        wxPrintf("Added %zu jobs to execution queue\n", selected_job_ids.size());
+        SaveQueueToDatabase();
+        UpdateQueueDisplay();
+    }
 }
 
 void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {

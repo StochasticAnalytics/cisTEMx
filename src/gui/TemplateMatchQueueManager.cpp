@@ -69,8 +69,8 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     wxPanel*    movement_controls = new wxPanel(this, wxID_ANY);
     wxBoxSizer* movement_sizer    = new wxBoxSizer(wxHORIZONTAL);
 
-    add_to_queue_button      = new wxButton(movement_controls, wxID_ANY, "Add to Execution Queue ↑");
-    remove_from_queue_button = new wxButton(movement_controls, wxID_ANY, "Remove from Execution Queue ↓");
+    add_to_queue_button      = new wxButton(movement_controls, wxID_ANY, "Add to Execution Queue");
+    remove_from_queue_button = new wxButton(movement_controls, wxID_ANY, "Remove from Execution Queue");
 
     movement_sizer->Add(add_to_queue_button, 0, wxALL, 5);
     movement_sizer->Add(remove_from_queue_button, 0, wxALL, 5);
@@ -282,10 +282,8 @@ void TemplateMatchQueueManager::ProgressQueue( ) {
     }
 
     if ( next_job ) {
-        // Set the next job to running (queue_order = 0)
-        next_job->queue_order  = 0;
-        next_job->queue_status = "running";
-        currently_running_id   = next_job->template_match_id;
+        // Set the next job to position 0 but keep status as "pending" until ExecuteJob succeeds
+        next_job->queue_order = 0;
 
         // Decrement all other jobs' queue orders
         for ( auto& item : execution_queue ) {
@@ -296,8 +294,14 @@ void TemplateMatchQueueManager::ProgressQueue( ) {
 
         wxPrintf("ProgressQueue: Started job %ld, decremented all other positions\n", next_job->template_match_id);
 
-        // Execute the next job
-        ExecuteJob(*next_job);
+        // Execute the next job - ExecuteJob will set currently_running_id on success
+        if (ExecuteJob(*next_job)) {
+            wxPrintf("ProgressQueue: Job %ld execution started successfully\n", next_job->template_match_id);
+        } else {
+            // If execution failed, reset the job status
+            next_job->queue_status = "failed";
+            wxPrintf("ProgressQueue: Job %ld execution failed\n", next_job->template_match_id);
+        }
     }
     else {
         wxPrintf("ProgressQueue: No pending jobs found with queue_order = 1\n");
@@ -1079,8 +1083,12 @@ void TemplateMatchQueueManager::SaveQueueToDatabase( ) {
         // Update status and queue position for all items in queue
         for ( const auto& item : execution_queue ) {
             main_frame->current_project.database.UpdateQueueStatus(item.template_match_id, item.queue_status);
-            // Also update queue position - we'll need to add this method to database
-            main_frame->current_project.database.UpdateQueuePosition(item.template_match_id, item.queue_order);
+
+            // Only update queue position for jobs actually in the execution queue (queue_order >= 0)
+            // Jobs with queue_order = -1 are in the available jobs table and shouldn't have positions
+            if ( item.queue_order >= 0 ) {
+                main_frame->current_project.database.UpdateQueuePosition(item.template_match_id, item.queue_order);
+            }
         }
     }
 }

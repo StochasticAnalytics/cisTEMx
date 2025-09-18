@@ -105,10 +105,9 @@ private:
     wxButton* move_down_button;
     wxButton* remove_selected_button;
 
-    // Use static queue to persist across dialog instances
-    static std::deque<TemplateMatchQueueItem> execution_queue;
-    static long currently_running_id;
-    static TemplateMatchQueueManager* active_instance;  // For static method access
+    // Queue instance variables
+    std::deque<TemplateMatchQueueItem> execution_queue;
+    long currently_running_id;
     bool needs_database_load;  // True if we haven't loaded from DB yet
 
     // Pointer to match template panel for job execution and database access
@@ -135,13 +134,10 @@ public:
     void RunNextJob();
     bool ExecuteJob(TemplateMatchQueueItem& job_to_run);
     void UpdateJobStatus(long template_match_id, const wxString& new_status);
-    static void UpdateJobStatusStatic(long template_match_id, const wxString& new_status);
-    static void SetCurrentlyRunningIdStatic(long template_match_id);
-    static void ContinueQueueExecution();
+    void ContinueQueueExecution();
     TemplateMatchQueueItem* GetNextPendingJob();
     bool HasPendingJobs();
-    bool IsJobRunning();
-    static bool IsJobRunningStatic();
+    bool IsJobRunning() const;
 
     // Validation methods
     void ValidateQueueConsistency() const;

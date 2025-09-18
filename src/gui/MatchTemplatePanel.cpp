@@ -560,41 +560,11 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 }
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
-    // New queue-based architecture:
-    // 1. Add to queue (without dialog)
-    // 2. Setup job from queue item
-    // 3. Execute job
-
-    // Step 1: Add to queue without dialog and capture queue ID
-    TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
-    long queue_id = AddJobToQueue(new_job, false);  // No dialog for direct execution
-
-    // Set the running queue job ID so we can update status when complete
-    if (queue_id > 0) {
-        running_queue_job_id = queue_id;
-        // Also update the job object with the queue ID for consistency
-        new_job.template_match_id = queue_id;
-        // Set the static currently_running_id so the queue manager knows what's running
-        TemplateMatchQueueManager::SetCurrentlyRunningIdStatic(queue_id);
-        // TODO: Remove once unified architecture eliminates need for static sync
-        wxPrintf("Set running_queue_job_id to %ld for job run from Start Estimate\n", queue_id);
-    } else {
-        wxPrintf("Warning: Failed to get valid queue ID from AddJobToQueue\n");
-    }
-
-    // Step 2: Setup job using extracted method
-    if (!SetupJobFromQueueItem(new_job)) {
-        wxMessageBox("Failed to setup job", "Error", wxOK | wxICON_ERROR);
-        return;
-    }
-
-    // Step 3: Execute job using extracted method
-    if (!ExecuteCurrentJob()) {
+    // Execute job directly from GUI (no queue_item needed)
+    if (!ExecuteJob()) {
         wxMessageBox("Failed to start job", "Error", wxOK | wxICON_ERROR);
         return;
     }
-
-    // The rest of the original method is now handled by the extracted methods
 }
 
 void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
@@ -776,16 +746,12 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     cached_results.Clear( );
 
-    // If this job was run from the queue, update its status and continue with next job
+    // Queue job completion is now handled by the queue manager directly
     if (running_queue_job_id > 0) {
-        // Update the queue manager that the job is complete
-        TemplateMatchQueueManager::UpdateJobStatusStatic(running_queue_job_id, "complete");
-
+        wxPrintf("Queue job %ld completed\n", running_queue_job_id);
         // Clear the queue job ID
         running_queue_job_id = -1;
-
-        // Continue with the next pending job in the queue
-        TemplateMatchQueueManager::ContinueQueueExecution();
+        // Note: Queue continuation is handled by the queue manager that initiated this job
     }
 
     // Kill the job (in case it isn't already dead)
@@ -1634,4 +1600,40 @@ bool MatchTemplatePanel::ExecuteCurrentJob() {
     }
 
     return false;
+}
+
+bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
+    // If queue_item is provided, we're being called from the queue and need to setup the job parameters.
+    // If queue_item is null, we're being called from StartEstimationClick which has already setup the GUI.
+    if (queue_item) {
+        // Validate job parameters before execution
+        MyDebugAssertTrue(queue_item->template_match_id >= 0, "Cannot execute job with invalid template_match_id: %ld", queue_item->template_match_id);
+        MyDebugAssertTrue(queue_item->queue_status == "pending", "Cannot execute job with status '%s', must be 'pending'", queue_item->queue_status.mb_str().data());
+        MyDebugAssertFalse(queue_item->job_name.IsEmpty(), "Cannot execute job with empty job_name");
+        MyDebugAssertTrue(queue_item->image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
+        MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);
+
+        // Check if another job is already running
+        if (running_job) {
+            wxMessageBox("A job is already running. Please wait for it to complete.",
+                        "Job Running", wxOK | wxICON_WARNING);
+            return false;
+        }
+
+        // Store the queue job ID so we can update its status when complete
+        running_queue_job_id = queue_item->template_match_id;
+
+        // Setup job from queue item
+        wxPrintf("Setting up job %ld from queue item...\n", queue_item->template_match_id);
+        bool setup_success = SetupJobFromQueueItem(*queue_item);
+
+        if (!setup_success) {
+            wxPrintf("Failed to setup job %ld\n", queue_item->template_match_id);
+            running_queue_job_id = -1;
+            return false;
+        }
+    }
+
+    // Execute the job (current ExecuteCurrentJob logic)
+    return ExecuteCurrentJob();
 }

@@ -2,10 +2,7 @@
 #include "TemplateMatchQueueManager.h"
 #include "MatchTemplatePanel.h"
 
-// Define static members
-std::deque<TemplateMatchQueueItem> TemplateMatchQueueManager::execution_queue;
-long TemplateMatchQueueManager::currently_running_id = -1;
-TemplateMatchQueueManager* TemplateMatchQueueManager::active_instance = nullptr;
+// No more static members needed with unified architecture
 
 BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
     EVT_BUTTON(wxID_ANY, TemplateMatchQueueManager::OnRunSelectedClick)
@@ -14,9 +11,9 @@ BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
 END_EVENT_TABLE()
 
 TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel)
-    : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel) {
+    : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel), currently_running_id(-1) {
 
-    // currently_running_id is static, initialized once
+    // currently_running_id is now instance variable, initialized in constructor
     needs_database_load = true;  // Need to load from database on first access
 
     // Create the main sizer
@@ -72,18 +69,14 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Don't load from database in constructor - it may be called during workflow switch
     // when main_frame is in an inconsistent state
 
-    // Set this as the active instance for static method access
-    active_instance = this;
+    // No longer need active instance tracking with unified architecture
 
     // Display any existing queue items
     UpdateQueueDisplay();
 }
 
 TemplateMatchQueueManager::~TemplateMatchQueueManager() {
-    // Clear the active instance pointer if this is the active instance
-    if (active_instance == this) {
-        active_instance = nullptr;
-    }
+    // No cleanup needed with unified architecture
 }
 
 void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
@@ -336,12 +329,7 @@ void TemplateMatchQueueManager::RunNextJob() {
 }
 
 bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
-    // Validate job parameters before execution
-    MyDebugAssertTrue(job_to_run.template_match_id >= 0, "Cannot execute job with invalid template_match_id: %ld", job_to_run.template_match_id);
-    MyDebugAssertTrue(job_to_run.queue_status == "pending", "Cannot execute job with status '%s', must be 'pending'", job_to_run.queue_status.mb_str().data());
-    MyDebugAssertFalse(job_to_run.job_name.IsEmpty(), "Cannot execute job with empty job_name");
-    MyDebugAssertTrue(job_to_run.image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", job_to_run.image_group_id);
-    MyDebugAssertTrue(job_to_run.reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", job_to_run.reference_volume_asset_id);
+    // Basic validation moved to TMP's ExecuteJob method
 
     // Check if another job is already running
     MyDebugAssertFalse(IsJobRunning(), "Attempted to execute job %ld while job %ld is already running", job_to_run.template_match_id, currently_running_id);
@@ -363,36 +351,18 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
     MyDebugAssertTrue(match_template_panel_ptr != nullptr, "match_template_panel_ptr is null - cannot execute jobs");
 
     if (match_template_panel_ptr) {
-        // Store the queue job ID so we can update its status when complete
-        match_template_panel_ptr->running_queue_job_id = job_to_run.template_match_id;
+        // Use TMP's unified ExecuteJob method
+        wxPrintf("Executing job %ld via unified method...\n", job_to_run.template_match_id);
+        bool execution_success = match_template_panel_ptr->ExecuteJob(&job_to_run);
 
-        // Use the same 2-step process as StartEstimationClick:
-        // 1. Setup job from queue item
-        // 2. Execute current job
-
-        wxPrintf("Setting up job %ld from queue item...\n", job_to_run.template_match_id);
-        bool setup_success = match_template_panel_ptr->SetupJobFromQueueItem(job_to_run);
-
-        if (setup_success) {
-            wxPrintf("Executing job %ld...\n", job_to_run.template_match_id);
-            bool execution_success = match_template_panel_ptr->ExecuteCurrentJob();
-
-            if (execution_success) {
-                wxPrintf("Job %ld started successfully\n", job_to_run.template_match_id);
-                // Job status will be updated to "complete" when the job finishes via ProcessAllJobsFinished
-                return true;
-            } else {
-                wxPrintf("Failed to start job %ld\n", job_to_run.template_match_id);
-                UpdateJobStatus(job_to_run.template_match_id, "failed");
-                currently_running_id = -1;
-                match_template_panel_ptr->running_queue_job_id = -1;
-                return false;
-            }
+        if (execution_success) {
+            wxPrintf("Job %ld started successfully\n", job_to_run.template_match_id);
+            // Job status will be updated to "complete" when the job finishes via ProcessAllJobsFinished
+            return true;
         } else {
-            wxPrintf("Failed to setup job %ld\n", job_to_run.template_match_id);
+            wxPrintf("Failed to start job %ld\n", job_to_run.template_match_id);
             UpdateJobStatus(job_to_run.template_match_id, "failed");
             currently_running_id = -1;
-            match_template_panel_ptr->running_queue_job_id = -1;
             return false;
         }
     } else {
@@ -403,16 +373,14 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
         currently_running_id = -1;
     }
 
-    return true;
+    return false;
 }
 
-bool TemplateMatchQueueManager::IsJobRunning() {
+bool TemplateMatchQueueManager::IsJobRunning() const {
     return currently_running_id != -1;
 }
 
-bool TemplateMatchQueueManager::IsJobRunningStatic() {
-    return currently_running_id != -1;
-}
+// IsJobRunningStatic removed - no longer needed with unified architecture
 
 void TemplateMatchQueueManager::UpdateJobStatus(long template_match_id, const wxString& new_status) {
     MyDebugAssertTrue(template_match_id >= 0, "Invalid template_match_id in UpdateJobStatus: %ld", template_match_id);
@@ -449,53 +417,7 @@ void TemplateMatchQueueManager::UpdateJobStatus(long template_match_id, const wx
     SaveQueueToDatabase();
 }
 
-void TemplateMatchQueueManager::SetCurrentlyRunningIdStatic(long template_match_id) {
-    MyDebugAssertTrue(template_match_id >= 0, "Invalid template_match_id in SetCurrentlyRunningIdStatic: %ld", template_match_id);
-
-    wxPrintf("SetCurrentlyRunningIdStatic: setting currently_running_id from %ld to %ld\n",
-             currently_running_id, template_match_id);
-
-    currently_running_id = template_match_id;
-}
-
-void TemplateMatchQueueManager::UpdateJobStatusStatic(long template_match_id, const wxString& new_status) {
-    MyDebugAssertTrue(template_match_id >= 0, "Invalid template_match_id in UpdateJobStatusStatic: %ld", template_match_id);
-    MyDebugAssertTrue(new_status == "pending" || new_status == "running" || new_status == "complete" || new_status == "failed",
-                     "Invalid new_status in UpdateJobStatusStatic: %s", new_status.mb_str().data());
-
-    // This method is typically called from job completion callbacks
-    // Most common case is running -> complete/failed
-    if (new_status == "complete" || new_status == "failed") {
-        MyDebugAssertTrue(currently_running_id == template_match_id,
-                         "Job completion for %ld but currently_running_id is %ld", template_match_id, currently_running_id);
-    }
-
-    bool found_job = false;
-    for (auto& item : execution_queue) {
-        if (item.template_match_id == template_match_id) {
-            // Basic transition validation
-            MyDebugAssertTrue(item.queue_status != new_status, "Static update: Attempted to set status to same value: %s", new_status.mb_str().data());
-
-            item.queue_status = new_status;
-            found_job = true;
-            // Can't call UpdateQueueDisplay() here as we don't have a UI instance
-            // The next time a queue manager is opened, it will show the updated status
-            break;
-        }
-    }
-
-    MyDebugAssertTrue(found_job, "Static update: Job with template_match_id %ld not found in queue", template_match_id);
-
-    // Clear the currently running ID if this job was running and is now complete/failed
-    if (currently_running_id == template_match_id &&
-        (new_status == "complete" || new_status == "failed")) {
-        currently_running_id = -1;
-        MyDebugAssertTrue(currently_running_id == -1, "currently_running_id should be cleared after job completion");
-    }
-
-    // TODO: Check if there are any running queue manager instances and trigger next job
-    // For now, this will be handled when the queue manager is opened again
-}
+// Static methods removed - no longer needed with unified architecture
 
 TemplateMatchQueueItem* TemplateMatchQueueManager::GetNextPendingJob() {
     MyDebugAssertFalse(IsJobRunning(), "GetNextPendingJob called while job %ld is running", currently_running_id);
@@ -743,29 +665,24 @@ void TemplateMatchQueueManager::ValidateQueueConsistency() const {
     if (running_jobs_count == 1) {
         MyDebugAssertTrue(currently_running_id == found_running_id,
                          "currently_running_id (%ld) doesn't match running job ID (%ld)", currently_running_id, found_running_id);
-        MyDebugAssertTrue(IsJobRunningStatic(), "IsJobRunning() returns false but running job exists");
+        MyDebugAssertTrue(IsJobRunning(), "IsJobRunning() returns false but running job exists");
     } else {
         MyDebugAssertTrue(currently_running_id == -1, "currently_running_id is %ld but no running jobs found", currently_running_id);
-        MyDebugAssertFalse(IsJobRunningStatic(), "IsJobRunning() returns true but no running jobs found");
+        MyDebugAssertFalse(IsJobRunning(), "IsJobRunning() returns true but no running jobs found");
     }
 }
 
 void TemplateMatchQueueManager::ContinueQueueExecution() {
-    // Static method to continue queue execution after a job completes
+    // Instance method to continue queue execution after a job completes
     // This is called from ProcessAllJobsFinished to continue with the next job
 
-    if (IsJobRunningStatic()) {
+    if (IsJobRunning()) {
         // A job is already running, don't start another
         MyDebugPrint("Job is still running, not continuing queue execution");
         return;
     }
 
-    // Use the active instance to continue execution
-    if (active_instance != nullptr) {
-        MyDebugPrint("Using active queue manager instance to continue execution");
-        active_instance->RunNextJob();
-    } else {
-        MyDebugPrint("No active queue manager instance - cannot continue execution");
-        MyDebugPrint("This may happen if the queue dialog was closed");
-    }
+    // Continue execution using this instance
+    MyDebugPrint("Continuing queue execution with next job");
+    RunNextJob();
 }

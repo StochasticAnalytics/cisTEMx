@@ -99,12 +99,27 @@ public:
 
 class TemplateMatchQueueManager : public wxPanel {
 private:
-    wxDataViewListCtrl* queue_list_ctrl;
+    // Execution queue table (top) - shows jobs with queue_order >= 0
+    wxListCtrl* execution_queue_ctrl;
+
+    // Available jobs table (bottom) - shows jobs with queue_order < 0
+    wxListCtrl* available_jobs_ctrl;
+
+    // Legacy support - will point to execution_queue_ctrl for compatibility
+    wxListCtrl* queue_list_ctrl;
+
+    // Execution queue controls
     wxButton* run_selected_button;
-    wxButton* clear_queue_button;
-    wxTextCtrl* position_input;
-    wxButton* set_position_button;
+    wxButton* cancel_run_button;
+    wxButton* assign_priority_button;
+
+    // Table movement controls
+    wxButton* add_to_queue_button;
+    wxButton* remove_from_queue_button;
+
+    // General controls
     wxButton* remove_selected_button;
+    wxButton* clear_queue_button;
 
     // Queue instance variables
     std::deque<TemplateMatchQueueItem> execution_queue;
@@ -118,8 +133,18 @@ private:
     // Pointer to match template panel for job execution and database access
     MatchTemplatePanel* match_template_panel_ptr;
 
+    // Manual drag-and-drop state tracking for wxListCtrl
+    bool drag_in_progress;
+    bool updating_display;  // Prevent drag operations during display updates
+    int dragged_row;
+    long dragged_job_id;
+    wxPoint drag_start_pos;  // Mouse position where drag started
+    bool mouse_down;         // Track if mouse is currently down
+
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();
+    void UpdateExecutionQueueDisplay();
+    void UpdateAvailableJobsDisplay();
     int GetSelectedRow();
     void DeselectJobInUI(long template_match_id);
 
@@ -180,10 +205,24 @@ public:
     // Event handlers
     void OnRunSelectedClick(wxCommandEvent& event);
     void OnClearQueueClick(wxCommandEvent& event);
-    void OnSetPositionClick(wxCommandEvent& event);
     void OnRemoveSelectedClick(wxCommandEvent& event);
-    void OnSelectionChanged(wxDataViewEvent& event);
-    void OnItemValueChanged(wxDataViewEvent& event);
+    void OnSelectionChanged(wxListEvent& event);
+
+    // Drag-and-drop event handlers
+    void OnAssignPriorityClick(wxCommandEvent& event);
+    void OnCancelRunClick(wxCommandEvent& event);
+
+    // Dual-table event handlers
+    void OnAddToQueueClick(wxCommandEvent& event);
+    void OnRemoveFromQueueClick(wxCommandEvent& event);
+
+    // Manual drag-and-drop implementation for wxListCtrl
+    void OnBeginDrag(wxListEvent& event);
+    void OnMouseLeftDown(wxMouseEvent& event);
+    void OnMouseMotion(wxMouseEvent& event);
+    void OnMouseLeftUp(wxMouseEvent& event);
+    void ReorderQueueItems(int old_position, int new_position);  // Helper to reorder items
+    void CleanupDragState();  // Helper to reset drag state
 
     // Load/Save queue from database
     void LoadQueueFromDatabase();

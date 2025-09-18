@@ -26,6 +26,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
                                             wxDV_MULTIPLE | wxDV_ROW_LINES);
 
     // Add columns
+    queue_list_ctrl->AppendTextColumn("Queue Order", wxDATAVIEW_CELL_INERT, 80);
     queue_list_ctrl->AppendTextColumn("ID", wxDATAVIEW_CELL_INERT, 60);
     queue_list_ctrl->AppendTextColumn("Job Name", wxDATAVIEW_CELL_INERT, 200);
     queue_list_ctrl->AppendTextColumn("Status", wxDATAVIEW_CELL_INERT, 100);
@@ -35,14 +36,18 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     wxPanel* button_panel = new wxPanel(this, wxID_ANY);
     wxBoxSizer* button_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    move_up_button = new wxButton(button_panel, wxID_ANY, "Move Up");
-    move_down_button = new wxButton(button_panel, wxID_ANY, "Move Down");
+    // Create position setting controls
+    wxStaticText* position_label = new wxStaticText(button_panel, wxID_ANY, "Queue Position:");
+    position_input = new wxTextCtrl(button_panel, wxID_ANY, "", wxDefaultPosition, wxSize(60, -1));
+    set_position_button = new wxButton(button_panel, wxID_ANY, "Set Position");
+
     run_selected_button = new wxButton(button_panel, wxID_ANY, "Run Selected");
     remove_selected_button = new wxButton(button_panel, wxID_ANY, "Remove");
     clear_queue_button = new wxButton(button_panel, wxID_ANY, "Clear Queue");
 
-    button_sizer->Add(move_up_button, 0, wxALL, 5);
-    button_sizer->Add(move_down_button, 0, wxALL, 5);
+    button_sizer->Add(position_label, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+    button_sizer->Add(position_input, 0, wxALL, 5);
+    button_sizer->Add(set_position_button, 0, wxALL, 5);
     button_sizer->AddSpacer(20);
     button_sizer->Add(run_selected_button, 0, wxALL, 5);
     button_sizer->AddSpacer(20);
@@ -58,8 +63,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     SetSizer(main_sizer);
 
     // Connect events
-    move_up_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnMoveUpClick, this);
-    move_down_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnMoveDownClick, this);
+    set_position_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnSetPositionClick, this);
     run_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRunSelectedClick, this);
     remove_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRemoveSelectedClick, this);
     clear_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnClearQueueClick, this);
@@ -104,9 +108,19 @@ void TemplateMatchQueueManager::AddToQueue(const TemplateMatchQueueItem& item) {
             item.xy_change_threshold, item.exclude_above_xy_threshold,
             item.custom_cli_args);
 
-        // Create a copy with the new database ID and add to in-memory queue
+        // Create a copy with the new database ID and assign queue order
         TemplateMatchQueueItem new_item = item;
         new_item.template_match_id = new_queue_id;
+
+        // Assign next available queue order (find highest current order + 1)
+        int max_order = 0;
+        for (const auto& existing_item : execution_queue) {
+            if (existing_item.queue_order > max_order) {
+                max_order = existing_item.queue_order;
+            }
+        }
+        new_item.queue_order = max_order + 1;
+
         execution_queue.push_back(new_item);
 
         UpdateQueueDisplay();
@@ -152,41 +166,7 @@ void TemplateMatchQueueManager::ClearQueue() {
     UpdateQueueDisplay();
 }
 
-void TemplateMatchQueueManager::MoveItemUp(int index) {
-    MyDebugAssertTrue(index > 0, "MoveItemUp called with index %d, must be > 0", index);
-    MyDebugAssertTrue(index < execution_queue.size(), "MoveItemUp called with index %d >= queue size %zu", index, execution_queue.size());
-    MyDebugAssertFalse(execution_queue.empty(), "Cannot move items in empty queue");
-
-    if (index > 0 && index < execution_queue.size()) {
-        // Don't allow moving running jobs
-        MyDebugAssertTrue(execution_queue[index].queue_status != "running" && execution_queue[index - 1].queue_status != "running",
-                         "Cannot move running jobs (current: %s, target: %s)",
-                         execution_queue[index].queue_status.mb_str().data(),
-                         execution_queue[index - 1].queue_status.mb_str().data());
-
-        std::swap(execution_queue[index], execution_queue[index - 1]);
-        UpdateQueueDisplay();
-        SaveQueueToDatabase();
-    }
-}
-
-void TemplateMatchQueueManager::MoveItemDown(int index) {
-    MyDebugAssertTrue(index >= 0, "MoveItemDown called with negative index: %d", index);
-    MyDebugAssertTrue(index < execution_queue.size() - 1, "MoveItemDown called with index %d, must be < %zu", index, execution_queue.size() - 1);
-    MyDebugAssertFalse(execution_queue.empty(), "Cannot move items in empty queue");
-
-    if (index >= 0 && index < execution_queue.size() - 1) {
-        // Don't allow moving running jobs
-        MyDebugAssertTrue(execution_queue[index].queue_status != "running" && execution_queue[index + 1].queue_status != "running",
-                         "Cannot move running jobs (current: %s, target: %s)",
-                         execution_queue[index].queue_status.mb_str().data(),
-                         execution_queue[index + 1].queue_status.mb_str().data());
-
-        std::swap(execution_queue[index], execution_queue[index + 1]);
-        UpdateQueueDisplay();
-        SaveQueueToDatabase();
-    }
-}
+// Old MoveItem methods removed - replaced with queue order system
 
 wxColour TemplateMatchQueueManager::GetStatusColor(const wxString& status) {
     if (status == "running") {
@@ -220,6 +200,7 @@ void TemplateMatchQueueManager::UpdateQueueDisplay() {
     for (size_t i = 0; i < execution_queue.size(); ++i) {
         MyDebugAssertTrue(i < execution_queue.size(), "Queue index %zu out of bounds (size: %zu)", i, execution_queue.size());
         wxVector<wxVariant> data;
+        data.push_back(wxString::Format("%d", execution_queue[i].queue_order));
         data.push_back(wxString::Format("%ld", execution_queue[i].template_match_id));
         data.push_back(execution_queue[i].job_name);
 
@@ -441,20 +422,45 @@ void TemplateMatchQueueManager::OnClearQueueClick(wxCommandEvent& event) {
     }
 }
 
-void TemplateMatchQueueManager::OnMoveUpClick(wxCommandEvent& event) {
+void TemplateMatchQueueManager::OnSetPositionClick(wxCommandEvent& event) {
     int selected = GetSelectedRow();
-    if (selected > 0) {
-        MoveItemUp(selected);
-        queue_list_ctrl->SelectRow(selected - 1);
+    if (selected < 0) {
+        wxMessageBox("Please select a job to reposition.", "No Selection", wxOK | wxICON_WARNING);
+        return;
     }
-}
 
-void TemplateMatchQueueManager::OnMoveDownClick(wxCommandEvent& event) {
-    int selected = GetSelectedRow();
-    if (selected >= 0 && selected < execution_queue.size() - 1) {
-        MoveItemDown(selected);
-        queue_list_ctrl->SelectRow(selected + 1);
+    // Get the desired position from input
+    wxString position_text = position_input->GetValue();
+    long desired_position;
+    if (!position_text.ToLong(&desired_position)) {
+        wxMessageBox("Please enter a valid integer position.", "Invalid Input", wxOK | wxICON_ERROR);
+        return;
     }
+
+    // Validate position range
+    int queue_size = execution_queue.size();
+    if (desired_position < 1 || desired_position > queue_size) {
+        wxMessageBox(wxString::Format("Position must be between 1 and %d", queue_size),
+                     "Invalid Range", wxOK | wxICON_ERROR);
+        return;
+    }
+
+    // Don't allow reordering running jobs
+    if (execution_queue[selected].queue_status == "running") {
+        wxMessageBox("Cannot reorder running jobs.", "Job Running", wxOK | wxICON_WARNING);
+        return;
+    }
+
+    // Get current job and its current position
+    int current_position = execution_queue[selected].queue_order;
+    if (current_position == desired_position) {
+        // No change needed
+        return;
+    }
+
+    // TODO: Implement position reordering logic
+    wxMessageBox(wxString::Format("Would move job from position %d to %d", current_position, desired_position),
+                 "Debug", wxOK | wxICON_INFORMATION);
 }
 
 void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
@@ -472,8 +478,8 @@ void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
 
 void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
     // Validate GUI components are available
-    MyDebugAssertTrue(move_up_button != nullptr, "move_up_button is null in OnSelectionChanged");
-    MyDebugAssertTrue(move_down_button != nullptr, "move_down_button is null in OnSelectionChanged");
+    MyDebugAssertTrue(position_input != nullptr, "position_input is null in OnSelectionChanged");
+    MyDebugAssertTrue(set_position_button != nullptr, "set_position_button is null in OnSelectionChanged");
     MyDebugAssertTrue(remove_selected_button != nullptr, "remove_selected_button is null in OnSelectionChanged");
     MyDebugAssertTrue(run_selected_button != nullptr, "run_selected_button is null in OnSelectionChanged");
 
@@ -525,12 +531,20 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxDataViewEvent& event) {
         }
     }
 
-    // Enable buttons based on selection and job status
-    // Move operations only work with single selection and non-running jobs
-    move_up_button->Enable(current_ui_selection.size() == 1 && first_selected_index > 0 && !any_running);
-    move_down_button->Enable(current_ui_selection.size() == 1 && last_selected_index < execution_queue.size() - 1 && !any_running);
+    // Enable controls based on selection and job status
+    // Position setting only works with single selection and non-running jobs
+    bool single_selection = current_ui_selection.size() == 1;
+    position_input->Enable(single_selection && !any_running);
+    set_position_button->Enable(single_selection && !any_running);
     remove_selected_button->Enable(has_selection && !any_running);
     run_selected_button->Enable(has_selection && all_pending);
+
+    // Update position input with current job's queue order if single selection
+    if (single_selection && first_selected_index >= 0 && first_selected_index < execution_queue.size()) {
+        position_input->SetValue(wxString::Format("%d", execution_queue[first_selected_index].queue_order));
+    } else {
+        position_input->Clear();
+    }
 
     // Populate the GUI with the first selected item's parameters
     if (has_selection && first_selected_index >= 0 && first_selected_index < execution_queue.size()) {
@@ -560,8 +574,8 @@ void TemplateMatchQueueManager::OnItemValueChanged(wxDataViewEvent& event) {
     MyDebugAssertTrue(row < execution_queue.size(), "Row %d >= queue size %zu in OnItemValueChanged", row, execution_queue.size());
     MyDebugAssertTrue(col >= 0, "Invalid column %d in OnItemValueChanged", col);
 
-    // Check if this is the CLI Args column (column 3)
-    if (col == 3 && row >= 0 && row < execution_queue.size()) {
+    // Check if this is the CLI Args column (column 4 after adding Queue Order)
+    if (col == 4 && row >= 0 && row < execution_queue.size()) {
         // Don't allow editing running jobs
         MyDebugAssertTrue(!IsJobRunning(row),
                          "Cannot edit CLI args for running job (ID: %ld)", execution_queue[row].template_match_id);

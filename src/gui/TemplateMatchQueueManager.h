@@ -10,6 +10,7 @@ public:
     long template_match_id;
     wxString job_name;
     wxString queue_status;  // "pending", "running", "complete", "failed"
+    int queue_order;  // 0 = running, 1+ = pending queue position
     wxString custom_cli_args;
 
     // Store all the parameters needed to run the job
@@ -46,6 +47,7 @@ public:
     TemplateMatchQueueItem() {
         template_match_id = -1;
         queue_status = "pending";
+        queue_order = -1;  // Will be assigned when added to queue
         image_group_id = -1;
         reference_volume_asset_id = -1;
         run_profile_id = -1;
@@ -100,8 +102,8 @@ private:
     wxDataViewListCtrl* queue_list_ctrl;
     wxButton* run_selected_button;
     wxButton* clear_queue_button;
-    wxButton* move_up_button;
-    wxButton* move_down_button;
+    wxTextCtrl* position_input;
+    wxButton* set_position_button;
     wxButton* remove_selected_button;
 
     // Queue instance variables
@@ -129,8 +131,6 @@ public:
     void AddToQueue(const TemplateMatchQueueItem& item);
     void RemoveFromQueue(int index);
     void ClearQueue();
-    void MoveItemUp(int index);
-    void MoveItemDown(int index);
 
     // Execution methods
     void RunSelectedJob();
@@ -177,10 +177,8 @@ public:
 
     // Event handlers
     void OnRunSelectedClick(wxCommandEvent& event);
-    // OnRunAllClick removed - use Run Selected with multiple selection instead
     void OnClearQueueClick(wxCommandEvent& event);
-    void OnMoveUpClick(wxCommandEvent& event);
-    void OnMoveDownClick(wxCommandEvent& event);
+    void OnSetPositionClick(wxCommandEvent& event);
     void OnRemoveSelectedClick(wxCommandEvent& event);
     void OnSelectionChanged(wxDataViewEvent& event);
     void OnItemValueChanged(wxDataViewEvent& event);

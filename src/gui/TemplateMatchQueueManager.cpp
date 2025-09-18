@@ -709,6 +709,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
                 queue_ids[i],
                 temp_item.job_name,
                 temp_item.queue_status,
+                temp_item.queue_order,  // This will be loaded from QUEUE_POSITION
                 temp_item.custom_cli_args,
                 temp_item.image_group_id,
                 temp_item.reference_volume_asset_id,
@@ -754,9 +755,11 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase() {
 
 void TemplateMatchQueueManager::SaveQueueToDatabase() {
     if (match_template_panel_ptr && main_frame && main_frame->current_project.is_open) {
-        // Update status for all items in queue
+        // Update status and queue position for all items in queue
         for (const auto& item : execution_queue) {
             main_frame->current_project.database.UpdateQueueStatus(item.template_match_id, item.queue_status);
+            // Also update queue position - we'll need to add this method to database
+            main_frame->current_project.database.UpdateQueuePosition(item.template_match_id, item.queue_order);
         }
     }
 }

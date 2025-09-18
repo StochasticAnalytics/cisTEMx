@@ -409,7 +409,7 @@ class Database {
                                           float xy_change_threshold, bool exclude_above_xy_threshold,
                                           const wxString& custom_cli_args);
     wxArrayLong     GetQueuedTemplateMatchIDs();
-    bool            GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, wxString& custom_cli_args,
+    bool            GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, int& queue_position, wxString& custom_cli_args,
                                    int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
                                    float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
                                    float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
@@ -421,6 +421,7 @@ class Database {
                                    float& mask_radius, float& min_peak_radius,
                                    float& xy_change_threshold, bool& exclude_above_xy_threshold);
     void            UpdateQueueStatus(long queue_id, const wxString& status);
+    void            UpdateQueuePosition(long queue_id, int position);
     void            RemoveFromQueue(long queue_id);
     void            ClearTemplateMatchQueue();
 

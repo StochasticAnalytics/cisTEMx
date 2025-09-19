@@ -577,8 +577,8 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     long queue_id = AddJobToQueue(new_job, false);  // No dialog for direct execution
 
     if (queue_id > 0) {
-        // Update the job with the queue ID
-        new_job.template_match_id = queue_id;
+        // Update the job with the database queue ID
+        new_job.database_queue_id = queue_id;
 
         // Execute the job via unified method
         if (!ExecuteJob(&new_job)) {
@@ -605,8 +605,8 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     main_frame->current_project.database.Begin( );
 
     cached_results[image_number - 1].job_id = template_match_job_id;
-    main_frame->current_project.database.AddTemplateMatchingResult(template_match_id, cached_results[image_number - 1]);
-    template_match_id++;
+    main_frame->current_project.database.AddTemplateMatchingResult(database_queue_id, cached_results[image_number - 1]);
+    database_queue_id++;
 
     main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[image_number - 1].image_asset_id, template_match_job_id);
     main_frame->current_project.database.Commit( );
@@ -775,6 +775,13 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     cached_results.Clear( );
 
+    // Kill the job (in case it isn't already dead)
+    main_frame->job_controller.KillJob(my_job_id);
+
+    // Reset job state to allow next job to start - MUST happen before callback
+    running_job = false;
+    my_job_id = -1;
+
     // Update queue status if this was a queue job
     if (running_queue_job_id > 0) {
         wxPrintf("Queue job %ld completed - updating status\n", running_queue_job_id);
@@ -784,7 +791,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             main_frame->current_project.database.UpdateQueueStatus(running_queue_job_id, "complete");
         }
 
-        // Notify queue manager if callback is registered
+        // Notify queue manager if callback is registered - called AFTER clearing running_job
         if (queue_completion_callback) {
             wxPrintf("Notifying queue manager of job completion\n");
             queue_completion_callback->OnJobCompleted(running_queue_job_id, true);
@@ -793,13 +800,6 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         // Clear the queue job ID
         running_queue_job_id = -1;
     }
-
-    // Kill the job (in case it isn't already dead)
-    main_frame->job_controller.KillJob(my_job_id);
-
-    // Reset job state to allow next job to start
-    running_job = false;
-    my_job_id = -1;
 
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);
@@ -814,7 +814,7 @@ void MatchTemplatePanel::WriteResultToDataBase( ) {
     /*
 	// find the current highest template match numbers in the database, then increment by one
 
-	int template_match_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
+	int database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
 	int template_match_job_id =  main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
 	main_frame->current_project.database.Begin();
 
@@ -822,8 +822,8 @@ void MatchTemplatePanel::WriteResultToDataBase( ) {
 	for (int counter = 0; counter < cached_results.GetCount(); counter++)
 	{
 		cached_results[counter].job_id = template_match_job_id;
-		main_frame->current_project.database.AddTemplateMatchingResult(template_match_id, cached_results[counter]);
-		template_match_id++;
+		main_frame->current_project.database.AddTemplateMatchingResult(database_queue_id, cached_results[counter]);
+		database_queue_id++;
 	}
 
 	for (int counter = 0; counter < cached_results.GetCount(); counter++)
@@ -923,8 +923,8 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 
             int job_id_to_resume = match_template_results_panel->ResultDataView->ReturnActiveJobID( );
             // This returns just one of the finished jobs, so we can get the arguments from it.
-            long                    template_match_id     = main_frame->current_project.database.GetTemplateMatchIdForGivenJobId(job_id_to_resume);
-            TemplateMatchJobResults job_results_to_resume = main_frame->current_project.database.GetTemplateMatchingResultByID(template_match_id);
+            long                    database_queue_id     = main_frame->current_project.database.GetTemplateMatchIdForGivenJobId(job_id_to_resume);
+            TemplateMatchJobResults job_results_to_resume = main_frame->current_project.database.GetTemplateMatchingResultByID(database_queue_id);
             SetInputsForPossibleReRun(true, &job_results_to_resume);
         }
     }
@@ -1003,7 +1003,7 @@ void MatchTemplatePanel::OnHeaderClickAddToQueue() {
 
         // For now, create a basic queue item from the active job
         TemplateMatchQueueItem queue_item;
-        queue_item.template_match_id = active_job_id;
+        queue_item.database_queue_id = active_job_id;
         queue_item.job_name = wxString::Format("TM_%ld", wxDateTime::Now().GetTicks());
         queue_item.queue_status = "pending";
         queue_item.queue_order = -1; // Add to available jobs table
@@ -1147,7 +1147,7 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     }
 
     // Store the queue job ID so we can update its status when complete
-    running_queue_job_id = job.template_match_id;
+    running_queue_job_id = job.database_queue_id;
 
     // Populate the GUI with the queued job's parameters
     PopulateGuiFromQueueItem(job);
@@ -1172,7 +1172,7 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
     new_job.custom_cli_args = "";
 
     // Collect actual parameters from GUI controls
-    new_job.template_match_id         = -1; // Will be assigned when stored to database
+    new_job.database_queue_id         = -1; // Will be assigned when stored to database
     new_job.image_group_id            = GroupComboBox->GetSelection();
     new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
     new_job.run_profile_id            = RunProfileComboBox->GetSelection();
@@ -1289,7 +1289,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         queue_manager->LoadQueueFromDatabase();
 
         // Add the new job to the queue
-        queue_manager->AddToQueue(job);
+        queue_manager->AddToExecutionQueue(job);
 
         // Job added successfully - no popup needed
 
@@ -1329,17 +1329,21 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
                 job.custom_cli_args);
 
             if (queue_id > 0) {
-                // Create a copy with the assigned queue ID and add to static queue
+                // Create a copy with the assigned queue ID
                 TemplateMatchQueueItem job_with_id = job;
-                job_with_id.template_match_id = queue_id;
+                job_with_id.database_queue_id = queue_id;
                 job_with_id.queue_status = "pending";
 
-                // TODO: Need to add to static queue - will be addressed in unified architecture refactor
+                // Note: QueueManager instances are dialog-scoped, so no persistent queue needed here
+                return queue_id;
+            } else {
+                MyAssertTrue(false, "Failed to add search to database queue - AddToTemplateMatchQueue returned %ld", queue_id);
+                return -1; // This should not happen for new searches
             }
-
-            return queue_id;
+        } else {
+            MyAssertTrue(false, "Cannot add search to queue - database not open or main_frame invalid");
+            return -1;
         }
-        return -1;
     }
 }
 
@@ -1689,7 +1693,7 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     my_progress_dialog->Destroy();
 
     // Get ID's from database for writing results as they come in
-    template_match_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
+    database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
     template_match_job_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
 
     // Update the queue item with the actual database job ID for n/N tracking
@@ -1746,7 +1750,7 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
     // If queue_item is null, we're being called from StartEstimationClick and need to setup from GUI.
     if (queue_item) {
         // Validate job parameters before execution
-        MyDebugAssertTrue(queue_item->template_match_id >= 0, "Cannot execute job with invalid template_match_id: %ld", queue_item->template_match_id);
+        MyDebugAssertTrue(queue_item->database_queue_id >= 0, "Cannot execute job with invalid database_queue_id: %ld", queue_item->database_queue_id);
         MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed",
                           "Cannot execute job with status '%s', must be 'pending' or 'failed'", queue_item->queue_status.mb_str().data());
         MyDebugAssertFalse(queue_item->job_name.IsEmpty(), "Cannot execute job with empty job_name");
@@ -1761,14 +1765,14 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         }
 
         // Store the queue job ID so we can update its status when complete
-        running_queue_job_id = queue_item->template_match_id;
+        running_queue_job_id = queue_item->database_queue_id;
 
         // Setup job from queue item
-        wxPrintf("Setting up job %ld from queue item...\n", queue_item->template_match_id);
+        wxPrintf("Setting up job %ld from queue item...\n", queue_item->database_queue_id);
         bool setup_success = SetupJobFromQueueItem(*queue_item);
 
         if (!setup_success) {
-            wxPrintf("Failed to setup job %ld\n", queue_item->template_match_id);
+            wxPrintf("Failed to setup job %ld\n", queue_item->database_queue_id);
             running_queue_job_id = -1;
             return false;
         }

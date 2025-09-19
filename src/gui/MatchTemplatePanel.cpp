@@ -611,6 +611,11 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[image_number - 1].image_asset_id, template_match_job_id);
     main_frame->current_project.database.Commit( );
     match_template_results_panel->is_dirty = true;
+
+    // Notify queue manager about result addition for real-time n/N updates
+    if (queue_completion_callback) {
+        queue_completion_callback->OnResultAdded(template_match_job_id);
+    }
 }
 
 void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {

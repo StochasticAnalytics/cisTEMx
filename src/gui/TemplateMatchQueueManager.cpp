@@ -371,8 +371,13 @@ void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
     // Create a sorted index vector to avoid modifying the original queue
     std::vector<size_t> sorted_indices;
     for ( size_t i = 0; i < execution_queue.size( ); ++i ) {
+        wxPrintf("UpdateQueueDisplay: Job %ld has queue_order=%d\n",
+                 execution_queue[i].template_match_id, execution_queue[i].queue_order);
         if ( execution_queue[i].queue_order >= 0 ) { // Only show items in execution queue
             sorted_indices.push_back(i);
+            wxPrintf("UpdateQueueDisplay: Adding job %ld to execution display\n", execution_queue[i].template_match_id);
+        } else {
+            wxPrintf("UpdateQueueDisplay: Skipping job %ld (available queue)\n", execution_queue[i].template_match_id);
         }
     }
 
@@ -1432,19 +1437,30 @@ void TemplateMatchQueueManager::OnJobCompleted(long template_match_id, bool succ
     UpdateJobStatus(template_match_id, status);
 
     // Move completed/failed jobs from execution queue to available queue
+    bool job_moved = false;
     for (auto& job : execution_queue) {
         if (job.template_match_id == template_match_id && job.queue_order >= 0) {
-            wxPrintf("Moving completed job %ld from execution to available queue\n", template_match_id);
+            wxPrintf("Moving completed job %ld from execution to available queue (old queue_order: %d)\n",
+                     template_match_id, job.queue_order);
             job.queue_order = -1; // Move to available jobs
+            job_moved = true;
             break;
         }
+    }
+
+    if (!job_moved) {
+        wxPrintf("WARNING: Could not find job %ld in execution queue to move to available queue\n", template_match_id);
     }
 
     // Renumber remaining execution queue jobs after removal
     int new_position = 0;
     for (auto& job : execution_queue) {
         if (job.queue_order >= 0) { // Still in execution queue
+            wxPrintf("Renumbering job %ld: old_position=%d, new_position=%d\n",
+                     job.template_match_id, job.queue_order, new_position);
             job.queue_order = new_position++;
+        } else {
+            wxPrintf("Job %ld has queue_order=%d (available queue)\n", job.template_match_id, job.queue_order);
         }
     }
 

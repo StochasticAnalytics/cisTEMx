@@ -5,6 +5,27 @@
 #include <wx/dataview.h>
 #include <deque>
 
+// Structure to hold job completion information for n/N display
+struct JobCompletionInfo {
+    long template_match_job_id;
+    int completed_count;
+    int total_count;
+
+    wxString GetCompletionString() const {
+        return wxString::Format("%d/%d", completed_count, total_count);
+    }
+
+    wxString GetStatusFromCompletion() const {
+        if (completed_count == 0) return "pending";
+        if (completed_count == total_count) return "complete";
+        return "running";
+    }
+
+    double GetCompletionPercentage() const {
+        return total_count > 0 ? (double)completed_count / total_count * 100.0 : 0.0;
+    }
+};
+
 class TemplateMatchQueueItem {
 public:
     long template_match_id;
@@ -108,12 +129,14 @@ private:
 
     // Queue instance variables
     std::deque<TemplateMatchQueueItem> execution_queue;
+    std::deque<TemplateMatchQueueItem> available_queue;  // Jobs available for queueing
     long currently_running_id;
 
     // Selection-based execution tracking
     std::deque<long> selected_jobs_for_execution;  // Queue IDs selected for execution
     bool execution_in_progress;  // True while processing selection queue
     bool needs_database_load;  // True if we haven't loaded from DB yet
+    bool auto_progress_queue;   // True if queue should auto-progress after job completion
 
     // Pointer to match template panel for job execution and database access
     MatchTemplatePanel* match_template_panel_ptr;
@@ -152,6 +175,14 @@ public:
     bool HasJobsInSelectionQueue() const;
     bool HasPendingJobs();
     bool IsJobRunning() const;
+
+    // Auto-progression control
+    void SetAutoProgressQueue(bool enable) { auto_progress_queue = enable; }
+
+    // Completion tracking methods
+    JobCompletionInfo GetJobCompletionInfo(long template_match_job_id);
+    void RefreshJobCompletionInfo();
+    void PopulateAvailableJobsFromDatabase();
 
     // Validation methods
     void ValidateQueueConsistency() const;

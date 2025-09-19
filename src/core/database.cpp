@@ -3128,6 +3128,56 @@ void Database::ClearTemplateMatchQueue() {
     sqlite3_finalize(stmt);
 }
 
+std::pair<int, int> Database::GetJobCompletionCounts(long template_match_job_id, int image_group_id) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+
+    wxString sql;
+    if (image_group_id == -1) {
+        // All images in database
+        sql = wxString::Format(
+            "SELECT "
+            "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
+            "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
+            "FROM IMAGE_ASSETS "
+            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID = %ld) COMP "
+            "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
+            template_match_job_id);
+    } else {
+        // Specific image group
+        sql = wxString::Format(
+            "SELECT "
+            "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
+            "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
+            "FROM IMAGE_GROUP_%d AS IMAGE_ASSETS "
+            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID = %ld) COMP "
+            "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
+            image_group_id, template_match_job_id);
+    }
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql.ToUTF8().data(), -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql.ToUTF8().data());
+        return std::make_pair(0, 0);
+    }
+
+    int completed_count = 0;
+    int total_count = 0;
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        completed_count = sqlite3_column_int(stmt, 0);
+        total_count = sqlite3_column_int(stmt, 1);
+    }
+
+    sqlite3_finalize(stmt);
+    return std::make_pair(completed_count, total_count);
+}
+
+wxArrayLong Database::GetAllTemplateMatchJobIds() {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+
+    return ReturnLongArrayFromSelectCommand("SELECT DISTINCT TEMPLATE_MATCH_JOB_ID FROM TEMPLATE_MATCH_LIST ORDER BY TEMPLATE_MATCH_JOB_ID");
+}
+
 BeginCommitLocker::BeginCommitLocker(Database* wanted_database) {
     active_database     = wanted_database;
     already_sent_commit = false;

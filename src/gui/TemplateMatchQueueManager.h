@@ -241,6 +241,7 @@ public:
     void OnClearQueueClick(wxCommandEvent& event);
     void OnRemoveSelectedClick(wxCommandEvent& event);
     void OnSelectionChanged(wxListEvent& event);
+    void OnAvailableJobsSelectionChanged(wxListEvent& event);
     void OnHideCompletedToggle(wxCommandEvent& event);
 
     // Drag-and-drop event handlers

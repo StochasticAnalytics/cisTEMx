@@ -137,6 +137,10 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     clear_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnClearQueueClick, this);
     hide_completed_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnHideCompletedToggle, this);
 
+    // Bind selection events for available jobs table
+    available_jobs_ctrl->Bind(wxEVT_LIST_ITEM_SELECTED, &TemplateMatchQueueManager::OnAvailableJobsSelectionChanged, this);
+    available_jobs_ctrl->Bind(wxEVT_LIST_ITEM_DESELECTED, &TemplateMatchQueueManager::OnAvailableJobsSelectionChanged, this);
+
     // Bind mouse events for manual drag and drop implementation
     execution_queue_ctrl->Bind(wxEVT_LEFT_DOWN, &TemplateMatchQueueManager::OnMouseLeftDown, this);
     execution_queue_ctrl->Bind(wxEVT_MOTION, &TemplateMatchQueueManager::OnMouseMotion, this);
@@ -815,6 +819,23 @@ void TemplateMatchQueueManager::OnHideCompletedToggle(wxCommandEvent& event) {
     UpdateAvailableJobsDisplay();
 }
 
+void TemplateMatchQueueManager::OnAvailableJobsSelectionChanged(wxListEvent& event) {
+    wxPrintf("OnAvailableJobsSelectionChanged called\n");
+
+    // Check if any items are selected in available jobs table
+    bool has_available_selection = false;
+    long selected_item = available_jobs_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    if (selected_item != -1) {
+        has_available_selection = true;
+    }
+
+    // Enable Add to Queue button based on available jobs selection
+    add_to_queue_button->Enable(has_available_selection);
+
+    wxPrintf("Available jobs selection changed - Add to Queue button %s\n",
+             has_available_selection ? "enabled" : "disabled");
+}
+
 void TemplateMatchQueueManager::OnAssignPriorityClick(wxCommandEvent& event) {
     // Apply drag-and-drop changes and unfreeze UI
     assign_priority_button->Enable(false);
@@ -980,7 +1001,7 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
     run_selected_button->Enable(has_selection && all_pending);
 
     // Enable table movement buttons based on selection
-    add_to_queue_button->Enable(false); // TODO: Enable when available jobs table is implemented
+    // Note: add_to_queue_button is controlled by OnAvailableJobsSelectionChanged
     remove_from_queue_button->Enable(has_selection && ! any_running);
 
     wxPrintf("OnSelectionChanged: Controls enabled, checking GUI population\n"); // revert - extreme debug
@@ -1184,11 +1205,13 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
                     temp_item.exclude_above_xy_threshold);
 
             if ( success ) {
-                // Convert legacy 1-based queue_order to 0-based indexing
+                // Convert legacy 1-based queue_order to 0-based indexing, but preserve -1 for available jobs
                 if ( temp_item.queue_order > 0 ) {
                     temp_item.queue_order--; // Convert 1,2,3... to 0,1,2...
                     wxPrintf("Converted queue_order from %d to %d for job %ld\n", // revert - debug output for troubleshooting drag-and-drop
                              temp_item.queue_order + 1, temp_item.queue_order, temp_item.template_match_id);
+                } else if ( temp_item.queue_order == -1 ) {
+                    wxPrintf("Loaded job %ld with queue_order = -1 (available jobs)\n", temp_item.template_match_id);
                 }
                 execution_queue.push_back(temp_item);
             }
@@ -1211,11 +1234,9 @@ void TemplateMatchQueueManager::SaveQueueToDatabase( ) {
         for ( const auto& item : execution_queue ) {
             main_frame->current_project.database.UpdateQueueStatus(item.template_match_id, item.queue_status);
 
-            // Only update queue position for jobs actually in the execution queue (queue_order >= 0)
-            // Jobs with queue_order = -1 are in the available jobs table and shouldn't have positions
-            if ( item.queue_order >= 0 ) {
-                main_frame->current_project.database.UpdateQueuePosition(item.template_match_id, item.queue_order);
-            }
+            // Always update queue position - including queue_order = -1 for available jobs
+            // This ensures jobs moved to available queue stay there after dialog close/reopen
+            main_frame->current_project.database.UpdateQueuePosition(item.template_match_id, item.queue_order);
         }
     }
 }

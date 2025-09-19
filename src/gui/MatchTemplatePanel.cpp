@@ -1348,6 +1348,11 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
 }
 
 bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job) {
+    // Freeze GUI updates in queue manager to prevent interference during setup
+    if (queue_completion_callback) {
+        queue_completion_callback->SetGuiUpdateFrozen(true);
+    }
+
     // First populate GUI with the job parameters
     PopulateGuiFromQueueItem(job);
 
@@ -1700,6 +1705,11 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     if (running_queue_job_id > 0 && queue_completion_callback) {
         // Find and update the queue item with the correct database job ID
         queue_completion_callback->UpdateJobDatabaseId(running_queue_job_id, template_match_job_id);
+    }
+
+    // Unfreeze GUI updates in queue manager now that setup is complete
+    if (queue_completion_callback) {
+        queue_completion_callback->SetGuiUpdateFrozen(false);
     }
 
     return true;

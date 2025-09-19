@@ -211,6 +211,7 @@ private:
     bool needs_database_load;   ///< True if queue hasn't been loaded from database yet
     bool auto_progress_queue;   ///< True if queue should auto-advance after search completion
     bool hide_completed_jobs;   ///< True if completed searches should be hidden from available queue
+    bool gui_update_frozen;     ///< True while SetupJobFromQueueItem is executing to prevent GUI interference
 
     // Panel Integration - Reference for job execution and database access
     MatchTemplatePanel* match_template_panel_ptr; ///< Panel for delegating search execution
@@ -225,6 +226,7 @@ private:
 
     // Private Helper Methods
     wxColour GetStatusColor(const wxString& status);       ///< Returns color for search status display
+    void SetStatusDisplay(wxListCtrl* list_ctrl, long item_index, const wxString& status); ///< Sets status text, color, and font formatting
     void UpdateQueueDisplay();                             ///< Refreshes both execution and available queue displays
     void UpdateExecutionQueueDisplay();                    ///< Refreshes execution queue table with current data
     void UpdateAvailableJobsDisplay();                     ///< Refreshes available queue table with current data
@@ -325,6 +327,12 @@ public:
      * @param enable If true, queue will automatically advance to next search
      */
     void SetAutoProgressQueue(bool enable) { auto_progress_queue = enable; }
+
+    /**
+     * @brief Freezes GUI parameter updates during job setup to prevent interference
+     * @param frozen If true, GUI population from queue selections is disabled
+     */
+    void SetGuiUpdateFrozen(bool frozen) { gui_update_frozen = frozen; }
 
     /**
      * @brief Retrieves completion progress for a specific search

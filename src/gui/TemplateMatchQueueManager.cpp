@@ -20,6 +20,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     execution_in_progress = false; // No jobs running initially
     auto_progress_queue   = false; // Don't auto-progress by default (user controls progression)
     hide_completed_jobs   = false; // Show all jobs by default
+    gui_update_frozen     = false; // GUI updates allowed initially
     drag_in_progress      = false;
     updating_display      = false;  // Not updating display initially
     dragged_row           = -1;
@@ -353,17 +354,56 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
 
 wxColour TemplateMatchQueueManager::GetStatusColor(const wxString& status) {
     if ( status == "running" ) {
-        return wxColour(0, 128, 0); // Green
+        return wxColour(0, 200, 0); // Bright green (lighter than complete)
     }
     else if ( status == "complete" ) {
-        return wxColour(0, 0, 255); // Blue
+        return wxColour(0, 100, 0); // Dark green
     }
     else if ( status == "failed" ) {
-        return wxColour(255, 0, 0); // Red
+        return wxColour(139, 69, 19); // Dark brick red
     }
     else { // pending
-        return wxColour(255, 0, 0); // Red
+        return wxColour(128, 128, 128); // Gray for pending
     }
+}
+
+void TemplateMatchQueueManager::SetStatusDisplay(wxListCtrl* list_ctrl, long item_index, const wxString& status) {
+    // Generate status display text with appropriate prefix
+    wxString status_display;
+    if (status == "running") {
+        status_display = "● " + status; // Filled circle for running
+    }
+    else if (status == "complete") {
+        status_display = "✓ " + status; // Check mark for complete
+    }
+    else if (status == "failed") {
+        status_display = "✗ " + status; // X mark for failed
+    }
+    else { // pending
+        status_display = "○ " + status; // Empty circle for pending
+    }
+
+    // Set the status text
+    int status_column = (list_ctrl == queue_list_ctrl) ? 3 : 2; // execution queue has queue order column
+    list_ctrl->SetItem(item_index, status_column, status_display);
+
+    // Get color and font styling
+    wxColour text_color = GetStatusColor(status);
+    wxFont item_font = list_ctrl->GetFont(); // Get default font
+
+    // Apply font styling based on status
+    if (status == "running") {
+        item_font.MakeBold();
+        item_font.MakeItalic();
+    }
+    else if (status == "complete") {
+        item_font.MakeBold();
+    }
+    // failed and pending use default font
+
+    // Apply color and font to the entire row
+    list_ctrl->SetItemTextColour(item_index, text_color);
+    list_ctrl->SetItemFont(item_index, item_font);
 }
 
 void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
@@ -425,29 +465,8 @@ void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
         queue_list_ctrl->SetItem(item_index, 1, wxString::Format("%ld", execution_queue[i].database_queue_id));
         queue_list_ctrl->SetItem(item_index, 2, execution_queue[i].job_name);
 
-        // Add status with a colored indicator prefix
-        wxString status_display;
-        wxColour text_color;
-        if ( execution_queue[i].queue_status == "running" ) {
-            status_display = "● " + execution_queue[i].queue_status; // Red circle for running
-            text_color = wxColour(255, 0, 0); // Red
-        }
-        else if ( execution_queue[i].queue_status == "complete" ) {
-            status_display = "✓ " + execution_queue[i].queue_status; // Check mark for complete
-            text_color = wxColour(0, 128, 0); // Green
-        }
-        else if ( execution_queue[i].queue_status == "failed" ) {
-            status_display = "✗ " + execution_queue[i].queue_status; // X mark for failed
-            text_color = wxColour(255, 0, 0); // Red
-        }
-        else { // pending
-            status_display = "○ " + execution_queue[i].queue_status; // Empty circle for pending
-            text_color = wxColour(0, 0, 255); // Blue
-        }
-        queue_list_ctrl->SetItem(item_index, 3, status_display);
-
-        // Set text color for the entire row
-        queue_list_ctrl->SetItemTextColour(item_index, text_color);
+        // Set status display with centralized formatting
+        SetStatusDisplay(queue_list_ctrl, item_index, execution_queue[i].queue_status);
 
         // Get completion info for Progress column
         JobCompletionInfo completion = GetJobCompletionInfo(execution_queue[i].database_queue_id);
@@ -512,29 +531,8 @@ void TemplateMatchQueueManager::UpdateAvailableJobsDisplay() {
             // Set the remaining columns (no queue order column for available jobs)
             available_jobs_ctrl->SetItem(item_index, 1, execution_queue[i].job_name);
 
-            // Add status with a colored indicator prefix
-            wxString status_display;
-            wxColour text_color;
-            if (execution_queue[i].queue_status == "running") {
-                status_display = "● " + execution_queue[i].queue_status; // Red circle for running
-                text_color = wxColour(255, 0, 0); // Red
-            }
-            else if (execution_queue[i].queue_status == "complete") {
-                status_display = "✓ " + execution_queue[i].queue_status; // Check mark for complete
-                text_color = wxColour(0, 128, 0); // Green
-            }
-            else if (execution_queue[i].queue_status == "failed") {
-                status_display = "✗ " + execution_queue[i].queue_status; // X mark for failed
-                text_color = wxColour(255, 0, 0); // Red
-            }
-            else { // pending
-                status_display = "○ " + execution_queue[i].queue_status; // Empty circle for pending
-                text_color = wxColour(0, 0, 255); // Blue
-            }
-            available_jobs_ctrl->SetItem(item_index, 2, status_display);
-
-            // Set text color for the status column
-            available_jobs_ctrl->SetItemTextColour(item_index, text_color);
+            // Set status display with centralized formatting
+            SetStatusDisplay(available_jobs_ctrl, item_index, execution_queue[i].queue_status);
 
             // Get completion info for Progress column
             JobCompletionInfo completion = GetJobCompletionInfo(execution_queue[i].database_queue_id);
@@ -573,29 +571,8 @@ void TemplateMatchQueueManager::UpdateAvailableJobsDisplay() {
             // Set the remaining columns (no queue order column for available jobs)
             available_jobs_ctrl->SetItem(item_index, 1, available_queue[i].job_name);
 
-            // Add status with a colored indicator prefix
-            wxString status_display;
-            wxColour text_color;
-            if (available_queue[i].queue_status == "running") {
-                status_display = "● " + available_queue[i].queue_status; // Red circle for running
-                text_color = wxColour(255, 0, 0); // Red
-            }
-            else if (available_queue[i].queue_status == "complete") {
-                status_display = "✓ " + available_queue[i].queue_status; // Check mark for complete
-                text_color = wxColour(0, 128, 0); // Green
-            }
-            else if (available_queue[i].queue_status == "failed") {
-                status_display = "✗ " + available_queue[i].queue_status; // X mark for failed
-                text_color = wxColour(255, 0, 0); // Red
-            }
-            else { // pending
-                status_display = "○ " + available_queue[i].queue_status; // Empty circle for pending
-                text_color = wxColour(0, 0, 255); // Blue
-            }
-            available_jobs_ctrl->SetItem(item_index, 2, status_display);
-
-            // Set text color for the status column
-            available_jobs_ctrl->SetItemTextColour(item_index, text_color);
+            // Set status display with centralized formatting
+            SetStatusDisplay(available_jobs_ctrl, item_index, available_queue[i].queue_status);
 
             // Get completion info for Progress column
             JobCompletionInfo completion = GetJobCompletionInfo(available_queue[i].database_queue_id);
@@ -829,13 +806,59 @@ void TemplateMatchQueueManager::OnAvailableJobsSelectionChanged(wxListEvent& eve
 
     // Check if any items are selected in available jobs table
     bool has_available_selection = false;
-    long selected_item = available_jobs_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-    if (selected_item != -1) {
+    long first_selected_row = available_jobs_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    TemplateMatchQueueItem* first_selected_item = nullptr;
+
+    if (first_selected_row != -1) {
         has_available_selection = true;
+
+        // Find the queue item corresponding to this display row
+        // Available jobs display shows items in order: execution_queue items with queue_order < 0, then available_queue items
+        int current_row = 0;
+
+        // First check execution_queue items with queue_order < 0
+        for (auto& item : execution_queue) {
+            if (item.queue_order < 0) {
+                // Skip completed jobs if hide_completed_jobs is enabled
+                if (hide_completed_jobs && item.queue_status == "complete") {
+                    continue;
+                }
+
+                if (current_row == first_selected_row) {
+                    first_selected_item = &item;
+                    break;
+                }
+                current_row++;
+            }
+        }
+
+        // If not found in execution_queue, check available_queue
+        if (!first_selected_item) {
+            for (auto& item : available_queue) {
+                // Skip completed jobs if hide_completed_jobs is enabled
+                if (hide_completed_jobs && item.queue_status == "complete") {
+                    continue;
+                }
+
+                if (current_row == first_selected_row) {
+                    first_selected_item = &item;
+                    break;
+                }
+                current_row++;
+            }
+        }
     }
 
     // Enable Add to Queue button based on available jobs selection
     add_to_queue_button->Enable(has_available_selection);
+
+    // Populate the GUI with the first selected item's parameters (unless GUI is frozen)
+    if (first_selected_item && !gui_update_frozen) {
+        if (match_template_panel_ptr) {
+            wxPrintf("Populating GUI from available queue item: %s\n", first_selected_item->job_name);
+            match_template_panel_ptr->PopulateGuiFromQueueItem(*first_selected_item);
+        }
+    }
 
     wxPrintf("Available jobs selection changed - Add to Queue button %s\n",
              has_available_selection ? "enabled" : "disabled");
@@ -947,9 +970,10 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
     run_selected_button->Enable(has_job_at_priority_0 && !IsJobRunning());
     remove_from_queue_button->Enable(has_selection && !any_running);
 
-    // Populate the GUI with the first selected item's parameters
-    if (has_selection && first_selected_index >= 0) {
+    // Populate the GUI with the first selected item's parameters (unless GUI is frozen)
+    if (has_selection && first_selected_index >= 0 && !gui_update_frozen) {
         if (match_template_panel_ptr) {
+            wxPrintf("Populating GUI from execution queue item %d\n", first_selected_index);
             match_template_panel_ptr->PopulateGuiFromQueueItem(execution_queue[first_selected_index]);
         }
     }
@@ -1568,13 +1592,39 @@ JobCompletionInfo TemplateMatchQueueManager::GetJobCompletionInfo(long queue_dat
         }
     }
 
-    // Get completion counts from database using the actual TEMPLATE_MATCH_JOB_ID
-    if (database_template_match_job_id > 0) {
+    // Get completion counts from database using existing method
+    if (image_group_id > 0 && main_frame && main_frame->current_project.is_open) {
+        // Use existing database method - it handles both pending (-1) and active job IDs correctly
         auto counts = main_frame->current_project.database.GetJobCompletionCounts(database_template_match_job_id, image_group_id);
         info.completed_count = counts.first;
         info.total_count = counts.second;
+
+        // For already completed jobs with 0 completed count, set completed = total
+        // This handles the case where the job was completed but GetJobCompletionCounts returns 0
+        if (info.total_count > 0 && info.completed_count == 0) {
+            // Check if this job should be marked as complete based on queue status
+            bool job_is_complete = false;
+            for (const auto& item : execution_queue) {
+                if (item.database_queue_id == queue_database_queue_id && item.queue_status == "complete") {
+                    job_is_complete = true;
+                    break;
+                }
+            }
+            if (!job_is_complete) {
+                for (const auto& item : available_queue) {
+                    if (item.database_queue_id == queue_database_queue_id && item.queue_status == "complete") {
+                        job_is_complete = true;
+                        break;
+                    }
+                }
+            }
+
+            if (job_is_complete) {
+                info.completed_count = info.total_count;
+            }
+        }
     } else {
-        // No database job ID yet - no results written
+        // Can't determine anything without image_group_id
         info.completed_count = 0;
         info.total_count = 0;
     }

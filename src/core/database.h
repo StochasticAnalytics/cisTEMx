@@ -425,6 +425,10 @@ class Database {
     void            RemoveFromQueue(long queue_id);
     void            ClearTemplateMatchQueue();
 
+    // Template match completion tracking methods
+    std::pair<int, int> GetJobCompletionCounts(long template_match_job_id, int image_group_id = -1);
+    wxArrayLong         GetAllTemplateMatchJobIds();
+
     void AddRefinementAngularDistribution(AngularDistributionHistogram& histogram_to_add, long refinement_id, int class_number);
     void CopyRefinementAngularDistributions(long refinement_id_to_copy, long refinement_id_to_copy_to, int wanted_class_number);
     void GetRefinementAngularDistributionHistogramData(long wanted_refinement_id, int wanted_class_number, AngularDistributionHistogram& histogram_to_fill);

@@ -141,6 +141,7 @@ private:
     // General controls
     wxButton* remove_selected_button;
     wxButton* clear_queue_button;
+    wxCheckBox* hide_completed_checkbox;
 
     // Queue instance variables
     std::deque<TemplateMatchQueueItem> execution_queue;
@@ -152,6 +153,7 @@ private:
     bool execution_in_progress;  // True while processing selection queue
     bool needs_database_load;  // True if we haven't loaded from DB yet
     bool auto_progress_queue;   // True if queue should auto-progress after job completion
+    bool hide_completed_jobs;   // True if completed jobs should be hidden from available queue
 
     // Pointer to match template panel for job execution and database access
     MatchTemplatePanel* match_template_panel_ptr;
@@ -208,6 +210,7 @@ public:
     JobCompletionInfo GetJobCompletionInfo(long template_match_job_id);
     void RefreshJobCompletionInfo();
     void PopulateAvailableJobsFromDatabase();
+    void OnResultAdded(long template_match_job_id);  // Called when a result is added to update n/N display
 
     // Validation methods
     void ValidateQueueConsistency() const;
@@ -238,6 +241,7 @@ public:
     void OnClearQueueClick(wxCommandEvent& event);
     void OnRemoveSelectedClick(wxCommandEvent& event);
     void OnSelectionChanged(wxListEvent& event);
+    void OnHideCompletedToggle(wxCommandEvent& event);
 
     // Drag-and-drop event handlers
     void OnAssignPriorityClick(wxCommandEvent& event);

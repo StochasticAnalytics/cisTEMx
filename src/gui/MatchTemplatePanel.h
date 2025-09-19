@@ -61,7 +61,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // needed to write results as they come in.. should be set when the job is launched..
 
-    int template_match_id;
+    int database_queue_id;
     int template_match_job_id;
 
     // Queue tracking
@@ -73,6 +73,13 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     void OnUpdateUI(wxUpdateUIEvent& event);
     void FillGroupComboBox( );
     void FillRunProfileComboBox( );
+    /**
+     * @brief Initiates immediate template matching search execution bypassing queue dialog
+     *
+     * Collects GUI parameters, creates temporary QueueManager, adds search to execution queue,
+     * and begins processing immediately and approximates the legacy workflow with one search at a time.
+     * Used for "Start Estimation" button workflow.
+     */
     void StartEstimationClick(wxCommandEvent& event);
     void FinishButtonClick(wxCommandEvent& event);
     void TerminateButtonClick(wxCommandEvent& event);
@@ -115,7 +122,20 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     wxArrayLong CheckForUnfinishedWork(bool is_checked, bool is_from_check_box);
 
     // Queue functionality
+    /**
+     * @brief Adds current GUI parameters as search to queue and shows queue management dialog
+     *
+     * Validates no search is currently running, collects GUI parameters into TemplateMatchQueueItem,
+     * and opens queue manager dialog for user interaction. Enables batch processing workflows.
+     */
     void        OnAddToQueueClick(wxCommandEvent& event);
+
+    /**
+     * @brief Opens queue management dialog to view and manage existing searches
+     *
+     * Creates dialog-scoped QueueManager, loads existing searches from database, and provides
+     * UI for queue manipulation, priority assignment, and batch execution control.
+     */
     void        OnOpenQueueClick(wxCommandEvent& event);
     void        PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item);
     void        OnHeaderClickAddToQueue(); // New header click behavior for Queue Manager
@@ -123,6 +143,17 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // Shared job execution methods
     TemplateMatchQueueItem CollectJobParametersFromGui();
+    /**
+     * @brief Core method to add search to execution queue with optional dialog display
+     *
+     * Creates dialog-scoped QueueManager, loads existing queue from database, adds the provided
+     * search, and optionally shows queue management dialog. Used by both immediate execution
+     * (show_dialog=false) and interactive queueing (show_dialog=true) workflows.
+     *
+     * @param job Search parameters collected from GUI via CollectJobParametersFromGui()
+     * @param show_dialog If true, opens queue manager dialog; if false, adds silently for immediate execution
+     * @return Database queue ID when show_dialog=false, -1 when show_dialog=true (dialog mode doesn't track ID)
+     */
     long        AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog = true);
     bool        SetupJobFromQueueItem(const TemplateMatchQueueItem& job);
     bool        ExecuteCurrentJob();

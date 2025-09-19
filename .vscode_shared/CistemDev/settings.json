@@ -150,5 +150,24 @@
         "/dangerous/": false
     },
     "github.copilot.chat.codeGeneration.instructions": [],
-    "github.copilot.chat.codeGeneration.useInstructionFiles": false
+    "github.copilot.chat.codeGeneration.useInstructionFiles": false,
+    "workbench.colorCustomizations": {
+        // Character-level highlights (use transparency)
+        "diffEditor.insertedTextBackground": "#94b09e00",
+        "diffEditor.removedTextBackground": "#98484878",
+        // "diffEditor.insertedTextBorder": "transparent",
+        // "diffEditor.removedTextBorder": "transparent",
+        // Line-level backgrounds (use transparency)
+        "diffEditor.insertedLineBackground": "#3e85ab20",
+        "diffEditor.removedLineBackground": "#98484878",
+        // Gutter indicators (left margin)
+        "diffEditorGutter.insertedLineBackground": "#22bb22",
+        "diffEditorGutter.removedLineBackground": "#ff5555",
+        // // Overview ruler colors
+        // "diffEditorOverview.insertedForeground": "#22bb22",
+        // "diffEditorOverview.removedForeground": "#ff5555",
+        // // Borders and diagonal fill between panes
+        // "diffEditor.border": "#80808055",
+        // "diffEditor.diagonalFill": "#80808022"
+    }
 }

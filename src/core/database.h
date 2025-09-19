@@ -396,6 +396,15 @@ class Database {
     long                    GetTemplateMatchIdForGivenJobId(long wanted_template_match_job_id);
 
     // Template Match Queue operations (using basic types to avoid GUI dependencies)
+    /**
+     * @brief Adds a new template matching search to the persistent database queue
+     *
+     * Inserts search parameters into TEMPLATE_MATCH_QUEUE table with unique ID assignment.
+     * This is the foundational database operation that persists queue items across QueueManager
+     * dialog instances and application restarts.
+     *
+     * @return Database-assigned queue ID for the new search, or -1 on failure
+     */
     long            AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
                                           bool use_gpu, bool use_fast_fft, const wxString& symmetry,
                                           float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,

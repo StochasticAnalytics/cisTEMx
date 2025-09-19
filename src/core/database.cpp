@@ -3063,7 +3063,7 @@ void Database::UpdateQueueStatus(long queue_id, const wxString& status) {
 void Database::UpdateQueuePosition(long queue_id, int position) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
-    MyDebugAssertTrue(position >= 0, "Invalid position: %d", position);
+    MyDebugAssertTrue(position >= -1, "Invalid position: %d (must be >= -1, where -1 = available queue)", position);
 
     const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_POSITION = ? WHERE QUEUE_ID = ?;";
 

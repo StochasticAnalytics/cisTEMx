@@ -1045,31 +1045,53 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
         return;
     }
 
-    // Find the highest queue_order to append new jobs at the end
+    // Count jobs in execution queue to determine next position
     int next_queue_order = 0;
     for (const auto& job : execution_queue) {
-        if (job.queue_order >= next_queue_order) {
-            next_queue_order = job.queue_order + 1;
+        if (job.queue_order >= 0) { // Count jobs in execution queue
+            next_queue_order++;
         }
     }
+    wxPrintf("Calculated next_queue_order = %d (based on %d jobs in execution queue)\n",
+             next_queue_order, next_queue_order);
 
-    // Move selected available jobs to execution queue
+    // Move selected available jobs to execution queue (only pending jobs)
     std::vector<long> selected_job_ids;
+    std::vector<wxString> blocked_jobs; // Track jobs that can't be moved
     int available_row = 0;
     for (size_t i = 0; i < execution_queue.size(); ++i) {
         if (execution_queue[i].queue_order < 0) { // This is an available job
             // Check if this available job row is selected
             for (long selected_row : selected_rows) {
                 if (available_row == selected_row) {
-                    execution_queue[i].queue_order = next_queue_order++;
-                    selected_job_ids.push_back(execution_queue[i].template_match_id);
-                    wxPrintf("Moved job %ld to execution queue with order %d\n",
-                            execution_queue[i].template_match_id, execution_queue[i].queue_order);
+                    // Only allow pending jobs to be moved to execution queue
+                    if (execution_queue[i].queue_status == "pending") {
+                        execution_queue[i].queue_order = next_queue_order++;
+                        selected_job_ids.push_back(execution_queue[i].template_match_id);
+                        wxPrintf("Moved job %ld to execution queue with order %d\n",
+                                execution_queue[i].template_match_id, execution_queue[i].queue_order);
+                    } else {
+                        blocked_jobs.push_back(wxString::Format("Job %ld (%s)",
+                                              execution_queue[i].template_match_id,
+                                              execution_queue[i].queue_status));
+                        wxPrintf("Blocked job %ld from execution queue (status: %s)\n",
+                                execution_queue[i].template_match_id, execution_queue[i].queue_status);
+                    }
                     break;
                 }
             }
             available_row++;
         }
+    }
+
+    // Show warning if some jobs were blocked
+    if (!blocked_jobs.empty()) {
+        wxString message = "The following jobs cannot be added to execution queue because they are not pending:\n\n";
+        for (const auto& job : blocked_jobs) {
+            message += "• " + job + "\n";
+        }
+        message += "\nOnly jobs with 'pending' status can be executed.";
+        wxMessageBox(message, "Some Jobs Not Added", wxOK | wxICON_INFORMATION);
     }
 
     if (!selected_job_ids.empty()) {
@@ -1211,13 +1233,27 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
 
             if ( success ) {
                 // Convert legacy 1-based queue_order to 0-based indexing, but preserve -1 for available jobs
+                wxPrintf("Loading job %ld with raw queue_order = %d from database\n",
+                         temp_item.template_match_id, temp_item.queue_order);
+
                 if ( temp_item.queue_order > 0 ) {
+                    int old_order = temp_item.queue_order;
                     temp_item.queue_order--; // Convert 1,2,3... to 0,1,2...
-                    wxPrintf("Converted queue_order from %d to %d for job %ld\n", // revert - debug output for troubleshooting drag-and-drop
-                             temp_item.queue_order + 1, temp_item.queue_order, temp_item.template_match_id);
+                    wxPrintf("Converted queue_order from %d to %d for job %ld\n",
+                             old_order, temp_item.queue_order, temp_item.template_match_id);
                 } else if ( temp_item.queue_order == -1 ) {
                     wxPrintf("Loaded job %ld with queue_order = -1 (available jobs)\n", temp_item.template_match_id);
+                } else if ( temp_item.queue_order == 0 ) {
+                    wxPrintf("WARNING: Job %ld loaded with queue_order = 0 from database (unexpected)\n", temp_item.template_match_id);
                 }
+
+                // Force completed/failed jobs to available queue regardless of stored queue_order
+                if ( temp_item.queue_status == "complete" || temp_item.queue_status == "failed" ) {
+                    temp_item.queue_order = -1; // Move completed/failed jobs to available queue
+                    wxPrintf("Corrected job %ld (%s) to available queue (queue_order = -1)\n",
+                             temp_item.template_match_id, temp_item.queue_status);
+                }
+
                 execution_queue.push_back(temp_item);
             }
         }

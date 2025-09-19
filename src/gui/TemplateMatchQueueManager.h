@@ -28,7 +28,8 @@ struct JobCompletionInfo {
 
 class TemplateMatchQueueItem {
 public:
-    long template_match_id;
+    long template_match_id;         // Stable queue identifier for queue management
+    long template_match_job_id;     // Database TEMPLATE_MATCH_JOB_ID (-1 if no results yet)
     wxString job_name;
     wxString queue_status;  // "pending", "running", "complete", "failed"
     int queue_order;  // 0 = running, 1+ = pending queue position
@@ -67,6 +68,7 @@ public:
 
     TemplateMatchQueueItem() {
         template_match_id = -1;
+        template_match_job_id = -1;  // No database job ID until results are written
         queue_status = "pending";
         queue_order = -1;  // Will be assigned when added to queue
         image_group_id = -1;
@@ -211,6 +213,8 @@ public:
     void RefreshJobCompletionInfo();
     void PopulateAvailableJobsFromDatabase();
     void OnResultAdded(long template_match_job_id);  // Called when a result is added to update n/N display
+    void UpdateJobDatabaseId(long queue_template_match_id, long database_template_match_job_id);  // Update queue item with actual TEMPLATE_MATCH_JOB_ID
+    void DiscoverDatabaseJobIds();  // Discover and populate database job IDs for completed jobs
 
     // Validation methods
     void ValidateQueueConsistency() const;

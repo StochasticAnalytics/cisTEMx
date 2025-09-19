@@ -972,11 +972,6 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 
 	bSizer58->Add( bSizer6011, 1, wxEXPAND, 5 );
 
-	ResumeRunCheckBox = new wxCheckBox( StartPanel, wxID_ANY, wxT("Resume Run"), wxDefaultPosition, wxDefaultSize, 0 );
-	ResumeRunCheckBox->Enable( false );
-
-	bSizer58->Add( ResumeRunCheckBox, 0, wxALL|wxEXPAND, 5 );
-
 
 	StartPanel->SetSizer( bSizer58 );
 	StartPanel->Layout();
@@ -999,7 +994,6 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 	StartEstimationButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::StartEstimationClick ), NULL, this );
 	AddToQueue->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
 	OpenQueue->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
-	ResumeRunCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::ResumeRunCheckBoxOnCheckBox ), NULL, this );
 }
 
 MatchTemplatePanelParent::~MatchTemplatePanelParent()
@@ -1013,7 +1007,6 @@ MatchTemplatePanelParent::~MatchTemplatePanelParent()
 	StartEstimationButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::StartEstimationClick ), NULL, this );
 	AddToQueue->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
 	OpenQueue->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
-	ResumeRunCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::ResumeRunCheckBoxOnCheckBox ), NULL, this );
 
 }
 

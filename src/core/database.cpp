@@ -3154,6 +3154,7 @@ std::pair<int, int> Database::GetJobCompletionCounts(long template_match_job_id,
             image_group_id, template_match_job_id);
     }
 
+
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(sqlite_database, sql.ToUTF8().data(), -1, &stmt, NULL) != SQLITE_OK) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql.ToUTF8().data());

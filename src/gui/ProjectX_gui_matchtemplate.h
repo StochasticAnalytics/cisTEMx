@@ -44,7 +44,6 @@ class VolumeAssetPickerComboPanel;
 #include <wx/scrolwin.h>
 #include <wx/richtext/richtextctrl.h>
 #include <wx/gauge.h>
-#include <wx/checkbox.h>
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -274,7 +273,6 @@ class MatchTemplatePanelParent : public JobPanel
 		wxButton* StartEstimationButton;
 		wxButton* AddToQueue;
 		wxButton* OpenQueue;
-		wxCheckBox* ResumeRunCheckBox;
 
 		// Virtual event handlers, override them in your derived class
 		virtual void OnUpdateUI( wxUpdateUIEvent& event ) { event.Skip(); }
@@ -285,7 +283,6 @@ class MatchTemplatePanelParent : public JobPanel
 		virtual void StartEstimationClick( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnAddToQueueClick( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnOpenQueueClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void ResumeRunCheckBoxOnCheckBox( wxCommandEvent& event ) { event.Skip(); }
 
 
 	public:

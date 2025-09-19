@@ -1692,6 +1692,12 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     template_match_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
     template_match_job_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
 
+    // Update the queue item with the actual database job ID for n/N tracking
+    if (running_queue_job_id > 0 && queue_completion_callback) {
+        // Find and update the queue item with the correct database job ID
+        queue_completion_callback->UpdateJobDatabaseId(running_queue_job_id, template_match_job_id);
+    }
+
     return true;
 }
 
@@ -1741,7 +1747,8 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
     if (queue_item) {
         // Validate job parameters before execution
         MyDebugAssertTrue(queue_item->template_match_id >= 0, "Cannot execute job with invalid template_match_id: %ld", queue_item->template_match_id);
-        MyDebugAssertTrue(queue_item->queue_status == "pending", "Cannot execute job with status '%s', must be 'pending'", queue_item->queue_status.mb_str().data());
+        MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed",
+                          "Cannot execute job with status '%s', must be 'pending' or 'failed'", queue_item->queue_status.mb_str().data());
         MyDebugAssertFalse(queue_item->job_name.IsEmpty(), "Cannot execute job with empty job_name");
         MyDebugAssertTrue(queue_item->image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
         MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);

@@ -212,8 +212,6 @@ private:
     long currently_running_id;                          ///< Database ID of search currently executing
 
     // State Tracking - Execution and display control
-    bool execution_in_progress; ///< True while processing queue
-    bool needs_database_load;   ///< True if queue hasn't been loaded from database yet
     bool auto_progress_queue;   ///< True if queue should auto-advance after search completion
     bool hide_completed_jobs;   ///< True if completed searches should be hidden from available queue
     bool gui_update_frozen;     ///< True while SetupJobFromQueueItem is executing to prevent GUI interference

@@ -16,8 +16,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel), currently_running_id(-1) {
 
     // Initialize state variables
-    needs_database_load   = true; // Need to load from database on first access
-    execution_in_progress = false; // No searches running initially
     auto_progress_queue   = false; // Don't auto-progress by default (user controls progression)
     hide_completed_jobs   = false; // Show all searches by default
     gui_update_frozen     = false; // GUI updates allowed initially
@@ -326,7 +324,6 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
             // Critical: Ensure currently_running_id is cleared when job fails to start
             // ExecuteJob should not have set it if it returned false, but clear it to be safe
             currently_running_id = -1;
-            execution_in_progress = false;
 
             wxPrintf("ProgressQueue: Job %ld execution failed, trying next job\n", next_job->database_queue_id);
 
@@ -1218,8 +1215,6 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
             execution_queue.push_back(item);
         }
 
-        // Mark that we've loaded from database
-        needs_database_load = false;
 
         // Save crash recovery changes back to database
         if ( found_orphaned_jobs ) {
@@ -1412,8 +1407,8 @@ void TemplateMatchQueueManager::ContinueQueueExecution( ) {
     // Instance method to continue queue execution after a job completes
     // This is called from ProcessAllJobsFinished to continue with the next job
 
-    wxPrintf("ContinueQueueExecution: currently_running_id=%ld, execution_in_progress=%s\n",
-             currently_running_id, execution_in_progress ? "true" : "false");
+    wxPrintf("ContinueQueueExecution: currently_running_id=%ld\n",
+             currently_running_id);
 
     if ( IsJobRunning( ) ) {
         // A job is already running, don't start another

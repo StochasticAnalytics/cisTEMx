@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**IMPORTANT: Read this entire file completely and carefully before beginning any work. Every section contains intentional, critical information for successful collaboration. Do not skim or skip any content.**
+
 ## Claude Code Persona: Senior Graduate Student Research Assistant
 
 ### Core Identity & Mission
@@ -60,8 +62,9 @@ For development builds, follow this sequence from the project root:
 2. **Configure and build using VS Code tasks:**
    - Use VS Code Command Palette → Tasks: Run Task
    - Default profiles:
-     - `Configure cisTEM DEBUG build`
+     - `Configure cisTEM DEBUG build` (only needed if build system files changed: configure.ac, *.m4, Makefile.am)
      - `BUILD cisTEM DEBUG`
+   - **Note:** If you modify configure.ac, any .m4 files, or Makefile.am, run `./regenerate_project.b`, then configure, then build
 
 3. **Manual build process:**
 
@@ -281,3 +284,78 @@ if (running_queue_job_id > 0) {
 ```
 
 This pattern allows proper status updates without tight coupling between components.
+
+## wxWidgets Modern C++ Best Practices
+
+### Container Selection
+
+**Use STL containers for new code.** wxWidgets legacy containers (wxArray, wxList, wxVector) exist only for compatibility and should not be used in new development.
+
+| Use Case | Recommended | Avoid |
+|----------|-------------|-------|
+| Dynamic arrays | `std::vector<T>` | wxArray, wxVector |
+| Lists | `std::list<T>`, `std::deque<T>` | wxList |
+| String lists | `std::vector<wxString>` | wxArrayString |
+| Maps | `std::map`, `std::unordered_map` | wxHashMap |
+
+**Rationale:** STL containers are more efficient, safer with run-time checks, and integrate better with modern C++ features.
+
+### Memory Management for wxWidgets Objects
+
+#### GUI Objects (wxWindow-derived)
+
+**Use raw pointers with parent-child ownership model:**
+
+```cpp
+// GOOD: Parent manages child lifetime
+wxDialog* dialog = new wxDialog(parent, ...);
+wxButton* button = new wxButton(dialog, ...);  // Dialog will delete button
+
+// AVOID: Smart pointers with GUI objects
+std::unique_ptr<wxDialog> dialog;  // Risk of double-deletion
+```
+
+**Key Rules:**
+
+- Always specify a parent for wxWindow-derived objects
+- Parents automatically delete their children
+- Use `Destroy()` method, not `delete` for top-level windows
+- Never use smart pointers with wxWindow objects (causes double-deletion crashes)
+
+#### Non-GUI Objects
+
+**Use smart pointers freely:**
+
+```cpp
+// GOOD: Smart pointers for data structures
+std::unique_ptr<DataProcessor> processor = std::make_unique<DataProcessor>();
+std::shared_ptr<ImageData> shared_data = std::make_shared<ImageData>();
+```
+
+### Static Members for Persistent State
+
+For features that need to persist across dialog instances:
+
+```cpp
+// In header
+class QueueManager {
+    static std::deque<QueueItem> execution_queue;  // Survives dialog recreation
+};
+
+// In cpp file
+std::deque<QueueItem> QueueManager::execution_queue;  // Define static member
+```
+
+### Build Configuration
+
+- Enable STL support: `--enable-std_containers` or `wxUSE_STD_CONTAINERS=1`
+- Modern wxWidgets (3.3+) implements legacy containers using STL internally
+- C++11 is minimum requirement, C++14/17 features supported
+
+### Best Practices Summary
+
+- **Data structures:** Use STL containers, not wx legacy containers
+- **GUI objects:** Raw pointers with parent-child model
+- **Non-GUI objects:** Smart pointers recommended
+- **Persistence:** Static members for cross-dialog state
+- **Memory safety:** Let wxWidgets handle GUI lifecycle, use RAII for everything else

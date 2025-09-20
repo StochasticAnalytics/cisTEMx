@@ -5,6 +5,9 @@
 #include <wx/dataview.h>
 #include <deque>
 
+// Forward declarations
+class MyMainFrame;
+
 /**
  * @brief Tracks completion progress for template matching searches to display n/N progress counters
  *
@@ -61,7 +64,7 @@ public:
     long database_queue_id;         ///< Persistent database queue identifier (TEMPLATE_MATCH_QUEUE.QUEUE_ID)
     long template_match_job_id;     ///< Results table identifier (TEMPLATE_MATCH_LIST.TEMPLATE_MATCH_JOB_ID, -1 if no results yet)
     wxString search_name;           ///< User-friendly name for this template matching search (maps to JOB_NAME in database)
-    wxString queue_status;          ///< Search status: "pending", "running", "complete", "failed"
+    wxString queue_status;          ///< Computed status: "pending", "running", "partial", "complete" (not stored in DB)
     int queue_order;                ///< Priority order: 0=running, 1+=pending queue position, -1=available queue
     wxString custom_cli_args;       ///< Additional command-line arguments for this search
 
@@ -267,7 +270,7 @@ public:
     void ClearExecutionQueue();
 
     /**
-     * @brief Reorders search priority by changing queue position
+     * @brief Reorders search prioritpley by changing queue position
      * @param job_index Current position in execution queue
      * @param new_position Desired position for priority ordering
      */
@@ -466,6 +469,34 @@ public:
      * @brief Debug helper to print current queue state to console
      */
     void PrintQueueState();
+
+    /**
+     * @brief Helper to check if database is available
+     * @param frame_ptr The main_frame pointer to check
+     * @return true if database is available, false otherwise
+     */
+    bool IsDatabaseAvailable(MyMainFrame* frame_ptr) const;
+
+    /**
+     * @brief Compute queue status from completion progress
+     * @param completed Number of completed jobs
+     * @param total Total number of jobs
+     * @param currently_running_id ID of currently running job (-1 if none)
+     * @param item_id ID of this queue item
+     * @return Status string: "pending", "running", "partial", or "complete"
+     */
+    inline wxString ComputeStatusFromProgress(int completed, int total, long currently_running_id, long item_id) const {
+        if (currently_running_id == item_id) {
+            return "running";
+        }
+        if (completed == 0) {
+            return "pending";
+        }
+        if (completed < total) {
+            return "partial";  // Previously called "failed" but this is more accurate
+        }
+        return "complete";
+    }
 
     DECLARE_EVENT_TABLE()
 };

@@ -231,6 +231,10 @@ void TemplateMatchQueueManager::PrintQueueState( ) {
     wxPrintf("  Currently running job ID: %ld\n\n", currently_running_id);
 }
 
+bool TemplateMatchQueueManager::IsDatabaseAvailable(MyMainFrame* frame_ptr) const {
+    return (frame_ptr != nullptr && frame_ptr->current_project.is_open);
+}
+
 void TemplateMatchQueueManager::RemoveFromExecutionQueue(int index) {
     MyDebugAssertTrue(index >= 0, "RemoveFromQueue called with negative index: %d", index);
     MyDebugAssertTrue(index < execution_queue.size( ), "RemoveFromQueue called with index %d >= queue size %zu", index, execution_queue.size( ));
@@ -1240,7 +1244,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
         bool success = main_frame->current_project.database.GetQueueItemByID(
                 queue_ids[i],
                 temp_item.search_name,
-                temp_item.queue_status,
+                temp_item.template_match_job_id, // This will be loaded from TEMPLATE_MATCH_JOB_ID
                 temp_item.queue_order, // This will be loaded from QUEUE_POSITION
                 temp_item.custom_cli_args,
                 temp_item.image_group_id,
@@ -1273,6 +1277,19 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
                 temp_item.exclude_above_xy_threshold);
 
         if ( success ) {
+            // Compute queue status from completion data
+            std::pair<int, int> completion_counts;
+            if (temp_item.template_match_job_id > 0) {
+                // Use template match job ID for completion tracking
+                completion_counts = main_frame->current_project.database.GetJobCompletionCounts(temp_item.template_match_job_id, temp_item.image_group_id);
+            } else {
+                // No results yet, so completion is 0/N where N is image count in group
+                // Use GetJobCompletionCounts with dummy job ID (-1) to get total count
+                std::pair<int, int> group_counts = main_frame->current_project.database.GetJobCompletionCounts(-1, temp_item.image_group_id);
+                completion_counts = std::make_pair(0, group_counts.second);
+            }
+            temp_item.queue_status = ComputeStatusFromProgress(completion_counts.first, completion_counts.second, currently_running_id, temp_item.database_queue_id);
+
             // Force completed/failed jobs to available queue regardless of stored queue_order
             if ( temp_item.queue_status == "complete" || temp_item.queue_status == "failed" ) {
                 temp_item.queue_order = -1; // Move completed/failed jobs to available queue
@@ -1321,8 +1338,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
             available_items.push_back(item);
             found_orphaned_jobs = true;
 
-            // Update database immediately for this job
-            main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, "failed");
+            // Note: Queue status is now computed from completion data, no database update needed
             main_frame->current_project.database.UpdateQueuePosition(item.database_queue_id, -1);
         }
     }
@@ -1332,8 +1348,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
             item.queue_status   = "failed";
             found_orphaned_jobs = true;
 
-            // Update database immediately for this job
-            main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, "failed");
+            // Note: Queue status is now computed from completion data, no database update needed
         }
     }
 
@@ -1372,9 +1387,8 @@ void TemplateMatchQueueManager::SaveQueueToDatabase( ) {
     MyDebugAssertTrue(main_frame != nullptr, "SaveQueueToDatabase: main_frame is null");
     MyDebugAssertTrue(main_frame->current_project.is_open, "SaveQueueToDatabase: no project open");
 
-    // Update status and queue position for all items in queue
+    // Update queue position for all items in queue (status is now computed from completion data)
     for ( const auto& item : execution_queue ) {
-        main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, item.queue_status);
 
         // Convert 0-based queue positions to 1-based for database storage
         // Keep -1 as-is for available jobs
@@ -1559,6 +1573,9 @@ void TemplateMatchQueueManager::ContinueQueueExecution( ) {
 }
 
 void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool success) {
+    // Ensure database is available for status updates
+    MyDebugAssertTrue(IsDatabaseAvailable(main_frame), "OnJobCompleted: Database not available");
+
     if constexpr ( skip_search_execution_for_queue_debugging ) {
         wxPrintf("\n=== OnJobCompleted called ===\n");
         wxPrintf("Job ID: %ld, Success: %s\n", database_queue_id, success ? "true" : "false");
@@ -1606,7 +1623,7 @@ void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool succ
     UpdateQueueDisplay( );
     UpdateAvailableJobsDisplay( );
 
-    // Save changes to database
+    // Save changes to database - using auto-commit mode (each UPDATE commits immediately)
     SaveQueueToDatabase( );
 
     if constexpr ( skip_search_execution_for_queue_debugging ) {
@@ -1775,6 +1792,11 @@ void TemplateMatchQueueManager::UpdateJobDatabaseId(long queue_database_queue_id
             wxPrintf("Found queue item %ld in execution queue, setting template_match_job_id = %ld\n",
                      queue_database_queue_id, database_template_match_job_id);
             item.template_match_job_id = database_template_match_job_id;
+
+            // Update database with the template match job ID
+            if (main_frame && main_frame->current_project.is_open) {
+                main_frame->current_project.database.UpdateQueueTemplateMatchJobId(queue_database_queue_id, database_template_match_job_id);
+            }
             return;
         }
     }
@@ -1785,6 +1807,11 @@ void TemplateMatchQueueManager::UpdateJobDatabaseId(long queue_database_queue_id
             wxPrintf("Found queue item %ld in available queue, setting template_match_job_id = %ld\n",
                      queue_database_queue_id, database_template_match_job_id);
             item.template_match_job_id = database_template_match_job_id;
+
+            // Update database with the template match job ID
+            if (main_frame && main_frame->current_project.is_open) {
+                main_frame->current_project.database.UpdateQueueTemplateMatchJobId(queue_database_queue_id, database_template_match_job_id);
+            }
             return;
         }
     }

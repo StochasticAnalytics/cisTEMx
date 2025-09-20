@@ -2867,7 +2867,7 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     wxDateTime current_time = wxDateTime::Now();
 
     const char* sql = "INSERT INTO TEMPLATE_MATCH_QUEUE ("
-                     "JOB_NAME, QUEUE_STATUS, QUEUE_POSITION, DATETIME_QUEUED, "
+                     "JOB_NAME, TEMPLATE_MATCH_JOB_ID, QUEUE_POSITION, DATETIME_QUEUED, "
                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
@@ -2877,8 +2877,9 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
                      "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, "
                      "REFINEMENT_THRESHOLD, REF_BOX_SIZE_IN_ANGSTROMS, "
                      "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
-                     "EXCLUDE_ABOVE_XY_THRESHOLD, CUSTOM_CLI_ARGS"
-                     ") VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                     "EXCLUDE_ABOVE_XY_THRESHOLD, CUSTOM_CLI_ARGS, "
+                     "FUTURE_INT_1, FUTURE_INT_2, FUTURE_FLOAT_1, FUTURE_FLOAT_2, FUTURE_TEXT_1, FUTURE_TEXT_2"
+                     ") VALUES (?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL);";
 
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
@@ -2951,7 +2952,7 @@ void Database::GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids) {
     sqlite3_finalize(stmt);
 }
 
-bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, int& queue_position, wxString& custom_cli_args,
+bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& template_match_job_id, int& queue_position, wxString& custom_cli_args,
                                int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
                                float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
                                float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
@@ -2965,7 +2966,7 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& que
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
 
-    const char* sql = "SELECT JOB_NAME, QUEUE_STATUS, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
+    const char* sql = "SELECT JOB_NAME, TEMPLATE_MATCH_JOB_ID, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
@@ -2992,11 +2993,11 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& que
 
         // Extract string values
         job_name = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
-        queue_status = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
         custom_cli_args = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
         symmetry = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
 
-        // Extract integer values
+        // Extract integer/long values
+        template_match_job_id = sqlite3_column_int64(stmt, 1);
         queue_position = sqlite3_column_int(stmt, 2);
         image_group_id = sqlite3_column_int(stmt, 4);
         reference_volume_asset_id = sqlite3_column_int(stmt, 5);
@@ -3033,31 +3034,6 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& que
     return found;
 }
 
-void Database::UpdateQueueStatus(long queue_id, const wxString& status) {
-    MyDebugAssertTrue(is_open == true, "Database not open!");
-    MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
-    MyDebugAssertTrue(status == "pending" || status == "running" || status == "complete" || status == "failed",
-                     "Invalid status: %s", status.mb_str().data());
-
-    const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_STATUS = ? WHERE QUEUE_ID = ?;";
-
-    sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
-        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
-        DEBUG_ABORT;
-    }
-
-    sqlite3_bind_text(stmt, 1, status.mb_str().data(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 2, queue_id);
-
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
-        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
-        sqlite3_finalize(stmt);
-        DEBUG_ABORT;
-    }
-
-    sqlite3_finalize(stmt);
-}
 
 void Database::UpdateQueuePosition(long queue_id, int position) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
@@ -3073,6 +3049,31 @@ void Database::UpdateQueuePosition(long queue_id, int position) {
     }
 
     sqlite3_bind_int(stmt, 1, position);
+    sqlite3_bind_int64(stmt, 2, queue_id);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        sqlite3_finalize(stmt);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_finalize(stmt);
+}
+
+void Database::UpdateQueueTemplateMatchJobId(long queue_id, long template_match_job_id) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+    MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
+    MyDebugAssertTrue(template_match_job_id > 0, "Invalid template match job ID: %ld", template_match_job_id);
+
+    const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET TEMPLATE_MATCH_JOB_ID = ? WHERE QUEUE_ID = ?;";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
+        DEBUG_ABORT;
+    }
+
+    sqlite3_bind_int64(stmt, 1, template_match_job_id);
     sqlite3_bind_int64(stmt, 2, queue_id);
 
     if (sqlite3_step(stmt) != SQLITE_DONE) {

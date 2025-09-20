@@ -786,10 +786,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     if (running_queue_job_id > 0) {
         wxPrintf("Queue job %ld completed - updating status\n", running_queue_job_id);
 
-        // Update job status in database directly (since queue manager may not be open)
-        if (main_frame && main_frame->current_project.is_open) {
-            main_frame->current_project.database.UpdateQueueStatus(running_queue_job_id, "complete");
-        }
+        // Note: Queue status is now computed from completion data, no database update needed
 
         // Notify queue manager if callback is registered - called AFTER clearing running_job
         if (queue_completion_callback) {

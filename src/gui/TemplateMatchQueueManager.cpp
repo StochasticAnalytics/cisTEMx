@@ -1048,9 +1048,12 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
         }
     }
 
-    // Move selected available jobs to execution queue
+    // Move selected available jobs to execution queue (only pending/failed jobs)
     std::vector<long> selected_job_ids;
+    std::vector<wxString> blocked_jobs;
     int available_row = 0;
+
+    // First, check jobs from execution_queue with queue_order < 0
     for (size_t i = 0; i < execution_queue.size(); ++i) {
         if (execution_queue[i].queue_order < 0) { // This is an available job
             // Check if this available job row is selected
@@ -1067,6 +1070,51 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
         }
     }
 
+    // Then, check jobs from available_queue (not in execution_queue)
+    for (size_t i = 0; i < available_queue.size(); ++i) {
+        // Skip if already in execution_queue
+        bool found_in_execution = false;
+        for (const auto& exec_job : execution_queue) {
+            if (exec_job.template_match_id == available_queue[i].template_match_id) {
+                found_in_execution = true;
+                break;
+            }
+        }
+
+        if (!found_in_execution) {
+            // Check if this available job row is selected
+            for (long selected_row : selected_rows) {
+                if (available_row == selected_row) {
+                    // Allow pending and failed jobs to be moved to execution queue
+                    if (available_queue[i].queue_status == "pending" || available_queue[i].queue_status == "failed") {
+                        // Move from available_queue to execution_queue
+                        available_queue[i].queue_order = next_queue_order++;
+                        execution_queue.push_back(available_queue[i]);
+                        selected_job_ids.push_back(available_queue[i].template_match_id);
+                        // Remove from available_queue
+                        available_queue.erase(available_queue.begin() + i);
+                        i--; // Adjust index after erase
+                    } else {
+                        blocked_jobs.push_back(wxString::Format("Job %ld (%s)",
+                                              available_queue[i].template_match_id,
+                                              available_queue[i].queue_status));
+                    }
+                    break;
+                }
+            }
+            available_row++;
+        }
+    }
+
+    // Show warning if some jobs were blocked
+    if (!blocked_jobs.empty()) {
+        wxString message = "The following jobs cannot be added to execution queue:\n\n";
+        for (const auto& job : blocked_jobs) {
+            message += "• " + job + "\n";
+        }
+        message += "\nOnly jobs with 'pending' or 'failed' status can be queued for execution.";
+        wxMessageBox(message, "Some Jobs Not Added", wxOK | wxICON_INFORMATION);
+    }
     if (!selected_job_ids.empty()) {
         wxPrintf("Added %zu jobs to execution queue\n", selected_job_ids.size());
         SaveQueueToDatabase();

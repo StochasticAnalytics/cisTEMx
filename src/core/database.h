@@ -29,6 +29,20 @@ class Database {
     bool Open(wxFileName file_to_open, bool disable_locking = false);
     bool CopyDatabaseFile(wxFileName backup_db);
 
+    /**
+     * @brief Begin a database transaction with nesting support
+     *
+     * SQLite Configuration:
+     * - Uses DEFAULT journal mode (DELETE), not WAL
+     * - Auto-commit mode for standalone statements (no explicit Begin/Commit needed)
+     * - When Begin() is called, starts explicit transaction with "BEGIN IMMEDIATE"
+     * - Supports nested transactions via reference counting
+     * - Only actually begins transaction on first call (count == 0)
+     *
+     * @note Most cisTEM database operations use auto-commit mode where each
+     *       UPDATE/INSERT commits immediately. Begin/Commit are only used for
+     *       batch operations that need atomicity.
+     */
     inline void Begin( ) {
         if ( number_of_active_transactions == 0 )
             ExecuteSQL("BEGIN IMMEDIATE;"); // we can start, otherwise, we are already in begin commit
@@ -37,6 +51,11 @@ class Database {
         //	MyPrintWithDetails("\nBegin %i\n", number_of_active_transactions);
     }
 
+    /**
+     * @brief Commit a database transaction with nesting support
+     *
+     * @note Only commits when reference count reaches 0 (all nested Begin calls matched)
+     */
     inline void Commit( ) {
         number_of_active_transactions--;
         if ( number_of_active_transactions == 0 )
@@ -396,6 +415,15 @@ class Database {
     long                    GetTemplateMatchIdForGivenJobId(long wanted_template_match_job_id);
 
     // Template Match Queue operations (using basic types to avoid GUI dependencies)
+    /**
+     * @brief Adds a new template matching search to the persistent database queue
+     *
+     * Inserts search parameters into TEMPLATE_MATCH_QUEUE table with unique ID assignment.
+     * This is the foundational database operation that persists queue items across QueueManager
+     * dialog instances and application restarts.
+     *
+     * @return Database-assigned queue ID for the new search, or -1 on failure
+     */
     long            AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
                                           bool use_gpu, bool use_fast_fft, const wxString& symmetry,
                                           float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
@@ -408,8 +436,8 @@ class Database {
                                           float mask_radius, float min_peak_radius,
                                           float xy_change_threshold, bool exclude_above_xy_threshold,
                                           const wxString& custom_cli_args);
-    wxArrayLong     GetQueuedTemplateMatchIDs();
-    bool            GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, int& queue_position, wxString& custom_cli_args,
+    void            GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids);
+    bool            GetQueueItemByID(long queue_id, wxString& job_name, long& template_match_job_id, int& queue_position, wxString& custom_cli_args,
                                    int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
                                    float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
                                    float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
@@ -420,14 +448,14 @@ class Database {
                                    float& refinement_threshold, float& ref_box_size_in_angstroms,
                                    float& mask_radius, float& min_peak_radius,
                                    float& xy_change_threshold, bool& exclude_above_xy_threshold);
-    void            UpdateQueueStatus(long queue_id, const wxString& status);
     void            UpdateQueuePosition(long queue_id, int position);
+    void            UpdateQueueTemplateMatchJobId(long queue_id, long template_match_job_id);
     void            RemoveFromQueue(long queue_id);
     void            ClearTemplateMatchQueue();
 
     // Template match completion tracking methods
     std::pair<int, int> GetJobCompletionCounts(long template_match_job_id, int image_group_id = -1);
-    wxArrayLong         GetAllTemplateMatchJobIds();
+    void                GetAllTemplateMatchJobIds(std::vector<long>& job_ids);
 
     void AddRefinementAngularDistribution(AngularDistributionHistogram& histogram_to_add, long refinement_id, int class_number);
     void CopyRefinementAngularDistributions(long refinement_id_to_copy, long refinement_id_to_copy_to, int wanted_class_number);

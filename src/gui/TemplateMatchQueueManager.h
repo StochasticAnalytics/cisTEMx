@@ -183,6 +183,9 @@ public:
  */
 class TemplateMatchQueueManager : public wxPanel {
 private:
+    // Debug flag for queue behavior testing - set to true to skip actual job execution
+    static constexpr bool skip_search_execution_for_queue_debugging = false;
+
     // UI Controls - Execution queue table (top) shows searches with queue_order >= 0
     wxListCtrl* execution_queue_ctrl;
 
@@ -458,6 +461,11 @@ public:
      * @brief Persists current queue state to database
      */
     void SaveQueueToDatabase();
+
+    /**
+     * @brief Debug helper to print current queue state to console
+     */
+    void PrintQueueState();
 
     DECLARE_EVENT_TABLE()
 };

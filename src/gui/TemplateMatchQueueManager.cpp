@@ -17,9 +17,9 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     // Initialize state variables
     needs_database_load   = true; // Need to load from database on first access
-    execution_in_progress = false; // No jobs running initially
+    execution_in_progress = false; // No searches running initially
     auto_progress_queue   = false; // Don't auto-progress by default (user controls progression)
-    hide_completed_jobs   = false; // Show all jobs by default
+    hide_completed_jobs   = false; // Show all searches by default
     gui_update_frozen     = false; // GUI updates allowed initially
     drag_in_progress      = false;
     updating_display      = false;  // Not updating display initially
@@ -31,7 +31,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
 
     // Create execution queue section (top)
-    wxStaticText* execution_queue_label = new wxStaticText(this, wxID_ANY, "Execution Queue (jobs will run in order - drag to reorder):");
+    wxStaticText* execution_queue_label = new wxStaticText(this, wxID_ANY, "Execution Queue (searches will run in order - drag to reorder):");
     execution_queue_ctrl                = new wxListCtrl(this, wxID_ANY,
                                                          wxDefaultPosition, wxSize(700, 200),
                                                          wxLC_REPORT);
@@ -39,7 +39,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Add columns to execution queue (with queue order)
     execution_queue_ctrl->AppendColumn("Queue Order", wxLIST_FORMAT_LEFT, 80);
     execution_queue_ctrl->AppendColumn("ID", wxLIST_FORMAT_LEFT, 60);
-    execution_queue_ctrl->AppendColumn("Job Name", wxLIST_FORMAT_LEFT, 200);
+    execution_queue_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 200);
     execution_queue_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 100);
     execution_queue_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 80);
     execution_queue_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 140);
@@ -60,7 +60,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Execution controls
     run_selected_button = new wxButton(execution_controls, wxID_ANY, "Run Queue");
     cancel_run_button   = new wxButton(execution_controls, wxID_ANY, "Cancel Active Run");
-    cancel_run_button->Enable(false); // Disabled until job is running
+    cancel_run_button->Enable(false); // Disabled until search is running
 
     execution_sizer->Add(assign_priority_button, 0, wxALL, 5);
     execution_sizer->AddSpacer(20);
@@ -81,8 +81,8 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     movement_controls->SetSizer(movement_sizer);
 
-    // Create available jobs section (bottom)
-    wxStaticText* available_jobs_label = new wxStaticText(this, wxID_ANY, "Available Jobs (not queued for execution):");
+    // Create available searches section (bottom)
+    wxStaticText* available_jobs_label = new wxStaticText(this, wxID_ANY, "Available Searches (not queued for execution):");
     available_jobs_ctrl                = new wxListCtrl(this, wxID_ANY,
                                                         wxDefaultPosition, wxSize(700, 150),
                                                         wxLC_REPORT);
@@ -91,9 +91,9 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     available_jobs_ctrl->SetMinSize(wxSize(700, 150));
     wxPrintf("Created available_jobs_ctrl: %p with min size 700x150\n", available_jobs_ctrl); // Debug output
 
-    // Add columns to available jobs (no queue order column)
+    // Add columns to available searches (no queue order column)
     available_jobs_ctrl->AppendColumn("ID", wxLIST_FORMAT_LEFT, 60);
-    available_jobs_ctrl->AppendColumn("Job Name", wxLIST_FORMAT_LEFT, 200);
+    available_jobs_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 200);
     available_jobs_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 100);
     available_jobs_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 80);
     available_jobs_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 140);
@@ -138,7 +138,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     clear_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnClearQueueClick, this);
     hide_completed_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnHideCompletedToggle, this);
 
-    // Bind selection events for available jobs table
+    // Bind selection events for available searches table
     available_jobs_ctrl->Bind(wxEVT_LIST_ITEM_SELECTED, &TemplateMatchQueueManager::OnAvailableJobsSelectionChanged, this);
     available_jobs_ctrl->Bind(wxEVT_LIST_ITEM_DESELECTED, &TemplateMatchQueueManager::OnAvailableJobsSelectionChanged, this);
 
@@ -169,52 +169,50 @@ void TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem
     // Validate the queue item before adding
     MyDebugAssertTrue(item.image_group_id >= 0, "Cannot add item with invalid image_group_id: %d", item.image_group_id);
     MyDebugAssertTrue(item.reference_volume_asset_id >= 0, "Cannot add item with invalid reference_volume_asset_id: %d", item.reference_volume_asset_id);
-    MyDebugAssertFalse(item.job_name.IsEmpty( ), "Cannot add item with empty job_name");
+    MyDebugAssertFalse(item.search_name.IsEmpty( ), "Cannot add item with empty search_name");
     MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" || item.queue_status == "complete" || item.queue_status == "failed",
                       "Cannot add item with invalid queue_status: %s", item.queue_status.mb_str( ).data( ));
 
-    if ( match_template_panel_ptr && main_frame && main_frame->current_project.is_open ) {
-        // Add item to database and get the new queue ID
-        long new_database_queue_id = main_frame->current_project.database.AddToTemplateMatchQueue(
-                item.job_name, item.image_group_id, item.reference_volume_asset_id, item.run_profile_id,
-                item.use_gpu, item.use_fast_fft, item.symmetry,
-                item.pixel_size, item.voltage, item.spherical_aberration, item.amplitude_contrast,
-                item.defocus1, item.defocus2, item.defocus_angle, item.phase_shift,
-                item.low_resolution_limit, item.high_resolution_limit,
-                item.out_of_plane_angular_step, item.in_plane_angular_step,
-                item.defocus_search_range, item.defocus_step,
-                item.pixel_size_search_range, item.pixel_size_step,
-                item.refinement_threshold, item.ref_box_size_in_angstroms,
-                item.mask_radius, item.min_peak_radius,
-                item.xy_change_threshold, item.exclude_above_xy_threshold,
-                item.custom_cli_args);
+    MyDebugAssertTrue(match_template_panel_ptr != nullptr, "AddToExecutionQueue called with null match_template_panel_ptr");
+    MyDebugAssertTrue(main_frame != nullptr, "AddToExecutionQueue called with null main_frame");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "AddToExecutionQueue called with no project open");
 
-        // Create a copy with the new database ID and assign queue order
-        TemplateMatchQueueItem new_item = item;
-        new_item.database_queue_id      = new_database_queue_id;
+    // Add item to database and get the new queue ID
+    long new_database_queue_id = main_frame->current_project.database.AddToTemplateMatchQueue(
+            item.search_name, item.image_group_id, item.reference_volume_asset_id, item.run_profile_id,
+            item.use_gpu, item.use_fast_fft, item.symmetry,
+            item.pixel_size, item.voltage, item.spherical_aberration, item.amplitude_contrast,
+            item.defocus1, item.defocus2, item.defocus_angle, item.phase_shift,
+            item.low_resolution_limit, item.high_resolution_limit,
+            item.out_of_plane_angular_step, item.in_plane_angular_step,
+            item.defocus_search_range, item.defocus_step,
+            item.pixel_size_search_range, item.pixel_size_step,
+            item.refinement_threshold, item.ref_box_size_in_angstroms,
+            item.mask_radius, item.min_peak_radius,
+            item.xy_change_threshold, item.exclude_above_xy_threshold,
+            item.custom_cli_args);
 
-        // Assign next available queue order (find highest current order + 1)
-        int max_order = -1; // Start at -1 so first item gets queue_order=0
-        for ( const auto& existing_item : execution_queue ) {
-            if ( existing_item.queue_order > max_order ) {
-                max_order = existing_item.queue_order;
-            }
+    // Create a copy with the new database ID and assign queue order
+    TemplateMatchQueueItem new_item = item;
+    new_item.database_queue_id      = new_database_queue_id;
+
+    // Assign next available queue order (find highest current order + 1)
+    int max_order = -1; // Start at -1 so first item gets queue_order=0
+    for ( const auto& existing_item : execution_queue ) {
+        if ( existing_item.queue_order > max_order ) {
+            max_order = existing_item.queue_order;
         }
-        new_item.queue_order = max_order + 1;
+    }
+    new_item.queue_order = max_order + 1;
 
-        execution_queue.push_back(new_item);
+    execution_queue.push_back(new_item);
 
-        UpdateQueueDisplay( );
+    UpdateQueueDisplay( );
 
-        // Highlight the newly added item (last item in queue)
-        if ( queue_list_ctrl && execution_queue.size( ) > 0 ) {
-            int new_row = execution_queue.size( ) - 1;
-            queue_list_ctrl->SetItemState(new_row, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
-        }
-    } else {
-        MyAssertTrue(false, "AddToExecutionQueue called but prerequisites not met - match_template_panel_ptr=%p, main_frame=%p, project_open=%s",
-                     match_template_panel_ptr, main_frame,
-                     (main_frame && main_frame->current_project.is_open) ? "true" : "false");
+    // Highlight the newly added item (last item in queue)
+    if ( queue_list_ctrl && execution_queue.size( ) > 0 ) {
+        int new_row = execution_queue.size( ) - 1;
+        queue_list_ctrl->SetItemState(new_row, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
     }
 }
 
@@ -224,14 +222,15 @@ void TemplateMatchQueueManager::RemoveFromExecutionQueue(int index) {
     MyDebugAssertFalse(execution_queue.empty( ), "Cannot remove from empty queue");
 
     if ( index >= 0 && index < execution_queue.size( ) ) {
-        // Don't allow removal of currently running jobs
+        // Don't allow removal of currently running searches
         MyDebugAssertTrue(execution_queue[index].queue_status != "running",
                           "Cannot remove currently running job (ID: %ld)", execution_queue[index].database_queue_id);
 
         // Remove from database first
-        if ( match_template_panel_ptr && main_frame && main_frame->current_project.is_open ) {
-            main_frame->current_project.database.RemoveFromQueue(execution_queue[index].database_queue_id);
-        }
+        MyDebugAssertTrue(match_template_panel_ptr != nullptr, "RemoveFromExecutionQueue: match_template_panel_ptr is null");
+        MyDebugAssertTrue(main_frame != nullptr, "RemoveFromExecutionQueue: main_frame is null");
+        MyDebugAssertTrue(main_frame->current_project.is_open, "RemoveFromExecutionQueue: no project open");
+        main_frame->current_project.database.RemoveFromQueue(execution_queue[index].database_queue_id);
 
         execution_queue.erase(execution_queue.begin( ) + index);
         UpdateQueueDisplay( );
@@ -240,11 +239,13 @@ void TemplateMatchQueueManager::RemoveFromExecutionQueue(int index) {
 
 void TemplateMatchQueueManager::ClearExecutionQueue( ) {
     // Clear all items and remove from database
-    if ( match_template_panel_ptr && main_frame && main_frame->current_project.is_open ) {
-        // Remove all items from database
-        for ( const auto& item : execution_queue ) {
-            main_frame->current_project.database.RemoveFromQueue(item.database_queue_id);
-        }
+    MyDebugAssertTrue(match_template_panel_ptr != nullptr, "ClearExecutionQueue: match_template_panel_ptr is null");
+    MyDebugAssertTrue(main_frame != nullptr, "ClearExecutionQueue: main_frame is null");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "ClearExecutionQueue: no project open");
+
+    // Remove all items from database
+    for ( const auto& item : execution_queue ) {
+        main_frame->current_project.database.RemoveFromQueue(item.database_queue_id);
     }
 
     execution_queue.clear( );
@@ -406,6 +407,44 @@ void TemplateMatchQueueManager::SetStatusDisplay(wxListCtrl* list_ctrl, long ite
     list_ctrl->SetItemFont(item_index, item_font);
 }
 
+void TemplateMatchQueueManager::PopulateListControl(wxListCtrl* ctrl,
+                                                    const std::vector<TemplateMatchQueueItem*>& items,
+                                                    bool is_execution_queue) {
+    MyDebugAssertTrue(ctrl != nullptr, "PopulateListControl: ctrl is null");
+
+    ctrl->DeleteAllItems();
+
+    for (size_t idx = 0; idx < items.size(); ++idx) {
+        const auto* item = items[idx];
+        long row;
+
+        if (is_execution_queue) {
+            // Execution queue shows queue order as first column
+            row = ctrl->InsertItem(idx, wxString::Format("%d", item->queue_order));
+            ctrl->SetItem(row, 1, wxString::Format("%ld", item->database_queue_id));
+            ctrl->SetItem(row, 2, item->search_name);
+            // Status is column 3
+            SetStatusDisplay(ctrl, row, item->queue_status);
+            // Progress is column 4
+            JobCompletionInfo completion = GetJobCompletionInfo(item->database_queue_id);
+            ctrl->SetItem(row, 4, completion.GetCompletionString());
+            // Custom args is column 5
+            ctrl->SetItem(row, 5, item->custom_cli_args);
+        } else {
+            // Available jobs shows ID as first column (no queue order)
+            row = ctrl->InsertItem(idx, wxString::Format("%ld", item->database_queue_id));
+            ctrl->SetItem(row, 1, item->search_name);
+            // Status is column 2
+            SetStatusDisplay(ctrl, row, item->queue_status);
+            // Progress is column 3
+            JobCompletionInfo completion = GetJobCompletionInfo(item->database_queue_id);
+            ctrl->SetItem(row, 3, completion.GetCompletionString());
+            // Custom args is column 4
+            ctrl->SetItem(row, 4, item->custom_cli_args);
+        }
+    }
+}
+
 void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
     MyDebugAssertTrue(queue_list_ctrl != nullptr, "queue_list_ctrl is null in UpdateQueueDisplay");
 
@@ -414,13 +453,9 @@ void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
 
     // Preserve current selections before rebuilding
     std::vector<long> selected_template_ids;
-
-    // Get currently selected items in wxListCtrl
     long item = queue_list_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
     while ( item != -1 ) {
-        // For wxListCtrl, the item index directly corresponds to the row in our sorted display
         if ( item < int(execution_queue.size()) ) {
-            // Find the job with this queue_order (since we sort by queue_order)
             for ( const auto& job : execution_queue ) {
                 if ( job.queue_order == item ) {
                     selected_template_ids.push_back(job.database_queue_id);
@@ -431,69 +466,31 @@ void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
         item = queue_list_ctrl->GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
     }
 
-    queue_list_ctrl->DeleteAllItems( );
-
-    // Sort execution_queue by queue_order so row position matches priority
-    // Create a sorted index vector to avoid modifying the original queue
-    std::vector<size_t> sorted_indices;
-    for ( size_t i = 0; i < execution_queue.size( ); ++i ) {
-        wxPrintf("UpdateQueueDisplay: Job %ld has queue_order=%d\n",
-                 execution_queue[i].database_queue_id, execution_queue[i].queue_order);
-        if ( execution_queue[i].queue_order >= 0 ) { // Only show items in execution queue
-            sorted_indices.push_back(i);
-            wxPrintf("UpdateQueueDisplay: Adding job %ld to execution display\n", execution_queue[i].database_queue_id);
-        } else {
-            wxPrintf("UpdateQueueDisplay: Skipping job %ld (available queue)\n", execution_queue[i].database_queue_id);
+    // Build sorted list of execution queue items
+    std::vector<TemplateMatchQueueItem*> sorted_items;
+    for ( auto& job : execution_queue ) {
+        if ( job.queue_order >= 0 ) {
+            sorted_items.push_back(&job);
         }
     }
 
-    // Sort indices by queue_order
-    std::sort(sorted_indices.begin( ), sorted_indices.end( ),
-              [this](size_t a, size_t b) {
-                  return execution_queue[a].queue_order < execution_queue[b].queue_order;
+    // Sort by queue_order
+    std::sort(sorted_items.begin(), sorted_items.end(),
+              [](const TemplateMatchQueueItem* a, const TemplateMatchQueueItem* b) {
+                  return a->queue_order < b->queue_order;
               });
 
-    // Display sorted items
-    for ( size_t idx = 0; idx < sorted_indices.size( ); ++idx ) {
-        size_t i = sorted_indices[idx];
-        MyDebugAssertTrue(i < execution_queue.size( ), "Queue index %zu out of bounds (size: %zu)", i, execution_queue.size( ));
-
-        // For wxListCtrl, add item with first column text then set other columns
-        long item_index = queue_list_ctrl->InsertItem(idx, wxString::Format("%d", execution_queue[i].queue_order));
-
-        // Set the remaining columns
-        queue_list_ctrl->SetItem(item_index, 1, wxString::Format("%ld", execution_queue[i].database_queue_id));
-        queue_list_ctrl->SetItem(item_index, 2, execution_queue[i].job_name);
-
-        // Set status display with centralized formatting
-        SetStatusDisplay(queue_list_ctrl, item_index, execution_queue[i].queue_status);
-
-        // Get completion info for Progress column
-        JobCompletionInfo completion = GetJobCompletionInfo(execution_queue[i].database_queue_id);
-        queue_list_ctrl->SetItem(item_index, 4, completion.GetCompletionString());
-
-        queue_list_ctrl->SetItem(item_index, 5, execution_queue[i].custom_cli_args);
-    }
+    // Use consolidated method to populate the list
+    PopulateListControl(queue_list_ctrl, sorted_items, true);
 
     // Restore selections after rebuilding
     for ( long template_id : selected_template_ids ) {
-        for ( size_t i = 0; i < execution_queue.size( ); ++i ) {
-            if ( execution_queue[i].database_queue_id == template_id ) {
-                wxPrintf("RestoreSelection: Found job %ld at execution_queue index %zu, queue_order=%d\n",
-                         template_id, i, execution_queue[i].queue_order);
-
-                // The row should be based on queue_order, not array index!
-                int row = execution_queue[i].queue_order;
-                wxPrintf("RestoreSelection: Using row %d (queue_order) instead of %zu (array index)\n", row, i);
-
-                // Add safety checks to prevent array bounds errors
-                if (row < 0 || row >= queue_list_ctrl->GetItemCount()) {
-                    wxPrintf("ERROR: Row %d is out of bounds (list item count: %ld)\n", row, queue_list_ctrl->GetItemCount());
-                    break;
+        for ( const auto& job : execution_queue ) {
+            if ( job.database_queue_id == template_id && job.queue_order >= 0 ) {
+                int row = job.queue_order;
+                if (row >= 0 && row < queue_list_ctrl->GetItemCount()) {
+                    queue_list_ctrl->SetItemState(row, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
                 }
-
-                // For wxListCtrl, we can directly select by row index
-                queue_list_ctrl->SetItemState(row, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
                 break;
             }
         }
@@ -510,83 +507,44 @@ void TemplateMatchQueueManager::UpdateAvailableJobsDisplay() {
     wxPrintf("UpdateAvailableJobsDisplay called\n");
     MyDebugAssertTrue(available_jobs_ctrl != nullptr, "available_jobs_ctrl is null in UpdateAvailableJobsDisplay");
 
-    // Clear existing items
-    available_jobs_ctrl->DeleteAllItems();
+    // Build list of available items
+    std::vector<TemplateMatchQueueItem*> available_items;
 
-    // Add jobs with queue_order < 0 (not in execution queue) from both execution_queue and available_queue
-    int display_row = 0;
-
-    // First add jobs from execution_queue with queue_order < 0
-    for (size_t i = 0; i < execution_queue.size(); ++i) {
-        if (execution_queue[i].queue_order < 0) {
+    // Add jobs from execution_queue with queue_order < 0
+    for (auto& job : execution_queue) {
+        if (job.queue_order < 0) {
             // Skip completed jobs if hide_completed_jobs is enabled
-            if (hide_completed_jobs && execution_queue[i].queue_status == "complete") {
-                continue;
+            if (!hide_completed_jobs || job.queue_status != "complete") {
+                available_items.push_back(&job);
             }
-
-            // For wxListCtrl, add item with first column text then set other columns
-            long item_index = available_jobs_ctrl->InsertItem(display_row,
-                                                            wxString::Format("%ld", execution_queue[i].database_queue_id));
-
-            // Set the remaining columns (no queue order column for available jobs)
-            available_jobs_ctrl->SetItem(item_index, 1, execution_queue[i].job_name);
-
-            // Set status display with centralized formatting
-            SetStatusDisplay(available_jobs_ctrl, item_index, execution_queue[i].queue_status);
-
-            // Get completion info for Progress column
-            JobCompletionInfo completion = GetJobCompletionInfo(execution_queue[i].database_queue_id);
-            available_jobs_ctrl->SetItem(item_index, 3, completion.GetCompletionString());
-
-            available_jobs_ctrl->SetItem(item_index, 4, execution_queue[i].custom_cli_args);
-
-            wxPrintf("Added available job %ld: %s with status %s\n", execution_queue[i].database_queue_id,
-                    execution_queue[i].job_name.mb_str().data(), execution_queue[i].queue_status.mb_str().data());
-
-            display_row++;
         }
     }
 
-    // Then add jobs from available_queue (these are newly discovered jobs not yet in execution_queue)
-    for (size_t i = 0; i < available_queue.size(); ++i) {
+    // Add jobs from available_queue that aren't in execution_queue
+    for (auto& job : available_queue) {
         // Skip completed jobs if hide_completed_jobs is enabled
-        if (hide_completed_jobs && available_queue[i].queue_status == "complete") {
+        if (hide_completed_jobs && job.queue_status == "complete") {
             continue;
         }
 
         // Check if this job is already in execution_queue to avoid duplicates
         bool found_in_execution = false;
         for (const auto& exec_job : execution_queue) {
-            if (exec_job.database_queue_id == available_queue[i].database_queue_id) {
+            if (exec_job.database_queue_id == job.database_queue_id) {
                 found_in_execution = true;
                 break;
             }
         }
 
         if (!found_in_execution) {
-            // For wxListCtrl, add item with first column text then set other columns
-            long item_index = available_jobs_ctrl->InsertItem(display_row,
-                                                            wxString::Format("%ld", available_queue[i].database_queue_id));
-
-            // Set the remaining columns (no queue order column for available jobs)
-            available_jobs_ctrl->SetItem(item_index, 1, available_queue[i].job_name);
-
-            // Set status display with centralized formatting
-            SetStatusDisplay(available_jobs_ctrl, item_index, available_queue[i].queue_status);
-
-            // Get completion info for Progress column
-            JobCompletionInfo completion = GetJobCompletionInfo(available_queue[i].database_queue_id);
-            available_jobs_ctrl->SetItem(item_index, 3, completion.GetCompletionString());
-
-            available_jobs_ctrl->SetItem(item_index, 4, available_queue[i].custom_cli_args);
-
-            wxPrintf("Added available job %ld: %s with status %s (from available_queue)\n", available_queue[i].database_queue_id,
-                    available_queue[i].job_name.mb_str().data(), available_queue[i].queue_status.mb_str().data());
-
-            display_row++;
+            available_items.push_back(&job);
         }
     }
 
+    // Use consolidated method to populate the list
+    PopulateListControl(available_jobs_ctrl, available_items, false);
+
+    wxPrintf("UpdateAvailableJobsDisplay: Added %zu available jobs\n", available_items.size());
 }
 
 int TemplateMatchQueueManager::GetSelectedRow( ) {
@@ -627,7 +585,7 @@ void TemplateMatchQueueManager::RunNextJob( ) {
 
     MyDebugPrint("Found next pending job:");
     MyDebugPrint("  ID: %ld", next_job->database_queue_id);
-    MyDebugPrint("  Name: '%s'", next_job->job_name.mb_str( ).data( ));
+    MyDebugPrint("  Name: '%s'", next_job->search_name.mb_str( ).data( ));
     MyDebugPrint("  Status: '%s'", next_job->queue_status.mb_str( ).data( ));
     MyDebugPrint("  Image Group: %d", next_job->image_group_id);
     MyDebugPrint("  Reference Volume: %d", next_job->reference_volume_asset_id);
@@ -855,7 +813,7 @@ void TemplateMatchQueueManager::OnAvailableJobsSelectionChanged(wxListEvent& eve
     // Populate the GUI with the first selected item's parameters (unless GUI is frozen)
     if (first_selected_item && !gui_update_frozen) {
         if (match_template_panel_ptr) {
-            wxPrintf("Populating GUI from available queue item: %s\n", first_selected_item->job_name);
+            wxPrintf("Populating GUI from available queue item: %s\n", first_selected_item->search_name);
             match_template_panel_ptr->PopulateGuiFromQueueItem(*first_selected_item);
         }
     }
@@ -911,9 +869,9 @@ void TemplateMatchQueueManager::OnCancelRunClick(wxCommandEvent& event) {
 void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
     int selected = GetSelectedRow( );
     if ( selected >= 0 ) {
-        wxString        job_name = execution_queue[selected].job_name;
+        wxString        search_name = execution_queue[selected].search_name;
         wxMessageDialog dialog(this,
-                               wxString::Format("Remove job '%s' from the queue?", job_name),
+                               wxString::Format("Remove search '%s' from the queue?", search_name),
                                "Confirm Remove", wxYES_NO | wxICON_QUESTION);
         if ( dialog.ShowModal( ) == wxID_YES ) {
             RemoveFromExecutionQueue(selected);
@@ -1126,26 +1084,30 @@ void TemplateMatchQueueManager::CleanupDragState() {
 
 void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
     MyDebugPrint("LoadQueueFromDatabase called. match_template_panel_ptr=%p", match_template_panel_ptr);
-    if ( match_template_panel_ptr && main_frame && main_frame->current_project.is_open ) {
-        MyDebugPrint("Loading queue from database...");
+    MyDebugAssertTrue(match_template_panel_ptr != nullptr, "LoadQueueFromDatabase: match_template_panel_ptr is null");
+    MyDebugAssertTrue(main_frame != nullptr, "LoadQueueFromDatabase: main_frame is null");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "LoadQueueFromDatabase: no project open");
+
+    MyDebugPrint("Loading queue from database...");
         execution_queue.clear( );
 
         // Get all queue IDs from database in order
-        wxArrayLong queue_ids = main_frame->current_project.database.GetQueuedTemplateMatchIDs( );
-        MyDebugPrint("Found %zu queue items in database", queue_ids.GetCount( ));
+        std::vector<long> queue_ids;
+        main_frame->current_project.database.GetQueuedTemplateMatchIDs(queue_ids);
+        MyDebugPrint("Found %zu queue items in database", queue_ids.size());
 
         // Load each queue item from database and separate into execution vs available
         std::vector<TemplateMatchQueueItem> execution_items;
         std::vector<TemplateMatchQueueItem> available_items;
 
-        for ( size_t i = 0; i < queue_ids.GetCount( ); i++ ) {
+        for ( size_t i = 0; i < queue_ids.size(); i++ ) {
             TemplateMatchQueueItem temp_item;
             temp_item.database_queue_id = queue_ids[i];
 
             // Load item details from database
             bool success = main_frame->current_project.database.GetQueueItemByID(
                     queue_ids[i],
-                    temp_item.job_name,
+                    temp_item.search_name,
                     temp_item.queue_status,
                     temp_item.queue_order, // This will be loaded from QUEUE_POSITION
                     temp_item.custom_cli_args,
@@ -1224,10 +1186,8 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
                 found_orphaned_jobs = true;
 
                 // Update database immediately for this job
-                if ( main_frame && main_frame->current_project.is_open ) {
-                    main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, "failed");
-                    main_frame->current_project.database.UpdateQueuePosition(item.database_queue_id, -1);
-                }
+                main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, "failed");
+                main_frame->current_project.database.UpdateQueuePosition(item.database_queue_id, -1);
             }
         }
         for ( auto& item : available_items ) {
@@ -1237,9 +1197,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
                 found_orphaned_jobs = true;
 
                 // Update database immediately for this job
-                if ( main_frame && main_frame->current_project.is_open ) {
-                    main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, "failed");
-                }
+                main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, "failed");
             }
         }
 
@@ -1274,24 +1232,21 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
 
         // Update display
         UpdateQueueDisplay( );
-    } else {
-        MyAssertTrue(false, "LoadQueueFromDatabase called but prerequisites not met - match_template_panel_ptr=%p, main_frame=%p, project_open=%s",
-                     match_template_panel_ptr, main_frame,
-                     (main_frame && main_frame->current_project.is_open) ? "true" : "false");
-    }
 }
 
 void TemplateMatchQueueManager::SaveQueueToDatabase( ) {
-    if ( match_template_panel_ptr && main_frame && main_frame->current_project.is_open ) {
-        // Update status and queue position for all items in queue
-        for ( const auto& item : execution_queue ) {
-            main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, item.queue_status);
+    MyDebugAssertTrue(match_template_panel_ptr != nullptr, "SaveQueueToDatabase: match_template_panel_ptr is null");
+    MyDebugAssertTrue(main_frame != nullptr, "SaveQueueToDatabase: main_frame is null");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "SaveQueueToDatabase: no project open");
 
-            // Convert 0-based queue positions to 1-based for database storage
-            // Keep -1 as-is for available jobs
-            int db_queue_order = (item.queue_order >= 0) ? (item.queue_order + 1) : item.queue_order;
-            main_frame->current_project.database.UpdateQueuePosition(item.database_queue_id, db_queue_order);
-        }
+    // Update status and queue position for all items in queue
+    for ( const auto& item : execution_queue ) {
+        main_frame->current_project.database.UpdateQueueStatus(item.database_queue_id, item.queue_status);
+
+        // Convert 0-based queue positions to 1-based for database storage
+        // Keep -1 as-is for available jobs
+        int db_queue_order = (item.queue_order >= 0) ? (item.queue_order + 1) : item.queue_order;
+        main_frame->current_project.database.UpdateQueuePosition(item.database_queue_id, db_queue_order);
     }
 }
 
@@ -1421,7 +1376,7 @@ void TemplateMatchQueueManager::ValidateQueueConsistency( ) const {
 
         // Validate basic item consistency
         MyDebugAssertTrue(item.database_queue_id >= 0, "Queue item %zu has invalid database_queue_id: %ld", i, item.database_queue_id);
-        MyDebugAssertFalse(item.job_name.IsEmpty( ), "Queue item %zu (ID: %ld) has empty job_name", i, item.database_queue_id);
+        MyDebugAssertFalse(item.search_name.IsEmpty( ), "Queue item %zu (ID: %ld) has empty search_name", i, item.database_queue_id);
         MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" ||
                                   item.queue_status == "complete" || item.queue_status == "failed",
                           "Queue item %zu (ID: %ld) has invalid status: %s", i, item.database_queue_id, item.queue_status.mb_str( ).data( ));
@@ -1543,14 +1498,17 @@ JobCompletionInfo TemplateMatchQueueManager::GetJobCompletionInfo(long queue_dat
     JobCompletionInfo info;
     info.template_match_job_id = queue_database_queue_id;
 
-    // Find the actual database TEMPLATE_MATCH_JOB_ID for this queue item
-    long database_template_match_job_id = -1;
+    // Note: There are two IDs in play here:
+    // 1. queue_database_queue_id: From TEMPLATE_MATCH_QUEUE.QUEUE_ID (created when queued)
+    // 2. template_match_job_id: From TEMPLATE_MATCH_LIST.TEMPLATE_MATCH_JOB_ID (created when results are written)
+    // We need to map from #1 to #2 to count results properly
 
-    // Find the database TEMPLATE_MATCH_JOB_ID and image group for this queue item
+    // Find the queue item and extract its database job ID and image group
+    long database_template_match_job_id = -1;
     int image_group_id = -1;
     bool found_queue_item = false;
 
-    // First check execution queue
+    // Search both queues for the item
     for (const auto& item : execution_queue) {
         if (item.database_queue_id == queue_database_queue_id) {
             database_template_match_job_id = item.template_match_job_id;
@@ -1560,7 +1518,6 @@ JobCompletionInfo TemplateMatchQueueManager::GetJobCompletionInfo(long queue_dat
         }
     }
 
-    // If not found in execution queue, check available queue
     if (!found_queue_item) {
         for (const auto& item : available_queue) {
             if (item.database_queue_id == queue_database_queue_id) {
@@ -1572,7 +1529,6 @@ JobCompletionInfo TemplateMatchQueueManager::GetJobCompletionInfo(long queue_dat
         }
     }
 
-    // If still not found, this should not happen - runtime assert to help debug
     if (!found_queue_item) {
         MyAssertTrue(false, "GetJobCompletionInfo could not find queue_database_queue_id %ld in either execution_queue (%zu items) or available_queue (%zu items)",
                      queue_database_queue_id, execution_queue.size(), available_queue.size());
@@ -1681,78 +1637,16 @@ void TemplateMatchQueueManager::UpdateJobDatabaseId(long queue_database_queue_id
              queue_database_queue_id, database_template_match_job_id);
 }
 
-void TemplateMatchQueueManager::DiscoverDatabaseJobIds() {
-    if (!main_frame || !main_frame->current_project.is_open) {
-        wxPrintf("DiscoverDatabaseJobIds: No project open, skipping discovery\n");
-        return;
-    }
-
-    wxPrintf("DiscoverDatabaseJobIds: Starting discovery for completed jobs...\n");
-
-    // Get all available TEMPLATE_MATCH_JOB_IDs from the database
-    wxArrayLong database_job_ids = main_frame->current_project.database.GetAllTemplateMatchJobIds();
-
-    wxPrintf("Found %zu database job IDs: ", database_job_ids.GetCount());
-    for (size_t i = 0; i < database_job_ids.GetCount(); i++) {
-        wxPrintf("%ld ", database_job_ids[i]);
-    }
-    wxPrintf("\n");
-
-    // For each queue item that needs mapping, try to find its database job ID
-    auto tryMapQueueItem = [&](TemplateMatchQueueItem& item) {
-        if (item.template_match_job_id > 0) {
-            // Already has a database job ID
-            return;
-        }
-
-        if (item.queue_status != "complete" && item.queue_status != "running") {
-            // Only map completed/running jobs (jobs with results in database)
-            return;
-        }
-
-        wxPrintf("Attempting to discover database job ID for queue item %ld (status: %s, image_group: %d)\n",
-                 item.database_queue_id, item.queue_status, item.image_group_id);
-
-        // Try each database job ID to see if it contains results for this queue item's image group
-        for (size_t i = 0; i < database_job_ids.GetCount(); i++) {
-            long database_job_id = database_job_ids[i];
-
-            // Check if this database job ID has results for images in this queue item's image group
-            auto counts = main_frame->current_project.database.GetJobCompletionCounts(database_job_id, item.image_group_id);
-
-            if (counts.first > 0 || counts.second > 0) {
-                // Found results for this image group in this database job
-                wxPrintf("DISCOVERED: Queue item %ld maps to database job ID %ld (%d/%d results)\n",
-                         item.database_queue_id, database_job_id, counts.first, counts.second);
-                item.template_match_job_id = database_job_id;
-                return;
-            }
-        }
-
-        wxPrintf("Could not discover database job ID for queue item %ld\n", item.database_queue_id);
-    };
-
-    // Apply discovery to both queues
-    for (auto& item : execution_queue) {
-        tryMapQueueItem(item);
-    }
-
-    for (auto& item : available_queue) {
-        tryMapQueueItem(item);
-    }
-
-    wxPrintf("DiscoverDatabaseJobIds: Discovery complete\n");
-}
 
 void TemplateMatchQueueManager::PopulateAvailableJobsFromDatabase() {
-    if (!main_frame || !main_frame->current_project.is_open) {
-        return;
-    }
+    MyDebugAssertTrue(main_frame != nullptr, "PopulateAvailableJobsFromDatabase called with null main_frame");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "PopulateAvailableJobsFromDatabase called with no project open");
 
     // Get all template match job IDs from database
-    wxArrayLong all_job_ids = main_frame->current_project.database.GetAllTemplateMatchJobIds();
+    std::vector<long> all_job_ids;
+    main_frame->current_project.database.GetAllTemplateMatchJobIds(all_job_ids);
 
-    for (size_t i = 0; i < all_job_ids.GetCount(); ++i) {
+    for (size_t i = 0; i < all_job_ids.size(); ++i) {
         long job_id = all_job_ids[i];
 
         // Check if this job is already in our queues
@@ -1780,7 +1674,7 @@ void TemplateMatchQueueManager::PopulateAvailableJobsFromDatabase() {
             // Create a minimal queue item - populate image group from database
             TemplateMatchQueueItem new_item;
             new_item.database_queue_id = job_id;
-            new_item.job_name = wxString::Format("Job %ld", job_id);
+            new_item.search_name = wxString::Format("Search %ld", job_id);
             new_item.queue_status = "unknown"; // Will be determined by n/N analysis
             new_item.queue_order = -1; // Not in execution queue
 
@@ -1804,7 +1698,7 @@ void TemplateMatchQueueManager::PopulateAvailableJobsFromDatabase() {
             // Debug: Get completion info to verify n/N calculation
             JobCompletionInfo completion = GetJobCompletionInfo(job_id);
             wxPrintf("Added available job %ld: %s with status %s (%s)\n",
-                     job_id, new_item.job_name, new_item.queue_status, completion.GetCompletionString());
+                     job_id, new_item.search_name.mb_str().data(), new_item.queue_status.mb_str().data(), completion.GetCompletionString().mb_str().data());
         }
     }
 

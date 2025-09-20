@@ -417,7 +417,7 @@ class Database {
                                           float mask_radius, float min_peak_radius,
                                           float xy_change_threshold, bool exclude_above_xy_threshold,
                                           const wxString& custom_cli_args);
-    wxArrayLong     GetQueuedTemplateMatchIDs();
+    void            GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids);
     bool            GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, int& queue_position, wxString& custom_cli_args,
                                    int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
                                    float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
@@ -436,7 +436,7 @@ class Database {
 
     // Template match completion tracking methods
     std::pair<int, int> GetJobCompletionCounts(long template_match_job_id, int image_group_id = -1);
-    wxArrayLong         GetAllTemplateMatchJobIds();
+    void                GetAllTemplateMatchJobIds(std::vector<long>& job_ids);
 
     void AddRefinementAngularDistribution(AngularDistributionHistogram& histogram_to_add, long refinement_id, int class_number);
     void CopyRefinementAngularDistributions(long refinement_id_to_copy, long refinement_id_to_copy_to, int wanted_class_number);

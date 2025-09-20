@@ -2932,10 +2932,10 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     return queue_id;
 }
 
-wxArrayLong Database::GetQueuedTemplateMatchIDs() {
+void Database::GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
-    wxArrayLong queue_ids;
+    queue_ids.clear(); // Ensure vector is empty before filling
     const char* sql = "SELECT QUEUE_ID FROM TEMPLATE_MATCH_QUEUE ORDER BY QUEUE_POSITION ASC;";
 
     sqlite3_stmt* stmt;
@@ -2945,11 +2945,10 @@ wxArrayLong Database::GetQueuedTemplateMatchIDs() {
     }
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        queue_ids.Add(sqlite3_column_int64(stmt, 0));
+        queue_ids.push_back(sqlite3_column_int64(stmt, 0));
     }
 
     sqlite3_finalize(stmt);
-    return queue_ids;
 }
 
 bool Database::GetQueueItemByID(long queue_id, wxString& job_name, wxString& queue_status, int& queue_position, wxString& custom_cli_args,
@@ -3173,10 +3172,17 @@ std::pair<int, int> Database::GetJobCompletionCounts(long template_match_job_id,
     return std::make_pair(completed_count, total_count);
 }
 
-wxArrayLong Database::GetAllTemplateMatchJobIds() {
+void Database::GetAllTemplateMatchJobIds(std::vector<long>& job_ids) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
-    return ReturnLongArrayFromSelectCommand("SELECT DISTINCT TEMPLATE_MATCH_JOB_ID FROM TEMPLATE_MATCH_LIST ORDER BY TEMPLATE_MATCH_JOB_ID");
+    job_ids.clear(); // Ensure vector is empty before filling
+    wxArrayLong temp_array = ReturnLongArrayFromSelectCommand("SELECT DISTINCT TEMPLATE_MATCH_JOB_ID FROM TEMPLATE_MATCH_LIST ORDER BY TEMPLATE_MATCH_JOB_ID");
+
+    // Convert wxArrayLong to std::vector
+    job_ids.reserve(temp_array.GetCount());
+    for (size_t i = 0; i < temp_array.GetCount(); i++) {
+        job_ids.push_back(temp_array.Item(i));
+    }
 }
 
 BeginCommitLocker::BeginCommitLocker(Database* wanted_database) {

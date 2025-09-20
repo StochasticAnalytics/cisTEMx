@@ -36,7 +36,7 @@
         {
             "label": "Configure cisTEM DEBUG build TMPVALUE",
             "type": "shell",
-            "command": "mkdir -p ${build_dir}/intel-gpu-debug-static-tmpvalue && cd ${build_dir}/intel-gpu-debug-static-tmpvalue && CC=icc CXX=icpc ../../configure ${input:additional_compiler_flags} --enable-debugmode --enable-gpu-debug --with-wx-config=/opt/WX/icc-static/bin/wx-config --enable-staticmode --with-cuda=${cuda_dir} ${experimental_algo_flags} ${common_optional_programs}  ${common_flags} --enable-build-calculate-template-pvalue"
+            "command": "mkdir -p ${build_dir}/intel-gpu-debug-static-tmpvalue && cd ${build_dir}/intel-gpu-debug-static-tmpvalue && CC=icc CXX=icpc ../../configure ${input:additional_compiler_flags} --enable-debugmode --enable-gpu-debug --with-wx-config=/opt/WX/icc-static/bin/wx-config --enable-staticmode --with-cuda=${cuda_dir} ${experimental_algo_flags} ${common_optional_programs}  ${common_flags} --enable-Th"
         },
         {
             "label": "BUILD cisTEM DEBUG TMPVALUE",

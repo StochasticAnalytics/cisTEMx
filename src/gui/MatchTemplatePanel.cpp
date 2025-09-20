@@ -1001,10 +1001,13 @@ void MatchTemplatePanel::OnHeaderClickAddToQueue() {
         // Check if this job is already in the queue
         // TODO: Implement queue check logic
 
-        // For now, create a basic queue item from the active job
+        // Collect current GUI parameters for the job
+        TemplateMatchQueueItem gui_params = CollectJobParametersFromGui();
+
+        // Create queue item from the active job
         TemplateMatchQueueItem queue_item;
         queue_item.database_queue_id = active_job_id;
-        queue_item.job_name = wxString::Format("TM_%ld", wxDateTime::Now().GetTicks());
+        queue_item.search_name = gui_params.search_name;  // Use the template name from GUI
         queue_item.queue_status = "pending";
         queue_item.queue_order = -1; // Add to available jobs table
 
@@ -1013,9 +1016,6 @@ void MatchTemplatePanel::OnHeaderClickAddToQueue() {
         if (unfinished_ids.IsEmpty()) {
             queue_item.queue_status = "complete";
         }
-
-        // Collect current GUI parameters for the job
-        TemplateMatchQueueItem gui_params = CollectJobParametersFromGui();
 
         // Copy relevant parameters from GUI to queue item
         queue_item.image_group_id = gui_params.image_group_id;
@@ -1165,9 +1165,7 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
 TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
     TemplateMatchQueueItem new_job;
 
-    // Generate unique job name with timestamp
-    wxDateTime now          = wxDateTime::Now();
-    new_job.job_name        = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
+    // Set initial queue status and custom args
     new_job.queue_status    = "pending";
     new_job.custom_cli_args = "";
 
@@ -1240,12 +1238,16 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
         new_job.phase_shift = 0.0;
     }
 
-    // Get volume parameters
+    // Get volume parameters and generate search name
     VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection());
     if (current_volume) {
+        new_job.search_name = wxString::Format("Template: %s", current_volume->filename.GetName());
         new_job.ref_box_size_in_angstroms = current_volume->x_size * current_volume->pixel_size;
         new_job.mask_radius = current_volume->x_size * current_volume->pixel_size / 2.0f;
     } else {
+        // Fallback if no volume is selected (shouldn't happen in normal use)
+        wxDateTime now = wxDateTime::Now();
+        new_job.search_name = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
         new_job.ref_box_size_in_angstroms = 200.0;
         new_job.mask_radius = 80.0;
     }
@@ -1315,7 +1317,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         // Add to queue without dialog - use database directly
         if (main_frame && main_frame->current_project.is_open) {
             long queue_id = main_frame->current_project.database.AddToTemplateMatchQueue(
-                job.job_name, job.image_group_id, job.reference_volume_asset_id, job.run_profile_id,
+                job.search_name, job.image_group_id, job.reference_volume_asset_id, job.run_profile_id,
                 job.use_gpu, job.use_fast_fft, job.symmetry,
                 job.pixel_size, job.voltage, job.spherical_aberration, job.amplitude_contrast,
                 job.defocus1, job.defocus2, job.defocus_angle, job.phase_shift,
@@ -1358,7 +1360,7 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
 
     // Debug prints to check job parameters
     wxPrintf("\n=== DEBUG: SetupJobFromQueueItem Parameters ===\n");
-    wxPrintf("Job Name: %s\n", job.job_name);
+    wxPrintf("Search Name: %s\n", job.search_name);
     wxPrintf("Image Group ID: %d\n", job.image_group_id);
     wxPrintf("Reference Volume Asset ID: %d\n", job.reference_volume_asset_id);
     wxPrintf("Run Profile ID: %d\n", job.run_profile_id);
@@ -1590,7 +1592,7 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
         float low_resolution_limit = 300.0f; // FIXME set this somewhere that is not buried in the code!
 
         temp_result.image_asset_id = current_image->asset_id;
-        temp_result.job_name = wxString::Format("Full search with %s", current_volume->filename.GetName());
+        temp_result.job_name = wxString::Format("Template: %s", current_volume->filename.GetName());
         temp_result.ref_volume_asset_id = current_volume->asset_id;
         wxDateTime now = wxDateTime::Now();
         temp_result.datetime_of_run = (long int)now.GetAsDOS();
@@ -1763,7 +1765,7 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         MyDebugAssertTrue(queue_item->database_queue_id >= 0, "Cannot execute job with invalid database_queue_id: %ld", queue_item->database_queue_id);
         MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed",
                           "Cannot execute job with status '%s', must be 'pending' or 'failed'", queue_item->queue_status.mb_str().data());
-        MyDebugAssertFalse(queue_item->job_name.IsEmpty(), "Cannot execute job with empty job_name");
+        MyDebugAssertFalse(queue_item->search_name.IsEmpty(), "Cannot execute search with empty search_name");
         MyDebugAssertTrue(queue_item->image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
         MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);
 

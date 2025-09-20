@@ -50,12 +50,17 @@ struct JobCompletionInfo {
  * Contains both queue management metadata (database_queue_id, queue_status, queue_order)
  * and complete search parameters (template, images, search space, resource allocation).
  * Serves as the data transfer object between GUI panels, QueueManager, and database.
+ *
+ * @note Database ID Mapping:
+ *   - database_queue_id: Links to TEMPLATE_MATCH_QUEUE.QUEUE_ID (created when search is queued)
+ *   - template_match_job_id: Links to TEMPLATE_MATCH_LIST.TEMPLATE_MATCH_JOB_ID (created when results are saved)
+ *   The mapping is established by UpdateJobDatabaseId() when the MatchTemplatePanel begins processing.
  */
 class TemplateMatchQueueItem {
 public:
-    long database_queue_id;         ///< Persistent database queue identifier for queue management
-    long template_match_job_id;     ///< Database TEMPLATE_MATCH_JOB_ID (-1 if no results yet)
-    wxString job_name;              ///< User-friendly name for this search
+    long database_queue_id;         ///< Persistent database queue identifier (TEMPLATE_MATCH_QUEUE.QUEUE_ID)
+    long template_match_job_id;     ///< Results table identifier (TEMPLATE_MATCH_LIST.TEMPLATE_MATCH_JOB_ID, -1 if no results yet)
+    wxString search_name;           ///< User-friendly name for this template matching search (maps to JOB_NAME in database)
     wxString queue_status;          ///< Search status: "pending", "running", "complete", "failed"
     int queue_order;                ///< Priority order: 0=running, 1+=pending queue position, -1=available queue
     wxString custom_cli_args;       ///< Additional command-line arguments for this search
@@ -146,7 +151,7 @@ public:
         MyDebugAssertTrue(amplitude_contrast >= 0.0f && amplitude_contrast <= 1.0f, "amplitude_contrast must be 0.0-1.0, got %f", amplitude_contrast);
         MyDebugAssertTrue(queue_status == "pending" || queue_status == "running" || queue_status == "complete" || queue_status == "failed",
                          "Invalid queue_status: %s", queue_status.mb_str().data());
-        MyDebugAssertTrue(!job_name.IsEmpty(), "job_name cannot be empty");
+        MyDebugAssertTrue(!search_name.IsEmpty(), "search_name cannot be empty");
         MyDebugAssertFalse(symmetry.IsEmpty(), "symmetry cannot be empty");
         return true;
     }
@@ -230,6 +235,9 @@ private:
     void UpdateQueueDisplay();                             ///< Refreshes both execution and available queue displays
     void UpdateExecutionQueueDisplay();                    ///< Refreshes execution queue table with current data
     void UpdateAvailableJobsDisplay();                     ///< Refreshes available queue table with current data
+    void PopulateListControl(wxListCtrl* ctrl,            ///< Shared method to populate list controls
+                            const std::vector<TemplateMatchQueueItem*>& items,
+                            bool is_execution_queue);
     int GetSelectedRow();                                   ///< Gets currently selected row index
     void DeselectJobInUI(long database_queue_id);          ///< Removes UI selection for specified search
 
@@ -367,7 +375,6 @@ public:
     /**
      * @brief Discovers and populates missing database job IDs for completed searches
      */
-    void DiscoverDatabaseJobIds();
 
     /**
      * @brief Validates queue state consistency for debugging

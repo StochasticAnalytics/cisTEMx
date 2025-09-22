@@ -47,35 +47,24 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Legacy compatibility - point to execution queue
     queue_list_ctrl = execution_queue_ctrl;
 
-    // Create execution queue controls - just the Run Queue button centered
-    wxPanel*    execution_controls = new wxPanel(this, wxID_ANY);
-    wxBoxSizer* execution_sizer    = new wxBoxSizer(wxHORIZONTAL);
+    // Create combined controls panel with Run Queue on left and Panel Display on right
+    wxPanel*    controls_panel = new wxPanel(this, wxID_ANY);
+    wxBoxSizer* controls_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    // Execution controls
-    run_selected_button = new wxButton(execution_controls, wxID_ANY, "Run Queue");
+    // Run Queue button on the left
+    run_selected_button = new wxButton(controls_panel, wxID_ANY, "Run Queue");
 
-    execution_sizer->AddStretchSpacer();
-    execution_sizer->Add(run_selected_button, 0, wxALL, 5);
-    execution_sizer->AddStretchSpacer();
-
-    execution_controls->SetSizer(execution_sizer);
-
-    // Panel display toggle - centered below Run Queue button
-    wxPanel*    display_panel = new wxPanel(this, wxID_ANY);
-    wxBoxSizer* display_sizer = new wxBoxSizer(wxHORIZONTAL);
-
-    wxStaticText* display_label = new wxStaticText(display_panel, wxID_ANY, "Panel Display:");
-    panel_display_toggle = new wxToggleButton(display_panel, wxID_ANY, "Show Input Panel",
+    // Panel display toggle on the right
+    wxStaticText* display_label = new wxStaticText(controls_panel, wxID_ANY, "Panel Display:");
+    panel_display_toggle = new wxToggleButton(controls_panel, wxID_ANY, "Show Input Panel",
                                               wxDefaultPosition, wxSize(150, -1));
-
-    // Set tooltip
     panel_display_toggle->SetToolTip("Toggle between Input and Progress panels");
 
-    display_sizer->AddStretchSpacer();
-    display_sizer->Add(display_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
-    display_sizer->Add(panel_display_toggle, 0, wxALIGN_CENTER_VERTICAL);
-    display_sizer->AddStretchSpacer();
-    display_panel->SetSizer(display_sizer);
+    controls_sizer->Add(run_selected_button, 0, wxALL, 5);
+    controls_sizer->AddStretchSpacer();
+    controls_sizer->Add(display_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    controls_sizer->Add(panel_display_toggle, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    controls_panel->SetSizer(controls_sizer);
 
     // Create available searches section with hide completed checkbox
     wxPanel*    available_header_panel = new wxPanel(this, wxID_ANY);
@@ -146,8 +135,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Add all sections to main sizer with adjusted proportions for better visibility
     main_sizer->Add(execution_queue_label, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(execution_queue_ctrl, 2, wxEXPAND | wxALL, 5); // Slightly larger proportion
-    main_sizer->Add(execution_controls, 0, wxEXPAND | wxALL, 5);
-    main_sizer->Add(display_panel, 0, wxEXPAND | wxALL, 5);    // Panel display toggle below Run Queue
+    main_sizer->Add(controls_panel, 0, wxEXPAND | wxALL, 5);    // Combined Run Queue and Panel display
     main_sizer->Add(available_header_panel, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(available_jobs_ctrl, 1, wxEXPAND | wxALL, 5); // Smaller but still expandable
     main_sizer->Add(cli_args_panel, 0, wxEXPAND | wxALL, 5);  // Custom CLI args field with Update button

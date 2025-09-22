@@ -781,6 +781,13 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     MyDebugAssertTrue(my_job_tracker.total_number_of_finished_jobs == my_job_tracker.total_number_of_jobs, "In ProcessAllJobsFinished, but total_number_of_finished_jobs != total_number_of_jobs. Oops.");
 
+    // Notify queue manager that job is entering finalization phase
+    // This prevents auto-advance from starting a new job while we're cleaning up
+    if ( running_queue_job_id > 0 && queue_completion_callback ) {
+        wxPrintf("Notifying queue manager that job %ld is entering finalization\n", running_queue_job_id);
+        queue_completion_callback->OnJobEnteringFinalization(running_queue_job_id);
+    }
+
     // Update the GUI with project timings
     extern MyOverviewPanel* overview_panel;
     overview_panel->SetProjectInfo( );

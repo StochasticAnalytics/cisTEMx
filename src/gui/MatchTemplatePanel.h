@@ -59,6 +59,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     long number_of_received_results;
     long current_job_starttime;
     long time_of_last_update;
+    long queue_wait_start_time;  // Time when we started waiting for next queue item
 
     // needed to write results as they come in.. should be set when the job is launched..
 

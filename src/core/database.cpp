@@ -337,7 +337,7 @@ int Database::ReturnHighestAlignmentJobID( ) {
 }
 
 int Database::ReturnHighestTemplateMatchJobID( ) {
-    return ReturnSingleIntFromSelectCommand("SELECT MAX(TEMPLATE_MATCH_JOB_ID) FROM TEMPLATE_MATCH_LIST");
+    return ReturnSingleIntFromSelectCommand("SELECT MAX(SEARCH_ID) FROM TEMPLATE_MATCH_LIST");
 }
 
 int Database::ReturnHighestFindCTFJobID( ) {
@@ -361,7 +361,7 @@ int Database::ReturnNumberOfCTFEstimationJobs( ) {
 }
 
 int Database::ReturnNumberOfTemplateMatchingJobs( ) {
-    return ReturnSingleIntFromSelectCommand("SELECT COUNT(DISTINCT TEMPLATE_MATCH_JOB_ID) FROM TEMPLATE_MATCH_LIST");
+    return ReturnSingleIntFromSelectCommand("SELECT COUNT(DISTINCT SEARCH_ID) FROM TEMPLATE_MATCH_LIST");
 }
 
 int Database::ReturnNumberOfPickingJobs( ) {
@@ -430,7 +430,7 @@ void Database::GetUniqueTemplateMatchIDs(std::vector<long>& template_match_job_i
 
     bool more_data;
 
-    more_data = BeginBatchSelect("SELECT DISTINCT TEMPLATE_MATCH_JOB_ID FROM TEMPLATE_MATCH_LIST") == true;
+    more_data = BeginBatchSelect("SELECT DISTINCT SEARCH_ID FROM TEMPLATE_MATCH_LIST") == true;
 
     for ( int counter = 0; counter < number_of_template_match_jobs; counter++ ) {
         // FIXME: This is a weird mix. Shouldn't it be either a debug assert, or a runtime assert?
@@ -1896,7 +1896,31 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
 
     int peak_counter;
 
-    InsertOrReplace("TEMPLATE_MATCH_LIST", "Ptllillltrrrrrrrrrrrrrrrrrrrrrrittttttttttt", "TEMPLATE_MATCH_ID", "JOB_NAME", "DATETIME_OF_RUN", "TEMPLATE_MATCH_JOB_ID", "JOB_TYPE_CODE", "INPUT_TEMPLATE_MATCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID", "USED_SYMMETRY", "USED_PIXEL_SIZE", "USED_VOLTAGE", "USED_SPHERICAL_ABERRATION", "USED_AMPLITUDE_CONTRAST", "USED_DEFOCUS1", "USED_DEFOCUS2", "USED_DEFOCUS_ANGLE", "USED_PHASE_SHIFT", "LOW_RESOLUTION_LIMIT", "HIGH_RESOLUTION_LIMIT", "OUT_OF_PLANE_ANGULAR_STEP", "IN_PLANE_ANGULAR_STEP", "DEFOCUS_SEARCH_RANGE", "DEFOCUS_STEP", "PIXEL_SIZE_SEARCH_RANGE", "PIXEL_SIZE_STEP", "REFINEMENT_THRESHOLD", "USED_THRESHOLD", "REF_BOX_SIZE_IN_ANGSTROMS", "MASK_RADIUS", "MIN_PEAK_RADIUS", "XY_CHANGE_THRESHOLD", "EXCLUDE_ABOVE_XY_THRESHOLD", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE", "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE", "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE", "PROJECTION_RESULT_OUTPUT_FILE", wanted_template_match_id, job_details.job_name.ToUTF8( ).data( ), job_details.datetime_of_run, job_details.job_id, job_details.job_type, job_details.input_job_id, job_details.image_asset_id, job_details.ref_volume_asset_id, job_details.symmetry.ToUTF8( ).data( ), job_details.pixel_size, job_details.voltage, job_details.spherical_aberration, job_details.amplitude_contrast, job_details.defocus1, job_details.defocus2, job_details.defocus_angle, job_details.phase_shift, job_details.low_res_limit, job_details.high_res_limit, job_details.out_of_plane_step, job_details.in_plane_step, job_details.defocus_search_range, job_details.defocus_step, job_details.pixel_size_search_range, job_details.pixel_size_step, job_details.refinement_threshold, job_details.used_threshold, job_details.reference_box_size_in_angstroms, job_details.mask_radius, job_details.min_peak_radius, job_details.xy_change_threshold, int(job_details.exclude_above_xy_threshold), job_details.mip_filename.ToUTF8( ).data( ), job_details.scaled_mip_filename.ToUTF8( ).data( ), job_details.avg_filename.ToUTF8( ).data( ), job_details.std_filename.ToUTF8( ).data( ), job_details.psi_filename.ToUTF8( ).data( ), job_details.theta_filename.ToUTF8( ).data( ), job_details.phi_filename.ToUTF8( ).data( ), job_details.defocus_filename.ToUTF8( ).data( ), job_details.pixel_size_filename.ToUTF8( ).data( ), job_details.histogram_filename.ToUTF8( ).data( ), job_details.projection_result_filename.ToUTF8( ).data( ));
+    // For v3 schema: only result-specific data goes in TEMPLATE_MATCH_LIST
+    // Search parameters are already in TEMPLATE_MATCH_QUEUE via job_details.job_id (SEARCH_ID)
+    // Set DATETIME_OF_COMPLETION to current time since job is complete
+    long datetime_of_completion = wxDateTime::Now().GetAsDOS();
+
+    // Type string matches database_schema.h: "ptlllilliitttttttttttttrr" (25 columns)
+    InsertOrReplace("TEMPLATE_MATCH_LIST", "ptlllilliitttttttttttttrr",
+        "TEMPLATE_MATCH_ID", "JOB_NAME", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID",
+        "JOB_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID",
+        "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE",
+        "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE",
+        "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE",
+        "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2",
+        "FUTURE_FLOAT_1", "FUTURE_FLOAT_2",
+        wanted_template_match_id, job_details.job_name.ToUTF8().data(),
+        job_details.datetime_of_run, datetime_of_completion, job_details.job_id,
+        job_details.job_type, job_details.input_job_id, job_details.image_asset_id,
+        job_details.ref_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
+        job_details.mip_filename.ToUTF8().data(), job_details.scaled_mip_filename.ToUTF8().data(),
+        job_details.avg_filename.ToUTF8().data(), job_details.std_filename.ToUTF8().data(),
+        job_details.psi_filename.ToUTF8().data(), job_details.theta_filename.ToUTF8().data(),
+        job_details.phi_filename.ToUTF8().data(), job_details.defocus_filename.ToUTF8().data(),
+        job_details.pixel_size_filename.ToUTF8().data(), job_details.histogram_filename.ToUTF8().data(),
+        job_details.projection_result_filename.ToUTF8().data(),
+        "", "", 0.0f, 0.0f); // Future columns
 
     CreateTemplateMatchPeakListTable(wanted_template_match_id);
 
@@ -1924,7 +1948,7 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
 */
 
 long Database::GetTemplateMatchIdForGivenJobId(long wanted_template_match_job_id) {
-    wxString sql_select_command = wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID=%li", wanted_template_match_job_id);
+    wxString sql_select_command = wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID=%li", wanted_template_match_job_id);
     return ReturnSingleLongFromSelectCommand(sql_select_command);
 }
 
@@ -1937,56 +1961,83 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     long          template_match_id;
     sqlite3_stmt* list_statement = NULL;
     bool          more_data;
-    sql_select_command = wxString::Format("SELECT * FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_ID=%li", wanted_template_match_id);
+
+    // For v3 schema: JOIN TEMPLATE_MATCH_LIST with TEMPLATE_MATCH_QUEUE to get all data
+    // List columns: TEMPLATE_MATCH_ID, JOB_NAME, DATETIME_OF_RUN, DATETIME_OF_COMPLETION, SEARCH_ID, JOB_TYPE_CODE,
+    //               PARENT_SEARCH_ID, IMAGE_ASSET_ID, REFERENCE_VOLUME_ASSET_ID, IS_ACTIVE,
+    //               then output files...
+    // Queue columns: all search parameters
+    sql_select_command = wxString::Format(
+        "SELECT list.TEMPLATE_MATCH_ID, list.JOB_NAME, list.DATETIME_OF_RUN, list.SEARCH_ID, list.JOB_TYPE_CODE, "
+        "list.PARENT_SEARCH_ID, list.IMAGE_ASSET_ID, list.REFERENCE_VOLUME_ASSET_ID, list.IS_ACTIVE, "
+        "list.MIP_OUTPUT_FILE, list.SCALED_MIP_OUTPUT_FILE, list.AVG_OUTPUT_FILE, list.STD_OUTPUT_FILE, "
+        "list.PSI_OUTPUT_FILE, list.THETA_OUTPUT_FILE, list.PHI_OUTPUT_FILE, list.DEFOCUS_OUTPUT_FILE, "
+        "list.PIXEL_SIZE_OUTPUT_FILE, list.HISTOGRAM_OUTPUT_FILE, list.PROJECTION_RESULT_OUTPUT_FILE, "
+        "q.SYMMETRY, q.PIXEL_SIZE, q.VOLTAGE, q.SPHERICAL_ABERRATION, q.AMPLITUDE_CONTRAST, "
+        "q.DEFOCUS1, q.DEFOCUS2, q.DEFOCUS_ANGLE, q.PHASE_SHIFT, "
+        "q.LOW_RESOLUTION_LIMIT, q.HIGH_RESOLUTION_LIMIT, "
+        "q.OUT_OF_PLANE_ANGULAR_STEP, q.IN_PLANE_ANGULAR_STEP, "
+        "q.DEFOCUS_SEARCH_RANGE, q.DEFOCUS_STEP, "
+        "q.PIXEL_SIZE_SEARCH_RANGE, q.PIXEL_SIZE_STEP, "
+        "q.REFINEMENT_THRESHOLD, q.REF_BOX_SIZE_IN_ANGSTROMS, "
+        "q.MASK_RADIUS, q.MIN_PEAK_RADIUS, "
+        "q.XY_CHANGE_THRESHOLD, q.EXCLUDE_ABOVE_XY_THRESHOLD "
+        "FROM TEMPLATE_MATCH_LIST list "
+        "LEFT JOIN TEMPLATE_MATCH_QUEUE q ON list.SEARCH_ID = q.SEARCH_ID "
+        "WHERE list.TEMPLATE_MATCH_ID = %li", wanted_template_match_id);
+
     Prepare(sql_select_command, &list_statement);
     return_code = Step(list_statement);
 
+    // Read from LIST table (columns 0-19)
     template_match_id               = sqlite3_column_int64(list_statement, 0);
     temp_result.job_name            = sqlite3_column_text(list_statement, 1);
     temp_result.datetime_of_run     = sqlite3_column_int64(list_statement, 2);
-    temp_result.job_id              = sqlite3_column_int64(list_statement, 3);
+    temp_result.job_id              = sqlite3_column_int64(list_statement, 3); // SEARCH_ID
     temp_result.job_type            = sqlite3_column_int(list_statement, 4);
-    temp_result.input_job_id        = sqlite3_column_int64(list_statement, 5);
+    temp_result.input_job_id        = sqlite3_column_int64(list_statement, 5); // PARENT_SEARCH_ID
     temp_result.image_asset_id      = sqlite3_column_int64(list_statement, 6);
     temp_result.ref_volume_asset_id = sqlite3_column_int64(list_statement, 7);
+    // Column 8 is IS_ACTIVE which is not recorded in the class
 
-    // number 8 is "IS ACTIVE" which i am not recording in the class
+    // Output files from LIST table (columns 9-19)
+    temp_result.mip_filename                    = sqlite3_column_text(list_statement, 9);
+    temp_result.scaled_mip_filename             = sqlite3_column_text(list_statement, 10);
+    temp_result.avg_filename                    = sqlite3_column_text(list_statement, 11);
+    temp_result.std_filename                    = sqlite3_column_text(list_statement, 12);
+    temp_result.psi_filename                    = sqlite3_column_text(list_statement, 13);
+    temp_result.theta_filename                  = sqlite3_column_text(list_statement, 14);
+    temp_result.phi_filename                    = sqlite3_column_text(list_statement, 15);
+    temp_result.defocus_filename                = sqlite3_column_text(list_statement, 16);
+    temp_result.pixel_size_filename             = sqlite3_column_text(list_statement, 17);
+    temp_result.histogram_filename              = sqlite3_column_text(list_statement, 18);
+    temp_result.projection_result_filename      = sqlite3_column_text(list_statement, 19);
 
-    temp_result.symmetry                        = sqlite3_column_text(list_statement, 9);
-    temp_result.pixel_size                      = sqlite3_column_double(list_statement, 10);
-    temp_result.voltage                         = sqlite3_column_double(list_statement, 11);
-    temp_result.spherical_aberration            = sqlite3_column_double(list_statement, 12);
-    temp_result.amplitude_contrast              = sqlite3_column_double(list_statement, 13);
-    temp_result.defocus1                        = sqlite3_column_double(list_statement, 14);
-    temp_result.defocus2                        = sqlite3_column_double(list_statement, 15);
-    temp_result.defocus_angle                   = sqlite3_column_double(list_statement, 16);
-    temp_result.phase_shift                     = sqlite3_column_double(list_statement, 17);
-    temp_result.low_res_limit                   = sqlite3_column_double(list_statement, 18);
-    temp_result.high_res_limit                  = sqlite3_column_double(list_statement, 19);
-    temp_result.out_of_plane_step               = sqlite3_column_double(list_statement, 20);
-    temp_result.in_plane_step                   = sqlite3_column_double(list_statement, 21);
-    temp_result.defocus_search_range            = sqlite3_column_double(list_statement, 22);
-    temp_result.defocus_step                    = sqlite3_column_double(list_statement, 23);
-    temp_result.pixel_size_search_range         = sqlite3_column_double(list_statement, 24);
-    temp_result.pixel_size_step                 = sqlite3_column_double(list_statement, 25);
-    temp_result.refinement_threshold            = sqlite3_column_double(list_statement, 26);
-    temp_result.used_threshold                  = sqlite3_column_double(list_statement, 27);
-    temp_result.reference_box_size_in_angstroms = sqlite3_column_double(list_statement, 28);
-    temp_result.mask_radius                     = sqlite3_column_double(list_statement, 29);
-    temp_result.min_peak_radius                 = sqlite3_column_double(list_statement, 30);
-    temp_result.xy_change_threshold             = sqlite3_column_double(list_statement, 31);
-    temp_result.exclude_above_xy_threshold      = bool(sqlite3_column_int(list_statement, 32));
-    temp_result.mip_filename                    = sqlite3_column_text(list_statement, 33);
-    temp_result.scaled_mip_filename             = sqlite3_column_text(list_statement, 34);
-    temp_result.avg_filename                    = sqlite3_column_text(list_statement, 35);
-    temp_result.std_filename                    = sqlite3_column_text(list_statement, 36);
-    temp_result.psi_filename                    = sqlite3_column_text(list_statement, 37);
-    temp_result.theta_filename                  = sqlite3_column_text(list_statement, 38);
-    temp_result.phi_filename                    = sqlite3_column_text(list_statement, 39);
-    temp_result.defocus_filename                = sqlite3_column_text(list_statement, 40);
-    temp_result.pixel_size_filename             = sqlite3_column_text(list_statement, 41);
-    temp_result.histogram_filename              = sqlite3_column_text(list_statement, 42);
-    temp_result.projection_result_filename      = sqlite3_column_text(list_statement, 43);
+    // Read search parameters from QUEUE table (columns 20-42)
+    temp_result.symmetry                        = sqlite3_column_text(list_statement, 20);
+    temp_result.pixel_size                      = sqlite3_column_double(list_statement, 21);
+    temp_result.voltage                         = sqlite3_column_double(list_statement, 22);
+    temp_result.spherical_aberration            = sqlite3_column_double(list_statement, 23);
+    temp_result.amplitude_contrast              = sqlite3_column_double(list_statement, 24);
+    temp_result.defocus1                        = sqlite3_column_double(list_statement, 25);
+    temp_result.defocus2                        = sqlite3_column_double(list_statement, 26);
+    temp_result.defocus_angle                   = sqlite3_column_double(list_statement, 27);
+    temp_result.phase_shift                     = sqlite3_column_double(list_statement, 28);
+    temp_result.low_res_limit                   = sqlite3_column_double(list_statement, 29);
+    temp_result.high_res_limit                  = sqlite3_column_double(list_statement, 30);
+    temp_result.out_of_plane_step               = sqlite3_column_double(list_statement, 31);
+    temp_result.in_plane_step                   = sqlite3_column_double(list_statement, 32);
+    temp_result.defocus_search_range            = sqlite3_column_double(list_statement, 33);
+    temp_result.defocus_step                    = sqlite3_column_double(list_statement, 34);
+    temp_result.pixel_size_search_range         = sqlite3_column_double(list_statement, 35);
+    temp_result.pixel_size_step                 = sqlite3_column_double(list_statement, 36);
+    temp_result.refinement_threshold            = sqlite3_column_double(list_statement, 37);
+    temp_result.used_threshold                  = temp_result.refinement_threshold; // Same value now
+    temp_result.reference_box_size_in_angstroms = sqlite3_column_double(list_statement, 38);
+    temp_result.mask_radius                     = sqlite3_column_double(list_statement, 39);
+    temp_result.min_peak_radius                 = sqlite3_column_double(list_statement, 40);
+    temp_result.xy_change_threshold             = sqlite3_column_double(list_statement, 41);
+    temp_result.exclude_above_xy_threshold      = bool(sqlite3_column_int(list_statement, 42));
 
     Finalize(list_statement);
 
@@ -2042,7 +2093,7 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
 void Database::SetActiveTemplateMatchJobForGivenImageAssetID(long image_asset, long template_match_job_id) {
     BeginCommitLocker active_locker(this);
     ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET IS_ACTIVE=0 WHERE IMAGE_ASSET_ID=%li", image_asset));
-    ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET IS_ACTIVE=1 WHERE IMAGE_ASSET_ID=%li AND TEMPLATE_MATCH_JOB_ID=%li", image_asset, template_match_job_id));
+    ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET IS_ACTIVE=1 WHERE IMAGE_ASSET_ID=%li AND SEARCH_ID=%li", image_asset, template_match_job_id));
 }
 
 void Database::AddRefinement(Refinement* refinement_to_add) {
@@ -2867,7 +2918,7 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     wxDateTime current_time = wxDateTime::Now();
 
     const char* sql = "INSERT INTO TEMPLATE_MATCH_QUEUE ("
-                     "JOB_NAME, TEMPLATE_MATCH_JOB_ID, QUEUE_POSITION, DATETIME_QUEUED, "
+                     "JOB_NAME, SEARCH_ID, QUEUE_POSITION, DATETIME_QUEUED, "
                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
@@ -2966,7 +3017,7 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& templat
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
 
-    const char* sql = "SELECT JOB_NAME, TEMPLATE_MATCH_JOB_ID, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
+    const char* sql = "SELECT JOB_NAME, SEARCH_ID, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
@@ -3060,12 +3111,12 @@ void Database::UpdateQueuePosition(long queue_id, int position) {
     sqlite3_finalize(stmt);
 }
 
-void Database::UpdateQueueTemplateMatchJobId(long queue_id, long template_match_job_id) {
+void Database::UpdateSearchIdInQueueTable(long queue_id, long search_id) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
-    MyDebugAssertTrue(template_match_job_id > 0, "Invalid template match job ID: %ld", template_match_job_id);
+    MyDebugAssertTrue(search_id > 0, "Invalid SEARCH_ID: %ld", search_id);
 
-    const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET TEMPLATE_MATCH_JOB_ID = ? WHERE QUEUE_ID = ?;";
+    const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET SEARCH_ID = ? WHERE QUEUE_ID = ?;";
 
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
@@ -3073,7 +3124,7 @@ void Database::UpdateQueueTemplateMatchJobId(long queue_id, long template_match_
         DEBUG_ABORT;
     }
 
-    sqlite3_bind_int64(stmt, 1, template_match_job_id);
+    sqlite3_bind_int64(stmt, 1, search_id);
     sqlite3_bind_int64(stmt, 2, queue_id);
 
     if (sqlite3_step(stmt) != SQLITE_DONE) {
@@ -3128,7 +3179,7 @@ void Database::ClearTemplateMatchQueue() {
     sqlite3_finalize(stmt);
 }
 
-std::pair<int, int> Database::GetJobCompletionCounts(long template_match_job_id, int image_group_id) {
+std::pair<int, int> Database::GetSearchCompletionCounts(long search_id, int image_group_id) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
     wxString sql;
@@ -3139,9 +3190,9 @@ std::pair<int, int> Database::GetJobCompletionCounts(long template_match_job_id,
             "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
             "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
             "FROM IMAGE_ASSETS "
-            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID = %ld) COMP "
+            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld) COMP "
             "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
-            template_match_job_id);
+            search_id);
     } else {
         // Specific image group
         sql = wxString::Format(
@@ -3149,9 +3200,9 @@ std::pair<int, int> Database::GetJobCompletionCounts(long template_match_job_id,
             "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
             "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
             "FROM IMAGE_GROUP_%d AS IMAGE_ASSETS "
-            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID = %ld) COMP "
+            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld) COMP "
             "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
-            image_group_id, template_match_job_id);
+            image_group_id, search_id);
     }
 
 
@@ -3173,17 +3224,40 @@ std::pair<int, int> Database::GetJobCompletionCounts(long template_match_job_id,
     return std::make_pair(completed_count, total_count);
 }
 
-void Database::GetAllTemplateMatchJobIds(std::vector<long>& job_ids) {
+void Database::GetAllTemplateMatchSearchIds(std::vector<std::pair<long, int>>& search_id_and_group_pairs) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
-    job_ids.clear(); // Ensure vector is empty before filling
-    wxArrayLong temp_array = ReturnLongArrayFromSelectCommand("SELECT DISTINCT TEMPLATE_MATCH_JOB_ID FROM TEMPLATE_MATCH_LIST ORDER BY TEMPLATE_MATCH_JOB_ID");
+    search_id_and_group_pairs.clear(); // Ensure vector is empty before filling
 
-    // Convert wxArrayLong to std::vector
-    job_ids.reserve(temp_array.GetCount());
-    for (size_t i = 0; i < temp_array.GetCount(); i++) {
-        job_ids.push_back(temp_array.Item(i));
+    // Get unique SEARCH_IDs from TEMPLATE_MATCH_LIST and their corresponding IMAGE_GROUP_ID from TEMPLATE_MATCH_QUEUE
+    // Every search MUST have an IMAGE_GROUP_ID in TEMPLATE_MATCH_QUEUE:
+    // - New searches: created with queue entry containing IMAGE_GROUP_ID
+    // - Migrated searches: migration creates queue entries with IMAGE_GROUP_ID
+    // If somehow a search exists without a queue entry, that's a data integrity error
+    wxString sql = "SELECT DISTINCT TML.SEARCH_ID, TMQ.IMAGE_GROUP_ID "
+                   "FROM TEMPLATE_MATCH_LIST TML "
+                   "INNER JOIN TEMPLATE_MATCH_QUEUE TMQ ON TML.SEARCH_ID = TMQ.SEARCH_ID "
+                   "ORDER BY TML.SEARCH_ID";
+
+    sqlite3_stmt* statement;
+    if (sqlite3_prepare_v2(sqlite_database, sql.ToUTF8().data(), -1, &statement, NULL) != SQLITE_OK) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql.ToUTF8().data());
+        DEBUG_ABORT;
     }
+
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+        long search_id = sqlite3_column_int64(statement, 0);
+        int image_group_id = sqlite3_column_int(statement, 1);
+
+        // All searches must have a valid IMAGE_GROUP_ID (> 0) either from being newly created
+        // or from migration where the original IMAGE_GROUP_ID was preserved in TEMPLATE_MATCH_LIST
+        MyDebugAssertTrue(image_group_id > 0, "Invalid IMAGE_GROUP_ID %d for SEARCH_ID %ld - data integrity error",
+                          image_group_id, search_id);
+
+        search_id_and_group_pairs.push_back(std::make_pair(search_id, image_group_id));
+    }
+
+    sqlite3_finalize(statement);
 }
 
 BeginCommitLocker::BeginCommitLocker(Database* wanted_database) {

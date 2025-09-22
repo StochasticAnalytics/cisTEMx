@@ -170,7 +170,10 @@ void RefineTemplatePanel::ResetDefaults( ) {
         current_image = image_asset_panel->all_assets_list->ReturnImageAssetPointer(image_asset_panel->ReturnGroupMember(GroupComboBox->GetSelection( ), 0)); // first image in group
         HighResolutionLimitNumericCtrl->ChangeValueFloat(2.0f * current_image->pixel_size);
 
-        int                     job_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE IMAGE_ASSET_ID=%i AND IS_ACTIVE=1", current_image->asset_id));
+        int job_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(
+                wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST "
+                                 "WHERE IMAGE_ASSET_ID=%i AND IS_ACTIVE=1",
+                                 current_image->asset_id));
         TemplateMatchJobResults result_for_first_image;
         result_for_first_image = main_frame->current_project.database.GetTemplateMatchingResultByID(job_id);
 
@@ -210,7 +213,10 @@ void RefineTemplatePanel::OnGroupComboBox(wxCommandEvent& event) {
         current_image = image_asset_panel->all_assets_list->ReturnImageAssetPointer(image_asset_panel->ReturnGroupMember(GroupComboBox->GetSelection( ), 0)); // first image in group
         HighResolutionLimitNumericCtrl->ChangeValueFloat(2.0f * current_image->pixel_size);
 
-        int job_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE IMAGE_ASSET_ID=%i AND IS_ACTIVE=1", current_image->asset_id));
+        int job_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(
+                wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST "
+                                 "WHERE IMAGE_ASSET_ID=%i AND IS_ACTIVE=1",
+                                 current_image->asset_id));
 
         if ( job_id > 0 ) {
             TemplateMatchJobResults result_for_first_image;
@@ -587,7 +593,10 @@ void RefineTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
         // get the input result...
 
-        long current_match_template_result_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE IMAGE_ASSET_ID=%i AND IS_ACTIVE=1", current_image->asset_id));
+        long current_match_template_result_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(
+                wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST "
+                                 "WHERE IMAGE_ASSET_ID=%i AND IS_ACTIVE=1",
+                                 current_image->asset_id));
         input_result                          = main_frame->current_project.database.GetTemplateMatchingResultByID(current_match_template_result_id);
         temp_result.input_job_id              = current_match_template_result_id;
 

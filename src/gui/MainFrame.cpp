@@ -638,9 +638,11 @@ void MyMainFrame::OpenProject(wxString project_filename) {
                         break;
                     }
                     case BACKUP_AND_UPDATE: {
-                        // Create backup filename which simply appends _backup
+                        // Create backup filename with timestamp
+                        wxDateTime now = wxDateTime::Now();
                         std::string tmp_backup_filename = std::string(current_project.database.ReturnFilename( ));
-                        tmp_backup_filename.insert(tmp_backup_filename.size( ) - 3, "_backup");
+                        wxString backup_suffix = wxString::Format("_backup_%s", now.Format("%Y%m%d_%H%M%S"));
+                        tmp_backup_filename.insert(tmp_backup_filename.size( ) - 3, backup_suffix.ToStdString());
                         wxFileName backup_db_filename(tmp_backup_filename);
 
                         // Backup and update
@@ -650,6 +652,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
                             current_project.Close(false, false);
                             return;
                         }
+
                         UpdateDatabase(schema_comparison);
                         break;
                     }

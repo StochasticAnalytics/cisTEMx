@@ -214,6 +214,7 @@ class MatchTemplatePanelParent : public JobPanel
 
 	protected:
 		wxStaticLine* m_staticline149;
+		wxStaticText* RunProfileText;
 		wxPanel* InputPanel;
 		wxStaticText* m_staticText262;
 		wxStaticText* m_staticText478;
@@ -268,7 +269,6 @@ class MatchTemplatePanelParent : public JobPanel
 		wxButton* FinishButton;
 		wxButton* CancelAlignmentButton;
 		wxPanel* StartPanel;
-		wxStaticText* RunProfileText;
 		MemoryComboBox* RunProfileComboBox;
 		wxButton* StartEstimationButton;
 		wxButton* AddToQueue;

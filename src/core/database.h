@@ -449,13 +449,13 @@ class Database {
                                    float& mask_radius, float& min_peak_radius,
                                    float& xy_change_threshold, bool& exclude_above_xy_threshold);
     void            UpdateQueuePosition(long queue_id, int position);
-    void            UpdateQueueTemplateMatchJobId(long queue_id, long template_match_job_id);
+    void            UpdateSearchIdInQueueTable(long queue_id, long search_id);
     void            RemoveFromQueue(long queue_id);
     void            ClearTemplateMatchQueue();
 
     // Template match completion tracking methods
-    std::pair<int, int> GetJobCompletionCounts(long template_match_job_id, int image_group_id = -1);
-    void                GetAllTemplateMatchJobIds(std::vector<long>& job_ids);
+    std::pair<int, int> GetSearchCompletionCounts(long search_id, int image_group_id = -1);
+    void                GetAllTemplateMatchSearchIds(std::vector<std::pair<long, int>>& search_id_and_group_pairs);
 
     void AddRefinementAngularDistribution(AngularDistributionHistogram& histogram_to_add, long refinement_id, int class_number);
     void CopyRefinementAngularDistributions(long refinement_id_to_copy, long refinement_id_to_copy_to, int wanted_class_number);

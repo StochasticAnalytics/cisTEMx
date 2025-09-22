@@ -62,7 +62,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     // needed to write results as they come in.. should be set when the job is launched..
 
     int database_queue_id;
-    int template_match_job_id;
+    int search_id;  // TEMPLATE_MATCH_LIST.SEARCH_ID - created when first result written
 
     // Queue tracking
     long running_queue_job_id;  // -1 if not running from queue

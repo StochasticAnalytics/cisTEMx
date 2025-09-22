@@ -164,7 +164,7 @@ void MatchTemplatePanel::ResetDefaults( ) {
         // ResumeRunCheckBox->SetValue(false);
         // deprecated - remove: Resume run functionality replaced by Queue Manager
         /*
-        if ( match_template_results_panel->template_match_job_ids.empty( ) )
+        if ( match_template_results_panel->search_ids.empty( ) )
             ResumeRunCheckBox->Enable(true);
         else
             ResumeRunCheckBox->Enable(false);
@@ -572,6 +572,9 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 }
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
+    MyDebugAssertTrue(main_frame != nullptr, "main_frame is null");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "Project database is not open");
+
     // Add to queue silently (without dialog), then execute
     TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
     long queue_id = AddJobToQueue(new_job, false);  // No dialog for direct execution
@@ -579,6 +582,12 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     if (queue_id > 0) {
         // Update the job with the database queue ID
         new_job.database_queue_id = queue_id;
+
+        // Move job to available queue (position -1) since we're executing immediately
+        // This matches what QueueManager::RunNextJob does before execution
+        wxString sql = wxString::Format("UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_POSITION = -1 WHERE QUEUE_ID = %ld;", queue_id);
+        main_frame->current_project.database.ExecuteSQL(sql);
+        wxPrintf("StartEstimationClick: Moved job %ld to available queue (position -1)\n", queue_id);
 
         // Execute the job via unified method
         if (!ExecuteJob(&new_job)) {
@@ -594,6 +603,15 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
     // result is available for an image..
 
+    // Validate image_number is within bounds
+    if (image_number < 1 || image_number > cached_results.GetCount()) {
+        wxPrintf("ERROR: Invalid image_number %d received from socket (cached_results size: %d)\n",
+                 image_number, int(cached_results.GetCount()));
+        MyDebugAssertFalse(image_number >= 1 && image_number <= cached_results.GetCount(),
+                          "Received invalid image_number from socket - data corruption?");
+        return;
+    }
+
     cached_results[image_number - 1].found_peaks.Clear( );
     cached_results[image_number - 1].found_peaks    = peak_infos;
     cached_results[image_number - 1].used_threshold = threshold_used;
@@ -604,17 +622,17 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 
     main_frame->current_project.database.Begin( );
 
-    cached_results[image_number - 1].job_id = template_match_job_id;
+    cached_results[image_number - 1].job_id = search_id;
     main_frame->current_project.database.AddTemplateMatchingResult(database_queue_id, cached_results[image_number - 1]);
     database_queue_id++;
 
-    main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[image_number - 1].image_asset_id, template_match_job_id);
+    main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[image_number - 1].image_asset_id, search_id);
     main_frame->current_project.database.Commit( );
     match_template_results_panel->is_dirty = true;
 
     // Notify queue manager about result addition for real-time n/N updates
     if (queue_completion_callback) {
-        queue_completion_callback->OnResultAdded(template_match_job_id);
+        queue_completion_callback->OnResultAdded(search_id);
     }
 }
 
@@ -812,20 +830,20 @@ void MatchTemplatePanel::WriteResultToDataBase( ) {
 	// find the current highest template match numbers in the database, then increment by one
 
 	int database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
-	int template_match_job_id =  main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
+	int search_id =  main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
 	main_frame->current_project.database.Begin();
 
 
 	for (int counter = 0; counter < cached_results.GetCount(); counter++)
 	{
-		cached_results[counter].job_id = template_match_job_id;
+		cached_results[counter].job_id = search_id;
 		main_frame->current_project.database.AddTemplateMatchingResult(database_queue_id, cached_results[counter]);
 		database_queue_id++;
 	}
 
 	for (int counter = 0; counter < cached_results.GetCount(); counter++)
 	{
-		main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[counter].image_asset_id, template_match_job_id);
+		main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[counter].image_asset_id, search_id);
 	}
 
 	main_frame->current_project.database.Commit();
@@ -875,20 +893,28 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 
         // All images
         if ( active_group.id == -1 ) {
+            // Find images that don't have results for this template match job yet
+            // Uses LEFT JOIN to find IMAGE_ASSETS without corresponding TEMPLATE_MATCH_LIST entries
             unfinished_match_template_ids = main_frame->current_project.database.ReturnLongArrayFromSelectCommand(
-                    wxString::Format("select IMAGE_ASSETS.IMAGE_ASSET_ID, COMP.IMAGE_ASSET_ID as CID FROM IMAGE_ASSETS "
-                                     "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID = %i ) COMP "
-                                     "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID "
-                                     "WHERE CID IS NULL",
+                    wxString::Format("SELECT IMAGE_ASSETS.IMAGE_ASSET_ID, "
+                                     "COMPLETED.IMAGE_ASSET_ID AS COMPLETED_IMAGE_ID "
+                                     "FROM IMAGE_ASSETS "
+                                     "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %i) AS COMPLETED "
+                                     "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMPLETED.IMAGE_ASSET_ID "
+                                     "WHERE COMPLETED_IMAGE_ID IS NULL",
                                      active_job_id));
         }
         // An Image group
         else {
+            // Find images in this group that don't have results for this template match job yet
+            // Uses LEFT JOIN to find IMAGE_GROUP entries without corresponding TEMPLATE_MATCH_LIST entries
             unfinished_match_template_ids = main_frame->current_project.database.ReturnLongArrayFromSelectCommand(
-                    wxString::Format("select IMAGE_ASSETS.IMAGE_ASSET_ID, COMP.IMAGE_ASSET_ID as CID FROM IMAGE_GROUP_%i AS IMAGE_ASSETS "
-                                     "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID = %i ) COMP "
-                                     "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID "
-                                     "WHERE CID IS NULL",
+                    wxString::Format("SELECT IMAGE_ASSETS.IMAGE_ASSET_ID, "
+                                     "COMPLETED.IMAGE_ASSET_ID AS COMPLETED_IMAGE_ID "
+                                     "FROM IMAGE_GROUP_%i AS IMAGE_ASSETS "
+                                     "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %i) AS COMPLETED "
+                                     "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMPLETED.IMAGE_ASSET_ID "
+                                     "WHERE COMPLETED_IMAGE_ID IS NULL",
                                      active_group.id, active_job_id));
         }
         images_to_be_processed        = unfinished_match_template_ids.GetCount( );
@@ -1698,12 +1724,19 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
 
     // Get ID's from database for writing results as they come in
     database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
-    template_match_job_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
+    search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
 
-    // Update the queue item with the actual database job ID for n/N tracking
-    if (running_queue_job_id > 0 && queue_completion_callback) {
-        // Find and update the queue item with the correct database job ID
-        queue_completion_callback->UpdateJobDatabaseId(running_queue_job_id, template_match_job_id);
+    // Update the queue item with the actual SEARCH_ID for n/N tracking
+    if (running_queue_job_id > 0) {
+        if (queue_completion_callback) {
+            // Queue manager is present - let it update the search ID
+            queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_job_id, search_id);
+        } else {
+            // No queue manager (StartEstimationClick path) - update database directly
+            // This is critical for status computation since status is derived from completion data
+            main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_job_id, search_id);
+            wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_job_id, search_id);
+        }
     }
 
     // Unfreeze GUI updates in queue manager now that setup is complete
@@ -1760,8 +1793,8 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
     if (queue_item) {
         // Validate job parameters before execution
         MyDebugAssertTrue(queue_item->database_queue_id >= 0, "Cannot execute job with invalid database_queue_id: %ld", queue_item->database_queue_id);
-        MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed",
-                          "Cannot execute job with status '%s', must be 'pending' or 'failed'", queue_item->queue_status.mb_str().data());
+        MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed" || queue_item->queue_status == "partial",
+                          "Cannot execute job with status '%s', must be 'pending', 'failed', or 'partial'", queue_item->queue_status.mb_str().data());
         MyDebugAssertFalse(queue_item->search_name.IsEmpty(), "Cannot execute search with empty search_name");
         MyDebugAssertTrue(queue_item->image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
         MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);

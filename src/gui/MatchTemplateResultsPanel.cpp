@@ -218,7 +218,9 @@ void MatchTemplateResultsPanel::FillBasedOnSelectCommand(wxString wanted_command
         // all assets should be added.. now go job by job and fill the appropriate columns..
 
         for ( job_counter = 0; job_counter < number_of_template_match_ids; job_counter++ ) {
-            should_continue = main_frame->current_project.database.BeginBatchSelect(wxString::Format("SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID=%li", template_match_job_ids[job_counter]));
+            should_continue = main_frame->current_project.database.BeginBatchSelect(
+                    wxString::Format("SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID=%li",
+                                     template_match_job_ids[job_counter]));
 
             if ( should_continue == false ) {
                 MyPrintWithDetails("Error getting template match jobs..");
@@ -245,7 +247,8 @@ void MatchTemplateResultsPanel::FillBasedOnSelectCommand(wxString wanted_command
 
         // set the checked ones..
 
-        should_continue = main_frame->current_project.database.BeginBatchSelect("SELECT IMAGE_ASSET_ID, TEMPLATE_MATCH_JOB_ID FROM TEMPLATE_MATCH_LIST WHERE IS_ACTIVE=1;");
+        should_continue = main_frame->current_project.database.BeginBatchSelect(
+                "SELECT IMAGE_ASSET_ID, SEARCH_ID FROM TEMPLATE_MATCH_LIST WHERE IS_ACTIVE=1;");
 
         if ( should_continue == false ) {
             MyPrintWithDetails("Error getting selected template matches..");
@@ -317,7 +320,9 @@ void MatchTemplateResultsPanel::FillResultsPanelAndDetails(int row, int column) 
     int  current_image_id                         = per_row_asset_id[row];
     long current_template_match_estimation_job_id = template_match_job_ids[column - 2];
 
-    long template_match_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE IMAGE_ASSET_ID=%i AND TEMPLATE_MATCH_JOB_ID=%li", current_image_id, current_template_match_estimation_job_id));
+    long template_match_id = main_frame->current_project.database.ReturnSingleLongFromSelectCommand(
+            wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE IMAGE_ASSET_ID=%i AND SEARCH_ID=%li",
+                             current_image_id, current_template_match_estimation_job_id));
 
     TemplateMatchJobResults current_result;
     current_result = main_frame->current_project.database.GetTemplateMatchingResultByID(template_match_id);
@@ -404,7 +409,9 @@ void MatchTemplateResultsPanel::OnValueChanged(wxDataViewEvent& event) {
 
                 // we need to get the details of the selected movie alignment, and update the image asset.
 
-                //int estimation_id = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE IMAGE_ASSET_ID=%i AND TEMPLATE_MATCH_JOB_ID=%i",image_asset_id, estimation_job_id));
+                //int estimation_id = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(
+                //        wxString::Format("SELECT TEMPLATE_MATCH_ID FROM TEMPLATE_MATCH_LIST WHERE IMAGE_ASSET_ID=%i AND SEARCH_ID=%i",
+                //                         image_asset_id, estimation_job_id));
                 //bool should_continue;
 
                 //should_continue = main_frame->current_project.database.BeginBatchSelect(wxString::Format("SELECT CTF_ESTIMATION_ID FROM ESTIMATED_CTF_PARAMETERS WHERE IMAGE_ASSET_ID=%i AND CTF_ESTIMATION_JOB_ID=%i",image_asset_id, estimation_job_id));

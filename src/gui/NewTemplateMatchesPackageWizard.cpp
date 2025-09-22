@@ -167,9 +167,9 @@ void TemplateMatchesWizardPage::SelectionChanged(wxCommandEvent& event) {
     wizard_pointer->tm_ids.Clear( );
     wizard_pointer->image_ids.Clear( );
     if ( im_group > 0 )
-        more_data = main_frame->current_project.database.BeginBatchSelect(wxString::Format("SELECT TEMPLATE_MATCH_ID, TEMPLATE_MATCH_LIST.IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST INNER JOIN IMAGE_GROUP_%i ON TEMPLATE_MATCH_LIST.IMAGE_ASSET_ID = IMAGE_GROUP_%i.IMAGE_ASSET_ID WHERE TEMPLATE_MATCH_JOB_ID=%i", im_group, im_group, tm_job));
+        more_data = main_frame->current_project.database.BeginBatchSelect(wxString::Format("SELECT TEMPLATE_MATCH_ID, TEMPLATE_MATCH_LIST.IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST INNER JOIN IMAGE_GROUP_%i ON TEMPLATE_MATCH_LIST.IMAGE_ASSET_ID = IMAGE_GROUP_%i.IMAGE_ASSET_ID WHERE SEARCH_ID=%i", im_group, im_group, tm_job));
     else
-        more_data = main_frame->current_project.database.BeginBatchSelect(wxString::Format("SELECT TEMPLATE_MATCH_ID, TEMPLATE_MATCH_LIST.IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID=%i", tm_job));
+        more_data = main_frame->current_project.database.BeginBatchSelect(wxString::Format("SELECT TEMPLATE_MATCH_ID, TEMPLATE_MATCH_LIST.IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID=%i", tm_job));
     while ( more_data == true ) {
         int tm_id, image_id;
         more_data = main_frame->current_project.database.GetFromBatchSelect("ii", &tm_id, &image_id);

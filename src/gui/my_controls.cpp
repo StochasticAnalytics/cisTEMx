@@ -237,7 +237,12 @@ bool MemoryComboBox::FillWithTMJobs( ) {
     ChangeValue("");
     bool more_data;
 
-    more_data = main_frame->current_project.database.BeginBatchSelect("SELECT DISTINCT TEMPLATE_MATCH_JOB_ID, VOLUME_ASSETS.NAME FROM TEMPLATE_MATCH_LIST JOIN VOLUME_ASSETS on TEMPLATE_MATCH_LIST.REFERENCE_VOLUME_ASSET_ID = VOLUME_ASSETS.VOLUME_ASSET_ID");
+    // TODO: This SQL should be moved to a database method like GetUniqueTemplateMatchJobs()
+    // Get unique template match jobs with their volume names
+    more_data = main_frame->current_project.database.BeginBatchSelect(
+            "SELECT DISTINCT SEARCH_ID, VOLUME_ASSETS.NAME "
+            "FROM TEMPLATE_MATCH_LIST "
+            "JOIN VOLUME_ASSETS ON TEMPLATE_MATCH_LIST.REFERENCE_VOLUME_ASSET_ID = VOLUME_ASSETS.VOLUME_ASSET_ID");
     while ( more_data ) {
         int      id;
         wxString name;

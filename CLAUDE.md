@@ -182,6 +182,7 @@ The project includes CUDA code for GPU acceleration. GPU-related files are prima
 - **Preprocessor Defines:** All project-specific preprocessor defines should be prefixed with `cisTEM_` to avoid naming collisions (e.g., `cisTEM_ENABLE_FEATURE` not `ENABLE_FEATURE`)
 - **Include Guards:** Use the full path from project root in uppercase with underscores for header file include guards (e.g., `_SRC_GUI_MYHEADER_H_` for `src/gui/MyHeader.h`, not `__MyHeader__`)
 - **Temporary Files:** All temporary files (scripts, plans, documentation drafts) should be created in `.claude/cache/` directory. Create this directory if it doesn't exist. This keeps the project root clean and makes it easy to identify Claude-generated temporary content
+- **SQL Query Formatting:** Long SQL queries should be wrapped for readability. Break strings at logical points (SELECT, FROM, WHERE, JOIN clauses) and align continuation lines. Use descriptive table aliases instead of abbreviations (e.g., `AS COMPLETED` not `AS COMP`). Add comments explaining complex queries, especially JOINs and subqueries
 
 ## Commit Best Practices
 

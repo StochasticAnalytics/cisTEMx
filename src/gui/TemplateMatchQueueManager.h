@@ -16,15 +16,15 @@ class MyMainFrame;
  * in the queue manager UI. Links to TEMPLATE_MATCH_LIST table for result counting.
  */
 struct SearchCompletionInfo {
-    long search_id;             ///< Database SEARCH_ID linking to TEMPLATE_MATCH_LIST table entries
-    int completed_count;         ///< Number of results currently saved to database
-    int total_count;            ///< Expected total number of results for this search
+    long search_id; ///< Database SEARCH_ID linking to TEMPLATE_MATCH_LIST table entries
+    int  completed_count; ///< Number of results currently saved to database
+    int  total_count; ///< Expected total number of results for this search
 
     /**
      * @brief Formats completion progress as "n/N" string for UI display
      * @return Formatted string showing completed vs total count
      */
-    wxString GetCompletionString() const {
+    wxString GetCompletionString( ) const {
         return wxString::Format("%d/%d", completed_count, total_count);
     }
 
@@ -32,9 +32,11 @@ struct SearchCompletionInfo {
      * @brief Derives search status from completion progress for consistent state tracking
      * @return Status string: "pending" (0/N), "running" (n/N where 0<n<N), or "complete" (N/N)
      */
-    wxString GetStatusFromCompletion() const {
-        if (completed_count == 0) return "pending";
-        if (completed_count == total_count) return "complete";
+    wxString GetStatusFromCompletion( ) const {
+        if ( completed_count == 0 )
+            return "pending";
+        if ( completed_count == total_count )
+            return "complete";
         return "running";
     }
 
@@ -42,7 +44,7 @@ struct SearchCompletionInfo {
      * @brief Calculates completion percentage for progress bars and sorting
      * @return Percentage complete (0.0-100.0), or 0.0 if total_count is invalid
      */
-    double GetCompletionPercentage() const {
+    double GetCompletionPercentage( ) const {
         return total_count > 0 ? (double)completed_count / total_count * 100.0 : 0.0;
     }
 };
@@ -60,78 +62,78 @@ struct SearchCompletionInfo {
  *   The mapping is established by UpdateSearchIdForQueueItem() when the MatchTemplatePanel begins processing.
  */
 class TemplateMatchQueueItem {
-public:
-    long database_queue_id;         ///< Persistent database queue identifier (TEMPLATE_MATCH_QUEUE.QUEUE_ID)
-    long search_id;                 ///< Results table identifier (TEMPLATE_MATCH_LIST.SEARCH_ID, -1 if no results yet)
-    wxString search_name;           ///< User-friendly name for this template matching search (maps to JOB_NAME in database)
-    wxString queue_status;          ///< Computed status: "pending", "running", "partial", "complete" (not stored in DB)
-    int queue_order;                ///< Priority order: 0=running, 1+=pending queue position, -1=available queue
-    wxString custom_cli_args;       ///< Additional command-line arguments for this search
+  public:
+    long     database_queue_id; ///< Persistent database queue identifier (TEMPLATE_MATCH_QUEUE.QUEUE_ID)
+    long     search_id; ///< Results table identifier (TEMPLATE_MATCH_LIST.SEARCH_ID, -1 if no results yet)
+    wxString search_name; ///< User-friendly name for this template matching search (maps to JOB_NAME in database)
+    wxString queue_status; ///< Computed status: "pending", "running", "partial", "complete" (not stored in DB)
+    int      queue_order; ///< Priority order: 0=running, 1+=pending queue position, -1=available queue
+    wxString custom_cli_args; ///< Additional command-line arguments for this search
 
     // Store all the parameters needed to run the job
     // These will be populated when adding to queue
-    int image_group_id;
-    int reference_volume_asset_id;
-    int run_profile_id;
-    bool use_gpu;
-    bool use_fast_fft;
+    int      image_group_id;
+    int      reference_volume_asset_id;
+    int      run_profile_id;
+    bool     use_gpu;
+    bool     use_fast_fft;
     wxString symmetry;
-    float pixel_size;
-    float voltage;
-    float spherical_aberration;
-    float amplitude_contrast;
-    float defocus1;
-    float defocus2;
-    float defocus_angle;
-    float phase_shift;
-    float low_resolution_limit;
-    float high_resolution_limit;
-    float out_of_plane_angular_step;
-    float in_plane_angular_step;
-    float defocus_search_range;
-    float defocus_step;
-    float pixel_size_search_range;
-    float pixel_size_step;
-    float refinement_threshold;
-    float ref_box_size_in_angstroms;
-    float mask_radius;
-    float min_peak_radius;
-    float xy_change_threshold;
-    bool exclude_above_xy_threshold;
+    float    pixel_size;
+    float    voltage;
+    float    spherical_aberration;
+    float    amplitude_contrast;
+    float    defocus1;
+    float    defocus2;
+    float    defocus_angle;
+    float    phase_shift;
+    float    low_resolution_limit;
+    float    high_resolution_limit;
+    float    out_of_plane_angular_step;
+    float    in_plane_angular_step;
+    float    defocus_search_range;
+    float    defocus_step;
+    float    pixel_size_search_range;
+    float    pixel_size_step;
+    float    refinement_threshold;
+    float    ref_box_size_in_angstroms;
+    float    mask_radius;
+    float    min_peak_radius;
+    float    xy_change_threshold;
+    bool     exclude_above_xy_threshold;
 
-    TemplateMatchQueueItem() {
-        database_queue_id = -1;
-        search_id = -1;              // No SEARCH_ID until first result is written to TEMPLATE_MATCH_LIST
-        queue_status = "pending";
-        queue_order = -1;  // Will be assigned when added to queue
-        image_group_id = -1;
+    TemplateMatchQueueItem( ) {
+        database_queue_id         = -1;
+        search_id                 = -1; // No SEARCH_ID until first result is written to TEMPLATE_MATCH_LIST
+        queue_status              = "pending";
+        queue_order               = -1; // Will be assigned when added to queue
+        image_group_id            = -1;
         reference_volume_asset_id = -1;
-        run_profile_id = -1;
-        use_gpu = false;
-        use_fast_fft = false;
+        run_profile_id            = -1;
+        use_gpu                   = false;
+        use_fast_fft              = false;
 
         // Initialize other parameters to safe defaults
-        pixel_size = 0.0f;
-        voltage = 0.0f;
-        spherical_aberration = 0.0f;
-        amplitude_contrast = 0.0f;
-        defocus1 = 0.0f;
-        defocus2 = 0.0f;
-        defocus_angle = 0.0f;
-        phase_shift = 0.0f;
-        low_resolution_limit = 0.0f;
-        high_resolution_limit = 0.0f;
-        out_of_plane_angular_step = 0.0f;
-        in_plane_angular_step = 0.0f;
-        defocus_search_range = 0.0f;
-        defocus_step = 0.0f;
-        pixel_size_search_range = 0.0f;
-        pixel_size_step = 0.0f;
-        refinement_threshold = 0.0f;
-        ref_box_size_in_angstroms = 0.0f;
-        mask_radius = 0.0f;
-        min_peak_radius = 0.0f;
-        xy_change_threshold = 0.0f;
+        pixel_size                 = 0.0f;
+        voltage                    = 0.0f;
+        spherical_aberration       = 0.0f;
+        amplitude_contrast         = 0.0f;
+        defocus1                   = 0.0f;
+        defocus2                   = 0.0f;
+        defocus_angle              = 0.0f;
+        phase_shift                = 0.0f;
+        low_resolution_limit       = 0.0f;
+        high_resolution_limit      = 0.0f;
+        out_of_plane_angular_step  = 0.0f;
+        in_plane_angular_step      = 0.0f;
+        defocus_search_range       = 0.0f;
+        defocus_step               = 0.0f;
+        pixel_size_search_range    = 0.0f;
+        pixel_size_step            = 0.0f;
+        refinement_threshold       = 0.0f;
+        ref_box_size_in_angstroms  = 0.0f;
+        mask_radius                = 0.0f;
+        min_peak_radius            = 0.0f;
+        xy_change_threshold        = 0.0f;
         exclude_above_xy_threshold = false;
     }
 
@@ -143,7 +145,7 @@ public:
      *
      * @return Always returns true (assertions will abort on invalid state)
      */
-    bool AreJobParametersValid() const {
+    bool AreJobParametersValid( ) const {
         MyDebugAssertTrue(database_queue_id >= 0, "database_queue_id must be >= 0, got %ld", database_queue_id);
         MyDebugAssertTrue(image_group_id >= 0, "image_group_id must be >= 0, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
@@ -153,9 +155,9 @@ public:
         MyDebugAssertTrue(spherical_aberration >= 0.0f, "spherical_aberration must be >= 0.0, got %f", spherical_aberration);
         MyDebugAssertTrue(amplitude_contrast >= 0.0f && amplitude_contrast <= 1.0f, "amplitude_contrast must be 0.0-1.0, got %f", amplitude_contrast);
         MyDebugAssertTrue(queue_status == "pending" || queue_status == "running" || queue_status == "complete" || queue_status == "failed",
-                         "Invalid queue_status: %s", queue_status.mb_str().data());
-        MyDebugAssertTrue(!search_name.IsEmpty(), "search_name cannot be empty");
-        MyDebugAssertFalse(symmetry.IsEmpty(), "symmetry cannot be empty");
+                          "Invalid queue_status: %s", queue_status.mb_str( ).data( ));
+        MyDebugAssertTrue(! search_name.IsEmpty( ), "search_name cannot be empty");
+        MyDebugAssertFalse(symmetry.IsEmpty( ), "symmetry cannot be empty");
         return true;
     }
 };
@@ -185,7 +187,7 @@ public:
  * 3. Queue viewing: OnOpenQueueClick → dialog QM → load existing searches from database
  */
 class TemplateMatchQueueManager : public wxPanel {
-private:
+  private:
     // Debug flag for queue behavior testing - set to true to skip actual job execution
     static constexpr bool skip_search_execution_for_queue_debugging = false;
 
@@ -199,62 +201,62 @@ private:
     wxListCtrl* queue_list_ctrl;
 
     // UI Controls - Execution queue management buttons
-    wxButton* run_selected_button;      ///< Execute highest priority search
-    wxButton* update_selected_button;   ///< Update selected pending item with GUI values
-    wxButton* assign_priority_button;   ///< Open priority assignment dialog
+    wxButton* run_selected_button; ///< Execute highest priority search
+    wxButton* update_selected_button; ///< Update selected pending item with GUI values
+    wxButton* assign_priority_button; ///< Open priority assignment dialog
 
     // UI Controls - Queue movement buttons
-    wxButton* add_to_queue_button;      ///< Move searches from available to execution queue
+    wxButton* add_to_queue_button; ///< Move searches from available to execution queue
     wxButton* remove_from_queue_button; ///< Move searches from execution to available queue
 
     // UI Controls - General queue management
-    wxButton* remove_selected_button;   ///< Delete selected searches entirely
-    wxButton* clear_queue_button;       ///< Clear entire execution queue
-    wxCheckBox* hide_completed_checkbox;///< Toggle visibility of completed searches
+    wxButton*   remove_selected_button; ///< Delete selected searches entirely
+    wxButton*   clear_queue_button; ///< Clear entire execution queue
+    wxCheckBox* hide_completed_checkbox; ///< Toggle visibility of completed searches
 
     // UI Controls - Custom CLI arguments
-    wxTextCtrl* custom_cli_args_text;   ///< Editable field for custom CLI arguments
+    wxTextCtrl* custom_cli_args_text; ///< Editable field for custom CLI arguments
 
     // UI Controls - Panel display toggle
-    wxToggleButton* panel_display_toggle;   ///< Toggle switch between Input and Progress panels
+    wxToggleButton* panel_display_toggle; ///< Toggle switch between Input and Progress panels
 
     // Data Collections - In-memory queue storage
     std::deque<TemplateMatchQueueItem> execution_queue; ///< Searches ready for execution (queue_order >= 0)
     std::deque<TemplateMatchQueueItem> available_queue; ///< Searches available for queueing (queue_order < 0)
-    long currently_running_id;                          ///< Database ID of search currently executing
-    long last_populated_queue_id;                       ///< Database ID of last item populated in GUI
+    long                               currently_running_id; ///< Database ID of search currently executing
+    long                               last_populated_queue_id; ///< Database ID of last item populated in GUI
 
     // State Tracking - Execution and display control
-    bool auto_progress_queue;   ///< True if queue should auto-advance after search completion
-    bool hide_completed_jobs;   ///< True if completed searches should be hidden from available queue
-    bool gui_update_frozen;     ///< True while SetupJobFromQueueItem is executing to prevent GUI interference
+    bool auto_progress_queue; ///< True if queue should auto-advance after search completion
+    bool hide_completed_jobs; ///< True if completed searches should be hidden from available queue
+    bool gui_update_frozen; ///< True while SetupJobFromQueueItem is executing to prevent GUI interference
 
     // Panel Integration - Reference for job execution and database access
     MatchTemplatePanel* match_template_panel_ptr; ///< Panel for delegating search execution
 
     // Drag-and-Drop State - Manual implementation for wxListCtrl priority reordering
-    bool drag_in_progress;    ///< True during active drag operation
-    bool updating_display;    ///< Prevent drag operations during display updates
-    int dragged_row;          ///< Row index being dragged
-    long dragged_job_id;      ///< Database ID of search being dragged
-    wxPoint drag_start_pos;   ///< Mouse position where drag operation started
-    bool mouse_down;          ///< Track if mouse button is currently pressed
+    bool    drag_in_progress; ///< True during active drag operation
+    bool    updating_display; ///< Prevent drag operations during display updates
+    int     dragged_row; ///< Row index being dragged
+    long    dragged_job_id; ///< Database ID of search being dragged
+    wxPoint drag_start_pos; ///< Mouse position where drag operation started
+    bool    mouse_down; ///< Track if mouse button is currently pressed
 
     // Private Helper Methods
-    wxColour GetStatusColor(const wxString& status);       ///< Returns color for search status display
-    void SetStatusDisplay(wxListCtrl* list_ctrl, long item_index, const wxString& status); ///< Sets status text, color, and font formatting
-    void UpdateQueueDisplay();                             ///< Refreshes both execution and available queue displays
-    void UpdateExecutionQueueDisplay();                    ///< Refreshes execution queue table with current data
-    void UpdateAvailableJobsDisplay();                     ///< Refreshes available queue table with current data
-    void PopulateListControl(wxListCtrl* ctrl,            ///< Shared method to populate list controls
-                            const std::vector<TemplateMatchQueueItem*>& items,
-                            bool is_execution_queue);
-    int GetSelectedRow();                                   ///< Gets currently selected row index
-    void DeselectJobInUI(long database_queue_id);          ///< Removes UI selection for specified search
+    wxColour GetStatusColor(const wxString& status); ///< Returns color for search status display
+    void     SetStatusDisplay(wxListCtrl* list_ctrl, long item_index, const wxString& status); ///< Sets status text, color, and font formatting
+    void     UpdateQueueDisplay( ); ///< Refreshes both execution and available queue displays
+    void     UpdateExecutionQueueDisplay( ); ///< Refreshes execution queue table with current data
+    void     UpdateAvailableJobsDisplay( ); ///< Refreshes available queue table with current data
+    void     PopulateListControl(wxListCtrl*                                 ctrl, ///< Shared method to populate list controls
+                                 const std::vector<TemplateMatchQueueItem*>& items,
+                                 bool                                        is_execution_queue);
+    int      GetSelectedRow( ); ///< Gets currently selected row index
+    void     DeselectJobInUI(long database_queue_id); ///< Removes UI selection for specified search
 
-public:
+  public:
     TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel = nullptr);
-    ~TemplateMatchQueueManager();
+    ~TemplateMatchQueueManager( );
 
     // Execution queue management methods
     /**
@@ -274,7 +276,7 @@ public:
     /**
      * @brief Removes all searches from execution queue
      */
-    void ClearExecutionQueue();
+    void ClearExecutionQueue( );
 
     /**
      * @brief Reorders search prioritpley by changing queue position
@@ -286,7 +288,7 @@ public:
     /**
      * @brief Advances queue after search completion by promoting next search and decrementing others
      */
-    void ProgressExecutionQueue();
+    void ProgressExecutionQueue( );
 
     // Execution methods
     /**
@@ -296,7 +298,7 @@ public:
      * reordering during execution, and delegates to ExecuteJob(). Primary method
      * for initiating queue-based execution from UI or auto-progression.
      */
-    void RunNextJob();
+    void RunNextJob( );
 
     /**
      * @brief Core execution method that delegates search to MatchTemplatePanel
@@ -320,7 +322,7 @@ public:
      * Called by completion callbacks to advance to next pending search.
      * Enables automatic queue progression when auto_progress_queue is enabled.
      */
-    void ContinueQueueExecution();
+    void ContinueQueueExecution( );
 
     /**
      * @brief Callback for search completion to update queue state and trigger progression
@@ -333,13 +335,13 @@ public:
      * @brief Checks if any searches are waiting for execution
      * @return True if execution queue contains pending searches
      */
-    bool HasPendingJobs();
+    bool HasPendingJobs( );
 
     /**
      * @brief Checks if a search is currently executing
      * @return True if execution_in_progress flag is set
      */
-    bool IsJobRunning() const;
+    bool IsJobRunning( ) const;
 
     /**
      * @brief Controls automatic queue progression after search completion
@@ -363,7 +365,7 @@ public:
     /**
      * @brief Updates all progress displays with latest database completion counts
      */
-    void RefreshSearchCompletionInfo();
+    void RefreshSearchCompletionInfo( );
 
     /**
      * @brief Loads orphaned searches from database into available queue
@@ -372,7 +374,7 @@ public:
      * entry in TEMPLATE_MATCH_QUEUE. These are typically from migrated projects or
      * searches where the user explicitly removed the queue entry.
      */
-    void PopulateAvailableSearchesNotInQueueFromDatabase();
+    void PopulateAvailableSearchesNotInQueueFromDatabase( );
 
     /**
      * @brief Updates progress display when a new result is added
@@ -391,7 +393,7 @@ public:
      * @brief Check if execution queue has items ready to run
      * @return true if there are items at priority 0 or higher (pending/failed/partial)
      */
-    bool ExecutionQueueHasActiveItems() const;
+    bool ExecutionQueueHasActiveItems( ) const;
 
     /**
      * @brief Discovers and populates missing database job IDs for completed searches
@@ -400,7 +402,7 @@ public:
     /**
      * @brief Validates queue state consistency for debugging
      */
-    void ValidateQueueConsistency() const;
+    void ValidateQueueConsistency( ) const;
 
     /**
      * @brief Checks if search at queue index is currently running
@@ -408,7 +410,7 @@ public:
      * @return True if search status is "running"
      */
     inline bool IsJobRunning(int queue_index) const {
-        return queue_index >= 0 && queue_index < execution_queue.size() &&
+        return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "running";
     }
 
@@ -418,7 +420,7 @@ public:
      * @return True if search status is "pending"
      */
     inline bool IsJobPending(int queue_index) const {
-        return queue_index >= 0 && queue_index < execution_queue.size() &&
+        return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "pending";
     }
 
@@ -428,7 +430,7 @@ public:
      * @return True if search status is "complete"
      */
     inline bool IsJobComplete(int queue_index) const {
-        return queue_index >= 0 && queue_index < execution_queue.size() &&
+        return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "complete";
     }
 
@@ -438,29 +440,29 @@ public:
      * @return True if search status is "failed"
      */
     inline bool IsJobFailed(int queue_index) const {
-        return queue_index >= 0 && queue_index < execution_queue.size() &&
+        return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "failed";
     }
 
     // wxWidgets event handlers
-    void OnRunSelectedClick(wxCommandEvent& event);           ///< Executes highest priority search
-    void OnClearQueueClick(wxCommandEvent& event);            ///< Removes all searches from execution queue
-    void OnRemoveSelectedClick(wxCommandEvent& event);        ///< Removes selected searches from current table
-    void OnSelectionChanged(wxListEvent& event);              ///< Updates UI state based on execution queue selection
+    void OnRunSelectedClick(wxCommandEvent& event); ///< Executes highest priority search
+    void OnClearQueueClick(wxCommandEvent& event); ///< Removes all searches from execution queue
+    void OnRemoveSelectedClick(wxCommandEvent& event); ///< Removes selected searches from current table
+    void OnSelectionChanged(wxListEvent& event); ///< Updates UI state based on execution queue selection
     void OnAvailableJobsSelectionChanged(wxListEvent& event); ///< Updates UI state based on available queue selection
-    void OnHideCompletedToggle(wxCommandEvent& event);        ///< Toggles display of completed searches
-    void OnPanelDisplayToggle(wxCommandEvent& event);         ///< Toggles between Input and Progress panel display
-    void OnAssignPriorityClick(wxCommandEvent& event);        ///< Opens priority assignment dialog
-    void OnUpdateSelectedClick(wxCommandEvent& event);        ///< Updates selected pending item with current GUI values
-    void UpdateButtonState();                                  ///< Updates update button state based on selection
-    void OnAddToQueueClick(wxCommandEvent& event);            ///< Moves selected searches from available to execution queue
-    void OnRemoveFromQueueClick(wxCommandEvent& event);       ///< Moves selected searches from execution to available queue
+    void OnHideCompletedToggle(wxCommandEvent& event); ///< Toggles display of completed searches
+    void OnPanelDisplayToggle(wxCommandEvent& event); ///< Toggles between Input and Progress panel display
+    void OnAssignPriorityClick(wxCommandEvent& event); ///< Opens priority assignment dialog
+    void OnUpdateSelectedClick(wxCommandEvent& event); ///< Updates selected pending item with current GUI values
+    void UpdateButtonState( ); ///< Updates update button state based on selection
+    void OnAddToQueueClick(wxCommandEvent& event); ///< Moves selected searches from available to execution queue
+    void OnRemoveFromQueueClick(wxCommandEvent& event); ///< Moves selected searches from execution to available queue
 
     // Manual drag-and-drop implementation for priority reordering
-    void OnBeginDrag(wxListEvent& event);                     ///< Initiates drag operation for priority reordering
-    void OnMouseLeftDown(wxMouseEvent& event);                ///< Tracks mouse down for drag start
-    void OnMouseMotion(wxMouseEvent& event);                  ///< Handles drag motion for visual feedback
-    void OnMouseLeftUp(wxMouseEvent& event);                  ///< Completes drag operation and reorders queue
+    void OnBeginDrag(wxListEvent& event); ///< Initiates drag operation for priority reordering
+    void OnMouseLeftDown(wxMouseEvent& event); ///< Tracks mouse down for drag start
+    void OnMouseMotion(wxMouseEvent& event); ///< Handles drag motion for visual feedback
+    void OnMouseLeftUp(wxMouseEvent& event); ///< Completes drag operation and reorders queue
 
     /**
      * @brief Reorders execution queue items by changing their positions
@@ -472,17 +474,17 @@ public:
     /**
      * @brief Resets drag operation state variables to clean state
      */
-    void CleanupDragState();
+    void CleanupDragState( );
 
     /**
      * @brief Loads queue state from database into in-memory collections
      */
-    void LoadQueueFromDatabase();
+    void LoadQueueFromDatabase( );
 
     /**
      * @brief Persists current queue state to database
      */
-    void SaveQueueToDatabase();
+    void SaveQueueToDatabase( );
 
     /**
      * @brief Updates a single queue item in the database
@@ -494,7 +496,7 @@ public:
     /**
      * @brief Debug helper to print current queue state to console
      */
-    void PrintQueueState();
+    void PrintQueueState( );
 
     /**
      * @brief Helper to check if database is available
@@ -512,19 +514,19 @@ public:
      * @return Status string: "pending", "running", "partial", or "complete"
      */
     inline wxString ComputeStatusFromProgress(int completed, int total, long currently_running_id, long item_id) const {
-        if (currently_running_id == item_id) {
+        if ( currently_running_id == item_id ) {
             return "running";
         }
-        if (completed == 0) {
+        if ( completed == 0 ) {
             return "pending";
         }
-        if (completed < total) {
-            return "partial";  // Previously called "failed" but this is more accurate
+        if ( completed < total ) {
+            return "partial"; // Previously called "failed" but this is more accurate
         }
         return "complete";
     }
 
-    DECLARE_EVENT_TABLE()
+    DECLARE_EVENT_TABLE( )
 };
 
 #endif // _SRC_GUI_TEMPLATEMATCHQUEUEMANAGER_H_

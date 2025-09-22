@@ -833,6 +833,27 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         TimeRemainingText->SetLabel("Time Remaining : Waiting for next queue item...");
         CancelAlignmentButton->Show(false);
         FinishButton->Show(false);
+
+        // Set a 20-second timeout to show finish button if queue doesn't progress
+        // This prevents indefinite hanging if queue manager fails to start next job
+        wxTimer* timeout_timer = new wxTimer();
+        timeout_timer->Bind(wxEVT_TIMER, [this, timeout_timer](wxTimerEvent&) {
+            // Check if we're still waiting (no job has started and finish button not shown)
+            if (!running_job && FinishButton && !FinishButton->IsShown()) {
+                wxPrintf("Queue transition timeout after 20 seconds - showing Finish button\n");
+                TimeRemainingText->SetLabel("Time Remaining : Queue timeout - manual intervention needed");
+                FinishButton->Show(true);
+                ProgressPanel->Layout();
+
+                // Try to trigger queue progression one more time if callback exists
+                if (queue_completion_callback) {
+                    wxPrintf("Attempting to trigger queue progression after timeout\n");
+                    queue_completion_callback->ProgressExecutionQueue();
+                }
+            }
+            delete timeout_timer;  // Clean up the timer
+        });
+        timeout_timer->StartOnce(20000);  // 20 second timeout
     }
     else {
         // All done - show finish button

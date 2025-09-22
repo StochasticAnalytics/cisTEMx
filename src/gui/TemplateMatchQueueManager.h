@@ -15,8 +15,8 @@ class MyMainFrame;
  * the number of completed vs total expected results, enabling real-time progress display
  * in the queue manager UI. Links to TEMPLATE_MATCH_LIST table for result counting.
  */
-struct JobCompletionInfo {
-    long template_match_job_id;  ///< Database ID linking to TEMPLATE_MATCH_LIST table entries
+struct SearchCompletionInfo {
+    long search_id;             ///< Database SEARCH_ID linking to TEMPLATE_MATCH_LIST table entries
     int completed_count;         ///< Number of results currently saved to database
     int total_count;            ///< Expected total number of results for this search
 
@@ -57,12 +57,12 @@ struct JobCompletionInfo {
  * @note Database ID Mapping:
  *   - database_queue_id: Links to TEMPLATE_MATCH_QUEUE.QUEUE_ID (created when search is queued)
  *   - template_match_job_id: Links to TEMPLATE_MATCH_LIST.TEMPLATE_MATCH_JOB_ID (created when results are saved)
- *   The mapping is established by UpdateJobDatabaseId() when the MatchTemplatePanel begins processing.
+ *   The mapping is established by UpdateSearchIdForQueueItem() when the MatchTemplatePanel begins processing.
  */
 class TemplateMatchQueueItem {
 public:
     long database_queue_id;         ///< Persistent database queue identifier (TEMPLATE_MATCH_QUEUE.QUEUE_ID)
-    long template_match_job_id;     ///< Results table identifier (TEMPLATE_MATCH_LIST.TEMPLATE_MATCH_JOB_ID, -1 if no results yet)
+    long search_id;                 ///< Results table identifier (TEMPLATE_MATCH_LIST.SEARCH_ID, -1 if no results yet)
     wxString search_name;           ///< User-friendly name for this template matching search (maps to JOB_NAME in database)
     wxString queue_status;          ///< Computed status: "pending", "running", "partial", "complete" (not stored in DB)
     int queue_order;                ///< Priority order: 0=running, 1+=pending queue position, -1=available queue
@@ -101,7 +101,7 @@ public:
 
     TemplateMatchQueueItem() {
         database_queue_id = -1;
-        template_match_job_id = -1;  // No database job ID until results are written
+        search_id = -1;              // No SEARCH_ID until first result is written to TEMPLATE_MATCH_LIST
         queue_status = "pending";
         queue_order = -1;  // Will be assigned when added to queue
         image_group_id = -1;
@@ -348,20 +348,24 @@ public:
 
     /**
      * @brief Retrieves completion progress for a specific search
-     * @param template_match_job_id Database ID from TEMPLATE_MATCH_LIST table
-     * @return JobCompletionInfo with current progress counts
+     * @param queue_id Database ID from TEMPLATE_MATCH_QUEUE.QUEUE_ID
+     * @return SearchCompletionInfo with current progress counts
      */
-    JobCompletionInfo GetJobCompletionInfo(long template_match_job_id);
+    SearchCompletionInfo GetSearchCompletionInfo(long queue_id);
 
     /**
      * @brief Updates all progress displays with latest database completion counts
      */
-    void RefreshJobCompletionInfo();
+    void RefreshSearchCompletionInfo();
 
     /**
-     * @brief Loads completed searches from database into available queue
+     * @brief Loads orphaned searches from database into available queue
+     *
+     * Finds all searches that exist in TEMPLATE_MATCH_LIST but have no corresponding
+     * entry in TEMPLATE_MATCH_QUEUE. These are typically from migrated projects or
+     * searches where the user explicitly removed the queue entry.
      */
-    void PopulateAvailableJobsFromDatabase();
+    void PopulateAvailableSearchesNotInQueueFromDatabase();
 
     /**
      * @brief Updates progress display when a new result is added
@@ -374,7 +378,7 @@ public:
      * @param queue_database_queue_id Queue database ID to update
      * @param database_template_match_job_id Actual TEMPLATE_MATCH_JOB_ID from results table
      */
-    void UpdateJobDatabaseId(long queue_database_queue_id, long database_template_match_job_id);
+    void UpdateSearchIdForQueueItem(long queue_database_queue_id, long database_search_id);
 
     /**
      * @brief Discovers and populates missing database job IDs for completed searches

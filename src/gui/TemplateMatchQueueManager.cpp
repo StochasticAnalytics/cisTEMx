@@ -226,7 +226,7 @@ void TemplateMatchQueueManager::PrintQueueState( ) {
     }
     wxPrintf("  Available items in execution_queue (queue_order < 0): %d\n",
              int(std::count_if(execution_queue.begin( ), execution_queue.end( ),
-                              [](const auto& item) { return item.queue_order < 0; })));
+                               [](const auto& item) { return item.queue_order < 0; })));
     wxPrintf("  Available Queue (%zu items)\n", available_queue.size( ));
     wxPrintf("  Currently running job ID: %ld\n\n", currently_running_id);
 }
@@ -318,7 +318,7 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
     // New logic: find the job at priority 0 and run it - allow pending or failed jobs
     TemplateMatchQueueItem* next_job = nullptr;
     for ( auto& item : execution_queue ) {
-        if ( item.queue_order == 0 && (item.queue_status == "pending" || item.queue_status == "failed") ) {
+        if ( item.queue_order == 0 && (item.queue_status == "pending" || item.queue_status == "failed" || item.queue_status == "partial") ) {
             next_job = &item;
             if constexpr ( skip_search_execution_for_queue_debugging ) {
                 wxPrintf("Found next job to run: ID=%ld at queue_order=0\n", item.database_queue_id);
@@ -454,7 +454,7 @@ void TemplateMatchQueueManager::PopulateListControl(wxListCtrl*                 
             // Status is column 3
             SetStatusDisplay(ctrl, row, item->queue_status);
             // Progress is column 4
-            JobCompletionInfo completion = GetJobCompletionInfo(item->database_queue_id);
+            SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
             ctrl->SetItem(row, 4, completion.GetCompletionString( ));
             // Custom args is column 5
             ctrl->SetItem(row, 5, item->custom_cli_args);
@@ -466,7 +466,7 @@ void TemplateMatchQueueManager::PopulateListControl(wxListCtrl*                 
             // Status is column 2
             SetStatusDisplay(ctrl, row, item->queue_status);
             // Progress is column 3
-            JobCompletionInfo completion = GetJobCompletionInfo(item->database_queue_id);
+            SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
             ctrl->SetItem(row, 3, completion.GetCompletionString( ));
             // Custom args is column 4
             ctrl->SetItem(row, 4, item->custom_cli_args);
@@ -598,10 +598,10 @@ void TemplateMatchQueueManager::RunNextJob( ) {
 
     MyDebugPrint("No job currently running - searching for next pending job");
 
-    // Find the job at priority 0 (top of execution queue) - allow pending or failed jobs
+    // Find the job at priority 0 (top of execution queue) - allow pending, failed, or partial jobs
     TemplateMatchQueueItem* next_job = nullptr;
     for ( auto& item : execution_queue ) {
-        if ( item.queue_order == 0 && (item.queue_status == "pending" || item.queue_status == "failed") ) {
+        if ( item.queue_order == 0 && (item.queue_status == "pending" || item.queue_status == "failed" || item.queue_status == "partial") ) {
             next_job = &item;
             break;
         }
@@ -681,6 +681,9 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
             currently_running_id = job_to_run.database_queue_id;
             wxPrintf("Job %ld is now marked as RUNNING (currently_running_id set)\n", job_to_run.database_queue_id);
 
+            // Enable cancel button now that a job is running
+            cancel_run_button->Enable(true);
+
             // Update displays to show running status
             UpdateQueueDisplay( );
             UpdateAvailableJobsDisplay( );
@@ -694,10 +697,10 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
             wxPrintf(">>> You can now interact with the queue (remove jobs, etc.)\n");
 
             wxStopWatch timer;
-            timer.Start();
-            while (timer.Time() < 5000) {
+            timer.Start( );
+            while ( timer.Time( ) < 5000 ) {
                 // Process pending events to keep GUI responsive
-                wxYieldIfNeeded();
+                wxYieldIfNeeded( );
                 wxMilliSleep(50); // Small sleep to avoid consuming 100% CPU
             }
 
@@ -719,6 +722,10 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
                 UpdateJobStatus(job_to_run.database_queue_id, "running");
                 currently_running_id = job_to_run.database_queue_id;
                 wxPrintf("Job %ld started successfully and marked as running\n", job_to_run.database_queue_id);
+
+                // Enable cancel button now that a job is running
+                cancel_run_button->Enable(true);
+
                 // Job status will be updated to "complete" when the job finishes via ProcessAllJobsFinished
                 return true;
             }
@@ -916,25 +923,63 @@ void TemplateMatchQueueManager::OnAssignPriorityClick(wxCommandEvent& event) {
 
 void TemplateMatchQueueManager::OnCancelRunClick(wxCommandEvent& event) {
     // Find and cancel the currently running job
-    wxMessageDialog dialog(this, "Cancel the currently running job?",
+    wxMessageDialog dialog(this, "Cancel the currently running job and stop queue progression?",
                            "Confirm Cancel", wxYES_NO | wxICON_QUESTION);
     if ( dialog.ShowModal( ) == wxID_YES ) {
-        // Find running job and reset its status
+        // First, actually terminate the running job in MatchTemplatePanel
+        if (match_template_panel_ptr && currently_running_id > 0) {
+            // Call the terminate function on the panel
+            // This will trigger the same logic as clicking the Terminate button
+            wxCommandEvent fake_event;
+            match_template_panel_ptr->TerminateButtonClick(fake_event);
+            wxPrintf("Sent termination signal to MatchTemplatePanel for job %ld\n", currently_running_id);
+        }
+
+        // Stop auto-progression to prevent next job from starting
+        SetAutoProgressQueue(false);
+        wxPrintf("Queue auto-progression disabled\n");
+
+        // Find running job and reset its status based on completion
         for ( auto& job : execution_queue ) {
             if ( job.queue_status == "running" ) {
-                job.queue_status     = "pending";
-                job.queue_order      = -1; // Move to available jobs table
-                currently_running_id = -1;
+                // Get completion info to determine if it should be partial or pending
+                // Only check if we have a valid search_id (job actually started processing)
+                if (job.search_id > 0) {
+                    auto completion_counts = GetSearchCompletionInfo(job.database_queue_id, job.search_id, job.image_group_id);
+                    if (completion_counts.first > 0 && completion_counts.first < completion_counts.second) {
+                        job.queue_status = "partial";  // Has some completed results but not all
+                        wxPrintf("Job %ld has %d/%d results completed - setting status to partial\n",
+                                 currently_running_id, completion_counts.first, completion_counts.second);
+                    } else if (completion_counts.first == 0) {
+                        job.queue_status = "pending";  // No results completed yet
+                        wxPrintf("Job %ld has no completed results - setting status to pending\n",
+                                 currently_running_id);
+                    }
+                    // Note: if completion_counts.first == completion_counts.second, status stays "running"
+                    // which will be corrected to "complete" by OnJobCompleted
+                } else {
+                    // No search_id means job never really started processing
+                    job.queue_status = "pending";
+                    wxPrintf("Job %ld has no search_id - setting status to pending\n",
+                             currently_running_id);
+                }
+                job.queue_order = -1; // Move to available jobs table
 
-                // Update cancel button state
-                cancel_run_button->Enable(false);
-
-                UpdateQueueDisplay( );
-                SaveQueueToDatabase( );
-                wxPrintf("Job cancelled and moved to available jobs\n");
+                wxPrintf("Job %ld cancelled and moved to available jobs with status '%s'\n",
+                         currently_running_id, job.queue_status);
                 break;
             }
         }
+
+        // Clear currently running ID
+        currently_running_id = -1;
+
+        // Update cancel button state
+        cancel_run_button->Enable(false);
+
+        UpdateQueueDisplay( );
+        UpdateAvailableJobsDisplay( );
+        SaveQueueToDatabase( );
     }
 }
 
@@ -1244,7 +1289,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
         bool success = main_frame->current_project.database.GetQueueItemByID(
                 queue_ids[i],
                 temp_item.search_name,
-                temp_item.template_match_job_id, // This will be loaded from TEMPLATE_MATCH_JOB_ID
+                temp_item.search_id, // This will be loaded from SEARCH_ID
                 temp_item.queue_order, // This will be loaded from QUEUE_POSITION
                 temp_item.custom_cli_args,
                 temp_item.image_group_id,
@@ -1279,20 +1324,21 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
         if ( success ) {
             // Compute queue status from completion data
             std::pair<int, int> completion_counts;
-            if (temp_item.template_match_job_id > 0) {
+            if ( temp_item.search_id > 0 ) {
                 // Use template match job ID for completion tracking
-                completion_counts = main_frame->current_project.database.GetJobCompletionCounts(temp_item.template_match_job_id, temp_item.image_group_id);
-            } else {
+                completion_counts = main_frame->current_project.database.GetSearchCompletionCounts(temp_item.search_id, temp_item.image_group_id);
+            }
+            else {
                 // No results yet, so completion is 0/N where N is image count in group
-                // Use GetJobCompletionCounts with dummy job ID (-1) to get total count
-                std::pair<int, int> group_counts = main_frame->current_project.database.GetJobCompletionCounts(-1, temp_item.image_group_id);
-                completion_counts = std::make_pair(0, group_counts.second);
+                // Use GetSearchCompletionCounts with dummy search ID (-1) to get total count
+                std::pair<int, int> group_counts = main_frame->current_project.database.GetSearchCompletionCounts(-1, temp_item.image_group_id);
+                completion_counts                = std::make_pair(0, group_counts.second);
             }
             temp_item.queue_status = ComputeStatusFromProgress(completion_counts.first, completion_counts.second, currently_running_id, temp_item.database_queue_id);
 
-            // Force completed/failed jobs to available queue regardless of stored queue_order
-            if ( temp_item.queue_status == "complete" || temp_item.queue_status == "failed" ) {
-                temp_item.queue_order = -1; // Move completed/failed jobs to available queue
+            // Force completed/failed/partial jobs to available queue regardless of stored queue_order
+            if ( temp_item.queue_status == "complete" || temp_item.queue_status == "failed" || temp_item.queue_status == "partial" ) {
+                temp_item.queue_order = -1; // Move completed/failed/partial jobs to available queue
                 available_items.push_back(temp_item);
             }
             else if ( temp_item.queue_order == -1 ) {
@@ -1375,8 +1421,8 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
         SaveQueueToDatabase( );
     }
 
-    // Auto-populate available jobs from all template match jobs in database
-    PopulateAvailableJobsFromDatabase( );
+    // Auto-populate available searches that have no queue entries (orphaned searches)
+    PopulateAvailableSearchesNotInQueueFromDatabase( );
 
     // Update display
     UpdateQueueDisplay( );
@@ -1619,6 +1665,9 @@ void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool succ
     // Clear currently running ID since job is done
     currently_running_id = -1;
 
+    // Disable cancel button since no job is running
+    cancel_run_button->Enable(false);
+
     // Update both displays to show new status and position changes
     UpdateQueueDisplay( );
     UpdateAvailableJobsDisplay( );
@@ -1665,89 +1714,100 @@ void TemplateMatchQueueManager::DeselectJobInUI(long database_queue_id) {
     wxPrintf("Could not find job %ld to deselect in UI\n", database_queue_id);
 }
 
-JobCompletionInfo TemplateMatchQueueManager::GetJobCompletionInfo(long queue_database_queue_id) {
-    JobCompletionInfo info;
-    info.template_match_job_id = queue_database_queue_id;
+SearchCompletionInfo TemplateMatchQueueManager::GetSearchCompletionInfo(long queue_id) {
+    SearchCompletionInfo info;
+    info.search_id = -1;  // Will be set when we find the actual search_id
 
-    // Note: There are two IDs in play here:
-    // 1. queue_database_queue_id: From TEMPLATE_MATCH_QUEUE.QUEUE_ID (created when queued)
-    // 2. template_match_job_id: From TEMPLATE_MATCH_LIST.TEMPLATE_MATCH_JOB_ID (created when results are written)
-    // We need to map from #1 to #2 to count results properly
+    // Note: We receive a QUEUE_ID and need to find the corresponding SEARCH_ID
+    // QUEUE_ID: From TEMPLATE_MATCH_QUEUE table (unique for each queue entry)
+    // SEARCH_ID: From TEMPLATE_MATCH_LIST table (links to actual results)
 
-    // Find the queue item and extract its database job ID and image group
-    long database_template_match_job_id = -1;
-    int  image_group_id                 = -1;
-    bool found_queue_item               = false;
+    // Find the queue item and extract its search_id and image_group_id
+    long search_id        = -1;
+    int  image_group_id   = -1;
+    bool found_queue_item = false;
 
     // Search both queues for the item
     for ( const auto& item : execution_queue ) {
-        if ( item.database_queue_id == queue_database_queue_id ) {
-            database_template_match_job_id = item.template_match_job_id;
-            image_group_id                 = item.image_group_id;
-            found_queue_item               = true;
+        if ( item.database_queue_id == queue_id ) {
+            search_id        = item.search_id;
+            image_group_id   = item.image_group_id;
+            found_queue_item = true;
             break;
         }
     }
 
     if ( ! found_queue_item ) {
         for ( const auto& item : available_queue ) {
-            if ( item.database_queue_id == queue_database_queue_id ) {
-                database_template_match_job_id = item.template_match_job_id;
-                image_group_id                 = item.image_group_id;
-                found_queue_item               = true;
+            if ( item.database_queue_id == queue_id ) {
+                search_id        = item.search_id;
+                image_group_id   = item.image_group_id;
+                found_queue_item = true;
                 break;
             }
         }
     }
 
     if ( ! found_queue_item ) {
-        MyAssertTrue(false, "GetJobCompletionInfo could not find queue_database_queue_id %ld in either execution_queue (%zu items) or available_queue (%zu items)",
-                     queue_database_queue_id, execution_queue.size( ), available_queue.size( ));
+        MyAssertTrue(false, "GetSearchCompletionInfo could not find queue_id %ld in either execution_queue (%zu items) or available_queue (%zu items)",
+                     queue_id, execution_queue.size( ), available_queue.size( ));
     }
 
-    // If still not found, get image group from database by looking at the first image in this job
-    if ( image_group_id == -1 && database_template_match_job_id > 0 && main_frame && main_frame->current_project.is_open ) {
-        // Get the first image asset ID from this template match job
+    // Store the search_id in the info struct
+    info.search_id = search_id;
+
+    // If still not found, get image group from database by querying the TEMPLATE_MATCH_QUEUE table
+    if ( image_group_id == -1 && search_id > 0 && main_frame && main_frame->current_project.is_open ) {
+        // Get the image group from the TEMPLATE_MATCH_QUEUE table
         wxString sql = wxString::Format(
-                "SELECT IA.PARENT_IMAGE_GROUP_ID FROM IMAGE_ASSETS IA "
-                "INNER JOIN TEMPLATE_MATCH_LIST TML ON IA.IMAGE_ASSET_ID = TML.IMAGE_ASSET_ID "
-                "WHERE TML.TEMPLATE_MATCH_JOB_ID = %ld LIMIT 1",
-                database_template_match_job_id);
+                "SELECT IMAGE_GROUP_ID FROM TEMPLATE_MATCH_QUEUE "
+                "WHERE SEARCH_ID = %ld LIMIT 1",
+                search_id);
 
         image_group_id = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(sql);
         if ( image_group_id <= 0 ) {
-            image_group_id = -1; // Fall back to all images if no results
+            // This should not happen as all searches must have a valid image_group_id
+            MyAssertTrue(false, "Search ID %ld has no valid IMAGE_GROUP_ID in TEMPLATE_MATCH_QUEUE", search_id);
+            image_group_id = -1;
         }
     }
 
-    // Get completion counts from database using existing method
+    // Get completion counts from database
     if ( image_group_id > 0 && main_frame && main_frame->current_project.is_open ) {
-        // Use existing database method - it handles both pending (-1) and active job IDs correctly
-        auto counts          = main_frame->current_project.database.GetJobCompletionCounts(database_template_match_job_id, image_group_id);
-        info.completed_count = counts.first;
-        info.total_count     = counts.second;
+        if ( search_id > 0 ) {
+            // SEARCH_ID exists - get actual completion counts
+            auto counts          = main_frame->current_project.database.GetSearchCompletionCounts(search_id, image_group_id);
+            info.completed_count = counts.first;
+            info.total_count     = counts.second;
+        }
+        else {
+            // No SEARCH_ID yet (no results written) - show 0/N where N is the image group size
+            wxString sql         = wxString::Format("SELECT COUNT(*) FROM IMAGE_GROUP_%d", image_group_id);
+            info.total_count     = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(sql);
+            info.completed_count = 0;
+        }
 
         // For already completed jobs with 0 completed count, set completed = total
-        // This handles the case where the job was completed but GetJobCompletionCounts returns 0
+        // This handles the case where the search was completed but GetSearchCompletionCounts returns 0
         if ( info.total_count > 0 && info.completed_count == 0 ) {
-            // Check if this job should be marked as complete based on queue status
-            bool job_is_complete = false;
+            // Check if this search should be marked as complete based on queue status
+            bool search_is_complete = false;
             for ( const auto& item : execution_queue ) {
-                if ( item.database_queue_id == queue_database_queue_id && item.queue_status == "complete" ) {
-                    job_is_complete = true;
+                if ( item.database_queue_id == queue_id && item.queue_status == "complete" ) {
+                    search_is_complete = true;
                     break;
                 }
             }
-            if ( ! job_is_complete ) {
+            if ( ! search_is_complete ) {
                 for ( const auto& item : available_queue ) {
-                    if ( item.database_queue_id == queue_database_queue_id && item.queue_status == "complete" ) {
-                        job_is_complete = true;
+                    if ( item.database_queue_id == queue_id && item.queue_status == "complete" ) {
+                        search_is_complete = true;
                         break;
                     }
                 }
             }
 
-            if ( job_is_complete ) {
+            if ( search_is_complete ) {
                 info.completed_count = info.total_count;
             }
         }
@@ -1759,14 +1819,14 @@ JobCompletionInfo TemplateMatchQueueManager::GetJobCompletionInfo(long queue_dat
     }
 
     // Debug output for n/N tracking
-    wxPrintf("GetJobCompletionInfo: Queue ID %ld, Database Job ID %ld, ImageGroup %d -> %d/%d\n",
-             queue_database_queue_id, database_template_match_job_id, image_group_id,
+    wxPrintf("GetSearchCompletionInfo: Queue ID %ld, SEARCH_ID %ld, ImageGroup %d -> %d/%d\n",
+             queue_id, search_id, image_group_id,
              info.completed_count, info.total_count);
 
     return info;
 }
 
-void TemplateMatchQueueManager::RefreshJobCompletionInfo( ) {
+void TemplateMatchQueueManager::RefreshSearchCompletionInfo( ) {
     // Update execution queue display
     UpdateQueueDisplay( );
 
@@ -1774,28 +1834,28 @@ void TemplateMatchQueueManager::RefreshJobCompletionInfo( ) {
     UpdateAvailableJobsDisplay( );
 }
 
-void TemplateMatchQueueManager::OnResultAdded(long template_match_job_id) {
-    wxPrintf("OnResultAdded called for job %ld - refreshing n/N display\n", template_match_job_id);
+void TemplateMatchQueueManager::OnResultAdded(long search_id) {
+    wxPrintf("OnResultAdded called for job %ld - refreshing n/N display\n", search_id);
 
     // Refresh the completion info for this job and update displays
-    RefreshJobCompletionInfo( );
+    RefreshSearchCompletionInfo( );
 }
 
-void TemplateMatchQueueManager::UpdateJobDatabaseId(long queue_database_queue_id, long database_template_match_job_id) {
-    // Update the queue item with the actual TEMPLATE_MATCH_JOB_ID for correct n/N tracking
-    wxPrintf("UpdateJobDatabaseId: Mapping queue ID %ld to database TEMPLATE_MATCH_JOB_ID %ld\n",
-             queue_database_queue_id, database_template_match_job_id);
+void TemplateMatchQueueManager::UpdateSearchIdForQueueItem(long queue_database_queue_id, long database_search_id) {
+    // Update the queue item with the actual SEARCH_ID for correct n/N tracking
+    wxPrintf("UpdateSearchIdForQueueItem: Mapping queue ID %ld to database SEARCH_ID %ld\n",
+             queue_database_queue_id, database_search_id);
 
     // Check execution queue first
     for ( auto& item : execution_queue ) {
         if ( item.database_queue_id == queue_database_queue_id ) {
-            wxPrintf("Found queue item %ld in execution queue, setting template_match_job_id = %ld\n",
-                     queue_database_queue_id, database_template_match_job_id);
-            item.template_match_job_id = database_template_match_job_id;
+            wxPrintf("Found queue item %ld in execution queue, setting search_id = %ld\n",
+                     queue_database_queue_id, database_search_id);
+            item.search_id = database_search_id;
 
             // Update database with the template match job ID
-            if (main_frame && main_frame->current_project.is_open) {
-                main_frame->current_project.database.UpdateQueueTemplateMatchJobId(queue_database_queue_id, database_template_match_job_id);
+            if ( main_frame && main_frame->current_project.is_open ) {
+                main_frame->current_project.database.UpdateSearchIdInQueueTable(queue_database_queue_id, database_search_id);
             }
             return;
         }
@@ -1804,39 +1864,55 @@ void TemplateMatchQueueManager::UpdateJobDatabaseId(long queue_database_queue_id
     // Check available queue
     for ( auto& item : available_queue ) {
         if ( item.database_queue_id == queue_database_queue_id ) {
-            wxPrintf("Found queue item %ld in available queue, setting template_match_job_id = %ld\n",
-                     queue_database_queue_id, database_template_match_job_id);
-            item.template_match_job_id = database_template_match_job_id;
+            wxPrintf("Found queue item %ld in available queue, setting search_id = %ld\n",
+                     queue_database_queue_id, database_search_id);
+            item.search_id = database_search_id;
 
             // Update database with the template match job ID
-            if (main_frame && main_frame->current_project.is_open) {
-                main_frame->current_project.database.UpdateQueueTemplateMatchJobId(queue_database_queue_id, database_template_match_job_id);
+            if ( main_frame && main_frame->current_project.is_open ) {
+                main_frame->current_project.database.UpdateSearchIdInQueueTable(queue_database_queue_id, database_search_id);
             }
             return;
         }
     }
 
     wxPrintf("Warning: Could not find queue item %ld to update with database job ID %ld\n",
-             queue_database_queue_id, database_template_match_job_id);
+             queue_database_queue_id, database_search_id);
 }
 
-void TemplateMatchQueueManager::PopulateAvailableJobsFromDatabase( ) {
-    MyDebugAssertTrue(main_frame != nullptr, "PopulateAvailableJobsFromDatabase called with null main_frame");
-    MyDebugAssertTrue(main_frame->current_project.is_open, "PopulateAvailableJobsFromDatabase called with no project open");
+/**
+ * @brief Populates the available queue with orphaned template match searches
+ *
+ * This method finds all template matching searches that have been run (have results in TEMPLATE_MATCH_LIST)
+ * but don't have a corresponding entry in TEMPLATE_MATCH_QUEUE. These "orphaned" searches appear in the
+ * "Available Searches" section of the queue manager UI and typically occur when:
+ * - Projects are migrated from older versions of cisTEM that didn't have the queue system
+ * - Users explicitly removed the queue entry after the search started
+ *
+ * The method:
+ * 1. Retrieves all unique SEARCH_IDs from TEMPLATE_MATCH_LIST table along with their IMAGE_GROUP_IDs
+ * 2. Checks if each SEARCH_ID already exists in either the execution or available queue
+ * 3. Creates minimal queue items for searches not already tracked, with status derived from completion counts
+ *
+ * @note Queue items created here have database_queue_id = -1 since they don't exist in TEMPLATE_MATCH_QUEUE table
+ * @note All new searches go through the queue - searches only appear here if explicitly removed by the user or from migration
+ */
+void TemplateMatchQueueManager::PopulateAvailableSearchesNotInQueueFromDatabase( ) {
+    MyDebugAssertTrue(main_frame != nullptr, "PopulateAvailableSearchesNotInQueueFromDatabase called with null main_frame");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "PopulateAvailableSearchesNotInQueueFromDatabase called with no project open");
 
-    // Get all template match job IDs from database
-    std::vector<long> all_job_ids;
-    main_frame->current_project.database.GetAllTemplateMatchJobIds(all_job_ids);
+    // Get all template match search IDs and their image groups from database
+    std::vector<std::pair<long, int>> search_id_and_group_pairs;
+    main_frame->current_project.database.GetAllTemplateMatchSearchIds(search_id_and_group_pairs);
 
-    for ( size_t i = 0; i < all_job_ids.size( ); ++i ) {
-        long job_id = all_job_ids[i];
+    for ( const auto& [search_id, image_group_id] : search_id_and_group_pairs ) {
 
-        // Check if this job is already in our queues
+        // Check if this search is already in our queues
         bool found_in_execution = false;
         bool found_in_available = false;
 
         for ( const auto& item : execution_queue ) {
-            if ( item.database_queue_id == job_id ) {
+            if ( item.search_id == search_id ) {
                 found_in_execution = true;
                 break;
             }
@@ -1844,7 +1920,7 @@ void TemplateMatchQueueManager::PopulateAvailableJobsFromDatabase( ) {
 
         if ( ! found_in_execution ) {
             for ( const auto& item : available_queue ) {
-                if ( item.database_queue_id == job_id ) {
+                if ( item.search_id == search_id ) {
                     found_in_available = true;
                     break;
                 }
@@ -1853,18 +1929,20 @@ void TemplateMatchQueueManager::PopulateAvailableJobsFromDatabase( ) {
 
         // If not found in either queue, add to available queue
         if ( ! found_in_execution && ! found_in_available ) {
-            // Create a minimal queue item - populate image group from database
+            // Create a minimal queue item for this orphaned search
             TemplateMatchQueueItem new_item;
-            new_item.database_queue_id = job_id;
-            new_item.search_name       = wxString::Format("Search %ld", job_id);
+            new_item.database_queue_id = -1; // No queue entry exists for this search
+            new_item.search_id         = search_id; // The SEARCH_ID from TEMPLATE_MATCH_LIST
+            new_item.search_name       = wxString::Format("Search %ld", search_id);
             new_item.queue_status      = "unknown"; // Will be determined by n/N analysis
             new_item.queue_order       = -1; // Not in execution queue
 
-            // We'll set a placeholder image group - GetJobCompletionInfo will handle it
-            new_item.image_group_id = -1;
+            // Use the image_group_id from the database (will be -1 if not in TEMPLATE_MATCH_QUEUE)
+            new_item.image_group_id = image_group_id;
 
-            // Get completion info with proper image group
-            auto counts = main_frame->current_project.database.GetJobCompletionCounts(job_id, new_item.image_group_id);
+            // Get completion info with the known image group
+            // Note: if image_group_id is -1 (orphaned search), this will count across all images
+            auto counts = main_frame->current_project.database.GetSearchCompletionCounts(search_id, image_group_id);
             if ( counts.second > 0 ) {
                 if ( counts.first == 0 ) {
                     new_item.queue_status = "pending";
@@ -1880,9 +1958,9 @@ void TemplateMatchQueueManager::PopulateAvailableJobsFromDatabase( ) {
             available_queue.push_back(new_item);
 
             // Debug: Get completion info to verify n/N calculation
-            JobCompletionInfo completion = GetJobCompletionInfo(job_id);
-            wxPrintf("Added available job %ld: %s with status %s (%s)\n",
-                     job_id, new_item.search_name.mb_str( ).data( ), new_item.queue_status.mb_str( ).data( ), completion.GetCompletionString( ).mb_str( ).data( ));
+            SearchCompletionInfo completion = GetSearchCompletionInfo(search_id);
+            wxPrintf("Added available search %ld: %s with status %s (%s)\n",
+                     search_id, new_item.search_name.mb_str( ).data( ), new_item.queue_status.mb_str( ).data( ), completion.GetCompletionString( ).mb_str( ).data( ));
         }
     }
 

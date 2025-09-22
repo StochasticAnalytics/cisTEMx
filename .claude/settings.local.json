@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "Bash(/dev/null)",
+      "Bash(./configure --help)"
     ],
     "deny": [],
     "ask": []

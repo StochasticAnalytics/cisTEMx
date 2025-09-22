@@ -732,7 +732,7 @@ bool CalculateTemplatePvalue::DoCalculation( ) {
         }
         // SQL to fetch data
         //const char* sql = "SELECT * FROM TEMPLATE_MATCH_LIST";
-        std::string sql = "SELECT * FROM TEMPLATE_MATCH_LIST WHERE TEMPLATE_MATCH_JOB_ID = " + std::to_string(tm_job_id);
+        std::string sql = "SELECT * FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = " + std::to_string(tm_job_id);
 
         // Execute SQL statement
         rc = sqlite3_exec(db, sql.c_str( ), extract_tm_parameters, &current_tm_jobs, &zErrMsg);

@@ -8,6 +8,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // The results and actions panels need to talk to each other.
     friend class MatchTemplateResultsPanel;
+    friend class TemplateMatchQueueManager;  // Allow QueueManager to access protected panels
     long my_job_id;
 
     JobTracker my_job_tracker;
@@ -67,6 +68,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     // Queue tracking
     long running_queue_job_id;  // -1 if not running from queue
     class TemplateMatchQueueManager* queue_completion_callback;  // For live queue updates
+    wxString current_custom_cli_args;  // Custom CLI args for current job
 
     // methods
     void WriteResultToDataBase( );
@@ -137,7 +139,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
      * UI for queue manipulation, priority assignment, and batch execution control.
      */
     void        OnOpenQueueClick(wxCommandEvent& event);
-    void        PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item);
+    void        PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item, bool for_editing = false);
     void        OnHeaderClickAddToQueue(); // New header click behavior for Queue Manager
     bool        RunQueuedTemplateMatch(TemplateMatchQueueItem& job);
 

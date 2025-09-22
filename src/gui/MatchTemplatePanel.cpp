@@ -14,10 +14,11 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     : MatchTemplatePanelParent(parent) {
     // Set variables
 
-    my_job_id   = -1;
-    running_job = false;
-    running_queue_job_id = -1;  // Not running from queue
-    queue_completion_callback = nullptr;  // No callback initially
+    my_job_id                 = -1;
+    running_job               = false;
+    running_queue_job_id      = -1; // Not running from queue
+    queue_completion_callback = nullptr; // No callback initially
+    current_custom_cli_args   = ""; // Clear custom CLI args
 
     group_combo_is_dirty   = false;
     run_profiles_are_dirty = false;
@@ -576,10 +577,10 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     MyDebugAssertTrue(main_frame->current_project.is_open, "Project database is not open");
 
     // Add to queue silently (without dialog), then execute
-    TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
-    long queue_id = AddJobToQueue(new_job, false);  // No dialog for direct execution
+    TemplateMatchQueueItem new_job  = CollectJobParametersFromGui( );
+    long                   queue_id = AddJobToQueue(new_job, false); // No dialog for direct execution
 
-    if (queue_id > 0) {
+    if ( queue_id > 0 ) {
         // Update the job with the database queue ID
         new_job.database_queue_id = queue_id;
 
@@ -590,11 +591,12 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         wxPrintf("StartEstimationClick: Moved job %ld to available queue (position -1)\n", queue_id);
 
         // Execute the job via unified method
-        if (!ExecuteJob(&new_job)) {
+        if ( ! ExecuteJob(&new_job) ) {
             wxMessageBox("Failed to start job", "Error", wxOK | wxICON_ERROR);
             return;
         }
-    } else {
+    }
+    else {
         wxMessageBox("Failed to add job to queue", "Error", wxOK | wxICON_ERROR);
         return;
     }
@@ -604,11 +606,11 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     // result is available for an image..
 
     // Validate image_number is within bounds
-    if (image_number < 1 || image_number > cached_results.GetCount()) {
+    if ( image_number < 1 || image_number > cached_results.GetCount( ) ) {
         wxPrintf("ERROR: Invalid image_number %d received from socket (cached_results size: %d)\n",
-                 image_number, int(cached_results.GetCount()));
-        MyDebugAssertFalse(image_number >= 1 && image_number <= cached_results.GetCount(),
-                          "Received invalid image_number from socket - data corruption?");
+                 image_number, int(cached_results.GetCount( )));
+        MyDebugAssertFalse(image_number >= 1 && image_number <= cached_results.GetCount( ),
+                           "Received invalid image_number from socket - data corruption?");
         return;
     }
 
@@ -631,7 +633,7 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     match_template_results_panel->is_dirty = true;
 
     // Notify queue manager about result addition for real-time n/N updates
-    if (queue_completion_callback) {
+    if ( queue_completion_callback ) {
         queue_completion_callback->OnResultAdded(search_id);
     }
 }
@@ -797,17 +799,18 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     main_frame->job_controller.KillJob(my_job_id);
 
     // Reset job state to allow next job to start - MUST happen before callback
-    running_job = false;
-    my_job_id = -1;
+    running_job             = false;
+    my_job_id               = -1;
+    current_custom_cli_args = ""; // Clear custom CLI args after job completion
 
     // Update queue status if this was a queue job
-    if (running_queue_job_id > 0) {
+    if ( running_queue_job_id > 0 ) {
         wxPrintf("Queue job %ld completed - updating status\n", running_queue_job_id);
 
         // Note: Queue status is now computed from completion data, no database update needed
 
         // Notify queue manager if callback is registered - called AFTER clearing running_job
-        if (queue_completion_callback) {
+        if ( queue_completion_callback ) {
             wxPrintf("Notifying queue manager of job completion\n");
             queue_completion_callback->OnJobCompleted(running_queue_job_id, true);
         }
@@ -818,9 +821,25 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);
-    TimeRemainingText->SetLabel("Time Remaining : All Done!");
-    CancelAlignmentButton->Show(false);
-    FinishButton->Show(true);
+
+    // Check if there are more items in the execution queue waiting to run
+    bool has_active_queue_items = false;
+    if ( queue_completion_callback ) {
+        has_active_queue_items = queue_completion_callback->ExecutionQueueHasActiveItems( );
+    }
+
+    if ( has_active_queue_items ) {
+        // Don't show finish button yet - more queue items to process
+        TimeRemainingText->SetLabel("Time Remaining : Waiting for next queue item...");
+        CancelAlignmentButton->Show(false);
+        FinishButton->Show(false);
+    }
+    else {
+        // All done - show finish button
+        TimeRemainingText->SetLabel("Time Remaining : All Done!");
+        CancelAlignmentButton->Show(false);
+        FinishButton->Show(true);
+    }
     ProgressPanel->Layout( );
 }
 
@@ -931,7 +950,7 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
                 check_dialog->ShowModal( );
             }
             // deprecated - remove: Resume run functionality replaced by Queue Manager
-        // ResumeRunCheckBox->SetValue(false);
+            // ResumeRunCheckBox->SetValue(false);
             SetInputsForPossibleReRun(false);
         }
         else {
@@ -961,9 +980,9 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
 // Queue functionality implementation
 void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
     // Validate that no job is currently running
-    if (!running_job) {
+    if ( ! running_job ) {
         // Collect job parameters from GUI and add to queue with dialog
-        TemplateMatchQueueItem new_job = CollectJobParametersFromGui();
+        TemplateMatchQueueItem new_job = CollectJobParametersFromGui( );
         AddJobToQueue(new_job, true);
     }
     else {
@@ -995,18 +1014,24 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     queue_dialog->SetSizer(dialog_sizer);
 
     // Force layout update for proper visibility of both tables
-    queue_dialog->Layout();
-    queue_dialog->Fit(); // Auto-size dialog to fit content
+    queue_dialog->Layout( );
+    queue_dialog->Fit( ); // Auto-size dialog to fit content
 
-    queue_dialog->ShowModal( );
-    queue_dialog->Destroy( );
+    // Connect close button to destroy the dialog
+    close_button->Bind(wxEVT_BUTTON, [queue_dialog](wxCommandEvent&) {
+        queue_dialog->Destroy( );
+    });
+
+    // Use Show() instead of ShowModal() to keep parent controls enabled
+    // This allows editing of parameters in the MatchTemplatePanel while the queue dialog is open
+    queue_dialog->Show(true);
 }
 
-void MatchTemplatePanel::OnHeaderClickAddToQueue() {
+void MatchTemplatePanel::OnHeaderClickAddToQueue( ) {
     // Get the active job ID from the results panel
-    int active_job_id = match_template_results_panel->ResultDataView->ReturnActiveJobID();
+    int active_job_id = match_template_results_panel->ResultDataView->ReturnActiveJobID( );
 
-    if (active_job_id <= 0) {
+    if ( active_job_id <= 0 ) {
         wxMessageBox("No active template match job selected. Please click on a result row first.",
                      "No Active Job", wxOK | wxICON_WARNING);
         return;
@@ -1020,54 +1045,54 @@ void MatchTemplatePanel::OnHeaderClickAddToQueue() {
                                             active_job_id),
                            "Add to Queue Manager", wxYES_NO | wxICON_QUESTION);
 
-    if (dialog.ShowModal() == wxID_YES) {
+    if ( dialog.ShowModal( ) == wxID_YES ) {
         // Check if this job is already in the queue
         // TODO: Implement queue check logic
 
         // Collect current GUI parameters for the job
-        TemplateMatchQueueItem gui_params = CollectJobParametersFromGui();
+        TemplateMatchQueueItem gui_params = CollectJobParametersFromGui( );
 
         // Create queue item from the active job
         TemplateMatchQueueItem queue_item;
         queue_item.database_queue_id = active_job_id;
-        queue_item.search_name = gui_params.search_name;  // Use the template name from GUI
-        queue_item.queue_status = "pending";
-        queue_item.queue_order = -1; // Add to available jobs table
+        queue_item.search_name       = gui_params.search_name; // Use the template name from GUI
+        queue_item.queue_status      = "pending";
+        queue_item.queue_order       = -1; // Add to available jobs table
 
         // Use existing resume logic to determine if job is complete
         wxArrayLong unfinished_ids = CheckForUnfinishedWork(true, false);
-        if (unfinished_ids.IsEmpty()) {
+        if ( unfinished_ids.IsEmpty( ) ) {
             queue_item.queue_status = "complete";
         }
 
         // Copy relevant parameters from GUI to queue item
-        queue_item.image_group_id = gui_params.image_group_id;
-        queue_item.reference_volume_asset_id = gui_params.reference_volume_asset_id;
-        queue_item.run_profile_id = gui_params.run_profile_id;
-        queue_item.use_gpu = gui_params.use_gpu;
-        queue_item.use_fast_fft = gui_params.use_fast_fft;
-        queue_item.symmetry = gui_params.symmetry;
-        queue_item.pixel_size = gui_params.pixel_size;
-        queue_item.voltage = gui_params.voltage;
-        queue_item.spherical_aberration = gui_params.spherical_aberration;
-        queue_item.amplitude_contrast = gui_params.amplitude_contrast;
-        queue_item.defocus1 = gui_params.defocus1;
-        queue_item.defocus2 = gui_params.defocus2;
-        queue_item.defocus_angle = gui_params.defocus_angle;
-        queue_item.phase_shift = gui_params.phase_shift;
-        queue_item.low_resolution_limit = gui_params.low_resolution_limit;
-        queue_item.high_resolution_limit = gui_params.high_resolution_limit;
-        queue_item.out_of_plane_angular_step = gui_params.out_of_plane_angular_step;
-        queue_item.in_plane_angular_step = gui_params.in_plane_angular_step;
-        queue_item.defocus_search_range = gui_params.defocus_search_range;
-        queue_item.defocus_step = gui_params.defocus_step;
-        queue_item.pixel_size_search_range = gui_params.pixel_size_search_range;
-        queue_item.pixel_size_step = gui_params.pixel_size_step;
-        queue_item.refinement_threshold = gui_params.refinement_threshold;
-        queue_item.ref_box_size_in_angstroms = gui_params.ref_box_size_in_angstroms;
-        queue_item.mask_radius = gui_params.mask_radius;
-        queue_item.min_peak_radius = gui_params.min_peak_radius;
-        queue_item.xy_change_threshold = gui_params.xy_change_threshold;
+        queue_item.image_group_id             = gui_params.image_group_id;
+        queue_item.reference_volume_asset_id  = gui_params.reference_volume_asset_id;
+        queue_item.run_profile_id             = gui_params.run_profile_id;
+        queue_item.use_gpu                    = gui_params.use_gpu;
+        queue_item.use_fast_fft               = gui_params.use_fast_fft;
+        queue_item.symmetry                   = gui_params.symmetry;
+        queue_item.pixel_size                 = gui_params.pixel_size;
+        queue_item.voltage                    = gui_params.voltage;
+        queue_item.spherical_aberration       = gui_params.spherical_aberration;
+        queue_item.amplitude_contrast         = gui_params.amplitude_contrast;
+        queue_item.defocus1                   = gui_params.defocus1;
+        queue_item.defocus2                   = gui_params.defocus2;
+        queue_item.defocus_angle              = gui_params.defocus_angle;
+        queue_item.phase_shift                = gui_params.phase_shift;
+        queue_item.low_resolution_limit       = gui_params.low_resolution_limit;
+        queue_item.high_resolution_limit      = gui_params.high_resolution_limit;
+        queue_item.out_of_plane_angular_step  = gui_params.out_of_plane_angular_step;
+        queue_item.in_plane_angular_step      = gui_params.in_plane_angular_step;
+        queue_item.defocus_search_range       = gui_params.defocus_search_range;
+        queue_item.defocus_step               = gui_params.defocus_step;
+        queue_item.pixel_size_search_range    = gui_params.pixel_size_search_range;
+        queue_item.pixel_size_step            = gui_params.pixel_size_step;
+        queue_item.refinement_threshold       = gui_params.refinement_threshold;
+        queue_item.ref_box_size_in_angstroms  = gui_params.ref_box_size_in_angstroms;
+        queue_item.mask_radius                = gui_params.mask_radius;
+        queue_item.min_peak_radius            = gui_params.min_peak_radius;
+        queue_item.xy_change_threshold        = gui_params.xy_change_threshold;
         queue_item.exclude_above_xy_threshold = gui_params.exclude_above_xy_threshold;
 
         // Add to queue and show queue manager
@@ -1077,94 +1102,123 @@ void MatchTemplatePanel::OnHeaderClickAddToQueue() {
     }
 }
 
-void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item) {
+void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item, bool for_editing) {
     // Populate GUI controls with values from the queue item
 
+    // Store custom CLI args for later use during execution
+    current_custom_cli_args = item.custom_cli_args;
+
     // Set the group and reference selections
-    if (GroupComboBox && item.image_group_id >= 0) {
+    if ( GroupComboBox && item.image_group_id >= 0 ) {
         GroupComboBox->SetSelection(item.image_group_id);
+        // Enable combo box if we're editing
+        if ( for_editing && ! running_job ) {
+            GroupComboBox->Enable(true);
+        }
     }
 
-    if (ReferenceSelectPanel && item.reference_volume_asset_id >= 0) {
+    if ( ReferenceSelectPanel && item.reference_volume_asset_id >= 0 ) {
         ReferenceSelectPanel->SetSelection(item.reference_volume_asset_id);
+        // Enable reference panel if we're editing
+        if ( for_editing && ! running_job ) {
+            ReferenceSelectPanel->Enable(true);
+        }
     }
 
     // Set run profile
-    if (RunProfileComboBox && item.run_profile_id >= 0) {
+    if ( RunProfileComboBox && item.run_profile_id >= 0 ) {
         RunProfileComboBox->SetSelection(item.run_profile_id);
         wxPrintf("Set RunProfileComboBox to selection %d from queue item\n", item.run_profile_id);
+        // Enable combo box if we're editing
+        if ( for_editing && ! running_job ) {
+            RunProfileComboBox->Enable(true);
+        }
     }
 
     // Set symmetry
-    if (SymmetryComboBox) {
+    if ( SymmetryComboBox ) {
         SymmetryComboBox->SetValue(item.symmetry);
     }
 
     // Set resolution limits
-    if (HighResolutionLimitNumericCtrl) {
+    if ( HighResolutionLimitNumericCtrl ) {
         HighResolutionLimitNumericCtrl->SetValue(wxString::Format("%.2f", item.high_resolution_limit));
     }
 
     // Set angular steps
-    if (OutofPlaneStepNumericCtrl) {
+    if ( OutofPlaneStepNumericCtrl ) {
         OutofPlaneStepNumericCtrl->SetValue(wxString::Format("%.2f", item.out_of_plane_angular_step));
     }
 
-    if (InPlaneStepNumericCtrl) {
+    if ( InPlaneStepNumericCtrl ) {
         InPlaneStepNumericCtrl->SetValue(wxString::Format("%.2f", item.in_plane_angular_step));
     }
 
     // Set defocus search parameters
-    if (item.defocus_search_range > 0) {
-        if (DefocusSearchYesRadio) DefocusSearchYesRadio->SetValue(true);
-        if (DefocusSearchNoRadio) DefocusSearchNoRadio->SetValue(false);
-        if (DefocusSearchRangeNumericCtrl) {
+    if ( item.defocus_search_range > 0 ) {
+        if ( DefocusSearchYesRadio )
+            DefocusSearchYesRadio->SetValue(true);
+        if ( DefocusSearchNoRadio )
+            DefocusSearchNoRadio->SetValue(false);
+        if ( DefocusSearchRangeNumericCtrl ) {
             DefocusSearchRangeNumericCtrl->SetValue(wxString::Format("%.2f", item.defocus_search_range));
             DefocusSearchRangeNumericCtrl->Enable(true);
         }
-        if (DefocusSearchStepNumericCtrl) {
+        if ( DefocusSearchStepNumericCtrl ) {
             DefocusSearchStepNumericCtrl->SetValue(wxString::Format("%.2f", item.defocus_step));
             DefocusSearchStepNumericCtrl->Enable(true);
         }
-    } else {
-        if (DefocusSearchYesRadio) DefocusSearchYesRadio->SetValue(false);
-        if (DefocusSearchNoRadio) DefocusSearchNoRadio->SetValue(true);
-        if (DefocusSearchRangeNumericCtrl) DefocusSearchRangeNumericCtrl->Enable(false);
-        if (DefocusSearchStepNumericCtrl) DefocusSearchStepNumericCtrl->Enable(false);
+    }
+    else {
+        if ( DefocusSearchYesRadio )
+            DefocusSearchYesRadio->SetValue(false);
+        if ( DefocusSearchNoRadio )
+            DefocusSearchNoRadio->SetValue(true);
+        if ( DefocusSearchRangeNumericCtrl )
+            DefocusSearchRangeNumericCtrl->Enable(false);
+        if ( DefocusSearchStepNumericCtrl )
+            DefocusSearchStepNumericCtrl->Enable(false);
     }
 
     // Set pixel size search parameters
-    if (item.pixel_size_search_range > 0) {
-        if (PixelSizeSearchYesRadio) PixelSizeSearchYesRadio->SetValue(true);
-        if (PixelSizeSearchNoRadio) PixelSizeSearchNoRadio->SetValue(false);
-        if (PixelSizeSearchRangeNumericCtrl) {
+    if ( item.pixel_size_search_range > 0 ) {
+        if ( PixelSizeSearchYesRadio )
+            PixelSizeSearchYesRadio->SetValue(true);
+        if ( PixelSizeSearchNoRadio )
+            PixelSizeSearchNoRadio->SetValue(false);
+        if ( PixelSizeSearchRangeNumericCtrl ) {
             PixelSizeSearchRangeNumericCtrl->SetValue(wxString::Format("%.4f", item.pixel_size_search_range));
             PixelSizeSearchRangeNumericCtrl->Enable(true);
         }
-        if (PixelSizeSearchStepNumericCtrl) {
+        if ( PixelSizeSearchStepNumericCtrl ) {
             PixelSizeSearchStepNumericCtrl->SetValue(wxString::Format("%.4f", item.pixel_size_step));
             PixelSizeSearchStepNumericCtrl->Enable(true);
         }
-    } else {
-        if (PixelSizeSearchYesRadio) PixelSizeSearchYesRadio->SetValue(false);
-        if (PixelSizeSearchNoRadio) PixelSizeSearchNoRadio->SetValue(true);
-        if (PixelSizeSearchRangeNumericCtrl) PixelSizeSearchRangeNumericCtrl->Enable(false);
-        if (PixelSizeSearchStepNumericCtrl) PixelSizeSearchStepNumericCtrl->Enable(false);
+    }
+    else {
+        if ( PixelSizeSearchYesRadio )
+            PixelSizeSearchYesRadio->SetValue(false);
+        if ( PixelSizeSearchNoRadio )
+            PixelSizeSearchNoRadio->SetValue(true);
+        if ( PixelSizeSearchRangeNumericCtrl )
+            PixelSizeSearchRangeNumericCtrl->Enable(false);
+        if ( PixelSizeSearchStepNumericCtrl )
+            PixelSizeSearchStepNumericCtrl->Enable(false);
     }
 
     // Set peak radius
-    if (MinPeakRadiusNumericCtrl) {
+    if ( MinPeakRadiusNumericCtrl ) {
         MinPeakRadiusNumericCtrl->SetValue(wxString::Format("%.2f", item.min_peak_radius));
     }
 
     // Refresh the GUI
-    Update();
-    Refresh();
+    Update( );
+    Refresh( );
 }
 
 bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     // Check if we're ready to run
-    if (running_job) {
+    if ( running_job ) {
         wxPrintf("Cannot run queued job - another job is already running\n");
         return false;
     }
@@ -1176,7 +1230,7 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     PopulateGuiFromQueueItem(job);
 
     // Give the GUI a chance to update
-    wxYield();
+    wxYield( );
 
     // Trigger the template matching execution
     wxCommandEvent fake_event;
@@ -1185,115 +1239,122 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     return true;
 }
 
-TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
+TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui( ) {
     TemplateMatchQueueItem new_job;
 
     // Set initial queue status and custom args
     new_job.queue_status    = "pending";
     new_job.custom_cli_args = "";
+    // Also clear the member variable when collecting from GUI (not from queue)
+    current_custom_cli_args = "";
 
     // Collect actual parameters from GUI controls
     new_job.database_queue_id         = -1; // Will be assigned when stored to database
-    new_job.image_group_id            = GroupComboBox->GetSelection();
-    new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection();
-    new_job.run_profile_id            = RunProfileComboBox->GetSelection();
+    new_job.image_group_id            = GroupComboBox->GetSelection( );
+    new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection( );
+    new_job.run_profile_id            = RunProfileComboBox->GetSelection( );
 
     // Get symmetry and resolution parameters
-    new_job.symmetry                  = SymmetryComboBox->GetValue().Upper();
-    new_job.high_resolution_limit     = HighResolutionLimitNumericCtrl->ReturnValue();
-    new_job.low_resolution_limit      = 300.0f; // Currently hardcoded in template matching
+    new_job.symmetry              = SymmetryComboBox->GetValue( ).Upper( );
+    new_job.high_resolution_limit = HighResolutionLimitNumericCtrl->ReturnValue( );
+    new_job.low_resolution_limit  = 300.0f; // Currently hardcoded in template matching
 
     // Angular search parameters
-    new_job.out_of_plane_angular_step = OutofPlaneStepNumericCtrl->ReturnValue();
-    new_job.in_plane_angular_step     = InPlaneStepNumericCtrl->ReturnValue();
+    new_job.out_of_plane_angular_step = OutofPlaneStepNumericCtrl->ReturnValue( );
+    new_job.in_plane_angular_step     = InPlaneStepNumericCtrl->ReturnValue( );
 
     // Defocus search parameters
-    if (DefocusSearchYesRadio->GetValue()) {
-        new_job.defocus_search_range = DefocusSearchRangeNumericCtrl->ReturnValue();
-        new_job.defocus_step         = DefocusSearchStepNumericCtrl->ReturnValue();
-    } else {
+    if ( DefocusSearchYesRadio->GetValue( ) ) {
+        new_job.defocus_search_range = DefocusSearchRangeNumericCtrl->ReturnValue( );
+        new_job.defocus_step         = DefocusSearchStepNumericCtrl->ReturnValue( );
+    }
+    else {
         new_job.defocus_search_range = 0.0f;
         new_job.defocus_step         = 0.0f;
     }
 
     // Pixel size search parameters
-    if (PixelSizeSearchYesRadio->GetValue()) {
-        new_job.pixel_size_search_range = PixelSizeSearchRangeNumericCtrl->ReturnValue();
-        new_job.pixel_size_step         = PixelSizeSearchStepNumericCtrl->ReturnValue();
-    } else {
+    if ( PixelSizeSearchYesRadio->GetValue( ) ) {
+        new_job.pixel_size_search_range = PixelSizeSearchRangeNumericCtrl->ReturnValue( );
+        new_job.pixel_size_step         = PixelSizeSearchStepNumericCtrl->ReturnValue( );
+    }
+    else {
         new_job.pixel_size_search_range = 0.0f;
         new_job.pixel_size_step         = 0.0f;
     }
 
     // Peak detection parameters
-    new_job.min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue();
+    new_job.min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue( );
 
     // Get CTF parameters from the first image in the selected group
     AssetGroup temp_group;
     temp_group.CopyFrom(&image_asset_panel->all_groups_list->groups[new_job.image_group_id]);
-    if (temp_group.number_of_members > 0) {
+    if ( temp_group.number_of_members > 0 ) {
         ImageAsset* first_image = image_asset_panel->ReturnAssetPointer(temp_group.members[0]);
-        new_job.pixel_size = first_image->pixel_size;
+        new_job.pixel_size      = first_image->pixel_size;
 
         // Get CTF parameters from database
         double voltage_kV, spherical_aberration_mm, amplitude_contrast;
         double defocus1, defocus2, defocus_angle, phase_shift, iciness;
         main_frame->current_project.database.GetCTFParameters(first_image->ctf_estimation_id,
-            voltage_kV, spherical_aberration_mm, amplitude_contrast,
-            defocus1, defocus2, defocus_angle, phase_shift, iciness);
+                                                              voltage_kV, spherical_aberration_mm, amplitude_contrast,
+                                                              defocus1, defocus2, defocus_angle, phase_shift, iciness);
 
-        new_job.voltage = voltage_kV;
+        new_job.voltage              = voltage_kV;
         new_job.spherical_aberration = spherical_aberration_mm;
-        new_job.amplitude_contrast = amplitude_contrast;
-        new_job.defocus1 = defocus1;
-        new_job.defocus2 = defocus2;
-        new_job.defocus_angle = defocus_angle;
-        new_job.phase_shift = phase_shift;
-    } else {
+        new_job.amplitude_contrast   = amplitude_contrast;
+        new_job.defocus1             = defocus1;
+        new_job.defocus2             = defocus2;
+        new_job.defocus_angle        = defocus_angle;
+        new_job.phase_shift          = phase_shift;
+    }
+    else {
         // Fallback values if no images in group
-        new_job.pixel_size = 1.0;
-        new_job.voltage = 300.0;
+        new_job.pixel_size           = 1.0;
+        new_job.voltage              = 300.0;
         new_job.spherical_aberration = 2.7;
-        new_job.amplitude_contrast = 0.07;
-        new_job.defocus1 = 10000.0;
-        new_job.defocus2 = 10000.0;
-        new_job.defocus_angle = 0.0;
-        new_job.phase_shift = 0.0;
+        new_job.amplitude_contrast   = 0.07;
+        new_job.defocus1             = 10000.0;
+        new_job.defocus2             = 10000.0;
+        new_job.defocus_angle        = 0.0;
+        new_job.phase_shift          = 0.0;
     }
 
     // Get volume parameters and generate search name
-    VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection());
-    if (current_volume) {
-        new_job.search_name = wxString::Format("Template: %s", current_volume->filename.GetName());
+    VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection( ));
+    if ( current_volume ) {
+        new_job.search_name               = wxString::Format("Template: %s", current_volume->filename.GetName( ));
         new_job.ref_box_size_in_angstroms = current_volume->x_size * current_volume->pixel_size;
-        new_job.mask_radius = current_volume->x_size * current_volume->pixel_size / 2.0f;
-    } else {
+        new_job.mask_radius               = current_volume->x_size * current_volume->pixel_size / 2.0f;
+    }
+    else {
         // Fallback if no volume is selected (shouldn't happen in normal use)
-        wxDateTime now = wxDateTime::Now();
-        new_job.search_name = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
+        wxDateTime now                    = wxDateTime::Now( );
+        new_job.search_name               = wxString::Format("TM_%s", now.Format("%Y%m%d_%H%M%S"));
         new_job.ref_box_size_in_angstroms = 200.0;
-        new_job.mask_radius = 80.0;
+        new_job.mask_radius               = 80.0;
     }
 
     // Get GPU and FastFFT settings from GUI controls
-    new_job.use_gpu = UseGPURadioYes->GetValue();
-    new_job.use_fast_fft = UseFastFFTRadioYes->GetValue();
+    new_job.use_gpu      = UseGPURadioYes->GetValue( );
+    new_job.use_fast_fft = UseFastFFTRadioYes->GetValue( );
 
     // Additional parameters (currently not in GUI, using defaults)
-    new_job.refinement_threshold = 0.0;
-    new_job.xy_change_threshold = 0.0;
+    new_job.refinement_threshold       = 0.0;
+    new_job.xy_change_threshold        = 0.0;
     new_job.exclude_above_xy_threshold = false;
 
     // Debug print for run profile information
     wxPrintf("\n=== DEBUG: Run Profile Information ===\n");
     wxPrintf("Run Profile ID (stored in queue): %d\n", new_job.run_profile_id);
-    if (new_job.run_profile_id >= 0 && new_job.run_profile_id < RunProfileComboBox->GetCount()) {
+    if ( new_job.run_profile_id >= 0 && new_job.run_profile_id < RunProfileComboBox->GetCount( ) ) {
         wxString run_profile_name = RunProfileComboBox->GetString(new_job.run_profile_id);
         wxPrintf("Run Profile Name: %s\n", run_profile_name);
-        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount());
-    } else {
+        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount( ));
+    }
+    else {
         wxPrintf("No run profile selected or invalid selection\n");
-        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount());
+        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount( ));
     }
     wxPrintf("=== END DEBUG ===\n\n");
 
@@ -1301,7 +1362,7 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui() {
 }
 
 long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog) {
-    if (show_dialog) {
+    if ( show_dialog ) {
         // Show the queue manager with the new job
         wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
                                               wxDefaultPosition, wxSize(900, 700),
@@ -1311,7 +1372,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, this);
 
         // Load existing queue from database first
-        queue_manager->LoadQueueFromDatabase();
+        queue_manager->LoadQueueFromDatabase( );
 
         // Add the new job to the queue
         queue_manager->AddToExecutionQueue(job);
@@ -1328,44 +1389,53 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         queue_dialog->SetSizer(dialog_sizer);
 
         // Force layout update for proper visibility of both tables
-        queue_dialog->Layout();
-        queue_dialog->Fit(); // Auto-size dialog to fit content
+        queue_dialog->Layout( );
+        queue_dialog->Fit( ); // Auto-size dialog to fit content
 
-        queue_dialog->ShowModal();
-        queue_dialog->Destroy();
+        // Connect close button to destroy the dialog
+        close_button->Bind(wxEVT_BUTTON, [queue_dialog](wxCommandEvent&) {
+            queue_dialog->Destroy( );
+        });
+
+        // Use Show() instead of ShowModal() to keep parent controls enabled
+        // This allows editing of parameters in the MatchTemplatePanel while the queue dialog is open
+        queue_dialog->Show(true);
 
         // Return -1 for dialog mode since we don't track the specific queue ID
         return -1;
-    } else {
+    }
+    else {
         // Add to queue without dialog - use database directly
-        if (main_frame && main_frame->current_project.is_open) {
+        if ( main_frame && main_frame->current_project.is_open ) {
             long queue_id = main_frame->current_project.database.AddToTemplateMatchQueue(
-                job.search_name, job.image_group_id, job.reference_volume_asset_id, job.run_profile_id,
-                job.use_gpu, job.use_fast_fft, job.symmetry,
-                job.pixel_size, job.voltage, job.spherical_aberration, job.amplitude_contrast,
-                job.defocus1, job.defocus2, job.defocus_angle, job.phase_shift,
-                job.low_resolution_limit, job.high_resolution_limit,
-                job.out_of_plane_angular_step, job.in_plane_angular_step,
-                job.defocus_search_range, job.defocus_step,
-                job.pixel_size_search_range, job.pixel_size_step,
-                job.refinement_threshold, job.ref_box_size_in_angstroms,
-                job.mask_radius, job.min_peak_radius,
-                job.xy_change_threshold, job.exclude_above_xy_threshold,
-                job.custom_cli_args);
+                    job.search_name, job.image_group_id, job.reference_volume_asset_id, job.run_profile_id,
+                    job.use_gpu, job.use_fast_fft, job.symmetry,
+                    job.pixel_size, job.voltage, job.spherical_aberration, job.amplitude_contrast,
+                    job.defocus1, job.defocus2, job.defocus_angle, job.phase_shift,
+                    job.low_resolution_limit, job.high_resolution_limit,
+                    job.out_of_plane_angular_step, job.in_plane_angular_step,
+                    job.defocus_search_range, job.defocus_step,
+                    job.pixel_size_search_range, job.pixel_size_step,
+                    job.refinement_threshold, job.ref_box_size_in_angstroms,
+                    job.mask_radius, job.min_peak_radius,
+                    job.xy_change_threshold, job.exclude_above_xy_threshold,
+                    job.custom_cli_args);
 
-            if (queue_id > 0) {
+            if ( queue_id > 0 ) {
                 // Create a copy with the assigned queue ID
                 TemplateMatchQueueItem job_with_id = job;
-                job_with_id.database_queue_id = queue_id;
-                job_with_id.queue_status = "pending";
+                job_with_id.database_queue_id      = queue_id;
+                job_with_id.queue_status           = "pending";
 
                 // Note: QueueManager instances are dialog-scoped, so no persistent queue needed here
                 return queue_id;
-            } else {
+            }
+            else {
                 MyAssertTrue(false, "Failed to add search to database queue - AddToTemplateMatchQueue returned %ld", queue_id);
                 return -1; // This should not happen for new searches
             }
-        } else {
+        }
+        else {
             MyAssertTrue(false, "Cannot add search to queue - database not open or main_frame invalid");
             return -1;
         }
@@ -1374,7 +1444,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
 
 bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job) {
     // Freeze GUI updates in queue manager to prevent interference during setup
-    if (queue_completion_callback) {
+    if ( queue_completion_callback ) {
         queue_completion_callback->SetGuiUpdateFrozen(true);
     }
 
@@ -1424,9 +1494,9 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     int number_of_defocus_positions;
     int number_of_pixel_size_positions;
 
-    bool use_gpu = job.use_gpu;
+    bool use_gpu      = job.use_gpu;
     bool use_fast_fft = job.use_fast_fft;
-    int max_threads = 1; // Only used for the GPU code
+    int  max_threads  = 1; // Only used for the GPU code
 
     int image_number_for_gui;
     int number_of_jobs_per_image_in_gui;
@@ -1441,49 +1511,49 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     double phase_shift;
     double iciness;
 
-    input_image_filenames.Clear();
-    cached_results.Clear();
+    input_image_filenames.Clear( );
+    cached_results.Clear( );
 
-    ResultsPanel->Clear();
+    ResultsPanel->Clear( );
 
     // Package the job details..
     EulerSearch* current_image_euler_search;
-    ImageAsset* current_image;
+    ImageAsset*  current_image;
     VolumeAsset* current_volume;
 
-    current_volume = volume_asset_panel->ReturnAssetPointer(job.reference_volume_asset_id);
+    current_volume         = volume_asset_panel->ReturnAssetPointer(job.reference_volume_asset_id);
     ref_box_size_in_pixels = current_volume->x_size / current_volume->pixel_size;
 
     ParameterMap parameter_map;
-    parameter_map.SetAllTrue();
+    parameter_map.SetAllTrue( );
 
     float wanted_out_of_plane_angular_step = job.out_of_plane_angular_step;
-    float wanted_in_plane_angular_step = job.in_plane_angular_step;
+    float wanted_in_plane_angular_step     = job.in_plane_angular_step;
 
-    float defocus_search_range = job.defocus_search_range;
-    float defocus_step = job.defocus_step;
+    float defocus_search_range    = job.defocus_search_range;
+    float defocus_step            = job.defocus_step;
     float pixel_size_search_range = job.pixel_size_search_range;
-    float pixel_size_step = job.pixel_size_step;
+    float pixel_size_step         = job.pixel_size_step;
 
     float min_peak_radius = job.min_peak_radius;
 
-    wxString wanted_symmetry = job.symmetry;
-    float high_resolution_limit = job.high_resolution_limit;
+    wxString wanted_symmetry       = job.symmetry;
+    float    high_resolution_limit = job.high_resolution_limit;
 
     wxPrintf("\n\nWanted symmetry %s, Defocus Range %3.3f, Defocus Step %3.3f\n", wanted_symmetry, defocus_search_range, defocus_step);
 
-    RunProfile active_refinement_run_profile = run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection()];
+    RunProfile active_refinement_run_profile = run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection( )];
 
-    int number_of_processes = active_refinement_run_profile.ReturnTotalJobs();
+    int number_of_processes = active_refinement_run_profile.ReturnTotalJobs( );
 
     // Get first image to make decisions about how many jobs
-    current_image = image_asset_panel->ReturnAssetPointer(active_group.members[0]);
+    current_image              = image_asset_panel->ReturnAssetPointer(active_group.members[0]);
     current_image_euler_search = new EulerSearch;
-    resolution_limit = current_image->pixel_size * 2.0f; // Nyquist limit
+    resolution_limit           = current_image->pixel_size * 2.0f; // Nyquist limit
     current_image_euler_search->InitGrid(wanted_symmetry, wanted_out_of_plane_angular_step, 0.0, 0.0, 360.0, wanted_in_plane_angular_step, 0.0, current_image->pixel_size / resolution_limit, parameter_map, 1);
 
-    if (wanted_symmetry.StartsWith("C")) {
-        if (current_image_euler_search->test_mirror == true) {
+    if ( wanted_symmetry.StartsWith("C") ) {
+        if ( current_image_euler_search->test_mirror == true ) {
             current_image_euler_search->theta_max = 180.0f;
         }
     }
@@ -1491,15 +1561,16 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     current_image_euler_search->CalculateGridSearchPositions(false);
 
     // Calculate jobs per image
-    if (use_gpu) {
+    if ( use_gpu ) {
         number_of_jobs_per_image_in_gui = number_of_processes;
-        number_of_jobs = number_of_jobs_per_image_in_gui * active_group.number_of_members;
+        number_of_jobs                  = number_of_jobs_per_image_in_gui * active_group.number_of_members;
         wxPrintf("In USEGPU:\n There are %d search positions\nThere are %d jobs per image\n", current_image_euler_search->number_of_search_positions, number_of_jobs_per_image_in_gui);
         delete current_image_euler_search;
-    } else {
-        if (active_group.number_of_members >= 5 || current_image_euler_search->number_of_search_positions < number_of_processes * 20)
+    }
+    else {
+        if ( active_group.number_of_members >= 5 || current_image_euler_search->number_of_search_positions < number_of_processes * 20 )
             number_of_jobs_per_image_in_gui = number_of_processes;
-        else if (current_image_euler_search->number_of_search_positions > number_of_processes * 250)
+        else if ( current_image_euler_search->number_of_search_positions > number_of_processes * 250 )
             number_of_jobs_per_image_in_gui = number_of_processes * 10;
         else
             number_of_jobs_per_image_in_gui = number_of_processes * 5;
@@ -1509,15 +1580,25 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     }
 
     // Calculate number of rotations
-    for (float current_psi = 0.0f; current_psi <= 360.0f; current_psi += wanted_in_plane_angular_step) {
+    for ( float current_psi = 0.0f; current_psi <= 360.0f; current_psi += wanted_in_plane_angular_step ) {
         number_of_rotations++;
     }
 
-    // Initialize job package
-    if (use_gpu)
-        current_job_package.Reset(active_refinement_run_profile, "match_template_gpu", number_of_jobs);
-    else
-        current_job_package.Reset(active_refinement_run_profile, "match_template", number_of_jobs);
+    // Initialize job package with executable name and optional custom CLI args
+    wxString executable_name = "match_template";
+    if ( use_gpu ) {
+        executable_name += "_gpu";
+    }
+    // Append custom CLI args if present (ensure leading space)
+    if (!current_custom_cli_args.IsEmpty()) {
+        if (!current_custom_cli_args.StartsWith(" ")) {
+            executable_name += " ";
+        }
+        executable_name += current_custom_cli_args;
+        wxPrintf("Appending custom CLI args to executable: %s\n", current_custom_cli_args);
+    }
+
+    current_job_package.Reset(active_refinement_run_profile, executable_name, number_of_jobs);
 
     expected_number_of_results = 0;
     number_of_received_results = 0;
@@ -1526,35 +1607,35 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     OneSecondProgressDialog* my_progress_dialog = new OneSecondProgressDialog("Preparing Job", "Preparing Job...", active_group.number_of_members, this, wxPD_REMAINING_TIME | wxPD_AUTO_HIDE | wxPD_APP_MODAL);
 
     TemplateMatchJobResults temp_result;
-    temp_result.input_job_id = -1;
-    temp_result.job_type = cistem::job_type::template_match_full_search;
-    temp_result.mask_radius = 0.0f;
-    temp_result.min_peak_radius = min_peak_radius;
+    temp_result.input_job_id               = -1;
+    temp_result.job_type                   = cistem::job_type::template_match_full_search;
+    temp_result.mask_radius                = 0.0f;
+    temp_result.min_peak_radius            = min_peak_radius;
     temp_result.exclude_above_xy_threshold = false;
-    temp_result.xy_change_threshold = 0.0f;
+    temp_result.xy_change_threshold        = 0.0f;
 
     // Loop over all images to set up jobs
-    for (int image_counter = 0; image_counter < active_group.number_of_members; image_counter++) {
+    for ( int image_counter = 0; image_counter < active_group.number_of_members; image_counter++ ) {
         image_number_for_gui = image_counter + 1;
 
         current_image = image_asset_panel->ReturnAssetPointer(active_group.members[image_counter]);
 
-        resolution_limit = current_image->pixel_size * 2.0f;
+        resolution_limit           = current_image->pixel_size * 2.0f;
         current_image_euler_search = new EulerSearch;
         current_image_euler_search->InitGrid(wanted_symmetry, wanted_out_of_plane_angular_step, 0.0, 0.0, 360.0, wanted_in_plane_angular_step, 0.0, current_image->pixel_size / resolution_limit, parameter_map, 1);
-        if (wanted_symmetry.StartsWith("C")) {
-            if (current_image_euler_search->test_mirror == true) {
+        if ( wanted_symmetry.StartsWith("C") ) {
+            if ( current_image_euler_search->test_mirror == true ) {
                 current_image_euler_search->theta_max = 180.0f;
             }
         }
         current_image_euler_search->CalculateGridSearchPositions(false);
 
-        if (defocus_search_range > 0)
+        if ( defocus_search_range > 0 )
             number_of_defocus_positions = 2 * myround(float(defocus_search_range) / float(defocus_step)) + 1;
         else
             number_of_defocus_positions = 1;
 
-        if (pixel_size_search_range > 0)
+        if ( pixel_size_search_range > 0 )
             number_of_pixel_size_positions = 2 * myround(float(pixel_size_search_range) / float(pixel_size_step)) + 1;
         else
             number_of_pixel_size_positions = 1;
@@ -1564,115 +1645,115 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
 
         expected_number_of_results += current_image_euler_search->number_of_search_positions * number_of_rotations * number_of_defocus_positions * number_of_pixel_size_positions;
         orientations_per_process = float(current_image_euler_search->number_of_search_positions) / float(number_of_jobs_per_image_in_gui);
-        if (orientations_per_process < 1)
+        if ( orientations_per_process < 1 )
             orientations_per_process = 1;
 
         int number_of_previous_template_matches = main_frame->current_project.database.ReturnNumberOfPreviousTemplateMatchesByAssetID(current_image->asset_id);
         main_frame->current_project.database.GetCTFParameters(current_image->ctf_estimation_id, voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, phase_shift, iciness);
 
         // Generate output filenames
-        wxString mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        mip_output_file += wxString::Format("/%s_mip_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        mip_output_file += wxString::Format("/%s_mip_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString best_psi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        best_psi_output_file += wxString::Format("/%s_psi_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString best_psi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        best_psi_output_file += wxString::Format("/%s_psi_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString best_theta_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        best_theta_output_file += wxString::Format("/%s_theta_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString best_theta_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        best_theta_output_file += wxString::Format("/%s_theta_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString best_phi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        best_phi_output_file += wxString::Format("/%s_phi_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString best_phi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        best_phi_output_file += wxString::Format("/%s_phi_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString best_defocus_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        best_defocus_output_file += wxString::Format("/%s_defocus_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString best_defocus_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        best_defocus_output_file += wxString::Format("/%s_defocus_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString best_pixel_size_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        best_pixel_size_output_file += wxString::Format("/%s_pixel_size_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString best_pixel_size_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        best_pixel_size_output_file += wxString::Format("/%s_pixel_size_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString scaled_mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        scaled_mip_output_file += wxString::Format("/%s_scaled_mip_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString scaled_mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        scaled_mip_output_file += wxString::Format("/%s_scaled_mip_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString output_histogram_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        output_histogram_file += wxString::Format("/%s_histogram_%i_%i.txt", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString output_histogram_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        output_histogram_file += wxString::Format("/%s_histogram_%i_%i.txt", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString output_result_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        output_result_file += wxString::Format("/%s_plotted_result_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString output_result_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        output_result_file += wxString::Format("/%s_plotted_result_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString correlation_avg_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        correlation_avg_output_file += wxString::Format("/%s_avg_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString correlation_avg_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        correlation_avg_output_file += wxString::Format("/%s_avg_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString correlation_std_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath();
-        correlation_std_output_file += wxString::Format("/%s_std_%i_%i.mrc", current_image->filename.GetName(), current_image->asset_id, number_of_previous_template_matches);
+        wxString correlation_std_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
+        correlation_std_output_file += wxString::Format("/%s_std_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
         current_orientation_counter = 0;
 
-        wxString input_search_image = current_image->filename.GetFullPath();
-        wxString input_reconstruction = current_volume->filename.GetFullPath();
-        float pixel_size = current_image->pixel_size;
+        wxString input_search_image   = current_image->filename.GetFullPath( );
+        wxString input_reconstruction = current_volume->filename.GetFullPath( );
+        float    pixel_size           = current_image->pixel_size;
 
         input_image_filenames.Add(input_search_image);
 
         float low_resolution_limit = 300.0f; // FIXME set this somewhere that is not buried in the code!
 
-        temp_result.image_asset_id = current_image->asset_id;
-        temp_result.job_name = wxString::Format("Template: %s", current_volume->filename.GetName());
-        temp_result.ref_volume_asset_id = current_volume->asset_id;
-        wxDateTime now = wxDateTime::Now();
-        temp_result.datetime_of_run = (long int)now.GetAsDOS();
-        temp_result.symmetry = wanted_symmetry;
-        temp_result.pixel_size = pixel_size;
-        temp_result.voltage = voltage_kV;
-        temp_result.spherical_aberration = spherical_aberration_mm;
-        temp_result.amplitude_contrast = amplitude_contrast;
-        temp_result.defocus1 = defocus1;
-        temp_result.defocus2 = defocus2;
-        temp_result.defocus_angle = defocus_angle;
-        temp_result.phase_shift = phase_shift;
-        temp_result.low_res_limit = low_resolution_limit;
-        temp_result.high_res_limit = high_resolution_limit;
-        temp_result.out_of_plane_step = wanted_out_of_plane_angular_step;
-        temp_result.in_plane_step = wanted_in_plane_angular_step;
-        temp_result.defocus_search_range = defocus_search_range;
-        temp_result.defocus_step = defocus_step;
-        temp_result.pixel_size_search_range = pixel_size_search_range;
-        temp_result.pixel_size_step = pixel_size_step;
+        temp_result.image_asset_id                  = current_image->asset_id;
+        temp_result.job_name                        = wxString::Format("Template: %s", current_volume->filename.GetName( ));
+        temp_result.ref_volume_asset_id             = current_volume->asset_id;
+        wxDateTime now                              = wxDateTime::Now( );
+        temp_result.datetime_of_run                 = (long int)now.GetAsDOS( );
+        temp_result.symmetry                        = wanted_symmetry;
+        temp_result.pixel_size                      = pixel_size;
+        temp_result.voltage                         = voltage_kV;
+        temp_result.spherical_aberration            = spherical_aberration_mm;
+        temp_result.amplitude_contrast              = amplitude_contrast;
+        temp_result.defocus1                        = defocus1;
+        temp_result.defocus2                        = defocus2;
+        temp_result.defocus_angle                   = defocus_angle;
+        temp_result.phase_shift                     = phase_shift;
+        temp_result.low_res_limit                   = low_resolution_limit;
+        temp_result.high_res_limit                  = high_resolution_limit;
+        temp_result.out_of_plane_step               = wanted_out_of_plane_angular_step;
+        temp_result.in_plane_step                   = wanted_in_plane_angular_step;
+        temp_result.defocus_search_range            = defocus_search_range;
+        temp_result.defocus_step                    = defocus_step;
+        temp_result.pixel_size_search_range         = pixel_size_search_range;
+        temp_result.pixel_size_step                 = pixel_size_step;
         temp_result.reference_box_size_in_angstroms = ref_box_size_in_pixels * pixel_size;
-        temp_result.mip_filename = mip_output_file;
-        temp_result.scaled_mip_filename = scaled_mip_output_file;
-        temp_result.psi_filename = best_psi_output_file;
-        temp_result.theta_filename = best_theta_output_file;
-        temp_result.phi_filename = best_phi_output_file;
-        temp_result.defocus_filename = best_defocus_output_file;
-        temp_result.pixel_size_filename = best_pixel_size_output_file;
-        temp_result.histogram_filename = output_histogram_file;
-        temp_result.projection_result_filename = output_result_file;
-        temp_result.avg_filename = correlation_avg_output_file;
-        temp_result.std_filename = correlation_std_output_file;
+        temp_result.mip_filename                    = mip_output_file;
+        temp_result.scaled_mip_filename             = scaled_mip_output_file;
+        temp_result.psi_filename                    = best_psi_output_file;
+        temp_result.theta_filename                  = best_theta_output_file;
+        temp_result.phi_filename                    = best_phi_output_file;
+        temp_result.defocus_filename                = best_defocus_output_file;
+        temp_result.pixel_size_filename             = best_pixel_size_output_file;
+        temp_result.histogram_filename              = output_histogram_file;
+        temp_result.projection_result_filename      = output_result_file;
+        temp_result.avg_filename                    = correlation_avg_output_file;
+        temp_result.std_filename                    = correlation_std_output_file;
 
         cached_results.Add(temp_result);
 
         // Create individual jobs for this image
-        for (job_counter = 0; job_counter < number_of_jobs_per_image_in_gui; job_counter++) {
-            int best_parameters_to_keep = 1;
-            float padding = 1;
-            bool ctf_refinement = false;
-            float mask_radius_search = 0.0f;
+        for ( job_counter = 0; job_counter < number_of_jobs_per_image_in_gui; job_counter++ ) {
+            int   best_parameters_to_keep = 1;
+            float padding                 = 1;
+            bool  ctf_refinement          = false;
+            float mask_radius_search      = 0.0f;
 
             wxPrintf("\n\tFor image %i, current_orientation_counter is %f\n", image_number_for_gui, current_orientation_counter);
-            if (current_orientation_counter >= current_image_euler_search->number_of_search_positions)
+            if ( current_orientation_counter >= current_image_euler_search->number_of_search_positions )
                 current_orientation_counter = current_image_euler_search->number_of_search_positions - 1;
             int first_search_position = myroundint(current_orientation_counter);
             current_orientation_counter += orientations_per_process;
-            if (current_orientation_counter >= current_image_euler_search->number_of_search_positions || job_counter == number_of_jobs_per_image_in_gui - 1)
+            if ( current_orientation_counter >= current_image_euler_search->number_of_search_positions || job_counter == number_of_jobs_per_image_in_gui - 1 )
                 current_orientation_counter = current_image_euler_search->number_of_search_positions - 1;
             int last_search_position = myroundint(current_orientation_counter);
             current_orientation_counter++;
 
-            wxString directory_for_results = main_frame->current_project.image_asset_directory.GetFullPath();
+            wxString directory_for_results = main_frame->current_project.image_asset_directory.GetFullPath( );
 
             current_job_package.AddJob("ttffffffffffifffffbfftttttttttftiiiitttfbbi",
-                                       input_search_image.ToUTF8().data(),
-                                       input_reconstruction.ToUTF8().data(),
+                                       input_search_image.ToUTF8( ).data( ),
+                                       input_reconstruction.ToUTF8( ).data( ),
                                        pixel_size,
                                        voltage_kV,
                                        spherical_aberration_mm,
@@ -1692,24 +1773,24 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
                                        ctf_refinement,
                                        mask_radius_search,
                                        phase_shift,
-                                       mip_output_file.ToUTF8().data(),
-                                       best_psi_output_file.ToUTF8().data(),
-                                       best_theta_output_file.ToUTF8().data(),
-                                       best_phi_output_file.ToUTF8().data(),
-                                       best_defocus_output_file.ToUTF8().data(),
-                                       best_pixel_size_output_file.ToUTF8().data(),
-                                       scaled_mip_output_file.ToUTF8().data(),
-                                       correlation_std_output_file.ToUTF8().data(),
-                                       wanted_symmetry.ToUTF8().data(),
+                                       mip_output_file.ToUTF8( ).data( ),
+                                       best_psi_output_file.ToUTF8( ).data( ),
+                                       best_theta_output_file.ToUTF8( ).data( ),
+                                       best_phi_output_file.ToUTF8( ).data( ),
+                                       best_defocus_output_file.ToUTF8( ).data( ),
+                                       best_pixel_size_output_file.ToUTF8( ).data( ),
+                                       scaled_mip_output_file.ToUTF8( ).data( ),
+                                       correlation_std_output_file.ToUTF8( ).data( ),
+                                       wanted_symmetry.ToUTF8( ).data( ),
                                        wanted_in_plane_angular_step,
-                                       output_histogram_file.ToUTF8().data(),
+                                       output_histogram_file.ToUTF8( ).data( ),
                                        first_search_position,
                                        last_search_position,
                                        image_number_for_gui,
                                        number_of_jobs_per_image_in_gui,
-                                       correlation_avg_output_file.ToUTF8().data(),
-                                       directory_for_results.ToUTF8().data(),
-                                       output_result_file.ToUTF8().data(),
+                                       correlation_avg_output_file.ToUTF8( ).data( ),
+                                       directory_for_results.ToUTF8( ).data( ),
+                                       output_result_file.ToUTF8( ).data( ),
                                        min_peak_radius,
                                        use_gpu,
                                        use_fast_fft,
@@ -1720,18 +1801,19 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
         my_progress_dialog->Update(image_counter + 1);
     }
 
-    my_progress_dialog->Destroy();
+    my_progress_dialog->Destroy( );
 
     // Get ID's from database for writing results as they come in
-    database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID() + 1;
-    search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
+    database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID( ) + 1;
+    search_id         = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
 
     // Update the queue item with the actual SEARCH_ID for n/N tracking
-    if (running_queue_job_id > 0) {
-        if (queue_completion_callback) {
+    if ( running_queue_job_id > 0 ) {
+        if ( queue_completion_callback ) {
             // Queue manager is present - let it update the search ID
             queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_job_id, search_id);
-        } else {
+        }
+        else {
             // No queue manager (StartEstimationClick path) - update database directly
             // This is critical for status computation since status is derived from completion data
             main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_job_id, search_id);
@@ -1740,32 +1822,33 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     }
 
     // Unfreeze GUI updates in queue manager now that setup is complete
-    if (queue_completion_callback) {
+    if ( queue_completion_callback ) {
         queue_completion_callback->SetGuiUpdateFrozen(false);
     }
 
     return true;
 }
 
-bool MatchTemplatePanel::ExecuteCurrentJob() {
+bool MatchTemplatePanel::ExecuteCurrentJob( ) {
     // Get the run profile to use - the GUI should be populated correctly by PopulateGuiFromQueueItem
-    int run_profile_to_use = RunProfileComboBox->GetSelection();
+    int run_profile_to_use = RunProfileComboBox->GetSelection( );
 
     // Debug print to verify run profile is correctly set
-    if (running_queue_job_id > 0) {
+    if ( running_queue_job_id > 0 ) {
         wxPrintf("Executing queue job %ld with run profile selection %d\n",
                  running_queue_job_id, run_profile_to_use);
-    } else {
+    }
+    else {
         wxPrintf("Executing GUI job with run profile selection %d\n", run_profile_to_use);
     }
 
     // Launch the job controller
     my_job_id = main_frame->job_controller.AddJob(this,
-        run_profiles_panel->run_profile_manager.run_profiles[run_profile_to_use].manager_command,
-        run_profiles_panel->run_profile_manager.run_profiles[run_profile_to_use].gui_address);
+                                                  run_profiles_panel->run_profile_manager.run_profiles[run_profile_to_use].manager_command,
+                                                  run_profiles_panel->run_profile_manager.run_profiles[run_profile_to_use].gui_address);
 
-    if (my_job_id != -1) {
-        SetNumberConnectedTextToZeroAndStartTracking();
+    if ( my_job_id != -1 ) {
+        SetNumberConnectedTextToZeroAndStartTracking( );
 
         StartPanel->Show(false);
         ProgressPanel->Show(true);
@@ -1777,9 +1860,9 @@ bool MatchTemplatePanel::ExecuteCurrentJob() {
         ResultsPanel->Show(true);
 
         GroupComboBox->Enable(false);
-        Layout();
+        Layout( );
 
-        ProgressBar->Pulse();
+        ProgressBar->Pulse( );
         running_job = true;
         return true;
     }
@@ -1790,19 +1873,19 @@ bool MatchTemplatePanel::ExecuteCurrentJob() {
 bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
     // If queue_item is provided, we're being called from the queue and need to setup the job parameters.
     // If queue_item is null, we're being called from StartEstimationClick and need to setup from GUI.
-    if (queue_item) {
+    if ( queue_item ) {
         // Validate job parameters before execution
         MyDebugAssertTrue(queue_item->database_queue_id >= 0, "Cannot execute job with invalid database_queue_id: %ld", queue_item->database_queue_id);
         MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed" || queue_item->queue_status == "partial",
-                          "Cannot execute job with status '%s', must be 'pending', 'failed', or 'partial'", queue_item->queue_status.mb_str().data());
-        MyDebugAssertFalse(queue_item->search_name.IsEmpty(), "Cannot execute search with empty search_name");
+                          "Cannot execute job with status '%s', must be 'pending', 'failed', or 'partial'", queue_item->queue_status.mb_str( ).data( ));
+        MyDebugAssertFalse(queue_item->search_name.IsEmpty( ), "Cannot execute search with empty search_name");
         MyDebugAssertTrue(queue_item->image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
         MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);
 
         // Check if another job is already running
-        if (running_job) {
+        if ( running_job ) {
             wxMessageBox("A job is already running. Please wait for it to complete.",
-                        "Job Running", wxOK | wxICON_WARNING);
+                         "Job Running", wxOK | wxICON_WARNING);
             return false;
         }
 
@@ -1813,22 +1896,23 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         wxPrintf("Setting up job %ld from queue item...\n", queue_item->database_queue_id);
         bool setup_success = SetupJobFromQueueItem(*queue_item);
 
-        if (!setup_success) {
+        if ( ! setup_success ) {
             wxPrintf("Failed to setup job %ld\n", queue_item->database_queue_id);
             running_queue_job_id = -1;
             return false;
         }
-    } else {
+    }
+    else {
         // GUI job - need to setup from current GUI state first
-        TemplateMatchQueueItem gui_job = CollectJobParametersFromGui();
-        if (!SetupJobFromQueueItem(gui_job)) {
+        TemplateMatchQueueItem gui_job = CollectJobParametersFromGui( );
+        if ( ! SetupJobFromQueueItem(gui_job) ) {
             wxPrintf("Failed to setup GUI job\n");
             return false;
         }
     }
 
     // Execute the job (current ExecuteCurrentJob logic)
-    return ExecuteCurrentJob();
+    return ExecuteCurrentJob( );
 }
 
 void MatchTemplatePanel::SetQueueCompletionCallback(TemplateMatchQueueManager* queue_manager) {
@@ -1836,7 +1920,7 @@ void MatchTemplatePanel::SetQueueCompletionCallback(TemplateMatchQueueManager* q
     wxPrintf("Queue completion callback set for queue manager %p\n", queue_manager);
 }
 
-void MatchTemplatePanel::ClearQueueCompletionCallback() {
+void MatchTemplatePanel::ClearQueueCompletionCallback( ) {
     wxPrintf("Queue completion callback cleared\n");
     queue_completion_callback = nullptr;
 }

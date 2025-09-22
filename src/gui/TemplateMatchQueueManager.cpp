@@ -19,6 +19,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     auto_progress_queue = true;  // Auto-progress to next job when one completes
     hide_completed_jobs = true;  // Hide completed searches by default
     gui_update_frozen   = false; // GUI updates allowed initially
+    job_is_finalizing   = false; // No job in finalization initially
     drag_in_progress    = false;
     updating_display    = false; // Not updating display initially
     dragged_row         = -1;
@@ -34,9 +35,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
                                                          wxDefaultPosition, wxSize(700, 200),
                                                          wxLC_REPORT);
 
-    // Add columns to execution queue (with queue order)
-    execution_queue_ctrl->AppendColumn("Queue Order", wxLIST_FORMAT_LEFT, 80);
-    execution_queue_ctrl->AppendColumn("ID", wxLIST_FORMAT_LEFT, 60);
+    // Add columns to execution queue (same as available queue, no queue order)
     execution_queue_ctrl->AppendColumn("Search ID", wxLIST_FORMAT_LEFT, 70);
     execution_queue_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 200);
     execution_queue_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 100);
@@ -48,69 +47,20 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Legacy compatibility - point to execution queue
     queue_list_ctrl = execution_queue_ctrl;
 
-    // Create execution queue controls
+    // Create execution queue controls - just the Run Queue button centered
     wxPanel*    execution_controls = new wxPanel(this, wxID_ANY);
     wxBoxSizer* execution_sizer    = new wxBoxSizer(wxHORIZONTAL);
 
-    // Drag-and-drop controls
-    assign_priority_button = new wxButton(execution_controls, wxID_ANY, "Assign Priority");
-    assign_priority_button->Enable(false); // Disabled until items are dragged
-
     // Execution controls
     run_selected_button = new wxButton(execution_controls, wxID_ANY, "Run Queue");
-    update_selected_button = new wxButton(execution_controls, wxID_ANY, "Update Selected");
-    update_selected_button->Enable(false); // Disabled until pending item selected
 
-    execution_sizer->Add(assign_priority_button, 0, wxALL, 5);
-    execution_sizer->AddSpacer(20);
+    execution_sizer->AddStretchSpacer();
     execution_sizer->Add(run_selected_button, 0, wxALL, 5);
-    execution_sizer->Add(update_selected_button, 0, wxALL, 5);
+    execution_sizer->AddStretchSpacer();
 
     execution_controls->SetSizer(execution_sizer);
 
-    // Create movement controls (between tables)
-    wxPanel*    movement_controls = new wxPanel(this, wxID_ANY);
-    wxBoxSizer* movement_sizer    = new wxBoxSizer(wxHORIZONTAL);
-
-    add_to_queue_button      = new wxButton(movement_controls, wxID_ANY, "Add to Execution Queue");
-    remove_from_queue_button = new wxButton(movement_controls, wxID_ANY, "Remove from Execution Queue");
-
-    movement_sizer->Add(add_to_queue_button, 0, wxALL, 5);
-    movement_sizer->Add(remove_from_queue_button, 0, wxALL, 5);
-
-    movement_controls->SetSizer(movement_sizer);
-
-    // Create available searches section (bottom)
-    wxStaticText* available_jobs_label = new wxStaticText(this, wxID_ANY, "Available Searches (not queued for execution):");
-    available_jobs_ctrl                = new wxListCtrl(this, wxID_ANY,
-                                                        wxDefaultPosition, wxSize(700, 150),
-                                                        wxLC_REPORT);
-
-    // Set minimum size to ensure visibility
-    available_jobs_ctrl->SetMinSize(wxSize(700, 150));
-    wxPrintf("Created available_jobs_ctrl: %p with min size 700x150\n", available_jobs_ctrl); // Debug output
-
-    // Add columns to available searches (no queue order column)
-    available_jobs_ctrl->AppendColumn("ID", wxLIST_FORMAT_LEFT, 60);
-    available_jobs_ctrl->AppendColumn("Search ID", wxLIST_FORMAT_LEFT, 70);
-    available_jobs_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 200);
-    available_jobs_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 100);
-    available_jobs_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 80);
-    available_jobs_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 140);
-
-    // Create CLI args section
-    wxPanel*    cli_args_panel = new wxPanel(this, wxID_ANY);
-    wxBoxSizer* cli_args_sizer = new wxBoxSizer(wxHORIZONTAL);
-
-    wxStaticText* cli_args_label = new wxStaticText(cli_args_panel, wxID_ANY, "Custom CLI Arguments:");
-    custom_cli_args_text = new wxTextCtrl(cli_args_panel, wxID_ANY, wxEmptyString,
-                                          wxDefaultPosition, wxSize(400, -1));
-
-    cli_args_sizer->Add(cli_args_label, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-    cli_args_sizer->Add(custom_cli_args_text, 1, wxEXPAND | wxALL, 5);
-    cli_args_panel->SetSizer(cli_args_sizer);
-
-    // Create panel display toggle switch
+    // Panel display toggle - centered below Run Queue button
     wxPanel*    display_panel = new wxPanel(this, wxID_ANY);
     wxBoxSizer* display_sizer = new wxBoxSizer(wxHORIZONTAL);
 
@@ -121,37 +71,87 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Set tooltip
     panel_display_toggle->SetToolTip("Toggle between Input and Progress panels");
 
+    display_sizer->AddStretchSpacer();
     display_sizer->Add(display_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
     display_sizer->Add(panel_display_toggle, 0, wxALIGN_CENTER_VERTICAL);
     display_sizer->AddStretchSpacer();
     display_panel->SetSizer(display_sizer);
 
-    // Create general controls
-    wxPanel*    general_controls = new wxPanel(this, wxID_ANY);
-    wxBoxSizer* general_sizer    = new wxBoxSizer(wxHORIZONTAL);
+    // Create available searches section with hide completed checkbox
+    wxPanel*    available_header_panel = new wxPanel(this, wxID_ANY);
+    wxBoxSizer* available_header_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    remove_selected_button  = new wxButton(general_controls, wxID_ANY, "Remove Selected");
-    clear_queue_button      = new wxButton(general_controls, wxID_ANY, "Clear All");
-    hide_completed_checkbox = new wxCheckBox(general_controls, wxID_ANY, "Hide completed jobs");
+    wxStaticText* available_jobs_label = new wxStaticText(available_header_panel, wxID_ANY, "Available Searches (not queued for execution):");
+    hide_completed_checkbox = new wxCheckBox(available_header_panel, wxID_ANY, "Hide completed jobs");
     hide_completed_checkbox->SetValue(true);  // Checked by default
 
-    general_sizer->Add(remove_selected_button, 0, wxALL, 5);
-    general_sizer->Add(clear_queue_button, 0, wxALL, 5);
-    general_sizer->AddSpacer(20);
-    general_sizer->Add(hide_completed_checkbox, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+    available_header_sizer->Add(available_jobs_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
+    available_header_sizer->Add(hide_completed_checkbox, 0, wxALIGN_CENTER_VERTICAL);
+    available_header_sizer->AddStretchSpacer();
+    available_header_panel->SetSizer(available_header_sizer);
+    available_jobs_ctrl                = new wxListCtrl(this, wxID_ANY,
+                                                        wxDefaultPosition, wxSize(700, 150),
+                                                        wxLC_REPORT);
 
-    general_controls->SetSizer(general_sizer);
+    // Set minimum size to ensure visibility
+    available_jobs_ctrl->SetMinSize(wxSize(700, 150));
+    wxPrintf("Created available_jobs_ctrl: %p with min size 700x150\n", available_jobs_ctrl); // Debug output
+
+    // Add columns to available searches (same structure as execution queue)
+    available_jobs_ctrl->AppendColumn("Search ID", wxLIST_FORMAT_LEFT, 70);
+    available_jobs_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 200);
+    available_jobs_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 100);
+    available_jobs_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 80);
+    available_jobs_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 140);
+
+    // Create CLI args section with Update Selected button
+    wxPanel*    cli_args_panel = new wxPanel(this, wxID_ANY);
+    wxBoxSizer* cli_args_sizer = new wxBoxSizer(wxHORIZONTAL);
+
+    wxStaticText* cli_args_label = new wxStaticText(cli_args_panel, wxID_ANY, "Custom CLI Arguments:");
+    custom_cli_args_text = new wxTextCtrl(cli_args_panel, wxID_ANY, wxEmptyString,
+                                          wxDefaultPosition, wxSize(400, -1));
+    update_selected_button = new wxButton(cli_args_panel, wxID_ANY, "Update Selected");
+    update_selected_button->Enable(false); // Disabled until pending item selected
+
+    cli_args_sizer->Add(cli_args_label, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+    cli_args_sizer->Add(custom_cli_args_text, 1, wxEXPAND | wxALL, 5);
+    cli_args_sizer->Add(update_selected_button, 0, wxALL, 5);
+    cli_args_panel->SetSizer(cli_args_sizer);
+
+    // Create bottom controls panel with left and right button groups
+    wxPanel*    bottom_controls = new wxPanel(this, wxID_ANY);
+    wxBoxSizer* bottom_sizer    = new wxBoxSizer(wxHORIZONTAL);
+
+    // Left side - stacked Add/Remove from Queue buttons
+    wxBoxSizer* left_button_sizer = new wxBoxSizer(wxVERTICAL);
+    add_to_queue_button      = new wxButton(bottom_controls, wxID_ANY, "Add to Execution Queue");
+    remove_from_queue_button = new wxButton(bottom_controls, wxID_ANY, "Remove from Execution Queue");
+    left_button_sizer->Add(add_to_queue_button, 0, wxEXPAND | wxBOTTOM, 5);
+    left_button_sizer->Add(remove_from_queue_button, 0, wxEXPAND);
+
+    // Right side - stacked Remove Selected/Clear All buttons
+    wxBoxSizer* right_button_sizer = new wxBoxSizer(wxVERTICAL);
+    remove_selected_button = new wxButton(bottom_controls, wxID_ANY, "Remove Selected");
+    clear_queue_button     = new wxButton(bottom_controls, wxID_ANY, "Clear All");
+    right_button_sizer->Add(remove_selected_button, 0, wxEXPAND | wxBOTTOM, 5);
+    right_button_sizer->Add(clear_queue_button, 0, wxEXPAND);
+
+    bottom_sizer->Add(left_button_sizer, 0, wxALL, 5);
+    bottom_sizer->AddStretchSpacer();
+    bottom_sizer->Add(right_button_sizer, 0, wxALL, 5);
+    bottom_controls->SetSizer(bottom_sizer);
+
 
     // Add all sections to main sizer with adjusted proportions for better visibility
     main_sizer->Add(execution_queue_label, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(execution_queue_ctrl, 2, wxEXPAND | wxALL, 5); // Slightly larger proportion
     main_sizer->Add(execution_controls, 0, wxEXPAND | wxALL, 5);
-    main_sizer->Add(movement_controls, 0, wxEXPAND | wxALL, 5);
-    main_sizer->Add(available_jobs_label, 0, wxEXPAND | wxALL, 5);
+    main_sizer->Add(display_panel, 0, wxEXPAND | wxALL, 5);    // Panel display toggle below Run Queue
+    main_sizer->Add(available_header_panel, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(available_jobs_ctrl, 1, wxEXPAND | wxALL, 5); // Smaller but still expandable
-    main_sizer->Add(cli_args_panel, 0, wxEXPAND | wxALL, 5);  // Custom CLI args field
-    main_sizer->Add(display_panel, 0, wxEXPAND | wxALL, 5);    // Panel display toggle
-    main_sizer->Add(general_controls, 0, wxEXPAND | wxALL, 5);
+    main_sizer->Add(cli_args_panel, 0, wxEXPAND | wxALL, 5);  // Custom CLI args field with Update button
+    main_sizer->Add(bottom_controls, 0, wxEXPAND | wxALL, 5);
 
     SetSizer(main_sizer);
 
@@ -160,7 +160,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     wxPrintf("TemplateMatchQueueManager: Layout() called\n");
 
     // Connect events
-    assign_priority_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnAssignPriorityClick, this);
     update_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnUpdateSelectedClick, this);
     run_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRunSelectedClick, this);
     add_to_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnAddToQueueClick, this);
@@ -252,6 +251,7 @@ void TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem
     // Create a copy with the new database ID and assign queue order
     TemplateMatchQueueItem new_item = item;
     new_item.database_queue_id      = new_database_queue_id;
+    new_item.search_id               = -1;  // Search ID is only assigned when first result is written
 
     // Assign next available queue order (find highest current order + 1)
     int max_order = -1; // Start at -1 so first item gets queue_order=0
@@ -505,43 +505,27 @@ void TemplateMatchQueueManager::PopulateListControl(wxListCtrl*                 
         const auto* item = items[idx];
         long        row;
 
-        if ( is_execution_queue ) {
-            // Execution queue shows queue order as first column
-            row = ctrl->InsertItem(idx, wxString::Format("%d", item->queue_order));
-            ctrl->SetItem(row, 1, wxString::Format("%ld", item->database_queue_id));
-            // Search ID is column 2 - show blank if -1
-            if (item->search_id > 0) {
-                ctrl->SetItem(row, 2, wxString::Format("%ld", item->search_id));
-            } else {
-                ctrl->SetItem(row, 2, "");
-            }
-            ctrl->SetItem(row, 3, item->search_name);
-            // Status is column 4
-            SetStatusDisplay(ctrl, row, item->queue_status);
-            // Progress is column 5
-            SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
-            ctrl->SetItem(row, 5, completion.GetCompletionString( ));
-            // Custom args is column 6
-            ctrl->SetItem(row, 6, item->custom_cli_args);
+        // Both execution and available queues now have the same column structure
+        // Search ID is first column - show search_id if valid (> 0), otherwise show empty string
+        if (item->search_id > 0) {
+            row = ctrl->InsertItem(idx, wxString::Format("%ld", item->search_id));
+        } else {
+            // No valid search ID yet (job hasn't started or search_id is -1 or 0) - show empty string
+            row = ctrl->InsertItem(idx, "");
         }
-        else {
-            // Available jobs shows ID as first column (no queue order)
-            row = ctrl->InsertItem(idx, wxString::Format("%ld", item->database_queue_id));
-            // Search ID is column 1 - show blank if -1
-            if (item->search_id > 0) {
-                ctrl->SetItem(row, 1, wxString::Format("%ld", item->search_id));
-            } else {
-                ctrl->SetItem(row, 1, "");
-            }
-            ctrl->SetItem(row, 2, item->search_name);
-            // Status is column 3
-            SetStatusDisplay(ctrl, row, item->queue_status);
-            // Progress is column 4
-            SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
-            ctrl->SetItem(row, 4, completion.GetCompletionString( ));
-            // Custom args is column 5
-            ctrl->SetItem(row, 5, item->custom_cli_args);
-        }
+
+        // CRITICAL: Store the database_queue_id as item data so we can retrieve it later
+        // This allows us to identify which queue item a row represents regardless of sorting/filtering
+        ctrl->SetItemData(row, item->database_queue_id);
+
+        ctrl->SetItem(row, 1, item->search_name);
+        // Status is column 2
+        SetStatusDisplay(ctrl, row, item->queue_status);
+        // Progress is column 3
+        SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
+        ctrl->SetItem(row, 3, completion.GetCompletionString( ));
+        // Custom args is column 4
+        ctrl->SetItem(row, 4, item->custom_cli_args);
     }
 }
 
@@ -661,9 +645,23 @@ int TemplateMatchQueueManager::GetSelectedRow( ) {
 void TemplateMatchQueueManager::RunNextJob( ) {
     MyPrintWithDetails("=== RUN NEXT JOB CALLED ===");
 
-    // Check if a job is already running
+    // Check if a job is already running or finalizing
     if ( IsJobRunning( ) ) {
-        MyDebugPrint("Job %ld is already running - skipping RunNextJob", currently_running_id);
+        if ( job_is_finalizing ) {
+            wxPrintf("Job is still finalizing - deferring RunNextJob\n");
+            // Schedule another attempt after finalization completes
+            wxTimer* retry_timer = new wxTimer();
+            retry_timer->Bind(wxEVT_TIMER, [this, retry_timer](wxTimerEvent&) {
+                wxPrintf("Retrying RunNextJob after finalization delay\n");
+                if ( ! IsJobRunning( ) ) {
+                    RunNextJob();
+                }
+                delete retry_timer;
+            });
+            retry_timer->StartOnce(1000);  // Retry in 1 second
+        } else {
+            MyDebugPrint("Job %ld is already running - skipping RunNextJob", currently_running_id);
+        }
         return;
     }
 
@@ -819,9 +817,14 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
 }
 
 bool TemplateMatchQueueManager::IsJobRunning( ) const {
-    bool is_running = currently_running_id != -1;
+    // A job is considered "running" if it's actively processing OR finalizing
+    bool is_running = currently_running_id != -1 || job_is_finalizing;
     if ( is_running ) {
-        wxPrintf("IsJobRunning: Job %ld is currently running\n", currently_running_id);
+        if ( job_is_finalizing ) {
+            wxPrintf("IsJobRunning: Job is in finalization phase\n");
+        } else {
+            wxPrintf("IsJobRunning: Job %ld is currently running\n", currently_running_id);
+        }
     }
     return is_running;
 }
@@ -929,39 +932,25 @@ void TemplateMatchQueueManager::OnAvailableJobsSelectionChanged(wxListEvent& eve
     if ( first_selected_row != -1 ) {
         has_available_selection = true;
 
-        // Find the queue item corresponding to this display row
-        // Available jobs display shows items in order: execution_queue items with queue_order < 0, then available_queue items
-        int current_row = 0;
+        // Get the database_queue_id from the item data
+        long database_queue_id = available_jobs_ctrl->GetItemData(first_selected_row);
 
-        // First check execution_queue items with queue_order < 0
+        // Find the queue item with this database_queue_id
+        // First check execution_queue
         for ( auto& item : execution_queue ) {
-            if ( item.queue_order < 0 ) {
-                // Skip completed jobs if hide_completed_jobs is enabled
-                if ( hide_completed_jobs && item.queue_status == "complete" ) {
-                    continue;
-                }
-
-                if ( current_row == first_selected_row ) {
-                    first_selected_item = &item;
-                    break;
-                }
-                current_row++;
+            if ( item.database_queue_id == database_queue_id ) {
+                first_selected_item = &item;
+                break;
             }
         }
 
         // If not found in execution_queue, check available_queue
         if ( ! first_selected_item ) {
             for ( auto& item : available_queue ) {
-                // Skip completed jobs if hide_completed_jobs is enabled
-                if ( hide_completed_jobs && item.queue_status == "complete" ) {
-                    continue;
-                }
-
-                if ( current_row == first_selected_row ) {
+                if ( item.database_queue_id == database_queue_id ) {
                     first_selected_item = &item;
                     break;
                 }
-                current_row++;
             }
         }
     }
@@ -996,26 +985,6 @@ void TemplateMatchQueueManager::OnAvailableJobsSelectionChanged(wxListEvent& eve
 
     wxPrintf("Available jobs selection changed - Add to Queue button %s\n",
              has_available_selection ? "enabled" : "disabled");
-}
-
-void TemplateMatchQueueManager::OnAssignPriorityClick(wxCommandEvent& event) {
-    // Apply drag-and-drop changes and unfreeze UI
-    assign_priority_button->Enable(false);
-
-    // Enable all other buttons
-    run_selected_button->Enable(true);
-    add_to_queue_button->Enable(true);
-    remove_from_queue_button->Enable(true);
-    remove_selected_button->Enable(true);
-    clear_queue_button->Enable(true);
-
-    // Update database with new priorities
-    SaveQueueToDatabase( );
-
-    // Refresh display
-    UpdateQueueDisplay( );
-
-    wxPrintf("Priority assignment completed - UI unfrozen\n");
 }
 
 void TemplateMatchQueueManager::UpdateButtonState() {
@@ -1217,11 +1186,14 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
 
     if ( has_selection ) {
         // Check all selected items for running jobs
-        long selected_item = queue_list_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-        while ( selected_item != -1 ) {
-            // Find the job with this queue_order
+        long selected_row = queue_list_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+        while ( selected_row != -1 ) {
+            // Get the database_queue_id from the item data
+            long database_queue_id = queue_list_ctrl->GetItemData(selected_row);
+
+            // Find the job with this database_queue_id
             for ( size_t i = 0; i < execution_queue.size( ); ++i ) {
-                if ( execution_queue[i].queue_order == selected_item ) {
+                if ( execution_queue[i].database_queue_id == database_queue_id ) {
                     if ( first_selected_index == -1 ) {
                         first_selected_index = i; // Save first for GUI population
                     }
@@ -1231,7 +1203,7 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
                     break;
                 }
             }
-            selected_item = queue_list_ctrl->GetNextItem(selected_item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+            selected_row = queue_list_ctrl->GetNextItem(selected_row, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
         }
     }
 
@@ -1281,14 +1253,16 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
 
 void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
     // Get selected jobs from available jobs table
-    std::vector<long> selected_rows;
-    long              selected_item = available_jobs_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-    while ( selected_item != -1 ) {
-        selected_rows.push_back(selected_item);
-        selected_item = available_jobs_ctrl->GetNextItem(selected_item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    std::vector<long> selected_database_ids;
+    long              selected_row = available_jobs_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    while ( selected_row != -1 ) {
+        // Get the database_queue_id from the item data
+        long database_queue_id = available_jobs_ctrl->GetItemData(selected_row);
+        selected_database_ids.push_back(database_queue_id);
+        selected_row = available_jobs_ctrl->GetNextItem(selected_row, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
     }
 
-    if ( selected_rows.empty( ) ) {
+    if ( selected_database_ids.empty( ) ) {
         wxMessageBox("Please select jobs from the Available Jobs table to add to the execution queue.",
                      "No Selection", wxOK | wxICON_WARNING);
         return;
@@ -1305,13 +1279,12 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
     // Move selected available jobs to execution queue
     std::vector<long>     selected_job_ids;
     std::vector<wxString> blocked_jobs; // Track jobs that can't be moved
-    int                   available_row = 0;
 
     // Helper lambda to process a job for moving to execution queue
     auto process_job_for_queue = [&](TemplateMatchQueueItem* job, bool needs_move_from_available, size_t available_index) {
-        // Check if this job's row is selected
-        for ( long selected_row : selected_rows ) {
-            if ( available_row == selected_row ) {
+        // Check if this job is selected (by database_queue_id)
+        for ( long selected_id : selected_database_ids ) {
+            if ( job->database_queue_id == selected_id ) {
                 wxPrintf("DEBUG: Processing job %ld with status '%s' for adding to queue\n",
                          job->database_queue_id, job->queue_status);
                 // Allow any non-complete jobs to be moved to execution queue
@@ -1349,7 +1322,6 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
                 continue;
             }
             process_job_for_queue(&execution_queue[i], false, 0);
-            available_row++;
         }
     }
 
@@ -1372,7 +1344,6 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
             if ( process_job_for_queue(&available_queue[i], true, i) ) {
                 i--; // Adjust index after erase
             }
-            available_row++;
         }
     }
 
@@ -1394,14 +1365,16 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
 
 void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
     // Move selected jobs from execution queue to available jobs (queue_order = -1)
-    std::vector<long> selected_rows;
-    long              selected_item = execution_queue_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-    while ( selected_item != -1 ) {
-        selected_rows.push_back(selected_item);
-        selected_item = execution_queue_ctrl->GetNextItem(selected_item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    std::vector<long> selected_database_ids;
+    long              selected_row = execution_queue_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    while ( selected_row != -1 ) {
+        // Get the database_queue_id from the item data
+        long database_queue_id = execution_queue_ctrl->GetItemData(selected_row);
+        selected_database_ids.push_back(database_queue_id);
+        selected_row = execution_queue_ctrl->GetNextItem(selected_row, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
     }
 
-    if ( selected_rows.empty( ) ) {
+    if ( selected_database_ids.empty( ) ) {
         wxMessageBox("Please select jobs to remove from the execution queue.",
                      "No Selection", wxOK | wxICON_WARNING);
         return;
@@ -1410,7 +1383,7 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
     wxMessageDialog dialog(this,
                            wxString::Format("Remove %zu selected job(s) from execution queue?\n\n"
                                             "They will be moved to Available Jobs.",
-                                            selected_rows.size( )),
+                                            selected_database_ids.size( )),
                            "Confirm Remove from Queue", wxYES_NO | wxICON_QUESTION);
 
     if ( dialog.ShowModal( ) == wxID_YES ) {
@@ -1420,18 +1393,15 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
             PrintQueueState( );
         }
 
-        // Get database_queue_ids for selected items
-        std::vector<long> selected_ids;
-        for ( long row : selected_rows ) {
-            if ( row < int(execution_queue.size( )) ) {
-                // Find the job with this queue position (since table is sorted by queue_order)
-                for ( auto& job : execution_queue ) {
-                    if ( job.queue_order == row ) { // Row position = queue_order due to sorting
-                        selected_ids.push_back(job.database_queue_id);
-                        if constexpr ( skip_search_execution_for_queue_debugging ) {
-                            wxPrintf("Selected job at row %ld: ID=%ld, queue_order=%d\n",
-                                     row, job.database_queue_id, job.queue_order);
-                        }
+        // Get database_queue_ids for selected items (already collected above)
+        std::vector<long> selected_ids = selected_database_ids;
+
+        if constexpr ( skip_search_execution_for_queue_debugging ) {
+            for ( long id : selected_ids ) {
+                for ( const auto& job : execution_queue ) {
+                    if ( job.database_queue_id == id ) {
+                        wxPrintf("Selected job: ID=%ld, queue_order=%d\n",
+                                 job.database_queue_id, job.queue_order);
                         break;
                     }
                 }
@@ -1945,12 +1915,16 @@ void TemplateMatchQueueManager::ContinueQueueExecution( ) {
     // Instance method to continue queue execution after a job completes
     // This is called from ProcessAllJobsFinished to continue with the next job
 
-    wxPrintf("ContinueQueueExecution: currently_running_id=%ld\n",
-             currently_running_id);
+    wxPrintf("ContinueQueueExecution: currently_running_id=%ld, finalizing=%s\n",
+             currently_running_id, job_is_finalizing ? "true" : "false");
 
     if ( IsJobRunning( ) ) {
-        // A job is already running, don't start another
-        wxPrintf("ContinueQueueExecution: Job %ld is still running, not continuing queue execution\n", currently_running_id);
+        // A job is already running or finalizing, don't start another
+        if ( job_is_finalizing ) {
+            wxPrintf("ContinueQueueExecution: Job is finalizing, not continuing queue execution\n");
+        } else {
+            wxPrintf("ContinueQueueExecution: Job %ld is still running, not continuing queue execution\n", currently_running_id);
+        }
         return;
     }
 
@@ -1969,6 +1943,19 @@ bool TemplateMatchQueueManager::ExecutionQueueHasActiveItems() const {
         }
     }
     return false;
+}
+
+void TemplateMatchQueueManager::OnJobEnteringFinalization(long database_queue_id) {
+    // Mark that a job is entering finalization phase
+    // This prevents auto-advance from starting a new job prematurely
+    wxPrintf("Job %ld entering finalization phase\n", database_queue_id);
+    job_is_finalizing = true;
+
+    // We can clear currently_running_id here since the job is no longer "running" per se
+    // but job_is_finalizing prevents new jobs from starting
+    if ( currently_running_id == database_queue_id ) {
+        currently_running_id = -1;
+    }
 }
 
 void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool success) {
@@ -2015,8 +2002,11 @@ void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool succ
     // No need to renumber - jobs were already shifted when the completed job started running
     // The execution queue should already have consecutive priorities: 0, 1, 2, 3...
 
-    // Clear currently running ID since job is done
-    currently_running_id = -1;
+    // Clear currently running ID and finalization flag since job is completely done
+    if ( currently_running_id == database_queue_id ) {
+        currently_running_id = -1;
+    }
+    job_is_finalizing = false;  // Job has finished finalizing
 
     // Update button state since no job is running
     UpdateButtonState();
@@ -2038,7 +2028,18 @@ void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool succ
         if constexpr ( skip_search_execution_for_queue_debugging ) {
             wxPrintf("\n=== Auto-progressing to next job in queue ===\n");
         }
-        ProgressExecutionQueue( );
+
+        // Add a small delay before auto-advancing to ensure all finalization completes
+        // This prevents race conditions where the next job might start before the previous
+        // job's results are fully written to the database or UI is updated
+        wxTimer* delay_timer = new wxTimer();
+        delay_timer->Bind(wxEVT_TIMER, [this, delay_timer](wxTimerEvent&) {
+            wxPrintf("Auto-advance timer fired - progressing queue\n");
+            ProgressExecutionQueue( );
+            delete delay_timer;  // Clean up the timer
+        });
+        delay_timer->StartOnce(500);  // 500ms delay before auto-advancing
+        wxPrintf("Scheduled auto-advance in 500ms\n");
     }
     else {
         if constexpr ( skip_search_execution_for_queue_debugging ) {
@@ -2282,38 +2283,11 @@ void TemplateMatchQueueManager::PopulateAvailableSearchesNotInQueueFromDatabase(
 
         // If not found in either queue, add to available queue
         if ( ! found_in_execution && ! found_in_available ) {
-            // Create a minimal queue item for this orphaned search
-            TemplateMatchQueueItem new_item;
-            new_item.database_queue_id = -1; // No queue entry exists for this search
-            new_item.search_id         = search_id; // The SEARCH_ID from TEMPLATE_MATCH_LIST
-            new_item.search_name       = wxString::Format("Search %ld", search_id);
-            new_item.queue_status      = "unknown"; // Will be determined by n/N analysis
-            new_item.queue_order       = -1; // Not in execution queue
-
-            // Use the image_group_id from the database (will be -1 if not in TEMPLATE_MATCH_QUEUE)
-            new_item.image_group_id = image_group_id;
-
-            // Get completion info with the known image group
-            // Note: if image_group_id is -1 (orphaned search), this will count across all images
-            auto counts = main_frame->current_project.database.GetSearchCompletionCounts(search_id, image_group_id);
-            if ( counts.second > 0 ) {
-                if ( counts.first == 0 ) {
-                    new_item.queue_status = "pending";
-                }
-                else if ( counts.first == counts.second ) {
-                    new_item.queue_status = "complete";
-                }
-                else {
-                    new_item.queue_status = "running";
-                }
-            }
-
-            available_queue.push_back(new_item);
-
-            // Debug: Get completion info to verify n/N calculation
-            SearchCompletionInfo completion = GetSearchCompletionInfo(search_id);
-            wxPrintf("Added available search %ld: %s with status %s (%s)\n",
-                     search_id, new_item.search_name.mb_str( ).data( ), new_item.queue_status.mb_str( ).data( ), completion.GetCompletionString( ).mb_str( ).data( ));
+            // Skip orphaned searches for now - they shouldn't be in the queue manager
+            // These are searches that have results but no queue entry, likely from
+            // legacy projects or manual database edits
+            wxPrintf("Skipping orphaned search %ld - has results but no queue entry\n", search_id);
+            continue;
         }
     }
 

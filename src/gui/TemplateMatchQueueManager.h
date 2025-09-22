@@ -203,7 +203,6 @@ class TemplateMatchQueueManager : public wxPanel {
     // UI Controls - Execution queue management buttons
     wxButton* run_selected_button; ///< Execute highest priority search
     wxButton* update_selected_button; ///< Update selected pending item with GUI values
-    wxButton* assign_priority_button; ///< Open priority assignment dialog
 
     // UI Controls - Queue movement buttons
     wxButton* add_to_queue_button; ///< Move searches from available to execution queue
@@ -230,6 +229,7 @@ class TemplateMatchQueueManager : public wxPanel {
     bool auto_progress_queue; ///< True if queue should auto-advance after search completion
     bool hide_completed_jobs; ///< True if completed searches should be hidden from available queue
     bool gui_update_frozen; ///< True while SetupJobFromQueueItem is executing to prevent GUI interference
+    bool job_is_finalizing; ///< True when job is in final processing (writing results, cleanup)
 
     // Panel Integration - Reference for job execution and database access
     MatchTemplatePanel* match_template_panel_ptr; ///< Panel for delegating search execution
@@ -323,6 +323,12 @@ class TemplateMatchQueueManager : public wxPanel {
      * Enables automatic queue progression when auto_progress_queue is enabled.
      */
     void ContinueQueueExecution( );
+
+    /**
+     * @brief Marks job as entering final processing phase to prevent premature auto-advance
+     * @param database_queue_id Database ID of the job entering finalization
+     */
+    void OnJobEnteringFinalization(long database_queue_id);
 
     /**
      * @brief Callback for search completion to update queue state and trigger progression
@@ -452,7 +458,6 @@ class TemplateMatchQueueManager : public wxPanel {
     void OnAvailableJobsSelectionChanged(wxListEvent& event); ///< Updates UI state based on available queue selection
     void OnHideCompletedToggle(wxCommandEvent& event); ///< Toggles display of completed searches
     void OnPanelDisplayToggle(wxCommandEvent& event); ///< Toggles between Input and Progress panel display
-    void OnAssignPriorityClick(wxCommandEvent& event); ///< Opens priority assignment dialog
     void OnUpdateSelectedClick(wxCommandEvent& event); ///< Updates selected pending item with current GUI values
     void UpdateButtonState( ); ///< Updates update button state based on selection
     void OnAddToQueueClick(wxCommandEvent& event); ///< Moves selected searches from available to execution queue

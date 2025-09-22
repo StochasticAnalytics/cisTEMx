@@ -200,7 +200,7 @@ private:
 
     // UI Controls - Execution queue management buttons
     wxButton* run_selected_button;      ///< Execute highest priority search
-    wxButton* cancel_run_button;        ///< Cancel currently running search
+    wxButton* update_selected_button;   ///< Update selected pending item with GUI values
     wxButton* assign_priority_button;   ///< Open priority assignment dialog
 
     // UI Controls - Queue movement buttons
@@ -212,10 +212,17 @@ private:
     wxButton* clear_queue_button;       ///< Clear entire execution queue
     wxCheckBox* hide_completed_checkbox;///< Toggle visibility of completed searches
 
+    // UI Controls - Custom CLI arguments
+    wxTextCtrl* custom_cli_args_text;   ///< Editable field for custom CLI arguments
+
+    // UI Controls - Panel display toggle
+    wxToggleButton* panel_display_toggle;   ///< Toggle switch between Input and Progress panels
+
     // Data Collections - In-memory queue storage
     std::deque<TemplateMatchQueueItem> execution_queue; ///< Searches ready for execution (queue_order >= 0)
     std::deque<TemplateMatchQueueItem> available_queue; ///< Searches available for queueing (queue_order < 0)
     long currently_running_id;                          ///< Database ID of search currently executing
+    long last_populated_queue_id;                       ///< Database ID of last item populated in GUI
 
     // State Tracking - Execution and display control
     bool auto_progress_queue;   ///< True if queue should auto-advance after search completion
@@ -381,6 +388,12 @@ public:
     void UpdateSearchIdForQueueItem(long queue_database_queue_id, long database_search_id);
 
     /**
+     * @brief Check if execution queue has items ready to run
+     * @return true if there are items at priority 0 or higher (pending/failed/partial)
+     */
+    bool ExecutionQueueHasActiveItems() const;
+
+    /**
      * @brief Discovers and populates missing database job IDs for completed searches
      */
 
@@ -436,8 +449,10 @@ public:
     void OnSelectionChanged(wxListEvent& event);              ///< Updates UI state based on execution queue selection
     void OnAvailableJobsSelectionChanged(wxListEvent& event); ///< Updates UI state based on available queue selection
     void OnHideCompletedToggle(wxCommandEvent& event);        ///< Toggles display of completed searches
+    void OnPanelDisplayToggle(wxCommandEvent& event);         ///< Toggles between Input and Progress panel display
     void OnAssignPriorityClick(wxCommandEvent& event);        ///< Opens priority assignment dialog
-    void OnCancelRunClick(wxCommandEvent& event);             ///< Cancels currently running search
+    void OnUpdateSelectedClick(wxCommandEvent& event);        ///< Updates selected pending item with current GUI values
+    void UpdateButtonState();                                  ///< Updates update button state based on selection
     void OnAddToQueueClick(wxCommandEvent& event);            ///< Moves selected searches from available to execution queue
     void OnRemoveFromQueueClick(wxCommandEvent& event);       ///< Moves selected searches from execution to available queue
 
@@ -468,6 +483,13 @@ public:
      * @brief Persists current queue state to database
      */
     void SaveQueueToDatabase();
+
+    /**
+     * @brief Updates a single queue item in the database
+     * @param item Queue item with updated parameters
+     */
+    bool UpdateQueueItemInDatabase(const TemplateMatchQueueItem& item);
+    bool ValidateQueueItem(const TemplateMatchQueueItem& item, wxString& error_message);
 
     /**
      * @brief Debug helper to print current queue state to console

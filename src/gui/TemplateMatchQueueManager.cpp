@@ -13,7 +13,7 @@ EVT_LIST_BEGIN_DRAG(wxID_ANY, TemplateMatchQueueManager::OnBeginDrag)
 END_EVENT_TABLE( )
 
 TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel)
-    : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel), currently_running_id(-1) {
+    : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel), currently_running_id(-1), last_populated_queue_id(-1) {
 
     // Initialize state variables
     auto_progress_queue = false; // Don't auto-progress by default (user controls progression)
@@ -57,13 +57,13 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     // Execution controls
     run_selected_button = new wxButton(execution_controls, wxID_ANY, "Run Queue");
-    cancel_run_button   = new wxButton(execution_controls, wxID_ANY, "Cancel Active Run");
-    cancel_run_button->Enable(false); // Disabled until search is running
+    update_selected_button = new wxButton(execution_controls, wxID_ANY, "Update Selected");
+    update_selected_button->Enable(false); // Disabled until pending item selected
 
     execution_sizer->Add(assign_priority_button, 0, wxALL, 5);
     execution_sizer->AddSpacer(20);
     execution_sizer->Add(run_selected_button, 0, wxALL, 5);
-    execution_sizer->Add(cancel_run_button, 0, wxALL, 5);
+    execution_sizer->Add(update_selected_button, 0, wxALL, 5);
 
     execution_controls->SetSizer(execution_sizer);
 
@@ -96,6 +96,34 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     available_jobs_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 80);
     available_jobs_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 140);
 
+    // Create CLI args section
+    wxPanel*    cli_args_panel = new wxPanel(this, wxID_ANY);
+    wxBoxSizer* cli_args_sizer = new wxBoxSizer(wxHORIZONTAL);
+
+    wxStaticText* cli_args_label = new wxStaticText(cli_args_panel, wxID_ANY, "Custom CLI Arguments:");
+    custom_cli_args_text = new wxTextCtrl(cli_args_panel, wxID_ANY, wxEmptyString,
+                                          wxDefaultPosition, wxSize(400, -1));
+
+    cli_args_sizer->Add(cli_args_label, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+    cli_args_sizer->Add(custom_cli_args_text, 1, wxEXPAND | wxALL, 5);
+    cli_args_panel->SetSizer(cli_args_sizer);
+
+    // Create panel display toggle switch
+    wxPanel*    display_panel = new wxPanel(this, wxID_ANY);
+    wxBoxSizer* display_sizer = new wxBoxSizer(wxHORIZONTAL);
+
+    wxStaticText* display_label = new wxStaticText(display_panel, wxID_ANY, "Panel Display:");
+    panel_display_toggle = new wxToggleButton(display_panel, wxID_ANY, "Show Input Panel",
+                                              wxDefaultPosition, wxSize(150, -1));
+
+    // Set tooltip
+    panel_display_toggle->SetToolTip("Toggle between Input and Progress panels");
+
+    display_sizer->Add(display_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
+    display_sizer->Add(panel_display_toggle, 0, wxALIGN_CENTER_VERTICAL);
+    display_sizer->AddStretchSpacer();
+    display_panel->SetSizer(display_sizer);
+
     // Create general controls
     wxPanel*    general_controls = new wxPanel(this, wxID_ANY);
     wxBoxSizer* general_sizer    = new wxBoxSizer(wxHORIZONTAL);
@@ -118,6 +146,8 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     main_sizer->Add(movement_controls, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(available_jobs_label, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(available_jobs_ctrl, 1, wxEXPAND | wxALL, 5); // Smaller but still expandable
+    main_sizer->Add(cli_args_panel, 0, wxEXPAND | wxALL, 5);  // Custom CLI args field
+    main_sizer->Add(display_panel, 0, wxEXPAND | wxALL, 5);    // Panel display toggle
     main_sizer->Add(general_controls, 0, wxEXPAND | wxALL, 5);
 
     SetSizer(main_sizer);
@@ -128,13 +158,14 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     // Connect events
     assign_priority_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnAssignPriorityClick, this);
-    cancel_run_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnCancelRunClick, this);
+    update_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnUpdateSelectedClick, this);
     run_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRunSelectedClick, this);
     add_to_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnAddToQueueClick, this);
     remove_from_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRemoveFromQueueClick, this);
     remove_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRemoveSelectedClick, this);
     clear_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnClearQueueClick, this);
     hide_completed_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnHideCompletedToggle, this);
+    panel_display_toggle->Bind(wxEVT_TOGGLEBUTTON, &TemplateMatchQueueManager::OnPanelDisplayToggle, this);
 
     // Bind selection events for available searches table
     available_jobs_ctrl->Bind(wxEVT_LIST_ITEM_SELECTED, &TemplateMatchQueueManager::OnAvailableJobsSelectionChanged, this);
@@ -163,13 +194,38 @@ TemplateMatchQueueManager::~TemplateMatchQueueManager( ) {
     }
 }
 
+bool TemplateMatchQueueManager::ValidateQueueItem(const TemplateMatchQueueItem& item, wxString& error_message) {
+    // Validate basic parameters
+    if (item.image_group_id < 0) {
+        error_message = wxString::Format("Invalid image group ID: %d", item.image_group_id);
+        return false;
+    }
+    if (item.reference_volume_asset_id < 0) {
+        error_message = wxString::Format("Invalid reference volume ID: %d", item.reference_volume_asset_id);
+        return false;
+    }
+    if (item.search_name.IsEmpty()) {
+        error_message = "Search name cannot be empty";
+        return false;
+    }
+    if (item.queue_status != "pending" && item.queue_status != "running" &&
+        item.queue_status != "complete" && item.queue_status != "failed" &&
+        item.queue_status != "partial") {
+        error_message = wxString::Format("Invalid queue status: %s", item.queue_status);
+        return false;
+    }
+
+    error_message = "";
+    return true;
+}
+
 void TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem& item) {
     // Validate the queue item before adding
-    MyDebugAssertTrue(item.image_group_id >= 0, "Cannot add item with invalid image_group_id: %d", item.image_group_id);
-    MyDebugAssertTrue(item.reference_volume_asset_id >= 0, "Cannot add item with invalid reference_volume_asset_id: %d", item.reference_volume_asset_id);
-    MyDebugAssertFalse(item.search_name.IsEmpty( ), "Cannot add item with empty search_name");
-    MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" || item.queue_status == "complete" || item.queue_status == "failed",
-                      "Cannot add item with invalid queue_status: %s", item.queue_status.mb_str( ).data( ));
+    wxString error_message;
+    if (!ValidateQueueItem(item, error_message)) {
+        wxMessageBox(error_message, "Invalid Queue Item", wxOK | wxICON_ERROR);
+        return;
+    }
 
     MyDebugAssertTrue(match_template_panel_ptr != nullptr, "AddToExecutionQueue called with null match_template_panel_ptr");
     MyDebugAssertTrue(main_frame != nullptr, "AddToExecutionQueue called with null main_frame");
@@ -333,7 +389,7 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
         int original_queue_order = next_job->queue_order;
         next_job->queue_order    = -1;
 
-        // Shift all other execution queue jobs up by one priority (1→0, 2→1, 3→2, etc.)
+        // Shift all other execution queue jobs up by one priority (1->0, 2->1, 3->2, etc.)
         for ( auto& item : execution_queue ) {
             if ( item.queue_order > 0 ) {
                 item.queue_order--;
@@ -625,7 +681,7 @@ void TemplateMatchQueueManager::RunNextJob( ) {
     // Move to priority -1 (out of execution queue) but keep original status
     next_job->queue_order = -1; // Move running job out of execution queue for crash safety
 
-    // Shift all other execution queue jobs up by one priority (1→0, 2→1, 3→2, etc.)
+    // Shift all other execution queue jobs up by one priority (1->0, 2->1, 3->2, etc.)
     for ( auto& item : execution_queue ) {
         if ( item.queue_order > 0 ) {
             item.queue_order--;
@@ -681,8 +737,8 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
             currently_running_id = job_to_run.database_queue_id;
             wxPrintf("Job %ld is now marked as RUNNING (currently_running_id set)\n", job_to_run.database_queue_id);
 
-            // Enable cancel button now that a job is running
-            cancel_run_button->Enable(true);
+            // Update button state when job starts
+            UpdateButtonState();
 
             // Update displays to show running status
             UpdateQueueDisplay( );
@@ -723,8 +779,8 @@ bool TemplateMatchQueueManager::ExecuteJob(TemplateMatchQueueItem& job_to_run) {
                 currently_running_id = job_to_run.database_queue_id;
                 wxPrintf("Job %ld started successfully and marked as running\n", job_to_run.database_queue_id);
 
-                // Enable cancel button now that a job is running
-                cancel_run_button->Enable(true);
+                // Update button state when job starts
+                UpdateButtonState();
 
                 // Job status will be updated to "complete" when the job finishes via ProcessAllJobsFinished
                 return true;
@@ -889,11 +945,28 @@ void TemplateMatchQueueManager::OnAvailableJobsSelectionChanged(wxListEvent& eve
     // Enable Add to Queue button based on available jobs selection
     add_to_queue_button->Enable(has_available_selection);
 
-    // Populate the GUI with the first selected item's parameters (unless GUI is frozen)
-    if ( first_selected_item && ! gui_update_frozen ) {
-        if ( match_template_panel_ptr ) {
-            wxPrintf("Populating GUI from available queue item: %s\n", first_selected_item->search_name);
-            match_template_panel_ptr->PopulateGuiFromQueueItem(*first_selected_item);
+    // Populate the GUI with the first selected item's parameters
+    // Note: We don't check gui_update_frozen here because we want to allow editing of pending items
+    // The freeze is only meant to prevent interference during job execution
+    if ( first_selected_item && match_template_panel_ptr ) {
+        // Only populate GUI if the item is pending (editable) or we're not currently running a job
+        bool is_editable = (first_selected_item->queue_status == "pending" ||
+                           first_selected_item->queue_status == "failed" ||
+                           first_selected_item->queue_status == "partial");
+
+        if (is_editable || !gui_update_frozen) {
+            wxPrintf("Populating GUI from available queue item: %s (status: %s)\n",
+                    first_selected_item->search_name, first_selected_item->queue_status);
+            match_template_panel_ptr->PopulateGuiFromQueueItem(*first_selected_item, true);
+
+            // Also populate the custom CLI args field
+            if (custom_cli_args_text) {
+                custom_cli_args_text->SetValue(first_selected_item->custom_cli_args);
+            }
+
+            // Track which item was populated and enable/disable update button
+            last_populated_queue_id = first_selected_item->database_queue_id;
+            UpdateButtonState();
         }
     }
 
@@ -921,67 +994,174 @@ void TemplateMatchQueueManager::OnAssignPriorityClick(wxCommandEvent& event) {
     wxPrintf("Priority assignment completed - UI unfrozen\n");
 }
 
-void TemplateMatchQueueManager::OnCancelRunClick(wxCommandEvent& event) {
-    // Find and cancel the currently running job
-    wxMessageDialog dialog(this, "Cancel the currently running job and stop queue progression?",
-                           "Confirm Cancel", wxYES_NO | wxICON_QUESTION);
-    if ( dialog.ShowModal( ) == wxID_YES ) {
-        // First, actually terminate the running job in MatchTemplatePanel
-        if (match_template_panel_ptr && currently_running_id > 0) {
-            // Call the terminate function on the panel
-            // This will trigger the same logic as clicking the Terminate button
-            wxCommandEvent fake_event;
-            match_template_panel_ptr->TerminateButtonClick(fake_event);
-            wxPrintf("Sent termination signal to MatchTemplatePanel for job %ld\n", currently_running_id);
+void TemplateMatchQueueManager::UpdateButtonState() {
+    // Enable update button only if:
+    // 1. We have a populated item ID
+    // 2. The item exists and has status "pending"
+
+    if (last_populated_queue_id <= 0) {
+        update_selected_button->Enable(false);
+        return;
+    }
+
+    // Find the item in either queue
+    TemplateMatchQueueItem* item = nullptr;
+    for (auto& queue_item : execution_queue) {
+        if (queue_item.database_queue_id == last_populated_queue_id) {
+            item = &queue_item;
+            break;
         }
-
-        // Stop auto-progression to prevent next job from starting
-        SetAutoProgressQueue(false);
-        wxPrintf("Queue auto-progression disabled\n");
-
-        // Find running job and reset its status based on completion
-        for ( auto& job : execution_queue ) {
-            if ( job.queue_status == "running" ) {
-                // Get completion info to determine if it should be partial or pending
-                // Only check if we have a valid search_id (job actually started processing)
-                if (job.search_id > 0) {
-                    auto completion_counts = GetSearchCompletionInfo(job.database_queue_id, job.search_id, job.image_group_id);
-                    if (completion_counts.first > 0 && completion_counts.first < completion_counts.second) {
-                        job.queue_status = "partial";  // Has some completed results but not all
-                        wxPrintf("Job %ld has %d/%d results completed - setting status to partial\n",
-                                 currently_running_id, completion_counts.first, completion_counts.second);
-                    } else if (completion_counts.first == 0) {
-                        job.queue_status = "pending";  // No results completed yet
-                        wxPrintf("Job %ld has no completed results - setting status to pending\n",
-                                 currently_running_id);
-                    }
-                    // Note: if completion_counts.first == completion_counts.second, status stays "running"
-                    // which will be corrected to "complete" by OnJobCompleted
-                } else {
-                    // No search_id means job never really started processing
-                    job.queue_status = "pending";
-                    wxPrintf("Job %ld has no search_id - setting status to pending\n",
-                             currently_running_id);
-                }
-                job.queue_order = -1; // Move to available jobs table
-
-                wxPrintf("Job %ld cancelled and moved to available jobs with status '%s'\n",
-                         currently_running_id, job.queue_status);
+    }
+    if (!item) {
+        for (auto& queue_item : available_queue) {
+            if (queue_item.database_queue_id == last_populated_queue_id) {
+                item = &queue_item;
                 break;
             }
         }
+    }
 
-        // Clear currently running ID
-        currently_running_id = -1;
+    // Enable button only if item found and status is pending
+    bool should_enable = (item != nullptr && item->queue_status == "pending");
+    update_selected_button->Enable(should_enable);
 
-        // Update cancel button state
-        cancel_run_button->Enable(false);
-
-        UpdateQueueDisplay( );
-        UpdateAvailableJobsDisplay( );
-        SaveQueueToDatabase( );
+    if (should_enable) {
+        wxPrintf("Update button enabled for pending item %ld\n", last_populated_queue_id);
+    } else if (item) {
+        wxPrintf("Update button disabled - item %ld has status '%s'\n",
+                 last_populated_queue_id, item->queue_status);
+    } else {
+        wxPrintf("Update button disabled - item %ld not found\n", last_populated_queue_id);
     }
 }
+
+void TemplateMatchQueueManager::OnUpdateSelectedClick(wxCommandEvent& event) {
+    // Find the original queue item
+    TemplateMatchQueueItem* original_item = nullptr;
+    for (auto& queue_item : execution_queue) {
+        if (queue_item.database_queue_id == last_populated_queue_id) {
+            original_item = &queue_item;
+            break;
+        }
+    }
+    if (!original_item) {
+        for (auto& queue_item : available_queue) {
+            if (queue_item.database_queue_id == last_populated_queue_id) {
+                original_item = &queue_item;
+                break;
+            }
+        }
+    }
+
+    if (!original_item) {
+        wxMessageBox("Could not find the original queue item", "Error", wxOK | wxICON_ERROR);
+        return;
+    }
+
+    // Verify it's still pending
+    if (original_item->queue_status != "pending") {
+        wxMessageBox("Can only update pending items", "Error", wxOK | wxICON_ERROR);
+        return;
+    }
+
+    // Collect current parameters from GUI
+    TemplateMatchQueueItem updated_item = match_template_panel_ptr->CollectJobParametersFromGui();
+
+    // Get custom CLI args from the text control
+    if (custom_cli_args_text) {
+        updated_item.custom_cli_args = custom_cli_args_text->GetValue();
+    }
+
+    // Preserve database ID and queue position
+    updated_item.database_queue_id = original_item->database_queue_id;
+    updated_item.queue_order = original_item->queue_order;
+    updated_item.search_id = original_item->search_id;
+    updated_item.queue_status = original_item->queue_status;
+
+    // Validate the updated item
+    wxString validation_error;
+    if (!ValidateQueueItem(updated_item, validation_error)) {
+        wxMessageBox(validation_error, "Invalid Parameters", wxOK | wxICON_ERROR);
+        return;
+    }
+
+    // Build comparison dialog
+    wxString changes;
+    bool has_changes = false;
+
+    // Compare key fields and list changes
+    if (original_item->search_name != updated_item.search_name) {
+        changes += wxString::Format("Search Name: %s -> %s\n",
+                                    original_item->search_name, updated_item.search_name);
+        has_changes = true;
+    }
+    if (original_item->image_group_id != updated_item.image_group_id) {
+        changes += wxString::Format("Image Group ID: %d -> %d\n",
+                                    original_item->image_group_id, updated_item.image_group_id);
+        has_changes = true;
+    }
+    if (original_item->reference_volume_asset_id != updated_item.reference_volume_asset_id) {
+        changes += wxString::Format("Reference Volume ID: %d -> %d\n",
+                                    original_item->reference_volume_asset_id, updated_item.reference_volume_asset_id);
+        has_changes = true;
+    }
+    if (original_item->run_profile_id != updated_item.run_profile_id) {
+        changes += wxString::Format("Run Profile ID: %d -> %d\n",
+                                    original_item->run_profile_id, updated_item.run_profile_id);
+        has_changes = true;
+    }
+    if (original_item->high_resolution_limit != updated_item.high_resolution_limit) {
+        changes += wxString::Format("High Resolution: %.2f -> %.2f\n",
+                                    original_item->high_resolution_limit, updated_item.high_resolution_limit);
+        has_changes = true;
+    }
+    if (original_item->out_of_plane_angular_step != updated_item.out_of_plane_angular_step) {
+        changes += wxString::Format("Out-of-Plane Step: %.2f -> %.2f\n",
+                                    original_item->out_of_plane_angular_step, updated_item.out_of_plane_angular_step);
+        has_changes = true;
+    }
+    if (original_item->in_plane_angular_step != updated_item.in_plane_angular_step) {
+        changes += wxString::Format("In-Plane Step: %.2f -> %.2f\n",
+                                    original_item->in_plane_angular_step, updated_item.in_plane_angular_step);
+        has_changes = true;
+    }
+    if (original_item->custom_cli_args != updated_item.custom_cli_args) {
+        changes += wxString::Format("Custom CLI Args: '%s' -> '%s'\n",
+                                    original_item->custom_cli_args, updated_item.custom_cli_args);
+        has_changes = true;
+    }
+    // Add more comparisons as needed...
+
+    if (!has_changes) {
+        wxMessageBox("No changes detected", "Update Queue Item", wxOK | wxICON_INFORMATION);
+        return;
+    }
+
+    // Show confirmation dialog
+    wxString message = wxString::Format("Confirm the following changes to queue item %ld:\n\n%s",
+                                        original_item->database_queue_id, changes);
+    wxMessageDialog dialog(this, message, "Confirm Update", wxYES_NO | wxICON_QUESTION);
+
+    if (dialog.ShowModal() != wxID_YES) {
+        return;
+    }
+
+    // Update the item in memory
+    *original_item = updated_item;
+
+    // Update in database
+    if (!UpdateQueueItemInDatabase(updated_item)) {
+        // Error message already shown in UpdateQueueItemInDatabase
+        return;
+    }
+
+    // Refresh displays
+    UpdateQueueDisplay();
+    UpdateAvailableJobsDisplay();
+
+    wxMessageBox("Queue item updated successfully", "Success", wxOK | wxICON_INFORMATION);
+}
+
 
 void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
     int selected = GetSelectedRow( );
@@ -1045,11 +1225,30 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
     run_selected_button->Enable(has_job_at_priority_0 && ! IsJobRunning( ));
     remove_from_queue_button->Enable(has_selection && ! any_running);
 
-    // Populate the GUI with the first selected item's parameters (unless GUI is frozen)
-    if ( has_selection && first_selected_index >= 0 && ! gui_update_frozen ) {
-        if ( match_template_panel_ptr ) {
-            wxPrintf("Populating GUI from execution queue item %d\n", first_selected_index);
-            match_template_panel_ptr->PopulateGuiFromQueueItem(execution_queue[first_selected_index]);
+    // Populate the GUI with the first selected item's parameters
+    // Note: We don't check gui_update_frozen here for pending items because we want to allow editing
+    // The freeze is only meant to prevent interference during job execution
+    if ( has_selection && first_selected_index >= 0 && match_template_panel_ptr ) {
+        const auto& selected_item = execution_queue[first_selected_index];
+
+        // Only populate GUI if the item is pending (editable) or we're not currently running a job
+        bool is_editable = (selected_item.queue_status == "pending" ||
+                           selected_item.queue_status == "failed" ||
+                           selected_item.queue_status == "partial");
+
+        if (is_editable || !gui_update_frozen) {
+            wxPrintf("Populating GUI from execution queue item %d (status: %s)\n",
+                    first_selected_index, selected_item.queue_status.mb_str().data());
+            match_template_panel_ptr->PopulateGuiFromQueueItem(selected_item, true);
+
+            // Also populate the custom CLI args field
+            if (custom_cli_args_text) {
+                custom_cli_args_text->SetValue(selected_item.custom_cli_args);
+            }
+
+            // Track which item was populated and enable/disable update button
+            last_populated_queue_id = selected_item.database_queue_id;
+            UpdateButtonState();
         }
     }
 
@@ -1221,14 +1420,9 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
         }
 
         // Renumber remaining execution queue jobs
-        wxPrintf("Renumbering remaining execution queue jobs...\n"); // revert - debug
         int new_position = 0;
         for ( auto& job : execution_queue ) {
             if ( job.queue_order >= 0 ) { // Still in execution queue
-                if ( job.queue_order != new_position ) {
-                    wxPrintf("  Job %ld: queue_order %d -> %d\n",
-                             job.database_queue_id, job.queue_order, new_position); // revert - debug
-                }
                 job.queue_order = new_position++;
             }
         }
@@ -1443,6 +1637,120 @@ void TemplateMatchQueueManager::SaveQueueToDatabase( ) {
     }
 }
 
+bool TemplateMatchQueueManager::UpdateQueueItemInDatabase(const TemplateMatchQueueItem& item) {
+    MyDebugAssertTrue(main_frame != nullptr, "UpdateQueueItemInDatabase: main_frame is null");
+    MyDebugAssertTrue(main_frame->current_project.is_open, "UpdateQueueItemInDatabase: no project open");
+    MyDebugAssertTrue(item.database_queue_id > 0, "UpdateQueueItemInDatabase: invalid database_queue_id");
+
+    // First verify the item exists in the database
+    wxString check_sql = wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_QUEUE WHERE QUEUE_ID = %ld;",
+                                          item.database_queue_id);
+    int count = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(check_sql);
+
+    if (count == 0) {
+        wxString error_msg = wxString::Format("Queue item %ld not found in database", item.database_queue_id);
+        wxMessageBox(error_msg, "Database Error", wxOK | wxICON_ERROR);
+        MyDebugAssertTrue(count > 0, "Queue item %ld not found in database", item.database_queue_id);
+        return false;
+    }
+
+    // Build UPDATE statement
+    // Note: wxString::Format/Printf has a hard limit of 30 arguments due to WX_DEFINE_VARARG_FUNC macro
+    // implementation. Since we need to update 32 fields, we split into two Format calls.
+    // The proper solution would be to use prepared statements like in database.cpp, but that would
+    // require adding a new method to the Database class.
+
+    // Part 1: Update first 15 fields
+    wxString update_sql_part1 = wxString::Format(
+        "UPDATE TEMPLATE_MATCH_QUEUE SET "
+        "JOB_NAME = '%s', "
+        "IMAGE_GROUP_ID = %d, "
+        "REFERENCE_VOLUME_ASSET_ID = %d, "
+        "RUN_PROFILE_ID = %d, "
+        "USE_GPU = %d, "
+        "USE_FAST_FFT = %d, "
+        "SYMMETRY = '%s', "
+        "PIXEL_SIZE = %f, "
+        "VOLTAGE = %f, "
+        "SPHERICAL_ABERRATION = %f, "
+        "AMPLITUDE_CONTRAST = %f, "
+        "DEFOCUS1 = %f, "
+        "DEFOCUS2 = %f, "
+        "DEFOCUS_ANGLE = %f, "
+        "PHASE_SHIFT = %f",
+        item.search_name.ToUTF8().data(),
+        item.image_group_id,
+        item.reference_volume_asset_id,
+        item.run_profile_id,
+        item.use_gpu ? 1 : 0,
+        item.use_fast_fft ? 1 : 0,
+        item.symmetry.ToUTF8().data(),
+        item.pixel_size,
+        item.voltage,
+        item.spherical_aberration,
+        item.amplitude_contrast,
+        item.defocus1,
+        item.defocus2,
+        item.defocus_angle,
+        item.phase_shift);
+
+    // Part 2: Update remaining 16 fields plus WHERE clause
+    wxString update_sql_part2 = wxString::Format(
+        ", LOW_RESOLUTION_LIMIT = %f"
+        ", HIGH_RESOLUTION_LIMIT = %f"
+        ", OUT_OF_PLANE_ANGULAR_STEP = %f"
+        ", IN_PLANE_ANGULAR_STEP = %f"
+        ", DEFOCUS_SEARCH_RANGE = %f"
+        ", DEFOCUS_STEP = %f"
+        ", PIXEL_SIZE_SEARCH_RANGE = %f"
+        ", PIXEL_SIZE_STEP = %f"
+        ", REFINEMENT_THRESHOLD = %f"
+        ", REF_BOX_SIZE_IN_ANGSTROMS = %f"
+        ", MASK_RADIUS = %f"
+        ", MIN_PEAK_RADIUS = %f"
+        ", XY_CHANGE_THRESHOLD = %f"
+        ", EXCLUDE_ABOVE_XY_THRESHOLD = %d"
+        ", CUSTOM_CLI_ARGS = '%s'"
+        " WHERE QUEUE_ID = %ld;",
+        item.low_resolution_limit,
+        item.high_resolution_limit,
+        item.out_of_plane_angular_step,
+        item.in_plane_angular_step,
+        item.defocus_search_range,
+        item.defocus_step,
+        item.pixel_size_search_range,
+        item.pixel_size_step,
+        item.refinement_threshold,
+        item.ref_box_size_in_angstroms,
+        item.mask_radius,
+        item.min_peak_radius,
+        item.xy_change_threshold,
+        item.exclude_above_xy_threshold ? 1 : 0,
+        item.custom_cli_args.ToUTF8().data(),
+        item.database_queue_id);
+
+    // Combine the two parts
+    wxString update_sql = update_sql_part1 + update_sql_part2;
+
+    // Execute the update within a transaction
+    main_frame->current_project.database.Begin();
+
+    // ExecuteSQL returns SQLITE_OK (0) on success, non-zero on error
+    int sql_result = main_frame->current_project.database.ExecuteSQL(update_sql);
+
+    if (sql_result != SQLITE_OK) {
+        main_frame->current_project.database.Commit();  // Commit to end transaction
+
+        wxMessageBox("Failed to update queue item in database", "Database Error", wxOK | wxICON_ERROR);
+        return false;
+    }
+
+    // Commit the transaction
+    main_frame->current_project.database.Commit();
+    wxPrintf("Successfully updated queue item %ld in database\n", item.database_queue_id);
+    return true;
+}
+
 // Manual drag and drop implementation for wxListCtrl
 void TemplateMatchQueueManager::OnMouseLeftDown(wxMouseEvent& event) {
 
@@ -1618,6 +1926,18 @@ void TemplateMatchQueueManager::ContinueQueueExecution( ) {
     RunNextJob( );
 }
 
+bool TemplateMatchQueueManager::ExecutionQueueHasActiveItems() const {
+    // Check if there are any items in the execution queue (priority >= 0)
+    // These are items waiting to run (pending/failed/partial)
+    // Running items are at priority -1 in the available queue
+    for (const auto& item : execution_queue) {
+        if (item.queue_order >= 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool success) {
     // Ensure database is available for status updates
     MyDebugAssertTrue(IsDatabaseAvailable(main_frame), "OnJobCompleted: Database not available");
@@ -1665,8 +1985,8 @@ void TemplateMatchQueueManager::OnJobCompleted(long database_queue_id, bool succ
     // Clear currently running ID since job is done
     currently_running_id = -1;
 
-    // Disable cancel button since no job is running
-    cancel_run_button->Enable(false);
+    // Update button state since no job is running
+    UpdateButtonState();
 
     // Update both displays to show new status and position changes
     UpdateQueueDisplay( );
@@ -1966,4 +2286,47 @@ void TemplateMatchQueueManager::PopulateAvailableSearchesNotInQueueFromDatabase(
 
     // Refresh the display
     UpdateAvailableJobsDisplay( );
+}
+
+void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
+    if (!match_template_panel_ptr) return;
+
+    bool show_progress = event.IsChecked();
+
+    // Update button label to show current state
+    if (show_progress) {
+        panel_display_toggle->SetLabel("Show Progress Panel");
+    } else {
+        panel_display_toggle->SetLabel("Show Input Panel");
+    }
+
+    // Toggle the panels in MatchTemplatePanel
+    if (show_progress) {
+        // Show progress/running panels
+        match_template_panel_ptr->StartPanel->Show(false);
+        match_template_panel_ptr->ProgressPanel->Show(true);
+        match_template_panel_ptr->InputPanel->Show(false);
+        match_template_panel_ptr->ExpertPanel->Show(false);
+        match_template_panel_ptr->InfoPanel->Show(false);
+        match_template_panel_ptr->OutputTextPanel->Show(true);
+        match_template_panel_ptr->ResultsPanel->Show(true);
+        // Keep cancel button visible if job is running
+        if (match_template_panel_ptr->running_job) {
+            match_template_panel_ptr->CancelAlignmentButton->Show(true);
+            match_template_panel_ptr->FinishButton->Show(false);
+        }
+    } else {
+        // Show input panels
+        match_template_panel_ptr->ProgressPanel->Show(false);
+        match_template_panel_ptr->StartPanel->Show(true);
+        match_template_panel_ptr->OutputTextPanel->Show(false);
+        match_template_panel_ptr->ResultsPanel->Show(false);
+        match_template_panel_ptr->InfoPanel->Show(true);
+        match_template_panel_ptr->InputPanel->Show(true);
+        match_template_panel_ptr->ExpertPanel->Show(true);
+    }
+
+    // Force layout refresh
+    match_template_panel_ptr->Layout();
+    match_template_panel_ptr->Update();
 }

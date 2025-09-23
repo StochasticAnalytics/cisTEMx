@@ -152,6 +152,43 @@ wxArrayLong Database::ReturnLongArrayFromSelectCommand(wxString select_command) 
     return longs_to_return;
 }
 
+// Template instantiation for FillVectorFromSelectCommand
+template <typename T>
+IsDatabaseNumeric<T> Database::FillVectorFromSelectCommand(const wxString& select_command, std::vector<T>& vector_to_fill) {
+    MyDebugAssertTrue(is_open == true, "database not open!");
+
+    vector_to_fill.clear();
+
+    sqlite3_stmt* current_statement;
+    int return_code;
+
+    Prepare(select_command, &current_statement);
+    return_code = Step(current_statement);
+
+    while (return_code == SQLITE_ROW) {
+        T value;
+        if constexpr (std::is_same<T, long>::value) {
+            value = sqlite3_column_int64(current_statement, 0);
+        }
+        else if constexpr (std::is_same<T, int>::value) {
+            value = sqlite3_column_int(current_statement, 0);
+        }
+        else if constexpr (std::is_same<T, float>::value) {
+            value = static_cast<float>(sqlite3_column_double(current_statement, 0));
+        }
+
+        vector_to_fill.push_back(value);
+        return_code = Step(current_statement);
+    }
+
+    Finalize(current_statement);
+}
+
+// Explicit template instantiations
+template void Database::FillVectorFromSelectCommand<long>(const wxString& select_command, std::vector<long>& vector_to_fill);
+template void Database::FillVectorFromSelectCommand<int>(const wxString& select_command, std::vector<int>& vector_to_fill);
+template void Database::FillVectorFromSelectCommand<float>(const wxString& select_command, std::vector<float>& vector_to_fill);
+
 long Database::ReturnRefinementIDGivenReconstructionID(long reconstruction_id) {
     return ReturnSingleLongFromSelectCommand(wxString::Format("SELECT REFINEMENT_ID FROM RECONSTRUCTION_LIST WHERE RECONSTRUCTION_ID=%li", reconstruction_id));
 }

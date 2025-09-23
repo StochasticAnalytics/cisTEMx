@@ -1,6 +1,14 @@
 #include "../constants/constants.h"
 #include "../gui/UpdateProgressTracker.h"
 
+// Type alias for database-storable numeric types
+// TODO: When moving to C++17/20, convert to a concept
+template <typename T>
+using IsDatabaseNumeric = cistem::EnableIf<
+    std::is_same<T, long>::value ||
+    std::is_same<T, int>::value ||
+    std::is_same<T, float>::value>;  // Defaults to void when condition is true
+
 class Database {
 
     bool in_batch_insert;
@@ -174,6 +182,10 @@ class Database {
     wxArrayLong   ReturnLongArrayFromSelectCommand(wxString select_command);
     wxArrayString ReturnStringArrayFromSelectCommand(wxString select_command);
 
+    // Modern templated vector-based alternative with SFINAE constraint to numeric types
+    template <typename T>
+    IsDatabaseNumeric<T> FillVectorFromSelectCommand(const wxString& select_command, std::vector<T>& vector_to_fill);
+
     bool DoesTableExist(wxString table_name);
     bool DoesColumnExist(wxString table_name, wxString column_name);
 
@@ -223,6 +235,7 @@ class Database {
     void GetImageImportDefaults(float& voltage, float& spherical_aberration, float& pixel_size, bool& protein_is_white);
 
     void GetActiveDefocusValuesByImageID(long wanted_image_id, float& defocus_1, float& defocus_2, float& defocus_angle, float& phase_shift, float& amplitude_contrast, float& tilt_angle, float& tilt_axis);
+    bool DoAllImageAssetsInGroupHaveCTFEstimates(const AssetGroup* group);
 
     void AddRefinementPackageAsset(RefinementPackage* asset_to_add);
     void AddTemplateMatchesPackageAsset(TemplateMatchesPackage* asset_to_add);
@@ -424,36 +437,36 @@ class Database {
      *
      * @return Database-assigned queue ID for the new search, or -1 on failure
      */
-    long            AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
-                                          bool use_gpu, bool use_fast_fft, const wxString& symmetry,
-                                          float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
-                                          float defocus1, float defocus2, float defocus_angle, float phase_shift,
-                                          float low_resolution_limit, float high_resolution_limit,
-                                          float out_of_plane_angular_step, float in_plane_angular_step,
-                                          float defocus_search_range, float defocus_step,
-                                          float pixel_size_search_range, float pixel_size_step,
-                                          float refinement_threshold, float ref_box_size_in_angstroms,
-                                          float mask_radius, float min_peak_radius,
-                                          float xy_change_threshold, bool exclude_above_xy_threshold,
-                                          const wxString& custom_cli_args);
-    void            GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids);
-    bool            GetQueueItemByID(long queue_id, wxString& job_name, long& template_match_job_id, int& queue_position, wxString& custom_cli_args,
-                                   int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
-                                   float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
-                                   float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
-                                   float& low_resolution_limit, float& high_resolution_limit,
-                                   float& out_of_plane_angular_step, float& in_plane_angular_step,
-                                   float& defocus_search_range, float& defocus_step,
-                                   float& pixel_size_search_range, float& pixel_size_step,
-                                   float& refinement_threshold, float& ref_box_size_in_angstroms,
-                                   float& mask_radius, float& min_peak_radius,
-                                   float& xy_change_threshold, bool& exclude_above_xy_threshold);
-    void            UpdateQueuePosition(long queue_id, int position);
-    void            UpdateSearchIdInQueueTable(long queue_id, long search_id);
-    int             GetSearchIdForQueueItem(long queue_id);
-    int             GetHighestSearchIdFromQueue();
-    void            RemoveFromQueue(long queue_id);
-    void            ClearTemplateMatchQueue();
+    long AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
+                                 bool use_gpu, bool use_fast_fft, const wxString& symmetry,
+                                 float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
+                                 float defocus1, float defocus2, float defocus_angle, float phase_shift,
+                                 float low_resolution_limit, float high_resolution_limit,
+                                 float out_of_plane_angular_step, float in_plane_angular_step,
+                                 float defocus_search_range, float defocus_step,
+                                 float pixel_size_search_range, float pixel_size_step,
+                                 float refinement_threshold, float ref_box_size_in_angstroms,
+                                 float mask_radius, float min_peak_radius,
+                                 float xy_change_threshold, bool exclude_above_xy_threshold,
+                                 const wxString& custom_cli_args);
+    void GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids);
+    bool GetQueueItemByID(long queue_id, wxString& job_name, long& template_match_job_id, int& queue_position, wxString& custom_cli_args,
+                          int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
+                          float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
+                          float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
+                          float& low_resolution_limit, float& high_resolution_limit,
+                          float& out_of_plane_angular_step, float& in_plane_angular_step,
+                          float& defocus_search_range, float& defocus_step,
+                          float& pixel_size_search_range, float& pixel_size_step,
+                          float& refinement_threshold, float& ref_box_size_in_angstroms,
+                          float& mask_radius, float& min_peak_radius,
+                          float& xy_change_threshold, bool& exclude_above_xy_threshold);
+    void UpdateQueuePosition(long queue_id, int position);
+    void UpdateSearchIdInQueueTable(long queue_id, long search_id);
+    int  GetSearchIdForQueueItem(long queue_id);
+    int  GetHighestSearchIdFromQueue();
+    void RemoveFromQueue(long queue_id);
+    void ClearTemplateMatchQueue();
 
     // Template match completion tracking methods
     std::pair<int, int> GetSearchCompletionCounts(long search_id, int image_group_id = -1);

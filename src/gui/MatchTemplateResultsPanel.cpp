@@ -8,11 +8,7 @@ extern MyMovieAssetPanel*  movie_asset_panel;
 extern MatchTemplatePanel* match_template_panel;
 
 static void OnHeaderClick( ) {
-    // deprecated - remove: Old resume run logic replaced by Queue Manager
-    // match_template_panel->CheckForUnfinishedWork(true, false);
-
-    // New behavior: Ask user if they want to add the job to Queue Manager
-    match_template_panel->OnHeaderClickAddToQueue();
+    // Header click functionality removed - Queue Manager handles job management
 }
 
 MatchTemplateResultsPanel::MatchTemplateResultsPanel(wxWindow* parent)

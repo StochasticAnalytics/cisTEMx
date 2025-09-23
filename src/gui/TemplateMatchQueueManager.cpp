@@ -833,7 +833,10 @@ void TemplateMatchQueueManager::UpdateJobStatus(long database_queue_id, const wx
             // Validate allowed transitions
             if ( item.queue_status == "running" && (new_status == "complete" || new_status == "failed") ) {
                 // Valid: running -> complete/failed
-                MyDebugAssertTrue(currently_running_id == database_queue_id, "Status change from running but database_queue_id %ld != currently_running_id %ld", database_queue_id, currently_running_id);
+                // Allow if currently_running_id matches OR if job is finalizing (currently_running_id may be -1)
+                MyDebugAssertTrue(currently_running_id == database_queue_id || job_is_finalizing,
+                                  "Status change from running but database_queue_id %ld != currently_running_id %ld and not finalizing",
+                                  database_queue_id, currently_running_id);
             }
             else if ( item.queue_status == "partial" && (new_status == "complete" || new_status == "failed") ) {
                 // Valid: partial -> complete/failed (when partial job finishes or fails)
@@ -1937,12 +1940,11 @@ void TemplateMatchQueueManager::OnJobEnteringFinalization(long database_queue_id
     // Mark that a job is entering finalization phase
     // This prevents auto-advance from starting a new job prematurely
     wxPrintf("Job %ld entering finalization phase\n", database_queue_id);
-    job_is_finalizing = true;
 
-    // We can clear currently_running_id here since the job is no longer "running" per se
-    // but job_is_finalizing prevents new jobs from starting
+    // Only set the finalization flag, don't clear currently_running_id yet
+    // because UpdateJobStatus still needs it for validation
     if ( currently_running_id == database_queue_id ) {
-        currently_running_id = -1;
+        job_is_finalizing = true;
     }
 }
 

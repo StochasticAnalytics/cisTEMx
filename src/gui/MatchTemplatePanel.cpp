@@ -8,6 +8,9 @@ extern MyImageAssetPanel*         image_asset_panel;
 extern MyVolumeAssetPanel*        volume_asset_panel;
 extern MyRunProfilesPanel*        run_profiles_panel;
 extern MyMainFrame*               main_frame;
+
+// Define static member for tracking the open queue dialog
+wxDialog* MatchTemplatePanel::active_queue_dialog = nullptr;
 extern MatchTemplateResultsPanel* match_template_results_panel;
 
 MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
@@ -1391,43 +1394,77 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui( ) {
 
 long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog) {
     if ( show_dialog ) {
-        // Show the queue manager with the new job
-        wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                              wxDefaultPosition, wxSize(900, 700),
-                                              wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+        TemplateMatchQueueManager* queue_manager = nullptr;
 
-        // Create queue manager for this dialog
-        TemplateMatchQueueManager* queue_manager = new TemplateMatchQueueManager(queue_dialog, this);
+        // Check if we already have a queue dialog open
+        if ( active_queue_dialog && active_queue_dialog->IsShown() ) {
+            // Reuse the existing dialog
+            wxPrintf("Reusing existing queue manager dialog\n");
 
-        // Load existing queue from database first
-        queue_manager->LoadQueueFromDatabase( );
+            // Find the queue manager in the dialog's children
+            wxWindowList& children = active_queue_dialog->GetChildren();
+            for ( wxWindowList::iterator it = children.begin(); it != children.end(); ++it ) {
+                queue_manager = wxDynamicCast(*it, TemplateMatchQueueManager);
+                if ( queue_manager ) break;
+            }
 
-        // Add the new job to the queue
-        queue_manager->AddToExecutionQueue(job);
+            if ( queue_manager ) {
+                // Add the new job to the existing queue manager
+                queue_manager->AddToExecutionQueue(job);
 
-        // Job added successfully - no popup needed
+                // Bring the dialog to front
+                active_queue_dialog->Raise();
+                active_queue_dialog->SetFocus();
+            }
+        }
 
-        // Layout
-        wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
-        dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
+        if ( ! queue_manager ) {
+            // Create a new dialog if none exists or the existing one wasn't found
+            wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
+                                                  wxDefaultPosition, wxSize(900, 700),
+                                                  wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
-        wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
-        dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
+            // Create queue manager for this dialog
+            queue_manager = new TemplateMatchQueueManager(queue_dialog, this);
 
-        queue_dialog->SetSizer(dialog_sizer);
+            // Load existing queue from database first
+            queue_manager->LoadQueueFromDatabase( );
 
-        // Force layout update for proper visibility of both tables
-        queue_dialog->Layout( );
-        queue_dialog->Fit( ); // Auto-size dialog to fit content
+            // Add the new job to the queue
+            queue_manager->AddToExecutionQueue(job);
 
-        // Connect close button to destroy the dialog
-        close_button->Bind(wxEVT_BUTTON, [queue_dialog](wxCommandEvent&) {
-            queue_dialog->Destroy( );
-        });
+            // Layout
+            wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
+            dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
 
-        // Use Show() instead of ShowModal() to keep parent controls enabled
-        // This allows editing of parameters in the MatchTemplatePanel while the queue dialog is open
-        queue_dialog->Show(true);
+            wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
+            dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
+
+            queue_dialog->SetSizer(dialog_sizer);
+
+            // Force layout update for proper visibility of both tables
+            queue_dialog->Layout( );
+            queue_dialog->Fit( ); // Auto-size dialog to fit content
+
+            // Connect close button to destroy the dialog and clear our reference
+            close_button->Bind(wxEVT_BUTTON, [queue_dialog](wxCommandEvent&) {
+                MatchTemplatePanel::active_queue_dialog = nullptr;  // Clear the static reference
+                queue_dialog->Destroy( );
+            });
+
+            // Also handle window close event
+            queue_dialog->Bind(wxEVT_CLOSE_WINDOW, [queue_dialog](wxCloseEvent& event) {
+                MatchTemplatePanel::active_queue_dialog = nullptr;  // Clear the static reference
+                queue_dialog->Destroy( );
+            });
+
+            // Store reference to the active dialog
+            active_queue_dialog = queue_dialog;
+
+            // Use Show() instead of ShowModal() to keep parent controls enabled
+            // This allows editing of parameters in the MatchTemplatePanel while the queue dialog is open
+            queue_dialog->Show(true);
+        }
 
         // Return -1 for dialog mode since we don't track the specific queue ID
         return -1;

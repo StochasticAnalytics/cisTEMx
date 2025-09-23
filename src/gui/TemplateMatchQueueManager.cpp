@@ -62,6 +62,10 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     panel_display_toggle->SetValue(false);  // Start with input panel visible
     panel_display_toggle->SetToolTip("Toggle between Input and Progress panels");
 
+    wxPrintf("TemplateMatchQueueManager: Created toggle button, initial value=%s, label='%s'\n",
+             panel_display_toggle->GetValue() ? "true" : "false",
+             panel_display_toggle->GetLabel().mb_str().data());
+
     controls_sizer->Add(run_selected_button, 0, wxALL, 5);
     controls_sizer->AddStretchSpacer();
     controls_sizer->Add(display_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
@@ -173,6 +177,31 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // when main_frame is in an inconsistent state
 
     // No longer need active instance tracking with unified architecture
+
+    // Sync toggle button state with actual panel visibility if match_template_panel_ptr exists
+    if (match_template_panel_ptr) {
+        bool input_visible = match_template_panel_ptr->InputPanel->IsShown();
+        bool progress_visible = match_template_panel_ptr->ProgressPanel->IsShown();
+
+        wxPrintf("TemplateMatchQueueManager constructor: InputPanel visible=%s, ProgressPanel visible=%s\n",
+                 input_visible ? "true" : "false",
+                 progress_visible ? "true" : "false");
+
+        // Set toggle state to match actual panel visibility
+        // If progress panel is showing, toggle should be checked (true)
+        panel_display_toggle->SetValue(progress_visible);
+
+        // Update label to match state
+        if (progress_visible) {
+            panel_display_toggle->SetLabel("Show Input Panel");
+        } else {
+            panel_display_toggle->SetLabel("Show Progress Panel");
+        }
+
+        wxPrintf("TemplateMatchQueueManager: Set toggle button value=%s, label='%s'\n",
+                 panel_display_toggle->GetValue() ? "true" : "false",
+                 panel_display_toggle->GetLabel().mb_str().data());
+    }
 
     // Display any existing queue items
     UpdateQueueDisplay( );
@@ -594,6 +623,8 @@ void TemplateMatchQueueManager::UpdateAvailableSearchesDisplay( ) {
             // Skip completed searches if hide_completed_searches is enabled
             if ( ! hide_completed_searches || job.queue_status != "complete" ) {
                 available_items.push_back(&job);
+                wxPrintf("UpdateAvailableSearchesDisplay: Added queue_id %ld (status: %s) to available list\n",
+                        job.database_queue_id, job.queue_status.mb_str().data());
             }
         }
     }
@@ -1991,6 +2022,10 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
 
     // Update job status in our queue
     const wxString& status = success ? "complete" : "failed";
+
+    wxPrintf("OnSearchCompleted: About to update status for queue_id %ld to '%s'\n",
+             database_queue_id, status.mb_str().data());
+
     UpdateSearchStatus(database_queue_id, status);
 
     // Verify the job was moved to available queue (priority -1) when it started running
@@ -2313,9 +2348,18 @@ void TemplateMatchQueueManager::PopulateAvailableSearchesNotInQueueFromDatabase(
 }
 
 void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
-    if (!match_template_panel_ptr) return;
+    if (!match_template_panel_ptr) {
+        wxPrintf("OnPanelDisplayToggle: match_template_panel_ptr is null\n");
+        return;
+    }
 
     bool show_progress = event.IsChecked();
+    bool actual_state = panel_display_toggle->GetValue();
+
+    wxPrintf("OnPanelDisplayToggle: event.IsChecked()=%s, GetValue()=%s, show_progress=%s\n",
+             event.IsChecked() ? "true" : "false",
+             actual_state ? "true" : "false",
+             show_progress ? "true" : "false");
 
     // Update button label to indicate what clicking will do next
     if (show_progress) {

@@ -57,8 +57,9 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     // Panel display toggle on the right
     wxStaticText* display_label = new wxStaticText(controls_panel, wxID_ANY, "Panel Display:");
-    panel_display_toggle = new wxToggleButton(controls_panel, wxID_ANY, "Show Input Panel",
+    panel_display_toggle = new wxToggleButton(controls_panel, wxID_ANY, "Show Progress Panel",
                                               wxDefaultPosition, wxSize(150, -1));
+    panel_display_toggle->SetValue(false);  // Start with input panel visible
     panel_display_toggle->SetToolTip("Toggle between Input and Progress panels");
 
     controls_sizer->Add(run_selected_button, 0, wxALL, 5);
@@ -1992,13 +1993,12 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
     const wxString& status = success ? "complete" : "failed";
     UpdateSearchStatus(database_queue_id, status);
 
-    // Update the completed job (which should already be at priority -1 from when it started running)
+    // Verify the job was moved to available queue (priority -1) when it started running
     bool job_found = false;
     for ( auto& job : execution_queue ) {
         if ( job.database_queue_id == database_queue_id ) {
-            wxPrintf("Found completed job %ld at priority %d, updating status to %s\n",
-                     database_queue_id, job.queue_order, status);
-            job.queue_status = status;
+            wxPrintf("Found completed job %ld at priority %d with status %s\n",
+                     database_queue_id, job.queue_order, job.queue_status.mb_str().data());
             // Job should already be at queue_order = -1 (available queue) from when it started running
             if ( job.queue_order != -1 ) {
                 wxPrintf("WARNING: Completed job %ld was not at priority -1 (was %d), correcting\n",
@@ -2050,6 +2050,8 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
         wxTimer* delay_timer = new wxTimer();
         delay_timer->Bind(wxEVT_TIMER, [this, delay_timer](wxTimerEvent&) {
             wxPrintf("Auto-advance timer fired - progressing queue\n");
+            // Force another display update before starting next search to ensure complete status is visible
+            UpdateQueueDisplay();
             ProgressExecutionQueue( );
             delete delay_timer;  // Clean up the timer
         });
@@ -2315,11 +2317,11 @@ void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
 
     bool show_progress = event.IsChecked();
 
-    // Update button label to show current state
+    // Update button label to indicate what clicking will do next
     if (show_progress) {
-        panel_display_toggle->SetLabel("Show Progress Panel");
-    } else {
         panel_display_toggle->SetLabel("Show Input Panel");
+    } else {
+        panel_display_toggle->SetLabel("Show Progress Panel");
     }
 
     // Toggle the panels in MatchTemplatePanel
@@ -2333,7 +2335,7 @@ void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
         match_template_panel_ptr->OutputTextPanel->Show(true);
         match_template_panel_ptr->ResultsPanel->Show(true);
         // Keep cancel button visible if job is running
-        if (match_template_panel_ptr->running_job) {
+        if (match_template_panel_ptr->IsJobRunning()) {
             match_template_panel_ptr->CancelAlignmentButton->Show(true);
             match_template_panel_ptr->FinishButton->Show(false);
         }
@@ -2351,4 +2353,39 @@ void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
     // Force layout refresh
     match_template_panel_ptr->Layout();
     match_template_panel_ptr->Update();
+
+    // When switching to input panel, ensure combo boxes are enabled if appropriate
+    if (!show_progress && last_populated_queue_id > 0) {
+        // Find the last populated item to check if it's editable
+        TemplateMatchQueueItem* item = nullptr;
+        for (auto& queue_item : execution_queue) {
+            if (queue_item.database_queue_id == last_populated_queue_id) {
+                item = &queue_item;
+                break;
+            }
+        }
+        if (!item) {
+            for (auto& queue_item : available_queue) {
+                if (queue_item.database_queue_id == last_populated_queue_id) {
+                    item = &queue_item;
+                    break;
+                }
+            }
+        }
+
+        // Re-enable combo boxes if the item is editable
+        if (item && (item->queue_status == "pending" ||
+                    item->queue_status == "failed" ||
+                    item->queue_status == "partial")) {
+            if (match_template_panel_ptr->GroupComboBox) {
+                match_template_panel_ptr->GroupComboBox->Enable(true);
+            }
+            if (match_template_panel_ptr->ReferenceSelectPanel) {
+                match_template_panel_ptr->ReferenceSelectPanel->Enable(true);
+            }
+            if (match_template_panel_ptr->RunProfileComboBox) {
+                match_template_panel_ptr->RunProfileComboBox->Enable(true);
+            }
+        }
+    }
 }

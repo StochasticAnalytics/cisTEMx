@@ -649,6 +649,11 @@ void MatchTemplatePanel::ProcessResult(JobResult* result_to_process) // this wil
 
         wxTimeSpan time_remaining = wxTimeSpan(0, 0, seconds_remaining);
         TimeRemainingText->SetLabel(time_remaining.Format("Time Remaining : %Hh:%Mm:%Ss"));
+
+        // Update queue manager display periodically to show n/N progress
+        if ( running_queue_id > 0 && queue_completion_callback ) {
+            queue_completion_callback->UpdateQueueDisplay();
+        }
     }
 }
 

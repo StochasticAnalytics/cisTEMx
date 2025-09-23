@@ -255,6 +255,8 @@ class TemplateMatchQueueManager : public wxPanel {
     void     DeselectSearchInUI(long database_queue_id); ///< Removes UI selection for specified search
 
   public:
+    friend class MatchTemplatePanel;  // Allow MatchTemplatePanel to call private methods like UpdateQueueDisplay
+
     TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel = nullptr);
     ~TemplateMatchQueueManager( );
 
@@ -264,7 +266,7 @@ class TemplateMatchQueueManager : public wxPanel {
      *
      * Persists search to database via AddToTemplateMatchQueue, assigns next available queue_order
      * for priority sequencing, and adds to in-memory execution_queue. Core method called by
-     * AddJobToQueue workflow for both immediate execution and interactive queueing.
+     * AddSearchToQueue workflow for both immediate execution and interactive queueing.
      */
     void AddToExecutionQueue(const TemplateMatchQueueItem& item);
     /**
@@ -391,7 +393,7 @@ class TemplateMatchQueueManager : public wxPanel {
     /**
      * @brief Links queue item to actual database search ID after search execution begins
      * @param queue_database_queue_id Queue database ID to update
-     * @param database_template_match_job_id Actual TEMPLATE_MATCH_JOB_ID from results table
+     * @param database_search_id Actual SEARCH_ID from results table
      */
     void UpdateSearchIdForQueueItem(long queue_database_queue_id, long database_search_id);
 

@@ -13,7 +13,12 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     JobTracker my_job_tracker;
 
-    bool running_job;
+    // Check if a job is currently running by querying job controller directly
+    // Replaces the old running_job boolean to avoid redundant state tracking
+    inline bool IsJobRunning() const {
+        return my_job_id >= 0 && my_job_id < MAX_GUI_JOBS &&
+               main_frame && main_frame->job_controller.job_list[my_job_id].is_active;
+    }
 
     Image    result_image;
     wxBitmap result_bitmap;
@@ -24,25 +29,9 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     AssetGroup active_group;
     bool       all_images_have_defocus_values;
+    float      current_pixel_size;  // Track pixel size to avoid unnecessary resolution limit updates
 
     ArrayOfTemplateMatchJobResults cached_results;
-
-    // When changing the state based on a possible re-run, we want to store the current state of the panel.
-    // These are *not* set until a call to SetInputsForPossibleReRun(true)
-    bool was_enabled_GroupComboBox;
-    bool was_enabled_StartEstimationButton;
-    bool was_enabled_ReferenceSelectPanel;
-    bool was_enabled_OutofPlaneStepNumericCtrl;
-    bool was_enabled_InPlaneStepNumericCtrl;
-    bool was_enabled_MinPeakRadiusNumericCtrl;
-    bool was_enabled_DefocusSearchYesRadio;
-    bool was_enabled_DefocusSearchNoRadio;
-    bool was_enabled_PixelSizeSearchYesRadio;
-    bool was_enabled_PixelSizeSearchNoRadio;
-    bool was_enabled_SymmetryComboBox;
-    bool was_enabled_HighResolutionLimitNumericCtrl;
-    bool was_enabled_DefocusSearchRangeNumericCtrl;
-    bool was_enabled_DefocusSearchStepNumericCtrl;
 
   public:
     MatchTemplatePanel(wxWindow* parent);
@@ -50,8 +39,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     bool group_combo_is_dirty;
     bool run_profiles_are_dirty;
     bool volumes_are_dirty;
-    bool set_up_to_resume_job;
-    bool no_unfinished_jobs = true; // jJust for testing,, will be set locally by DB functions
+    bool no_unfinished_jobs = true; // Just for testing, will be set locally by DB functions
 
     long time_of_last_result_update;
 
@@ -67,7 +55,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     int search_id;  // TEMPLATE_MATCH_LIST.SEARCH_ID - created when first result written
 
     // Queue tracking
-    long running_queue_job_id;  // -1 if not running from queue
+    long running_queue_id;  // Database queue ID of the currently executing search (-1 when idle)
     class TemplateMatchQueueManager* queue_completion_callback;  // For live queue updates
     wxString current_custom_cli_args;  // Custom CLI args for current job
     static wxDialog* active_queue_dialog;  // Track the currently open queue manager dialog
@@ -112,18 +100,8 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     void Reset( );
     void ResetDefaults( );
 
-    // Functions for interacting with the results panel and possibly resuming a job
-    void SetInputsForPossibleReRun(bool set_up_to_resume_job, TemplateMatchJobResults* results_to_resume = nullptr);
 
-    template <class T>
-    inline void SetAndRememberEnableState(T* control_to_disable, bool& was_enabled, bool set_to = false) {
-        was_enabled = control_to_disable->IsEnabled( );
-        control_to_disable->Enable(set_to);
-    }
 
-    // deprecated - remove: Resume run functionality replaced by Queue Manager
-    // void        ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event);
-    wxArrayLong CheckForUnfinishedWork(bool is_checked, bool is_from_check_box);
 
     // Queue functionality
     /**
@@ -142,7 +120,6 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
      */
     void        OnOpenQueueClick(wxCommandEvent& event);
     void        PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item, bool for_editing = false);
-    void        OnHeaderClickAddToQueue(); // New header click behavior for Queue Manager
     bool        RunQueuedTemplateMatch(TemplateMatchQueueItem& job);
 
     // Shared job execution methods

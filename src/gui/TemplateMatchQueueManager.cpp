@@ -1153,14 +1153,34 @@ void TemplateMatchQueueManager::OnUpdateSelectedClick(wxCommandEvent& event) {
 
 
 void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
-    int selected = GetSelectedRow( );
-    if ( selected >= 0 ) {
-        wxString        search_name = execution_queue[selected].search_name;
-        wxMessageDialog dialog(this,
-                               wxString::Format("Remove search '%s' from the queue?", search_name),
-                               "Confirm Remove", wxYES_NO | wxICON_QUESTION);
-        if ( dialog.ShowModal( ) == wxID_YES ) {
-            RemoveFromExecutionQueue(selected);
+    // Get all selected items from execution queue
+    std::vector<int> selected_indices;
+    long selected_row = queue_list_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+
+    while ( selected_row != -1 ) {
+        selected_indices.push_back(selected_row);
+        selected_row = queue_list_ctrl->GetNextItem(selected_row, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    }
+
+    if ( selected_indices.empty() ) {
+        return; // Nothing selected
+    }
+
+    // Build confirmation message
+    wxString message;
+    if ( selected_indices.size() == 1 ) {
+        wxString search_name = execution_queue[selected_indices[0]].search_name;
+        message = wxString::Format("Remove search '%s' from the queue?", search_name);
+    } else {
+        message = wxString::Format("Remove %zu selected searches from the queue?", selected_indices.size());
+    }
+
+    wxMessageDialog dialog(this, message, "Confirm Remove", wxYES_NO | wxICON_QUESTION);
+    if ( dialog.ShowModal( ) == wxID_YES ) {
+        // Remove in reverse order to maintain indices validity
+        std::sort(selected_indices.begin(), selected_indices.end(), std::greater<int>());
+        for ( int index : selected_indices ) {
+            RemoveFromExecutionQueue(index);
         }
     }
 }

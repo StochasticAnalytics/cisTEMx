@@ -70,6 +70,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     long running_queue_job_id;  // -1 if not running from queue
     class TemplateMatchQueueManager* queue_completion_callback;  // For live queue updates
     wxString current_custom_cli_args;  // Custom CLI args for current job
+    static wxDialog* active_queue_dialog;  // Track the currently open queue manager dialog
 
     // methods
     void WriteResultToDataBase( );

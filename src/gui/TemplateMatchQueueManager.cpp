@@ -36,11 +36,12 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
                                                          wxLC_REPORT);
 
     // Add columns to execution queue (same as available queue, no queue order)
+    execution_queue_ctrl->AppendColumn("Queue ID", wxLIST_FORMAT_LEFT, 70);
     execution_queue_ctrl->AppendColumn("Search ID", wxLIST_FORMAT_LEFT, 70);
-    execution_queue_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 200);
-    execution_queue_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 100);
-    execution_queue_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 80);
-    execution_queue_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 140);
+    execution_queue_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 180);
+    execution_queue_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 90);
+    execution_queue_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 70);
+    execution_queue_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 120);
 
     // wxListCtrl doesn't use EnableDragSource/EnableDropTarget - we'll implement manual drag and drop
 
@@ -87,11 +88,12 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     wxPrintf("Created available_jobs_ctrl: %p with min size 700x150\n", available_jobs_ctrl); // Debug output
 
     // Add columns to available searches (same structure as execution queue)
+    available_jobs_ctrl->AppendColumn("Queue ID", wxLIST_FORMAT_LEFT, 70);
     available_jobs_ctrl->AppendColumn("Search ID", wxLIST_FORMAT_LEFT, 70);
-    available_jobs_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 200);
-    available_jobs_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 100);
-    available_jobs_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 80);
-    available_jobs_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 140);
+    available_jobs_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 180);
+    available_jobs_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, 90);
+    available_jobs_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, 70);
+    available_jobs_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 120);
 
     // Create CLI args section with Update Selected button
     wxPanel*    cli_args_panel = new wxPanel(this, wxID_ANY);
@@ -494,26 +496,29 @@ void TemplateMatchQueueManager::PopulateListControl(wxListCtrl*                 
         long        row;
 
         // Both execution and available queues now have the same column structure
-        // Search ID is first column - show search_id if valid (> 0), otherwise show empty string
+        // Queue ID is first column - always show it
+        row = ctrl->InsertItem(idx, wxString::Format("%ld", item->database_queue_id));
+
+        // Search ID is second column - show if valid (> 0), otherwise show empty string
         if (item->search_id > 0) {
-            row = ctrl->InsertItem(idx, wxString::Format("%ld", item->search_id));
+            ctrl->SetItem(row, 1, wxString::Format("%ld", item->search_id));
         } else {
             // No valid search ID yet (job hasn't started or search_id is -1 or 0) - show empty string
-            row = ctrl->InsertItem(idx, "");
+            ctrl->SetItem(row, 1, "");
         }
 
         // CRITICAL: Store the database_queue_id as item data so we can retrieve it later
         // This allows us to identify which queue item a row represents regardless of sorting/filtering
         ctrl->SetItemData(row, item->database_queue_id);
 
-        ctrl->SetItem(row, 1, item->search_name);
-        // Status is column 2
+        ctrl->SetItem(row, 2, item->search_name);
+        // Status is column 3
         SetStatusDisplay(ctrl, row, item->queue_status);
-        // Progress is column 3
+        // Progress is column 4
         SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
-        ctrl->SetItem(row, 3, completion.GetCompletionString( ));
-        // Custom args is column 4
-        ctrl->SetItem(row, 4, item->custom_cli_args);
+        ctrl->SetItem(row, 4, completion.GetCompletionString( ));
+        // Custom args is column 5
+        ctrl->SetItem(row, 5, item->custom_cli_args);
     }
 }
 

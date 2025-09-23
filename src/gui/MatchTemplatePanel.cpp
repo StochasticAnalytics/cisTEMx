@@ -519,6 +519,36 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 
     // write to database..
 
+    // CRITICAL: If this is a queue item with no search_id yet, assign one NOW (first result being written)
+    if ( running_queue_id > 0 && search_id == -1 ) {
+        // First result for this queue item - assign a new search_id
+        // The ONLY source of truth for search_id is TEMPLATE_MATCH_LIST
+        search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
+
+        wxPrintf("First result for queue item %ld - assigning search_id %d\n", running_queue_id, search_id);
+
+        // Update the queue item with the new search_id
+        if ( queue_completion_callback ) {
+            // Queue manager is present - let it update the search ID
+            queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_id, search_id);
+        }
+        else {
+            // No queue manager (StartEstimationClick path) - update database directly
+            main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_id, search_id);
+            wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_id, search_id);
+        }
+
+        // DEBUG ASSERT: Verify queue table doesn't have orphaned search_ids
+        #ifdef DEBUG
+        int highest_queue_search_id = main_frame->current_project.database.GetHighestSearchIdFromQueue();
+        MyDebugAssertTrue(highest_queue_search_id <= search_id - 1,
+                         "Queue table has search_id %d but highest in TEMPLATE_MATCH_LIST is %d - orphaned search_ids!",
+                         highest_queue_search_id, search_id - 1);
+        #endif
+    }
+
+    MyDebugAssertTrue(search_id > 0, "Attempting to write result with invalid search_id %d", search_id);
+
     main_frame->current_project.database.Begin( );
 
     cached_results[image_number - 1].job_id = search_id;
@@ -1623,41 +1653,44 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     // Get ID's from database for writing results as they come in
     database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID( ) + 1;
 
-    // For queue items, check if they already have a search_id assigned
+    // CRITICAL SEARCH_ID LOGIC - READ CAREFULLY:
+    // ============================================
+    // A queue item's search_id follows these IMMUTABLE rules:
+    // 1. When a queue item is first created, search_id = -1 (no results written yet)
+    // 2. The search_id is ONLY assigned when the FIRST result is written to TEMPLATE_MATCH_LIST
+    // 3. Once assigned, a search_id is PERMANENT for that queue item
+    // 4. If a queue item is resumed (already has results in DB), it uses its existing search_id
+    //
+    // IMPORTANT: search_id = -1 means 0/N completion (NO results written)
+    //           search_id > 0 means n/N completion (AT LEAST one result written)
+
     if ( running_queue_id > 0 ) {
-        // Get the existing search_id from the database
+        // Check if this queue item already has a search_id from previous execution
         int existing_search_id = main_frame->current_project.database.GetSearchIdForQueueItem(running_queue_id);
 
         if ( existing_search_id > 0 ) {
-            // Reuse the existing search_id - this queue item was resumed
+            // This queue item has been run before and has results in TEMPLATE_MATCH_LIST
+            // The search_id is FIXED - we MUST reuse it
             search_id = existing_search_id;
-            wxPrintf("Reusing existing search_id %d for queue item %ld (resumed job)\n", search_id, running_queue_id);
+            wxPrintf("Queue item %ld resuming with existing search_id %d\n", running_queue_id, search_id);
+
+            // Verify that results exist for this search_id (sanity check)
+            int result_count = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(
+                wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_LIST WHERE JOB_ID = %d", search_id));
+            MyDebugAssertTrue(result_count > 0,
+                             "Queue item has search_id %d but no results in TEMPLATE_MATCH_LIST", search_id);
         }
         else {
-            // No search_id assigned yet - generate a new one that accounts for ALL assigned IDs
-            // Must check both TEMPLATE_MATCH_LIST and TEMPLATE_MATCH_QUEUE tables
-            int highest_in_results = main_frame->current_project.database.ReturnHighestTemplateMatchJobID();
-            int highest_in_queue = main_frame->current_project.database.GetHighestSearchIdFromQueue();
-            search_id = std::max(highest_in_results, highest_in_queue) + 1;
-
-            wxPrintf("Assigning new search_id %d to queue item %ld (highest_in_results=%d, highest_in_queue=%d)\n",
-                     search_id, running_queue_id, highest_in_results, highest_in_queue);
-
-            // Update the queue item with the new search_id
-            if ( queue_completion_callback ) {
-                // Queue manager is present - let it update the search ID
-                queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_id, search_id);
-            }
-            else {
-                // No queue manager (StartEstimationClick path) - update database directly
-                main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_id, search_id);
-                wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_id, search_id);
-            }
+            // This queue item has NEVER had results written
+            // DO NOT assign a search_id now - it will be assigned when first result is written
+            search_id = -1;
+            wxPrintf("Queue item %ld starting fresh - search_id will be assigned when first result is written\n", running_queue_id);
         }
     }
     else {
-        // Non-queue job - just get the next available ID
+        // Non-queue job - assign ID immediately since it's not tracked in queue
         search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
+        wxPrintf("Non-queue job - assigning search_id %d immediately\n", search_id);
     }
 
     // Unfreeze GUI updates in queue manager now that setup is complete

@@ -543,6 +543,10 @@ void TemplateMatchQueueManager::PopulateListControl(wxListCtrl*                 
 
         ctrl->SetItem(row, 2, item->search_name);
         // Status is column 3
+        if (item->queue_status == "complete" || item->queue_status == "running") {
+            wxPrintf("PopulateListControl: Setting status for queue_id %ld to '%s' in row %zu\n",
+                    item->database_queue_id, item->queue_status.mb_str().data(), idx);
+        }
         SetStatusDisplay(ctrl, row, item->queue_status);
         // Progress is column 4
         SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
@@ -2039,10 +2043,13 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
             wxPrintf("Found completed job %ld at priority %d with status %s\n",
                      database_queue_id, job.queue_order, job.queue_status.mb_str().data());
             // Job should already be at queue_order = -1 (available queue) from when it started running
+            // and status should already be updated by UpdateSearchStatus above
             if ( job.queue_order != -1 ) {
                 wxPrintf("WARNING: Completed job %ld was not at priority -1 (was %d), correcting\n",
                          database_queue_id, job.queue_order);
                 job.queue_order = -1;
+                // Need to update display since we changed queue_order
+                UpdateQueueDisplay();
             }
             job_found = true;
             break;
@@ -2065,9 +2072,9 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
     // Update button state since no job is running
     UpdateButtonState();
 
-    // Update both displays to show new status and position changes
+    // Update display to show new status (UpdateQueueDisplay already calls UpdateAvailableSearchesDisplay)
+    wxPrintf("OnSearchCompleted: Calling UpdateQueueDisplay to refresh status display\n");
     UpdateQueueDisplay( );
-    UpdateAvailableSearchesDisplay( );
 
     // Save changes to database - using auto-commit mode (each UPDATE commits immediately)
     SaveQueueToDatabase( );

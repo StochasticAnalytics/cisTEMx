@@ -3,29 +3,33 @@
 #include "../core/gui_core_headers.h"
 #include "TemplateMatchQueueManager.h"
 
-// extern MyMovieAssetPanel *movie_asset_panel;
-extern MyImageAssetPanel*         image_asset_panel;
-extern MyVolumeAssetPanel*        volume_asset_panel;
-extern MyRunProfilesPanel*        run_profiles_panel;
-extern MyMainFrame*               main_frame;
+// File-specific debug flags
+// #define cisTEM_DEBUG_ORPHANED_SEARCH_IDS  // Uncomment to enable orphaned search_id checking
 
-// Define static member for tracking the open queue dialog
+extern MyImageAssetPanel*  image_asset_panel;
+extern MyVolumeAssetPanel* volume_asset_panel;
+extern MyRunProfilesPanel* run_profiles_panel;
+extern MyMainFrame*        main_frame;
+
+// Static member ensures only one queue manager dialog exists at a time across all panel instances
 wxDialog* MatchTemplatePanel::active_queue_dialog = nullptr;
+// Global pointer to results panel (defined in projectx.cpp) - used to mark results dirty after database updates,
+// retrieve active job IDs from the results view, and access the list of template match job IDs
 extern MatchTemplateResultsPanel* match_template_results_panel;
 
 MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     : MatchTemplatePanelParent(parent) {
-    // Set variables
 
-    my_job_id                 = -1;
-    running_job               = false;
-    running_queue_job_id      = -1; // Not running from queue
-    queue_completion_callback = nullptr; // No callback initially
-    current_custom_cli_args   = ""; // Clear custom CLI args
-
+    // Core template matching panel state
+    my_job_id              = -1; // Job controller ID for tracking and killing distributed computation jobs (-1 = idle)
     group_combo_is_dirty   = false;
     run_profiles_are_dirty = false;
-    set_up_to_resume_job   = false;
+    current_pixel_size     = -1.0f; // Initialize to invalid value to force first update
+
+    // Queue manager integration
+    running_queue_id          = -1; // Database queue ID of the currently executing search (-1 when idle)
+    queue_completion_callback = nullptr; // Pointer to queue manager dialog for real-time progress updates (null if dialog closed)
+    current_custom_cli_args   = ""; // Clear custom CLI args (used by queue for custom parameters)
 
 #ifndef SHOW_CISTEM_GPU_OPTIONS
     UseGPURadioYes->Enable(false);
@@ -51,18 +55,20 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     ExpertPanel->SetMinSize(input_size);
     ExpertPanel->SetSize(input_size);
 
-    ResetDefaults( );
-    //	EnableMovieProcessingIfAppropriate();
-
     result_bitmap.Create(1, 1, 24);
     time_of_last_result_update = time(NULL);
 
+    // Set up control constraints before setting defaults
+    OutofPlaneStepNumericCtrl->SetMinMaxValue(0.0f, 360.f);
+    InPlaneStepNumericCtrl->SetMinMaxValue(0.0f, 360.f);
+    MinPeakRadiusNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);
     DefocusSearchRangeNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);
     DefocusSearchStepNumericCtrl->SetMinMaxValue(1.0f, FLT_MAX);
     PixelSizeSearchRangeNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);
     PixelSizeSearchStepNumericCtrl->SetMinMaxValue(0.01f, FLT_MAX);
     HighResolutionLimitNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);
 
+    // Populate combo boxes before setting defaults
     SymmetryComboBox->Clear( );
     SymmetryComboBox->Append("C1");
     SymmetryComboBox->Append("C2");
@@ -78,34 +84,19 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     SymmetryComboBox->Append("T2");
     SymmetryComboBox->SetSelection(0);
 
+    // Now set defaults after controls are properly initialized
+    ResetDefaults( );
+
     GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MatchTemplatePanel::OnGroupComboBox, this);
 }
-
-/*
-void MatchTemplatePanel::EnableMovieProcessingIfAppropriate()
-{
-	// Check whether all members of the group have movie parents. If not, make sure we only allow image processing
-	MovieRadioButton->Enable(true);
-	NoMovieFramesStaticText->Enable(true);
-	NoFramesToAverageSpinCtrl->Enable(true);
-	for (int counter = 0; counter < image_asset_panel->ReturnGroupSize(GroupComboBox->GetSelection()); counter ++ )
-	{
-		if (image_asset_panel->all_assets_list->ReturnAssetPointer(image_asset_panel->ReturnGroupMember(GroupComboBox->GetSelection(),counter))->parent_id < 0)
-		{
-			MovieRadioButton->SetValue(false);
-			MovieRadioButton->Enable(false);
-			NoMovieFramesStaticText->Enable(false);
-			NoFramesToAverageSpinCtrl->Enable(false);
-			ImageRadioButton->SetValue(true);
-		}
-	}
-}
-*/
 
 void MatchTemplatePanel::ResetAllDefaultsClick(wxCommandEvent& event) {
     ResetDefaults( );
 }
 
+/**
+ * @brief Opens clicked URLs in the system's default web browser to access referenced papers
+ */
 void MatchTemplatePanel::OnInfoURL(wxTextUrlEvent& event) {
     const wxMouseEvent& ev = event.GetMouseEvent( );
 
@@ -124,6 +115,9 @@ void MatchTemplatePanel::OnInfoURL(wxTextUrlEvent& event) {
     wxLaunchDefaultBrowser(my_style.GetURL( ));
 }
 
+/**
+ * @brief Resets panel to initial input state - stops running jobs, clears results, and shows input controls
+ */
 void MatchTemplatePanel::Reset( ) {
     ProgressBar->SetValue(0);
     TimeRemainingText->SetLabel("Time Remaining : ???h:??m:??s");
@@ -141,17 +135,27 @@ void MatchTemplatePanel::Reset( ) {
 
     ResultsPanel->Clear( );
 
-    if ( running_job == true ) {
+    if ( IsJobRunning( ) ) {
         main_frame->job_controller.KillJob(my_job_id);
         cached_results.Clear( );
 
-        running_job = false;
+        // If this was a queue job, notify the queue manager of termination
+        if ( running_queue_id > 0 && queue_completion_callback ) {
+            wxPrintf("Reset: Notifying queue manager of job termination for queue ID %ld\n", running_queue_id);
+            queue_completion_callback->OnSearchCompleted(running_queue_id, false); // false = job failed/terminated
+            running_queue_id = -1;
+        }
+
+        // Reset job state - clear job ID
+        my_job_id = -1;
     }
 
     ResetDefaults( );
     Layout( );
 }
 
+// TODO: Move all default values to a new header cistem_default_values.h at same level as constants.h
+// These values should be shared between GUI (MatchTemplatePanel) and CLI (match_template.cpp)
 void MatchTemplatePanel::ResetDefaults( ) {
     OutofPlaneStepNumericCtrl->ChangeValueFloat(2.5);
     InPlaneStepNumericCtrl->ChangeValueFloat(1.5);
@@ -159,25 +163,8 @@ void MatchTemplatePanel::ResetDefaults( ) {
 
     DefocusSearchYesRadio->SetValue(true);
     PixelSizeSearchNoRadio->SetValue(true);
-    set_up_to_resume_job = false;
 
     SymmetryComboBox->SetValue("C1");
-
-    if ( main_frame->current_project.is_open ) {
-        // deprecated - remove: Resume run functionality replaced by Queue Manager
-        // ResumeRunCheckBox->SetValue(false);
-        // deprecated - remove: Resume run functionality replaced by Queue Manager
-        /*
-        if ( match_template_results_panel->search_ids.empty( ) )
-            ResumeRunCheckBox->Enable(true);
-        else
-            ResumeRunCheckBox->Enable(false);
-        */
-    }
-    else {
-        // deprecated - remove: Resume run functionality replaced by Queue Manager
-        // ResumeRunCheckBox->Enable(false);
-    }
 
 #ifdef SHOW_CISTEM_GPU_OPTIONS
     UseGPURadioYes->SetValue(true);
@@ -194,29 +181,45 @@ void MatchTemplatePanel::ResetDefaults( ) {
     PixelSizeSearchRangeNumericCtrl->ChangeValueFloat(0.05f);
     PixelSizeSearchStepNumericCtrl->ChangeValueFloat(0.01f);
 
-    //	AssetGroup active_group;
-    active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
-    if ( active_group.number_of_members > 0 ) {
-        ImageAsset* current_image;
-        current_image = image_asset_panel->ReturnAssetPointer(GroupComboBox->GetSelection( ));
-        HighResolutionLimitNumericCtrl->ChangeValueFloat(2.0f * current_image->pixel_size);
-    }
+    // Set high resolution limit based on first image in selected group
+    int selected_group = GroupComboBox->GetSelection( );
+    MyDebugAssertTrue(selected_group >= 0, "ResetDefaults called without a valid group selection - GroupComboBox must have a selection");
+
+    active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[selected_group]);
+    MyDebugAssertTrue(active_group.number_of_members > 0, "ResetDefaults called with empty group - selected group must contain at least one image");
+
+    // Use first image asset in the group (members[0] is the array index)
+    ImageAsset* current_image = image_asset_panel->ReturnAssetPointer(active_group.members[0]);
+    MyDebugAssertTrue(current_image != nullptr, "Failed to get image asset pointer - asset list may be corrupted or members[0] is invalid");
+
+    // Update tracking variable and set default resolution limit
+    current_pixel_size = current_image->pixel_size;
+    HighResolutionLimitNumericCtrl->ChangeValueFloat(2.0f * current_pixel_size);
 }
 
 void MatchTemplatePanel::OnGroupComboBox(wxCommandEvent& event) {
     //	ResetDefaults();
     //	AssetGroup active_group;
 
+    // Early return if no project is open (shouldn't happen but be defensive)
+    if ( ! main_frame->current_project.is_open ) {
+        wxPrintf("Warning: OnGroupComboBox called but no project is open\n");
+        return;
+    }
+
     active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
 
     if ( active_group.number_of_members > 0 ) {
+        ImageAsset* current_image = image_asset_panel->ReturnAssetPointer(active_group.members[0]);
 
-        ImageAsset* current_image;
-        current_image = image_asset_panel->ReturnAssetPointer(active_group.members[0]);
-        HighResolutionLimitNumericCtrl->ChangeValueFloat(2.0f * current_image->pixel_size);
+        // Only update high resolution limit if pixel size has changed
+        if ( current_image->pixel_size != current_pixel_size ) {
+            current_pixel_size = current_image->pixel_size;
+            HighResolutionLimitNumericCtrl->ChangeValueFloat(2.0f * current_pixel_size);
+        }
     }
 
-    if ( GroupComboBox->GetCount( ) > 0 && main_frame->current_project.is_open == true )
+    if ( GroupComboBox->GetCount( ) > 0 )
         all_images_have_defocus_values = CheckGroupHasDefocusValues( );
 
     if ( all_images_have_defocus_values == true && PleaseEstimateCTFStaticText->IsShown( ) == true ) {
@@ -344,17 +347,20 @@ void MatchTemplatePanel::SetInfo( ) {
 }
 
 void MatchTemplatePanel::FillGroupComboBox( ) {
+    // Called from constructor (when panel is created) or OnUpdateUI (when groups change)
+    // Both scenarios require an open project, so this should never fail
+    MyDebugAssertTrue(main_frame->current_project.is_open,
+                      "FillGroupComboBox called without open project - should only be called from constructor or when groups are dirtied");
+
     GroupComboBox->FillComboBox(true);
 
-    if ( GroupComboBox->GetCount( ) > 0 && main_frame->current_project.is_open == true )
+    if ( GroupComboBox->GetCount( ) > 0 )
         all_images_have_defocus_values = CheckGroupHasDefocusValues( );
 
-    if ( all_images_have_defocus_values == true && PleaseEstimateCTFStaticText->IsShown( ) == true ) {
-        PleaseEstimateCTFStaticText->Show(false);
-        Layout( );
-    }
-    else if ( all_images_have_defocus_values == false && PleaseEstimateCTFStaticText->IsShown( ) == false ) {
-        PleaseEstimateCTFStaticText->Show(true);
+    // Show warning if images lack defocus values, hide if they have them
+    bool should_show_warning = ! all_images_have_defocus_values;
+    if ( PleaseEstimateCTFStaticText->IsShown( ) != should_show_warning ) {
+        PleaseEstimateCTFStaticText->Show(should_show_warning);
         Layout( );
     }
 }
@@ -364,24 +370,28 @@ void MatchTemplatePanel::FillRunProfileComboBox( ) {
 }
 
 bool MatchTemplatePanel::CheckGroupHasDefocusValues( ) {
-    wxArrayLong images_with_defocus_values = main_frame->current_project.database.ReturnLongArrayFromSelectCommand("SELECT DISTINCT IMAGE_ASSET_ID FROM ESTIMATED_CTF_PARAMETERS");
-    long        current_image_id;
-    int         images_with_defocus_counter;
-    bool        image_was_found;
+    // TODO: Future optimization - instead of fetching ALL images with CTF estimates and searching,
+    // build a comma-separated list of just this group's asset IDs and use a single SQL query:
+    // SELECT COUNT(DISTINCT IMAGE_ASSET_ID) FROM ESTIMATED_CTF_PARAMETERS WHERE IMAGE_ASSET_ID IN (id1,id2,...)
+    // This would reduce complexity from O(n*m) to O(1) database operation
+
+    // Use modern vector instead of wxArrayLong for better performance
+    std::vector<long> images_with_defocus_values;
+    main_frame->current_project.database.FillVectorFromSelectCommand(
+            "SELECT DISTINCT IMAGE_ASSET_ID FROM ESTIMATED_CTF_PARAMETERS",
+            images_with_defocus_values);
 
     for ( int image_in_group_counter = 0; image_in_group_counter < image_asset_panel->ReturnGroupSize(GroupComboBox->GetSelection( )); image_in_group_counter++ ) {
-        current_image_id = image_asset_panel->all_assets_list->ReturnAssetPointer(image_asset_panel->ReturnGroupMember(GroupComboBox->GetSelection( ), image_in_group_counter))->asset_id;
-        image_was_found  = false;
+        long current_image_id = image_asset_panel->all_assets_list->ReturnAssetPointer(
+                                                                          image_asset_panel->ReturnGroupMember(GroupComboBox->GetSelection( ), image_in_group_counter))
+                                        ->asset_id;
 
-        for ( images_with_defocus_counter = 0; images_with_defocus_counter < images_with_defocus_values.GetCount( ); images_with_defocus_counter++ ) {
-            if ( images_with_defocus_values[images_with_defocus_counter] == current_image_id ) {
-                image_was_found = true;
-                break;
-            }
+        // Check if this image has a CTF estimate by searching for its ID in the vector
+        // std::find returns an iterator to the found element, or end() if not found
+        // This replaces the manual loop search with an optimized STL algorithm
+        if ( std::find(images_with_defocus_values.begin( ), images_with_defocus_values.end( ), current_image_id) == images_with_defocus_values.end( ) ) {
+            return false; // This image lacks CTF estimates, so group is incomplete
         }
-
-        if ( image_was_found == false )
-            return false;
     }
 
     return true;
@@ -389,31 +399,15 @@ bool MatchTemplatePanel::CheckGroupHasDefocusValues( ) {
 
 void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
 
-    // We want things to be greyed out if the user is re-running the job.
-    if ( set_up_to_resume_job ) {
-        return;
-    }
-
     // are there enough members in the selected group.
     if ( main_frame->current_project.is_open == false ) {
         RunProfileComboBox->Enable(false);
         GroupComboBox->Enable(false);
         StartEstimationButton->Enable(false);
         ReferenceSelectPanel->Enable(false);
-        // deprecated - remove: Resume run functionality replaced by Queue Manager
-        // ResumeRunCheckBox->Enable(false);
     }
     else {
-        if ( match_template_results_panel->template_match_job_ids.empty( ) ) {
-            // deprecated - remove: Resume run functionality replaced by Queue Manager
-            // ResumeRunCheckBox->Enable(true);
-        }
-        else {
-            // deprecated - remove: Resume run functionality replaced by Queue Manager
-            // ResumeRunCheckBox->Enable(false);
-        }
-
-        if ( running_job == false ) {
+        if ( ! IsJobRunning( ) ) {
             RunProfileComboBox->Enable(true);
             GroupComboBox->Enable(true);
             ReferenceSelectPanel->Enable(true);
@@ -478,103 +472,6 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
     }
 }
 
-/** 
- * Disables argument controls if set_up_to_resume_job is true.
- * In that case a TemplateMatchResult must be supplied to set
- * the arguments identical to the to be resumed job.
-*/
-
-void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, TemplateMatchJobResults* job_to_resume) {
-
-    this->set_up_to_resume_job = set_up_to_resume_job;
-    bool enable_value;
-
-    // FIXME: If the project is moved, the reference volume will have anew path and we aren't allowing updates to the reference.
-    // Probably the right solution is to be able to update the path to the reference when updating the project. Or alternatively
-    // to have a dialog pop up when a reference is NOT found and ask if the user wants to update the reference.
-    if ( set_up_to_resume_job ) {
-        // We want to disable user inputs so the job run matches the intial state.
-        enable_value = false;
-        // deprecated - remove: Resume run functionality replaced by Queue Manager
-        // ResumeRunCheckBox->Show(true);
-        // deprecated - remove: Resume run functionality replaced by Queue Manager
-        // ResumeRunCheckBox->SetValue(true);
-        // deprecated - remove: Resume run functionality replaced by Queue Manager
-        // ResumeRunCheckBox->Enable(true);
-        ResetAllDefaultsButton->Enable(false);
-
-        // We want to set the controls to the values of the job to be resumed.
-
-        // SetSelection requires the array position in the volume asset panel,
-        // which needs to be calculated from the volume asset id.
-        ReferenceSelectPanel->SetSelection(volume_asset_panel->ReturnArrayPositionFromAssetID(job_to_resume->ref_volume_asset_id));
-        OutofPlaneStepNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->out_of_plane_step));
-        InPlaneStepNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->in_plane_step));
-        MinPeakRadiusNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->min_peak_radius));
-        HighResolutionLimitNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->high_res_limit));
-        SymmetryComboBox->SetValue(job_to_resume->symmetry);
-        // If either range or step are 0 no search will be perfomed.
-        DefocusSearchYesRadio->SetValue(job_to_resume->defocus_search_range != 0.0f && job_to_resume->defocus_step != 0.0f);
-        DefocusSearchNoRadio->SetValue(job_to_resume->defocus_search_range == 0.0f || job_to_resume->defocus_step == 0.0f);
-        PixelSizeSearchYesRadio->SetValue(job_to_resume->pixel_size_search_range != 0.0f && job_to_resume->pixel_size_step != 0.0f);
-        PixelSizeSearchNoRadio->SetValue(job_to_resume->pixel_size_search_range == 0.0f || job_to_resume->pixel_size_step == 0.0f);
-        DefocusSearchRangeNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->defocus_search_range));
-        DefocusSearchStepNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->defocus_step));
-        PixelSizeSearchRangeNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->pixel_size_search_range));
-        PixelSizeSearchStepNumericCtrl->SetValue(wxString::Format(wxT("%f"), job_to_resume->pixel_size_step));
-    }
-    else {
-        // We want to allow the user to not re-run the job if the disable the ReRun radio button.
-        // The state remembered in "was_enabled..." is meaningless here.
-        enable_value = true;
-        ResetAllDefaultsButton->Enable(true);
-    }
-
-    //SetAndRememberEnableState(GroupComboBox, was_enabled_GroupComboBox, enable_value);
-    SetAndRememberEnableState(ReferenceSelectPanel, was_enabled_ReferenceSelectPanel, enable_value);
-
-    SetAndRememberEnableState(OutofPlaneStepNumericCtrl, was_enabled_OutofPlaneStepNumericCtrl, enable_value);
-    SetAndRememberEnableState(InPlaneStepNumericCtrl, was_enabled_InPlaneStepNumericCtrl, enable_value);
-    SetAndRememberEnableState(MinPeakRadiusNumericCtrl, was_enabled_MinPeakRadiusNumericCtrl, enable_value);
-
-    SetAndRememberEnableState(DefocusSearchYesRadio, was_enabled_DefocusSearchYesRadio, enable_value);
-    SetAndRememberEnableState(DefocusSearchNoRadio, was_enabled_DefocusSearchNoRadio, enable_value);
-    SetAndRememberEnableState(PixelSizeSearchYesRadio, was_enabled_PixelSizeSearchYesRadio, enable_value);
-    SetAndRememberEnableState(PixelSizeSearchNoRadio, was_enabled_PixelSizeSearchNoRadio, enable_value);
-
-    SetAndRememberEnableState(SymmetryComboBox, was_enabled_SymmetryComboBox, enable_value);
-    SetAndRememberEnableState(HighResolutionLimitNumericCtrl, was_enabled_HighResolutionLimitNumericCtrl, enable_value);
-    SetAndRememberEnableState(DefocusSearchRangeNumericCtrl, was_enabled_DefocusSearchRangeNumericCtrl, enable_value);
-    SetAndRememberEnableState(DefocusSearchStepNumericCtrl, was_enabled_DefocusSearchStepNumericCtrl, enable_value);
-
-    // It is okay to change the run profile for a rerun
-    if ( RunProfileComboBox->GetCount( ) > 0 ) {
-        if ( image_asset_panel->ReturnGroupSize(GroupComboBox->GetSelection( )) > 0 && run_profiles_panel->run_profile_manager.ReturnTotalJobs(RunProfileComboBox->GetSelection( )) > 0 && all_images_have_defocus_values == true ) {
-            StartEstimationButton->Enable(true);
-        }
-        else
-            StartEstimationButton->Enable(false);
-    }
-    else {
-        StartEstimationButton->Enable(false);
-    }
-
-    if ( group_combo_is_dirty == true ) {
-        FillGroupComboBox( );
-        group_combo_is_dirty = false;
-    }
-
-    if ( run_profiles_are_dirty == true ) {
-        FillRunProfileComboBox( );
-        run_profiles_are_dirty = false;
-    }
-
-    if ( volumes_are_dirty == true ) {
-        ReferenceSelectPanel->FillComboBox( );
-        volumes_are_dirty = false;
-    }
-}
-
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     MyDebugAssertTrue(main_frame != nullptr, "main_frame is null");
     MyDebugAssertTrue(main_frame->current_project.is_open, "Project database is not open");
@@ -588,7 +485,7 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         new_job.database_queue_id = queue_id;
 
         // Move job to available queue (position -1) since we're executing immediately
-        // This matches what QueueManager::RunNextJob does before execution
+        // This matches what QueueManager::RunNextSearch does before execution
         wxString sql = wxString::Format("UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_POSITION = -1 WHERE QUEUE_ID = %ld;", queue_id);
         main_frame->current_project.database.ExecuteSQL(sql);
         wxPrintf("StartEstimationClick: Moved job %ld to available queue (position -1)\n", queue_id);
@@ -625,6 +522,35 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 
     // write to database..
 
+    // CRITICAL: If this is a queue item with no search_id yet, assign one NOW (first result being written)
+    if ( running_queue_id > 0 && search_id == -1 ) {
+        // First result for this queue item - assign a new search_id
+        // The ONLY source of truth for search_id is TEMPLATE_MATCH_LIST
+        search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
+
+        wxPrintf("First result for queue item %ld - assigning search_id %d\n", running_queue_id, search_id);
+
+        // Update the queue item with the new search_id
+        if ( queue_completion_callback ) {
+            // Queue manager is present - let it update the search ID
+            queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_id, search_id);
+        }
+        else {
+            // No queue manager (StartEstimationClick path) - update database directly
+            main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_id, search_id);
+            wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_id, search_id);
+        }
+
+        // Note: We can't check for orphaned search_ids here because we're about to write
+        // the first result. The check would need to happen AFTER this result is written.
+        #ifdef cisTEM_DEBUG_ORPHANED_SEARCH_IDS
+        // This check would fail here - we've assigned the search_id but haven't written results yet
+        // See check after result is written to database instead
+        #endif
+    }
+
+    MyDebugAssertTrue(search_id > 0, "Attempting to write result with invalid search_id %d", search_id);
+
     main_frame->current_project.database.Begin( );
 
     cached_results[image_number - 1].job_id = search_id;
@@ -639,6 +565,20 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     if ( queue_completion_callback ) {
         queue_completion_callback->OnResultAdded(search_id);
     }
+
+    #ifdef cisTEM_DEBUG_ORPHANED_SEARCH_IDS
+    // After writing a result, verify consistency between queue and results tables
+    static int results_written = 0;
+    results_written++;
+    // Only check periodically to avoid performance impact
+    if (results_written % 10 == 0) {
+        int highest_queue_search_id = main_frame->current_project.database.GetHighestSearchIdFromQueue();
+        int highest_results_search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID();
+        MyDebugAssertTrue(highest_queue_search_id <= highest_results_search_id,
+                         "Orphaned search_ids detected: Queue table has max search_id %d but TEMPLATE_MATCH_LIST has max %d",
+                         highest_queue_search_id, highest_results_search_id);
+    }
+    #endif
 }
 
 void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {
@@ -658,7 +598,6 @@ void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {
 
     ExpertPanel->Show(true);
 
-    running_job = false;
     Layout( );
 }
 
@@ -675,7 +614,15 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     ProgressPanel->Layout( );
     cached_results.Clear( );
 
-    //running_job = false;
+    // If this was a queue job, notify the queue manager of termination
+    if ( running_queue_id > 0 && queue_completion_callback ) {
+        wxPrintf("Notifying queue manager of job termination for queue ID %ld\n", running_queue_id);
+        queue_completion_callback->OnSearchCompleted(running_queue_id, false); // false = job failed/terminated
+        running_queue_id = -1;
+    }
+
+    // Reset job state - clear job ID
+    my_job_id = -1;
 }
 
 void MatchTemplatePanel::WriteInfoText(wxString text_to_write) {
@@ -748,36 +695,12 @@ void MatchTemplatePanel::ProcessResult(JobResult* result_to_process) // this wil
 
         wxTimeSpan time_remaining = wxTimeSpan(0, 0, seconds_remaining);
         TimeRemainingText->SetLabel(time_remaining.Format("Time Remaining : %Hh:%Mm:%Ss"));
+
+        // Update queue manager display periodically to show n/N progress
+        if ( running_queue_id > 0 && queue_completion_callback ) {
+            queue_completion_callback->UpdateQueueDisplay();
+        }
     }
-
-    // results should be ..
-
-    // Defocus 1 (Angstroms)
-    // Defocus 2 (Angstroms)
-    // Astigmatism Angle (degrees)
-    // Additional phase shift (e.g. from phase plate) radians
-    // Score
-    // Resolution (Angstroms) to which Thon rings are well fit by the CTF
-    // Reolution (Angstroms) at which aliasing was detected
-
-    /*
-
-	if (current_time - time_of_last_result_update > 5)
-	{
-		// we need the filename of the image..
-
-		wxString image_filename = image_asset_panel->ReturnAssetPointer(active_group.members[result_to_process->job_number])->filename.GetFullPath();
-
-		ResultsPanel->Draw(my_job_package.jobs[result_to_process->job_number].arguments[3].ReturnStringArgument(), my_job_package.jobs[result_to_process->job_number].arguments[16].ReturnBoolArgument(), result_to_process->result_data[0], result_to_process->result_data[1], result_to_process->result_data[2], result_to_process->result_data[3], result_to_process->result_data[4], result_to_process->result_data[5], result_to_process->result_data[6], image_filename);
-		time_of_last_result_update = time(NULL);
-	}
-*/
-
-    //	my_job_tracker.MarkJobFinished();
-    //	if (my_job_tracker.ShouldUpdate() == true) UpdateProgressBar();
-
-    // store the results..
-    //buffered_results[result_to_process->job_number] = result_to_process;
 }
 
 void MatchTemplatePanel::ProcessAllJobsFinished( ) {
@@ -786,9 +709,9 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     // Notify queue manager that job is entering finalization phase
     // This prevents auto-advance from starting a new job while we're cleaning up
-    if ( running_queue_job_id > 0 && queue_completion_callback ) {
-        wxPrintf("Notifying queue manager that job %ld is entering finalization\n", running_queue_job_id);
-        queue_completion_callback->OnJobEnteringFinalization(running_queue_job_id);
+    if ( running_queue_id > 0 && queue_completion_callback ) {
+        wxPrintf("Notifying queue manager that search with queue ID %ld is entering finalization\n", running_queue_id);
+        queue_completion_callback->OnSearchEnteringFinalization(running_queue_id);
     }
 
     // Update the GUI with project timings
@@ -809,24 +732,23 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     main_frame->job_controller.KillJob(my_job_id);
 
     // Reset job state to allow next job to start - MUST happen before callback
-    running_job             = false;
     my_job_id               = -1;
     current_custom_cli_args = ""; // Clear custom CLI args after job completion
 
     // Update queue status if this was a queue job
-    if ( running_queue_job_id > 0 ) {
-        wxPrintf("Queue job %ld completed - updating status\n", running_queue_job_id);
+    if ( running_queue_id > 0 ) {
+        wxPrintf("Search with queue ID %ld completed - updating status\n", running_queue_id);
 
         // Note: Queue status is now computed from completion data, no database update needed
 
-        // Notify queue manager if callback is registered - called AFTER clearing running_job
+        // Notify queue manager if callback is registered - called AFTER clearing job state
         if ( queue_completion_callback ) {
             wxPrintf("Notifying queue manager of job completion\n");
-            queue_completion_callback->OnJobCompleted(running_queue_job_id, true);
+            queue_completion_callback->OnSearchCompleted(running_queue_id, true);
         }
 
         // Clear the queue job ID
-        running_queue_job_id = -1;
+        running_queue_id = -1;
     }
 
     WriteInfoText("All Jobs have finished.");
@@ -844,26 +766,39 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         CancelAlignmentButton->Show(false);
         FinishButton->Show(false);
 
-        // Set a 20-second timeout to show finish button if queue doesn't progress
+        // Store the current job ID before starting timeout
+        // We'll check if this changes to detect if a new job started
+        long job_id_at_timeout_start = my_job_id;
+
+        // Set a 30-second timeout to show finish button if queue doesn't progress
         // This prevents indefinite hanging if queue manager fails to start next job
-        wxTimer* timeout_timer = new wxTimer();
-        timeout_timer->Bind(wxEVT_TIMER, [this, timeout_timer](wxTimerEvent&) {
-            // Check if we're still waiting (no job has started and finish button not shown)
-            if (!running_job && FinishButton && !FinishButton->IsShown()) {
-                wxPrintf("Queue transition timeout after 20 seconds - showing Finish button\n");
+        // 30 seconds should be enough for most queue operations and job startup
+        wxTimer* timeout_timer = new wxTimer( );
+        timeout_timer->Bind(wxEVT_TIMER, [this, timeout_timer, job_id_at_timeout_start](wxTimerEvent&) {
+            // Check if we're still waiting:
+            // - No new job has started (my_job_id unchanged or still -1)
+            // - Finish button not already shown
+            // - Not currently running a job
+            if ( my_job_id == job_id_at_timeout_start && ! IsJobRunning( ) &&
+                 FinishButton && ! FinishButton->IsShown( ) ) {
+                wxPrintf("Queue transition timeout after 30 seconds - showing Finish button\n");
+                wxPrintf("Job ID at timeout: %ld, Current job ID: %ld\n", job_id_at_timeout_start, my_job_id);
                 TimeRemainingText->SetLabel("Time Remaining : Queue timeout - manual intervention needed");
                 FinishButton->Show(true);
-                ProgressPanel->Layout();
+                ProgressPanel->Layout( );
 
                 // Try to trigger queue progression one more time if callback exists
-                if (queue_completion_callback) {
+                if ( queue_completion_callback ) {
                     wxPrintf("Attempting to trigger queue progression after timeout\n");
-                    queue_completion_callback->ProgressExecutionQueue();
+                    queue_completion_callback->ProgressExecutionQueue( );
                 }
             }
-            delete timeout_timer;  // Clean up the timer
+            else {
+                wxPrintf("Timeout timer fired but conditions not met - job may have started\n");
+            }
+            delete timeout_timer; // Clean up the timer
         });
-        timeout_timer->StartOnce(20000);  // 20 second timeout
+        timeout_timer->StartOnce(30000); // 30 second timeout
     }
     else {
         // All done - show finish button
@@ -907,111 +842,10 @@ void MatchTemplatePanel::UpdateProgressBar( ) {
     TimeRemainingText->SetLabel(my_job_tracker.ReturnRemainingTime( ).Format("Time Remaining : %Hh:%Mm:%Ss"));
 }
 
-// deprecated - remove: Resume run functionality replaced by Queue Manager
-/*
-void MatchTemplatePanel::ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event) {
-    if ( event.IsChecked( ) ) {
-        CheckForUnfinishedWork(true, true);
-    }
-    else {
-        CheckForUnfinishedWork(false, true);
-    }
-}
-*/
-
-/** 
- * This may be called when the user clicks the resume run checkbox.
- * OR
- * When the header in the results panel is changed.
-*/
-
-wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_from_check_box) {
-    wxArrayLong unfinished_match_template_ids;
-    if ( is_checked ) {
-        // active group might have been overriden when resuming a run
-        active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
-
-        int active_job_id                 = match_template_results_panel->ResultDataView->ReturnActiveJobID( );
-        int images_total                  = active_group.number_of_members;
-        int images_to_be_processed        = 0;
-        int images_successfully_processed = 0;
-
-        // Get a list of unfinished images by performing a left join between all
-        // image assets or the image assets in the desired group and the results
-        // stored for this job. The image assets that don't match are what we
-        // want.
-
-        // All images
-        if ( active_group.id == -1 ) {
-            // Find images that don't have results for this template match job yet
-            // Uses LEFT JOIN to find IMAGE_ASSETS without corresponding TEMPLATE_MATCH_LIST entries
-            unfinished_match_template_ids = main_frame->current_project.database.ReturnLongArrayFromSelectCommand(
-                    wxString::Format("SELECT IMAGE_ASSETS.IMAGE_ASSET_ID, "
-                                     "COMPLETED.IMAGE_ASSET_ID AS COMPLETED_IMAGE_ID "
-                                     "FROM IMAGE_ASSETS "
-                                     "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %i) AS COMPLETED "
-                                     "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMPLETED.IMAGE_ASSET_ID "
-                                     "WHERE COMPLETED_IMAGE_ID IS NULL",
-                                     active_job_id));
-        }
-        // An Image group
-        else {
-            // Find images in this group that don't have results for this template match job yet
-            // Uses LEFT JOIN to find IMAGE_GROUP entries without corresponding TEMPLATE_MATCH_LIST entries
-            unfinished_match_template_ids = main_frame->current_project.database.ReturnLongArrayFromSelectCommand(
-                    wxString::Format("SELECT IMAGE_ASSETS.IMAGE_ASSET_ID, "
-                                     "COMPLETED.IMAGE_ASSET_ID AS COMPLETED_IMAGE_ID "
-                                     "FROM IMAGE_GROUP_%i AS IMAGE_ASSETS "
-                                     "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %i) AS COMPLETED "
-                                     "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMPLETED.IMAGE_ASSET_ID "
-                                     "WHERE COMPLETED_IMAGE_ID IS NULL",
-                                     active_group.id, active_job_id));
-        }
-        images_to_be_processed        = unfinished_match_template_ids.GetCount( );
-        images_successfully_processed = images_total - images_to_be_processed;
-        no_unfinished_jobs            = (images_to_be_processed == 0);
-
-        if ( no_unfinished_jobs ) {
-            wxPrintf("No unfinished jobs.\n");
-            // Only create the dialog if triggered by the checkbox, not by the header change.
-            if ( is_from_check_box ) {
-                wxMessageDialog* check_dialog = new wxMessageDialog(this,
-                                                                    wxString::Format("There is no unfinished work for job %d.\n\nYou may select another job by clicking the header in the TM results panel.",
-                                                                                     active_job_id, "Please Confirm", wxOK));
-                check_dialog->ShowModal( );
-            }
-            // deprecated - remove: Resume run functionality replaced by Queue Manager
-            // ResumeRunCheckBox->SetValue(false);
-            SetInputsForPossibleReRun(false);
-        }
-        else {
-            wxPrintf("Checking for unfinished work for job %d\n", active_job_id);
-            // Only create the dialog if triggered by the checkbox, not by the header change.
-            if ( is_from_check_box ) {
-                wxMessageDialog* check_dialog = new wxMessageDialog(this,
-                                                                    wxString::Format("Resuming work for job %d, which has %d/%d images completed.\n",
-                                                                                     active_job_id, images_successfully_processed, images_total, "Please Confirm", wxOK));
-                check_dialog->ShowModal( );
-            }
-
-            int job_id_to_resume = match_template_results_panel->ResultDataView->ReturnActiveJobID( );
-            // This returns just one of the finished jobs, so we can get the arguments from it.
-            long                    database_queue_id     = main_frame->current_project.database.GetTemplateMatchIdForGivenJobId(job_id_to_resume);
-            TemplateMatchJobResults job_results_to_resume = main_frame->current_project.database.GetTemplateMatchingResultByID(database_queue_id);
-            SetInputsForPossibleReRun(true, &job_results_to_resume);
-        }
-    }
-    else {
-        wxPrintf("ELSE\n");
-        SetInputsForPossibleReRun(false);
-    }
-    return unfinished_match_template_ids;
-}
-
 // Queue functionality implementation
 void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
     // Validate that no job is currently running
-    if ( ! running_job ) {
+    if ( ! IsJobRunning( ) ) {
         // Collect job parameters from GUI and add to queue with dialog
         TemplateMatchQueueItem new_job = CollectJobParametersFromGui( );
         AddJobToQueue(new_job, true);
@@ -1023,6 +857,15 @@ void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
+    // Check if we already have a queue dialog open
+    if ( active_queue_dialog && active_queue_dialog->IsShown( ) ) {
+        // Just bring the existing dialog to front
+        wxPrintf("Queue manager dialog already open - bringing to front\n");
+        active_queue_dialog->Raise( );
+        active_queue_dialog->SetFocus( );
+        return;
+    }
+
     // Open queue manager dialog without adding new items
     wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
                                           wxDefaultPosition, wxSize(900, 700),
@@ -1038,99 +881,43 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
     dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
 
-    // Add Close button
-    wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
-    dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
-
     queue_dialog->SetSizer(dialog_sizer);
 
     // Force layout update for proper visibility of both tables
     queue_dialog->Layout( );
     queue_dialog->Fit( ); // Auto-size dialog to fit content
 
-    // Connect close button to destroy the dialog
-    close_button->Bind(wxEVT_BUTTON, [queue_dialog](wxCommandEvent&) {
+    // Handle window close event - ensure panel state is correct if job is running
+    queue_dialog->Bind(wxEVT_CLOSE_WINDOW, [this, queue_dialog](wxCloseEvent& event) {
+        // Check if a job is running and ensure the panel shows the correct state
+        if ( IsJobRunning() ) {
+            // Ensure we're showing the progress panel and controls
+            if ( ! ProgressPanel->IsShown() ) {
+                ProgressPanel->Show(true);
+                StartPanel->Show(false);
+                OutputTextPanel->Show(true);
+                InfoPanel->Show(false);
+                InputPanel->Show(false);
+                Layout();
+            }
+            // Ensure the terminate button is visible
+            if ( ! CancelAlignmentButton->IsShown() ) {
+                CancelAlignmentButton->Show(true);
+                FinishButton->Show(false);
+                ProgressPanel->Layout();
+            }
+        }
+
+        MatchTemplatePanel::active_queue_dialog = nullptr; // Clear the static reference
         queue_dialog->Destroy( );
     });
+
+    // Store reference to the active dialog
+    active_queue_dialog = queue_dialog;
 
     // Use Show() instead of ShowModal() to keep parent controls enabled
     // This allows editing of parameters in the MatchTemplatePanel while the queue dialog is open
     queue_dialog->Show(true);
-}
-
-void MatchTemplatePanel::OnHeaderClickAddToQueue( ) {
-    // Get the active job ID from the results panel
-    int active_job_id = match_template_results_panel->ResultDataView->ReturnActiveJobID( );
-
-    if ( active_job_id <= 0 ) {
-        wxMessageBox("No active template match job selected. Please click on a result row first.",
-                     "No Active Job", wxOK | wxICON_WARNING);
-        return;
-    }
-
-    // Ask user if they want to add this job to the Queue Manager
-    wxMessageDialog dialog(this,
-                           wxString::Format("Add Template Match Job %d to Queue Manager?\n\n"
-                                            "The job will be added to the Available Jobs table where you can "
-                                            "configure parameters and move it to the execution queue.",
-                                            active_job_id),
-                           "Add to Queue Manager", wxYES_NO | wxICON_QUESTION);
-
-    if ( dialog.ShowModal( ) == wxID_YES ) {
-        // Check if this job is already in the queue
-        // TODO: Implement queue check logic
-
-        // Collect current GUI parameters for the job
-        TemplateMatchQueueItem gui_params = CollectJobParametersFromGui( );
-
-        // Create queue item from the active job
-        TemplateMatchQueueItem queue_item;
-        queue_item.database_queue_id = active_job_id;
-        queue_item.search_name       = gui_params.search_name; // Use the template name from GUI
-        queue_item.queue_status      = "pending";
-        queue_item.queue_order       = -1; // Add to available jobs table
-
-        // Use existing resume logic to determine if job is complete
-        wxArrayLong unfinished_ids = CheckForUnfinishedWork(true, false);
-        if ( unfinished_ids.IsEmpty( ) ) {
-            queue_item.queue_status = "complete";
-        }
-
-        // Copy relevant parameters from GUI to queue item
-        queue_item.image_group_id             = gui_params.image_group_id;
-        queue_item.reference_volume_asset_id  = gui_params.reference_volume_asset_id;
-        queue_item.run_profile_id             = gui_params.run_profile_id;
-        queue_item.use_gpu                    = gui_params.use_gpu;
-        queue_item.use_fast_fft               = gui_params.use_fast_fft;
-        queue_item.symmetry                   = gui_params.symmetry;
-        queue_item.pixel_size                 = gui_params.pixel_size;
-        queue_item.voltage                    = gui_params.voltage;
-        queue_item.spherical_aberration       = gui_params.spherical_aberration;
-        queue_item.amplitude_contrast         = gui_params.amplitude_contrast;
-        queue_item.defocus1                   = gui_params.defocus1;
-        queue_item.defocus2                   = gui_params.defocus2;
-        queue_item.defocus_angle              = gui_params.defocus_angle;
-        queue_item.phase_shift                = gui_params.phase_shift;
-        queue_item.low_resolution_limit       = gui_params.low_resolution_limit;
-        queue_item.high_resolution_limit      = gui_params.high_resolution_limit;
-        queue_item.out_of_plane_angular_step  = gui_params.out_of_plane_angular_step;
-        queue_item.in_plane_angular_step      = gui_params.in_plane_angular_step;
-        queue_item.defocus_search_range       = gui_params.defocus_search_range;
-        queue_item.defocus_step               = gui_params.defocus_step;
-        queue_item.pixel_size_search_range    = gui_params.pixel_size_search_range;
-        queue_item.pixel_size_step            = gui_params.pixel_size_step;
-        queue_item.refinement_threshold       = gui_params.refinement_threshold;
-        queue_item.ref_box_size_in_angstroms  = gui_params.ref_box_size_in_angstroms;
-        queue_item.mask_radius                = gui_params.mask_radius;
-        queue_item.min_peak_radius            = gui_params.min_peak_radius;
-        queue_item.xy_change_threshold        = gui_params.xy_change_threshold;
-        queue_item.exclude_above_xy_threshold = gui_params.exclude_above_xy_threshold;
-
-        // Add to queue and show queue manager
-        AddJobToQueue(queue_item, true);
-
-        wxPrintf("Added Template Match Job %d to Queue Manager\n", active_job_id);
-    }
 }
 
 void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& item, bool for_editing) {
@@ -1143,7 +930,7 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
     if ( GroupComboBox && item.image_group_id >= 0 ) {
         GroupComboBox->SetSelection(item.image_group_id);
         // Enable combo box if we're editing
-        if ( for_editing && ! running_job ) {
+        if ( for_editing && ! IsJobRunning( ) ) {
             GroupComboBox->Enable(true);
         }
     }
@@ -1151,7 +938,7 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
     if ( ReferenceSelectPanel && item.reference_volume_asset_id >= 0 ) {
         ReferenceSelectPanel->SetSelection(item.reference_volume_asset_id);
         // Enable reference panel if we're editing
-        if ( for_editing && ! running_job ) {
+        if ( for_editing && ! IsJobRunning( ) ) {
             ReferenceSelectPanel->Enable(true);
         }
     }
@@ -1161,7 +948,7 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
         RunProfileComboBox->SetSelection(item.run_profile_id);
         wxPrintf("Set RunProfileComboBox to selection %d from queue item\n", item.run_profile_id);
         // Enable combo box if we're editing
-        if ( for_editing && ! running_job ) {
+        if ( for_editing && ! IsJobRunning( ) ) {
             RunProfileComboBox->Enable(true);
         }
     }
@@ -1249,13 +1036,13 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
 
 bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     // Check if we're ready to run
-    if ( running_job ) {
+    if ( IsJobRunning( ) ) {
         wxPrintf("Cannot run queued job - another job is already running\n");
         return false;
     }
 
     // Store the queue job ID so we can update its status when complete
-    running_queue_job_id = job.database_queue_id;
+    running_queue_id = job.database_queue_id;
 
     // Populate the GUI with the queued job's parameters
     PopulateGuiFromQueueItem(job);
@@ -1397,15 +1184,16 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         TemplateMatchQueueManager* queue_manager = nullptr;
 
         // Check if we already have a queue dialog open
-        if ( active_queue_dialog && active_queue_dialog->IsShown() ) {
+        if ( active_queue_dialog && active_queue_dialog->IsShown( ) ) {
             // Reuse the existing dialog
             wxPrintf("Reusing existing queue manager dialog\n");
 
             // Find the queue manager in the dialog's children
-            wxWindowList& children = active_queue_dialog->GetChildren();
-            for ( wxWindowList::iterator it = children.begin(); it != children.end(); ++it ) {
+            wxWindowList& children = active_queue_dialog->GetChildren( );
+            for ( wxWindowList::iterator it = children.begin( ); it != children.end( ); ++it ) {
                 queue_manager = wxDynamicCast(*it, TemplateMatchQueueManager);
-                if ( queue_manager ) break;
+                if ( queue_manager )
+                    break;
             }
 
             if ( queue_manager ) {
@@ -1413,8 +1201,8 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
                 queue_manager->AddToExecutionQueue(job);
 
                 // Bring the dialog to front
-                active_queue_dialog->Raise();
-                active_queue_dialog->SetFocus();
+                active_queue_dialog->Raise( );
+                active_queue_dialog->SetFocus( );
             }
         }
 
@@ -1437,24 +1225,34 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
             wxBoxSizer* dialog_sizer = new wxBoxSizer(wxVERTICAL);
             dialog_sizer->Add(queue_manager, 1, wxEXPAND | wxALL, 5);
 
-            wxButton* close_button = new wxButton(queue_dialog, wxID_OK, "Close");
-            dialog_sizer->Add(close_button, 0, wxALIGN_CENTER | wxALL, 5);
-
             queue_dialog->SetSizer(dialog_sizer);
 
             // Force layout update for proper visibility of both tables
             queue_dialog->Layout( );
             queue_dialog->Fit( ); // Auto-size dialog to fit content
 
-            // Connect close button to destroy the dialog and clear our reference
-            close_button->Bind(wxEVT_BUTTON, [queue_dialog](wxCommandEvent&) {
-                MatchTemplatePanel::active_queue_dialog = nullptr;  // Clear the static reference
-                queue_dialog->Destroy( );
-            });
+            // Handle window close event - ensure panel state is correct if job is running
+            queue_dialog->Bind(wxEVT_CLOSE_WINDOW, [this, queue_dialog](wxCloseEvent& event) {
+                // Check if a job is running and ensure the panel shows the correct state
+                if ( IsJobRunning() ) {
+                    // Ensure we're showing the progress panel and controls
+                    if ( ! ProgressPanel->IsShown() ) {
+                        ProgressPanel->Show(true);
+                        StartPanel->Show(false);
+                        OutputTextPanel->Show(true);
+                        InfoPanel->Show(false);
+                        InputPanel->Show(false);
+                        Layout();
+                    }
+                    // Ensure the terminate button is visible
+                    if ( ! CancelAlignmentButton->IsShown() ) {
+                        CancelAlignmentButton->Show(true);
+                        FinishButton->Show(false);
+                        ProgressPanel->Layout();
+                    }
+                }
 
-            // Also handle window close event
-            queue_dialog->Bind(wxEVT_CLOSE_WINDOW, [queue_dialog](wxCloseEvent& event) {
-                MatchTemplatePanel::active_queue_dialog = nullptr;  // Clear the static reference
+                MatchTemplatePanel::active_queue_dialog = nullptr; // Clear the static reference
                 queue_dialog->Destroy( );
             });
 
@@ -1507,7 +1305,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
     }
 }
 
-bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job) {
+bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& job) {
     // Freeze GUI updates in queue manager to prevent interference during setup
     if ( queue_completion_callback ) {
         queue_completion_callback->SetGuiUpdateFrozen(true);
@@ -1517,7 +1315,7 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     PopulateGuiFromQueueItem(job);
 
     // Debug prints to check job parameters
-    wxPrintf("\n=== DEBUG: SetupJobFromQueueItem Parameters ===\n");
+    wxPrintf("\n=== DEBUG: SetupSearchFromQueueItem Parameters ===\n");
     wxPrintf("Search Name: %s\n", job.search_name);
     wxPrintf("Image Group ID: %d\n", job.image_group_id);
     wxPrintf("Reference Volume Asset ID: %d\n", job.reference_volume_asset_id);
@@ -1655,8 +1453,8 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
         executable_name += "_gpu";
     }
     // Append custom CLI args if present (ensure leading space)
-    if (!current_custom_cli_args.IsEmpty()) {
-        if (!current_custom_cli_args.StartsWith(" ")) {
+    if ( ! current_custom_cli_args.IsEmpty( ) ) {
+        if ( ! current_custom_cli_args.StartsWith(" ") ) {
             executable_name += " ";
         }
         executable_name += current_custom_cli_args;
@@ -1870,20 +1668,45 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
 
     // Get ID's from database for writing results as they come in
     database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID( ) + 1;
-    search_id         = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
 
-    // Update the queue item with the actual SEARCH_ID for n/N tracking
-    if ( running_queue_job_id > 0 ) {
-        if ( queue_completion_callback ) {
-            // Queue manager is present - let it update the search ID
-            queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_job_id, search_id);
+    // CRITICAL SEARCH_ID LOGIC - READ CAREFULLY:
+    // ============================================
+    // A queue item's search_id follows these IMMUTABLE rules:
+    // 1. When a queue item is first created, search_id = -1 (no results written yet)
+    // 2. The search_id is ONLY assigned when the FIRST result is written to TEMPLATE_MATCH_LIST
+    // 3. Once assigned, a search_id is PERMANENT for that queue item
+    // 4. If a queue item is resumed (already has results in DB), it uses its existing search_id
+    //
+    // IMPORTANT: search_id = -1 means 0/N completion (NO results written)
+    //           search_id > 0 means n/N completion (AT LEAST one result written)
+
+    if ( running_queue_id > 0 ) {
+        // Check if this queue item already has a search_id from previous execution
+        int existing_search_id = main_frame->current_project.database.GetSearchIdForQueueItem(running_queue_id);
+
+        if ( existing_search_id > 0 ) {
+            // This queue item has been run before and has results in TEMPLATE_MATCH_LIST
+            // The search_id is FIXED - we MUST reuse it
+            search_id = existing_search_id;
+            wxPrintf("Queue item %ld resuming with existing search_id %d\n", running_queue_id, search_id);
+
+            // Verify that results exist for this search_id (sanity check)
+            int result_count = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(
+                wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_LIST WHERE JOB_ID = %d", search_id));
+            MyDebugAssertTrue(result_count > 0,
+                             "Queue item has search_id %d but no results in TEMPLATE_MATCH_LIST", search_id);
         }
         else {
-            // No queue manager (StartEstimationClick path) - update database directly
-            // This is critical for status computation since status is derived from completion data
-            main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_job_id, search_id);
-            wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_job_id, search_id);
+            // This queue item has NEVER had results written
+            // DO NOT assign a search_id now - it will be assigned when first result is written
+            search_id = -1;
+            wxPrintf("Queue item %ld starting fresh - search_id will be assigned when first result is written\n", running_queue_id);
         }
+    }
+    else {
+        // Non-queue job - assign ID immediately since it's not tracked in queue
+        search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
+        wxPrintf("Non-queue job - assigning search_id %d immediately\n", search_id);
     }
 
     // Unfreeze GUI updates in queue manager now that setup is complete
@@ -1899,9 +1722,9 @@ bool MatchTemplatePanel::ExecuteCurrentJob( ) {
     int run_profile_to_use = RunProfileComboBox->GetSelection( );
 
     // Debug print to verify run profile is correctly set
-    if ( running_queue_job_id > 0 ) {
-        wxPrintf("Executing queue job %ld with run profile selection %d\n",
-                 running_queue_job_id, run_profile_to_use);
+    if ( running_queue_id > 0 ) {
+        wxPrintf("Executing search with queue ID %ld using run profile selection %d\n",
+                 running_queue_id, run_profile_to_use);
     }
     else {
         wxPrintf("Executing GUI job with run profile selection %d\n", run_profile_to_use);
@@ -1928,7 +1751,7 @@ bool MatchTemplatePanel::ExecuteCurrentJob( ) {
         Layout( );
 
         ProgressBar->Pulse( );
-        running_job = true;
+        // Job is now active in job controller (AddJob sets is_active = true)
         return true;
     }
 
@@ -1948,29 +1771,29 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);
 
         // Check if another job is already running
-        if ( running_job ) {
+        if ( IsJobRunning( ) ) {
             wxMessageBox("A job is already running. Please wait for it to complete.",
                          "Job Running", wxOK | wxICON_WARNING);
             return false;
         }
 
         // Store the queue job ID so we can update its status when complete
-        running_queue_job_id = queue_item->database_queue_id;
+        running_queue_id = queue_item->database_queue_id;
 
         // Setup job from queue item
         wxPrintf("Setting up job %ld from queue item...\n", queue_item->database_queue_id);
-        bool setup_success = SetupJobFromQueueItem(*queue_item);
+        bool setup_success = SetupSearchFromQueueItem(*queue_item);
 
         if ( ! setup_success ) {
             wxPrintf("Failed to setup job %ld\n", queue_item->database_queue_id);
-            running_queue_job_id = -1;
+            running_queue_id = -1;
             return false;
         }
     }
     else {
         // GUI job - need to setup from current GUI state first
         TemplateMatchQueueItem gui_job = CollectJobParametersFromGui( );
-        if ( ! SetupJobFromQueueItem(gui_job) ) {
+        if ( ! SetupSearchFromQueueItem(gui_job) ) {
             wxPrintf("Failed to setup GUI job\n");
             return false;
         }

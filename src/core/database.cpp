@@ -3173,6 +3173,23 @@ void Database::UpdateSearchIdInQueueTable(long queue_id, long search_id) {
     sqlite3_finalize(stmt);
 }
 
+int Database::GetSearchIdForQueueItem(long queue_id) {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+    MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
+
+    wxString sql = wxString::Format("SELECT SEARCH_ID FROM TEMPLATE_MATCH_QUEUE WHERE QUEUE_ID = %ld;", queue_id);
+    return ReturnSingleIntFromSelectCommand(sql);
+}
+
+int Database::GetHighestSearchIdFromQueue() {
+    MyDebugAssertTrue(is_open == true, "Database not open!");
+
+    wxString sql = "SELECT MAX(SEARCH_ID) FROM TEMPLATE_MATCH_QUEUE WHERE SEARCH_ID IS NOT NULL;";
+    int highest_search_id = ReturnSingleIntFromSelectCommand(sql);
+    // ReturnSingleIntFromSelectCommand returns 0 if NULL or no rows
+    return highest_search_id > 0 ? highest_search_id : 0;
+}
+
 void Database::RemoveFromQueue(long queue_id) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);

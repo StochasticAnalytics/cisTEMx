@@ -139,7 +139,7 @@ void MatchTemplatePanel::Reset( ) {
         // If this was a queue job, notify the queue manager of termination
         if ( running_queue_id > 0 && queue_completion_callback ) {
             wxPrintf("Reset: Notifying queue manager of job termination for queue ID %ld\n", running_queue_id);
-            queue_completion_callback->OnJobCompleted(running_queue_id, false); // false = job failed/terminated
+            queue_completion_callback->OnSearchCompleted(running_queue_id, false); // false = job failed/terminated
             running_queue_id = -1;
         }
 
@@ -482,7 +482,7 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         new_job.database_queue_id = queue_id;
 
         // Move job to available queue (position -1) since we're executing immediately
-        // This matches what QueueManager::RunNextJob does before execution
+        // This matches what QueueManager::RunNextSearch does before execution
         wxString sql = wxString::Format("UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_POSITION = -1 WHERE QUEUE_ID = %ld;", queue_id);
         main_frame->current_project.database.ExecuteSQL(sql);
         wxPrintf("StartEstimationClick: Moved job %ld to available queue (position -1)\n", queue_id);
@@ -571,7 +571,7 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     // If this was a queue job, notify the queue manager of termination
     if ( running_queue_id > 0 && queue_completion_callback ) {
         wxPrintf("Notifying queue manager of job termination for queue ID %ld\n", running_queue_id);
-        queue_completion_callback->OnJobCompleted(running_queue_id, false); // false = job failed/terminated
+        queue_completion_callback->OnSearchCompleted(running_queue_id, false); // false = job failed/terminated
         running_queue_id = -1;
     }
 
@@ -660,7 +660,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     // This prevents auto-advance from starting a new job while we're cleaning up
     if ( running_queue_id > 0 && queue_completion_callback ) {
         wxPrintf("Notifying queue manager that search with queue ID %ld is entering finalization\n", running_queue_id);
-        queue_completion_callback->OnJobEnteringFinalization(running_queue_id);
+        queue_completion_callback->OnSearchEnteringFinalization(running_queue_id);
     }
 
     // Update the GUI with project timings
@@ -693,7 +693,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         // Notify queue manager if callback is registered - called AFTER clearing job state
         if ( queue_completion_callback ) {
             wxPrintf("Notifying queue manager of job completion\n");
-            queue_completion_callback->OnJobCompleted(running_queue_id, true);
+            queue_completion_callback->OnSearchCompleted(running_queue_id, true);
         }
 
         // Clear the queue job ID
@@ -1254,7 +1254,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
     }
 }
 
-bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job) {
+bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& job) {
     // Freeze GUI updates in queue manager to prevent interference during setup
     if ( queue_completion_callback ) {
         queue_completion_callback->SetGuiUpdateFrozen(true);
@@ -1264,7 +1264,7 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
     PopulateGuiFromQueueItem(job);
 
     // Debug prints to check job parameters
-    wxPrintf("\n=== DEBUG: SetupJobFromQueueItem Parameters ===\n");
+    wxPrintf("\n=== DEBUG: SetupSearchFromQueueItem Parameters ===\n");
     wxPrintf("Search Name: %s\n", job.search_name);
     wxPrintf("Image Group ID: %d\n", job.image_group_id);
     wxPrintf("Reference Volume Asset ID: %d\n", job.reference_volume_asset_id);
@@ -1617,20 +1617,42 @@ bool MatchTemplatePanel::SetupJobFromQueueItem(const TemplateMatchQueueItem& job
 
     // Get ID's from database for writing results as they come in
     database_queue_id = main_frame->current_project.database.ReturnHighestTemplateMatchID( ) + 1;
-    search_id         = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
 
-    // Update the queue item with the actual SEARCH_ID for n/N tracking
+    // For queue items, check if they already have a search_id assigned
     if ( running_queue_id > 0 ) {
-        if ( queue_completion_callback ) {
-            // Queue manager is present - let it update the search ID
-            queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_id, search_id);
+        // Get the existing search_id from the database
+        int existing_search_id = main_frame->current_project.database.GetSearchIdForQueueItem(running_queue_id);
+
+        if ( existing_search_id > 0 ) {
+            // Reuse the existing search_id - this queue item was resumed
+            search_id = existing_search_id;
+            wxPrintf("Reusing existing search_id %d for queue item %ld (resumed job)\n", search_id, running_queue_id);
         }
         else {
-            // No queue manager (StartEstimationClick path) - update database directly
-            // This is critical for status computation since status is derived from completion data
-            main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_id, search_id);
-            wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_id, search_id);
+            // No search_id assigned yet - generate a new one that accounts for ALL assigned IDs
+            // Must check both TEMPLATE_MATCH_LIST and TEMPLATE_MATCH_QUEUE tables
+            int highest_in_results = main_frame->current_project.database.ReturnHighestTemplateMatchJobID();
+            int highest_in_queue = main_frame->current_project.database.GetHighestSearchIdFromQueue();
+            search_id = std::max(highest_in_results, highest_in_queue) + 1;
+
+            wxPrintf("Assigning new search_id %d to queue item %ld (highest_in_results=%d, highest_in_queue=%d)\n",
+                     search_id, running_queue_id, highest_in_results, highest_in_queue);
+
+            // Update the queue item with the new search_id
+            if ( queue_completion_callback ) {
+                // Queue manager is present - let it update the search ID
+                queue_completion_callback->UpdateSearchIdForQueueItem(running_queue_id, search_id);
+            }
+            else {
+                // No queue manager (StartEstimationClick path) - update database directly
+                main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_id, search_id);
+                wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_id, search_id);
+            }
         }
+    }
+    else {
+        // Non-queue job - just get the next available ID
+        search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
     }
 
     // Unfreeze GUI updates in queue manager now that setup is complete
@@ -1706,7 +1728,7 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
 
         // Setup job from queue item
         wxPrintf("Setting up job %ld from queue item...\n", queue_item->database_queue_id);
-        bool setup_success = SetupJobFromQueueItem(*queue_item);
+        bool setup_success = SetupSearchFromQueueItem(*queue_item);
 
         if ( ! setup_success ) {
             wxPrintf("Failed to setup job %ld\n", queue_item->database_queue_id);
@@ -1717,7 +1739,7 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
     else {
         // GUI job - need to setup from current GUI state first
         TemplateMatchQueueItem gui_job = CollectJobParametersFromGui( );
-        if ( ! SetupJobFromQueueItem(gui_job) ) {
+        if ( ! SetupSearchFromQueueItem(gui_job) ) {
             wxPrintf("Failed to setup GUI job\n");
             return false;
         }

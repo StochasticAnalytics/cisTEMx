@@ -70,7 +70,7 @@ class TemplateMatchQueueItem {
     int      queue_order; ///< Priority order: 0=running, 1+=pending queue position, -1=available queue
     wxString custom_cli_args; ///< Additional command-line arguments for this search
 
-    // Store all the parameters needed to run the job
+    // Store all the parameters needed to run the search
     // These will be populated when adding to queue
     int      image_group_id;
     int      reference_volume_asset_id;
@@ -145,7 +145,7 @@ class TemplateMatchQueueItem {
      *
      * @return Always returns true (assertions will abort on invalid state)
      */
-    bool AreJobParametersValid( ) const {
+    bool AreSearchParametersValid( ) const {
         MyDebugAssertTrue(database_queue_id >= 0, "database_queue_id must be >= 0, got %ld", database_queue_id);
         MyDebugAssertTrue(image_group_id >= 0, "image_group_id must be >= 0, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
@@ -188,14 +188,14 @@ class TemplateMatchQueueItem {
  */
 class TemplateMatchQueueManager : public wxPanel {
   private:
-    // Debug flag for queue behavior testing - set to true to skip actual job execution
+    // Debug flag for queue behavior testing - set to true to skip actual search execution
     static constexpr bool skip_search_execution_for_queue_debugging = false;
 
     // UI Controls - Execution queue table (top) shows searches with queue_order >= 0
     wxListCtrl* execution_queue_ctrl;
 
     // UI Controls - Available searches table (bottom) shows searches with queue_order < 0
-    wxListCtrl* available_jobs_ctrl;
+    wxListCtrl* available_searches_ctrl;
 
     // UI Controls - Legacy support pointer for compatibility with existing code
     wxListCtrl* queue_list_ctrl;
@@ -227,18 +227,18 @@ class TemplateMatchQueueManager : public wxPanel {
 
     // State Tracking - Execution and display control
     bool auto_progress_queue; ///< True if queue should auto-advance after search completion
-    bool hide_completed_jobs; ///< True if completed searches should be hidden from available queue
+    bool hide_completed_searches; ///< True if completed searches should be hidden from available queue
     bool gui_update_frozen; ///< True while SetupJobFromQueueItem is executing to prevent GUI interference
-    bool job_is_finalizing; ///< True when job is in final processing (writing results, cleanup)
+    bool search_is_finalizing; ///< True when search is in final processing (writing results, cleanup)
 
-    // Panel Integration - Reference for job execution and database access
+    // Panel Integration - Reference for search execution and database access
     MatchTemplatePanel* match_template_panel_ptr; ///< Panel for delegating search execution
 
     // Drag-and-Drop State - Manual implementation for wxListCtrl priority reordering
     bool    drag_in_progress; ///< True during active drag operation
     bool    updating_display; ///< Prevent drag operations during display updates
     int     dragged_row; ///< Row index being dragged
-    long    dragged_job_id; ///< Database ID of search being dragged
+    long    dragged_search_id; ///< Database ID of search being dragged
     wxPoint drag_start_pos; ///< Mouse position where drag operation started
     bool    mouse_down; ///< Track if mouse button is currently pressed
 
@@ -247,12 +247,12 @@ class TemplateMatchQueueManager : public wxPanel {
     void     SetStatusDisplay(wxListCtrl* list_ctrl, long item_index, const wxString& status); ///< Sets status text, color, and font formatting
     void     UpdateQueueDisplay( ); ///< Refreshes both execution and available queue displays
     void     UpdateExecutionQueueDisplay( ); ///< Refreshes execution queue table with current data
-    void     UpdateAvailableJobsDisplay( ); ///< Refreshes available queue table with current data
+    void     UpdateAvailableSearchesDisplay( ); ///< Refreshes available queue table with current data
     void     PopulateListControl(wxListCtrl*                                 ctrl, ///< Shared method to populate list controls
                                  const std::vector<TemplateMatchQueueItem*>& items,
                                  bool                                        is_execution_queue);
     int      GetSelectedRow( ); ///< Gets currently selected row index
-    void     DeselectJobInUI(long database_queue_id); ///< Removes UI selection for specified search
+    void     DeselectSearchInUI(long database_queue_id); ///< Removes UI selection for specified search
 
   public:
     TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel = nullptr);
@@ -295,10 +295,10 @@ class TemplateMatchQueueManager : public wxPanel {
      * @brief Executes the highest priority search from the execution queue
      *
      * Finds search with queue_order=0, enables auto-progression, manages queue
-     * reordering during execution, and delegates to ExecuteJob(). Primary method
+     * reordering during execution, and delegates to ExecuteSearch(). Primary method
      * for initiating queue-based execution from UI or auto-progression.
      */
-    void RunNextJob( );
+    void RunNextSearch( );
 
     /**
      * @brief Core execution method that delegates search to MatchTemplatePanel
@@ -306,7 +306,7 @@ class TemplateMatchQueueManager : public wxPanel {
      * Validates search parameters, updates status to "running", and calls panel's
      * execution methods. Returns true if delegation succeeds, false otherwise.
      */
-    bool ExecuteJob(TemplateMatchQueueItem& job_to_run);
+    bool ExecuteSearch(TemplateMatchQueueItem& search_to_run);
 
     /**
      * @brief Updates search status in both memory and database
@@ -314,7 +314,7 @@ class TemplateMatchQueueManager : public wxPanel {
      * Synchronizes queue status changes across in-memory queues and persistent storage.
      * Used for state transitions during search lifecycle.
      */
-    void UpdateJobStatus(long database_queue_id, const wxString& new_status);
+    void UpdateSearchStatus(long database_queue_id, const wxString& new_status);
 
     /**
      * @brief Continues queue execution after current search completes
@@ -325,29 +325,29 @@ class TemplateMatchQueueManager : public wxPanel {
     void ContinueQueueExecution( );
 
     /**
-     * @brief Marks job as entering final processing phase to prevent premature auto-advance
-     * @param database_queue_id Database ID of the job entering finalization
+     * @brief Marks search as entering final processing phase to prevent premature auto-advance
+     * @param database_queue_id Database ID of the search entering finalization
      */
-    void OnJobEnteringFinalization(long database_queue_id);
+    void OnSearchEnteringFinalization(long database_queue_id);
 
     /**
      * @brief Callback for search completion to update queue state and trigger progression
      * @param database_queue_id Database ID of the completed search
      * @param success True if search completed successfully, false if failed
      */
-    void OnJobCompleted(long database_queue_id, bool success);
+    void OnSearchCompleted(long database_queue_id, bool success);
 
     /**
      * @brief Checks if any searches are waiting for execution
      * @return True if execution queue contains pending searches
      */
-    bool HasPendingJobs( );
+    bool HasPendingSearches( );
 
     /**
      * @brief Checks if a search is currently executing
      * @return True if execution_in_progress flag is set
      */
-    bool IsJobRunning( ) const;
+    bool IsSearchRunning( ) const;
 
     /**
      * @brief Controls automatic queue progression after search completion
@@ -356,7 +356,7 @@ class TemplateMatchQueueManager : public wxPanel {
     void SetAutoProgressQueue(bool enable) { auto_progress_queue = enable; }
 
     /**
-     * @brief Freezes GUI parameter updates during job setup to prevent interference
+     * @brief Freezes GUI parameter updates during search setup to prevent interference
      * @param frozen If true, GUI population from queue selections is disabled
      */
     void SetGuiUpdateFrozen(bool frozen) { gui_update_frozen = frozen; }
@@ -389,7 +389,7 @@ class TemplateMatchQueueManager : public wxPanel {
     void OnResultAdded(long template_match_job_id);
 
     /**
-     * @brief Links queue item to actual database job ID after search execution begins
+     * @brief Links queue item to actual database search ID after search execution begins
      * @param queue_database_queue_id Queue database ID to update
      * @param database_template_match_job_id Actual TEMPLATE_MATCH_JOB_ID from results table
      */
@@ -402,7 +402,7 @@ class TemplateMatchQueueManager : public wxPanel {
     bool ExecutionQueueHasActiveItems( ) const;
 
     /**
-     * @brief Discovers and populates missing database job IDs for completed searches
+     * @brief Discovers and populates missing database search IDs for completed searches
      */
 
     /**
@@ -415,7 +415,7 @@ class TemplateMatchQueueManager : public wxPanel {
      * @param queue_index Position in execution_queue to check
      * @return True if search status is "running"
      */
-    inline bool IsJobRunning(int queue_index) const {
+    inline bool IsSearchRunning(int queue_index) const {
         return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "running";
     }
@@ -425,7 +425,7 @@ class TemplateMatchQueueManager : public wxPanel {
      * @param queue_index Position in execution_queue to check
      * @return True if search status is "pending"
      */
-    inline bool IsJobPending(int queue_index) const {
+    inline bool IsSearchPending(int queue_index) const {
         return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "pending";
     }
@@ -435,7 +435,7 @@ class TemplateMatchQueueManager : public wxPanel {
      * @param queue_index Position in execution_queue to check
      * @return True if search status is "complete"
      */
-    inline bool IsJobComplete(int queue_index) const {
+    inline bool IsSearchComplete(int queue_index) const {
         return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "complete";
     }
@@ -445,7 +445,7 @@ class TemplateMatchQueueManager : public wxPanel {
      * @param queue_index Position in execution_queue to check
      * @return True if search status is "failed"
      */
-    inline bool IsJobFailed(int queue_index) const {
+    inline bool IsSearchFailed(int queue_index) const {
         return queue_index >= 0 && queue_index < execution_queue.size( ) &&
                execution_queue[queue_index].queue_status == "failed";
     }
@@ -455,7 +455,7 @@ class TemplateMatchQueueManager : public wxPanel {
     void OnClearQueueClick(wxCommandEvent& event); ///< Removes all searches from execution queue
     void OnRemoveSelectedClick(wxCommandEvent& event); ///< Removes selected searches from current table
     void OnSelectionChanged(wxListEvent& event); ///< Updates UI state based on execution queue selection
-    void OnAvailableJobsSelectionChanged(wxListEvent& event); ///< Updates UI state based on available queue selection
+    void OnAvailableSearchesSelectionChanged(wxListEvent& event); ///< Updates UI state based on available queue selection
     void OnHideCompletedToggle(wxCommandEvent& event); ///< Toggles display of completed searches
     void OnPanelDisplayToggle(wxCommandEvent& event); ///< Toggles between Input and Progress panel display
     void OnUpdateSelectedClick(wxCommandEvent& event); ///< Updates selected pending item with current GUI values
@@ -514,7 +514,7 @@ class TemplateMatchQueueManager : public wxPanel {
      * @brief Compute queue status from completion progress
      * @param completed Number of completed jobs
      * @param total Total number of jobs
-     * @param currently_running_id ID of currently running job (-1 if none)
+     * @param currently_running_id ID of currently running search (-1 if none)
      * @param item_id ID of this queue item
      * @return Status string: "pending", "running", "partial", or "complete"
      */

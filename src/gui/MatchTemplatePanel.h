@@ -136,7 +136,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
      * @return Database queue ID when show_dialog=false, -1 when show_dialog=true (dialog mode doesn't track ID)
      */
     long        AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog = true);
-    bool        SetupJobFromQueueItem(const TemplateMatchQueueItem& job);
+    bool        SetupSearchFromQueueItem(const TemplateMatchQueueItem& job);
     bool        ExecuteCurrentJob();
     bool        ExecuteJob(const TemplateMatchQueueItem* queue_item = nullptr);
 

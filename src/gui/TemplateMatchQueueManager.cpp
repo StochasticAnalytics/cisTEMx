@@ -1172,7 +1172,7 @@ void TemplateMatchQueueManager::OnUpdateSelectedClick(wxCommandEvent& event) {
 
     // Update in database
     if (!UpdateQueueItemInDatabase(updated_item)) {
-        // Error message already shown in UpdateQueueItemInDatabase
+        wxMessageBox("Failed to update queue item in database", "Update Failed", wxOK | wxICON_ERROR);
         return;
     }
 
@@ -1180,7 +1180,7 @@ void TemplateMatchQueueManager::OnUpdateSelectedClick(wxCommandEvent& event) {
     UpdateQueueDisplay();
     UpdateAvailableSearchesDisplay();
 
-    wxMessageBox("Queue item updated successfully", "Success", wxOK | wxICON_INFORMATION);
+    // Success - no dialog needed, the update is reflected in the UI immediately
 }
 
 
@@ -1335,9 +1335,12 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
             if ( search->database_queue_id == selected_id ) {
                 wxPrintf("DEBUG: Processing search %ld with status '%s' for adding to queue\n",
                          search->database_queue_id, search->queue_status);
-                // Allow any non-complete searches to be moved to execution queue
-                if ( search->queue_status != "complete" ) {
-                    wxPrintf("DEBUG: Search %ld allowed - status '%s' is not complete\n",
+                // Allow pending, failed, or partial searches to be moved to execution queue
+                // Do NOT allow running or complete searches
+                if ( search->queue_status == "pending" ||
+                     search->queue_status == "failed" ||
+                     search->queue_status == "partial" ) {
+                    wxPrintf("DEBUG: Search %ld allowed - status '%s' can be queued\n",
                              search->database_queue_id, search->queue_status);
                     search->queue_order = next_queue_order++;
                     selected_job_ids.push_back(search->database_queue_id);
@@ -1350,7 +1353,7 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
                     }
                 }
                 else {
-                    wxPrintf("DEBUG: Search %ld BLOCKED - status '%s' equals complete\n",
+                    wxPrintf("DEBUG: Search %ld BLOCKED - status '%s' cannot be queued\n",
                              search->database_queue_id, search->queue_status);
                     blocked_jobs.push_back(wxString::Format("Search %ld (%s)",
                                                             search->database_queue_id,
@@ -1401,7 +1404,8 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
         for ( const auto& job : blocked_jobs ) {
             message += "• " + job + "\n";
         }
-        message += "\nOnly incomplete searches can be queued for execution.";
+        message += "\nOnly pending, failed, or partial searches can be queued.\n";
+        message += "Running and complete searches cannot be re-queued.";
         wxMessageBox(message, "Some Searches Not Added", wxOK | wxICON_INFORMATION);
     }
 

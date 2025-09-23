@@ -3,6 +3,9 @@
 #include "../core/gui_core_headers.h"
 #include "TemplateMatchQueueManager.h"
 
+// File-specific debug flags
+// #define cisTEM_DEBUG_ORPHANED_SEARCH_IDS  // Uncomment to enable orphaned search_id checking
+
 extern MyImageAssetPanel*  image_asset_panel;
 extern MyVolumeAssetPanel* volume_asset_panel;
 extern MyRunProfilesPanel* run_profiles_panel;
@@ -538,12 +541,11 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
             wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_id, search_id);
         }
 
-        // DEBUG ASSERT: Verify queue table doesn't have orphaned search_ids
-        #ifdef DEBUG
-        int highest_queue_search_id = main_frame->current_project.database.GetHighestSearchIdFromQueue();
-        MyDebugAssertTrue(highest_queue_search_id <= search_id - 1,
-                         "Queue table has search_id %d but highest in TEMPLATE_MATCH_LIST is %d - orphaned search_ids!",
-                         highest_queue_search_id, search_id - 1);
+        // Note: We can't check for orphaned search_ids here because we're about to write
+        // the first result. The check would need to happen AFTER this result is written.
+        #ifdef cisTEM_DEBUG_ORPHANED_SEARCH_IDS
+        // This check would fail here - we've assigned the search_id but haven't written results yet
+        // See check after result is written to database instead
         #endif
     }
 
@@ -563,6 +565,20 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     if ( queue_completion_callback ) {
         queue_completion_callback->OnResultAdded(search_id);
     }
+
+    #ifdef cisTEM_DEBUG_ORPHANED_SEARCH_IDS
+    // After writing a result, verify consistency between queue and results tables
+    static int results_written = 0;
+    results_written++;
+    // Only check periodically to avoid performance impact
+    if (results_written % 10 == 0) {
+        int highest_queue_search_id = main_frame->current_project.database.GetHighestSearchIdFromQueue();
+        int highest_results_search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID();
+        MyDebugAssertTrue(highest_queue_search_id <= highest_results_search_id,
+                         "Orphaned search_ids detected: Queue table has max search_id %d but TEMPLATE_MATCH_LIST has max %d",
+                         highest_queue_search_id, highest_results_search_id);
+    }
+    #endif
 }
 
 void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {

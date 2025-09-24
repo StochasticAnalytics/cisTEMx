@@ -353,6 +353,12 @@ void CombineRefinementPackagesWizard::OnFinished(wxWizardEvent& event) {
                     temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].beam_tilt_y                        = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].beam_tilt_y;
                     temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].image_shift_x                      = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].image_shift_x;
                     temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].image_shift_y                      = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].image_shift_y;
+
+                    // Copy multi-view data
+                    temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].beam_tilt_group = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].beam_tilt_group;
+                    temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].particle_group = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].particle_group;
+                    temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].pre_exposure = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].pre_exposure;
+                    temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].total_exposure = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].total_exposure;
                 }
             }
 
@@ -390,6 +396,12 @@ void CombineRefinementPackagesWizard::OnFinished(wxWizardEvent& event) {
                 temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].beam_tilt_y                        = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].beam_tilt_y;
                 temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].image_shift_x                      = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].image_shift_x;
                 temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].image_shift_y                      = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].image_shift_y;
+
+                // Copy multi-view data
+                temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].beam_tilt_group = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].beam_tilt_group;
+                temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].particle_group = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].particle_group;
+                temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].pre_exposure = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].pre_exposure;
+                temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].total_exposure = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].total_exposure;
             }
             output_particle_counter++;
         }

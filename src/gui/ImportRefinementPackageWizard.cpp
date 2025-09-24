@@ -114,11 +114,14 @@ void ImportRefinementPackageWizard::OnPageChanged(wxWizardEvent& event) {
             SphericalAberrationTextCtrl->Show(false);
             m_staticText479->Show(false);  // Cs label
 
-            // Hide protein color options (known from star file)
+            // Hide protein density controls for emClarity
             WhiteProteinRadioButton->Show(false);
             BlackProteinRadioButton->Show(false);
-            m_staticText459->Show(false);  // "Particles are white?" label
-            m_staticText460->Show(false);  // Additional label
+            m_staticText462->Show(false);  // "Protein Density in Stack is" label
+
+            // Show symmetry and molecular weight (still needed)
+            m_staticText459->Show(true);   // "Pointgroup Symmetry" label
+            m_staticText460->Show(true);   // "Estimated Molecular Weight" label
 
             // Show exposure limit control
             LimitTotalExposureTextCtrl->Show(true);
@@ -141,8 +144,9 @@ void ImportRefinementPackageWizard::OnPageChanged(wxWizardEvent& event) {
             // Show protein color options
             WhiteProteinRadioButton->Show(true);
             BlackProteinRadioButton->Show(true);
-            m_staticText459->Show(true);
-            m_staticText460->Show(true);
+            m_staticText459->Show(true);   // "Pointgroup Symmetry" label
+            m_staticText460->Show(true);   // "Estimated Molecular Weight" label
+            m_staticText462->Show(true);   // "Protein Density in Stack is" label
             BlackProteinRadioButton->SetValue(true);
 
             // Hide exposure limit
@@ -164,8 +168,9 @@ void ImportRefinementPackageWizard::OnPageChanged(wxWizardEvent& event) {
             // Show protein color options
             WhiteProteinRadioButton->Show(true);
             BlackProteinRadioButton->Show(true);
-            m_staticText459->Show(true);
-            m_staticText460->Show(true);
+            m_staticText459->Show(true);   // "Pointgroup Symmetry" label
+            m_staticText460->Show(true);   // "Estimated Molecular Weight" label
+            m_staticText462->Show(true);   // "Protein Density in Stack is" label
             BlackProteinRadioButton->SetValue(true);
 
             // Hide exposure limit
@@ -187,8 +192,9 @@ void ImportRefinementPackageWizard::OnPageChanged(wxWizardEvent& event) {
             // Show protein color options
             WhiteProteinRadioButton->Show(true);
             BlackProteinRadioButton->Show(true);
-            m_staticText459->Show(true);
-            m_staticText460->Show(true);
+            m_staticText459->Show(true);   // "Pointgroup Symmetry" label
+            m_staticText460->Show(true);   // "Estimated Molecular Weight" label
+            m_staticText462->Show(true);   // "Protein Density in Stack is" label
             WhiteProteinRadioButton->SetValue(true);
 
             // Hide exposure limit

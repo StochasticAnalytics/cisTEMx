@@ -1903,6 +1903,16 @@ void RefinementManager::ProcessJobResult(JobResult* result_to_process) {
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].amplitude_contrast                 = result_to_process->result_data[24];
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].assigned_subset                    = result_to_process->result_data[25];
 
+        // Copy multi-view data from input_refinement (not modified by refinement)
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure;
+
         /*	wxPrintf("Recieved a result for particle %li, x_shift = %f, y_shift = %f, psi = %f, theta = %f, phi = %f\n",		output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].position_in_stack,
 																															output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].xshift,
 																															output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].yshift,

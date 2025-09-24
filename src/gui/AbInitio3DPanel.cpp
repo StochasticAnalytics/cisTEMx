@@ -2212,6 +2212,16 @@ void AbInitioManager::ProcessJobResult(JobResult* result_to_process) {
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].amplitude_contrast                 = result_to_process->result_data[24];
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].assigned_subset                    = result_to_process->result_data[25];
 
+        // Copy multi-view data from input_refinement (not modified by refinement)
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure;
+
         number_of_received_particle_results++;
         //wxPrintf("received result!\n");
         long current_time = time(NULL);

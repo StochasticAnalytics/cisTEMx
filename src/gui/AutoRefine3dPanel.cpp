@@ -1608,6 +1608,16 @@ void AutoRefinementManager::ProcessJobResult(JobResult* result_to_process) {
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].amplitude_contrast                 = result_to_process->result_data[24];
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].assigned_subset                    = result_to_process->result_data[25];
 
+        // Copy multi-view data from input_refinement (not modified by refinement)
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure =
+            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure;
+
         number_of_received_particle_results++;
         //wxPrintf("received result!\n");
         long current_time = time(NULL);
@@ -1796,6 +1806,12 @@ void AutoRefinementManager::ProcessAllJobsFinished( ) {
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].image_shift_y                      = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_y;
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].amplitude_contrast                 = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].amplitude_contrast;
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].assigned_subset                    = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].assigned_subset;
+
+                    // Copy multi-view data between classes
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group                    = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group;
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group                     = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].particle_group;
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure                       = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure;
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure                     = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure;
                 }
 
                 output_refinement->class_refinement_results[class_counter].average_occupancy = 100.0f / output_refinement->number_of_classes;

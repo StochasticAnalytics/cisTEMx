@@ -502,6 +502,15 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
         temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].microscope_spherical_aberration_mm = spherical_aberration_nm;
         temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].amplitude_contrast                 = amplitude_contrast;
 
+        // Multi-view parameters are already set above in the is_cistem_import section
+        // For non-cisTEM imports, set default values (0 = no multi-view data)
+        if constexpr (!is_cistem_import) {
+            temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = 0;
+            temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].particle_group  = 0;
+            temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure    = 0.0f;
+            temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure  = 0.0f;
+        }
+
         my_dialog->Update(particle_counter + 1);
     }
 

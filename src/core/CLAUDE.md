@@ -79,7 +79,31 @@ try {
 }
 ```
 
+### Dynamic Table Naming Convention
+
+**CRITICAL:** Dynamic tables in cisTEM use 1-based indexing, NOT 0-based indexing.
+
+Dynamic tables are created with suffixes that start from 1:
+
+- `IMAGE_GROUP_1`, `IMAGE_GROUP_2`, `IMAGE_GROUP_3`, etc.
+- `MOVIE_GROUP_1`, `MOVIE_GROUP_2`, etc.
+- `REFINEMENT_RESULT_1`, `REFINEMENT_RESULT_2`, etc.
+
+When working with ComboBox selections in GUI code:
+
+```cpp
+// Convert 0-based ComboBox selection to 1-based database index
+int database_group_id = GroupComboBox->GetSelection() + 1;
+
+// Convert 1-based database index back to 0-based ComboBox selection
+int combobox_selection = database_group_id - 1;
+GroupComboBox->SetSelection(combobox_selection);
+```
+
+**Common Error:** Attempting to query `IMAGE_GROUP_0` will fail because dynamic tables start from `IMAGE_GROUP_1`.
+
 ## GPU Development Patterns
+
 
 ### CUDA Integration
 GPU code follows specific patterns for memory management:

@@ -1901,16 +1901,16 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
     // Set DATETIME_OF_COMPLETION to current time since job is complete
     long datetime_of_completion = wxDateTime::Now().GetAsDOS();
 
-    // Type string matches database_schema.h: "ptlllilliitttttttttttttrr" (25 columns)
-    InsertOrReplace("TEMPLATE_MATCH_LIST", "ptlllilliitttttttttttttrr",
-        "TEMPLATE_MATCH_ID", "JOB_NAME", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID",
-        "JOB_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID",
+    // Type string matches database_schema.h: "plllilliitttttttttttttrr" (24 columns - removed JOB_NAME)
+    InsertOrReplace("TEMPLATE_MATCH_LIST", "plllilliitttttttttttttrr",
+        "TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID",
+        "SEARCH_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID",
         "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE",
         "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE",
         "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE",
         "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2",
         "FUTURE_FLOAT_1", "FUTURE_FLOAT_2",
-        wanted_template_match_id, job_details.job_name.ToUTF8().data(),
+        wanted_template_match_id,
         job_details.datetime_of_run, datetime_of_completion, job_details.job_id,
         job_details.job_type, job_details.input_job_id, job_details.image_asset_id,
         job_details.ref_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
@@ -1963,12 +1963,12 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     bool          more_data;
 
     // For v3 schema: JOIN TEMPLATE_MATCH_LIST with TEMPLATE_MATCH_QUEUE to get all data
-    // List columns: TEMPLATE_MATCH_ID, JOB_NAME, DATETIME_OF_RUN, DATETIME_OF_COMPLETION, SEARCH_ID, JOB_TYPE_CODE,
+    // List columns: TEMPLATE_MATCH_ID, DATETIME_OF_RUN, DATETIME_OF_COMPLETION, SEARCH_ID, SEARCH_TYPE_CODE,
     //               PARENT_SEARCH_ID, IMAGE_ASSET_ID, REFERENCE_VOLUME_ASSET_ID, IS_ACTIVE,
     //               then output files...
-    // Queue columns: all search parameters
+    // Queue columns: all search parameters including SEARCH_NAME
     sql_select_command = wxString::Format(
-        "SELECT list.TEMPLATE_MATCH_ID, list.JOB_NAME, list.DATETIME_OF_RUN, list.SEARCH_ID, list.JOB_TYPE_CODE, "
+        "SELECT list.TEMPLATE_MATCH_ID, q.SEARCH_NAME, list.DATETIME_OF_RUN, list.SEARCH_ID, list.SEARCH_TYPE_CODE, "
         "list.PARENT_SEARCH_ID, list.IMAGE_ASSET_ID, list.REFERENCE_VOLUME_ASSET_ID, list.IS_ACTIVE, "
         "list.MIP_OUTPUT_FILE, list.SCALED_MIP_OUTPUT_FILE, list.AVG_OUTPUT_FILE, list.STD_OUTPUT_FILE, "
         "list.PSI_OUTPUT_FILE, list.THETA_OUTPUT_FILE, list.PHI_OUTPUT_FILE, list.DEFOCUS_OUTPUT_FILE, "
@@ -2918,7 +2918,7 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     wxDateTime current_time = wxDateTime::Now();
 
     const char* sql = "INSERT INTO TEMPLATE_MATCH_QUEUE ("
-                     "JOB_NAME, SEARCH_ID, QUEUE_POSITION, DATETIME_QUEUED, "
+                     "SEARCH_NAME, SEARCH_ID, QUEUE_POSITION, DATETIME_QUEUED, "
                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
@@ -3017,7 +3017,7 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& templat
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
 
-    const char* sql = "SELECT JOB_NAME, SEARCH_ID, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
+    const char* sql = "SELECT SEARCH_NAME, SEARCH_ID, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "

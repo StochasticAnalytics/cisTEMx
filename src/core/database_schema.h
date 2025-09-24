@@ -47,14 +47,16 @@ std::vector<TableData> static_tables{
         // TEMPLATE MATCHING TABLES
         // IMPORTANT NAMING NOTE:
         // The database schema uses "JOB" terminology in several places that actually refer to template matching
-        // searches/runs, not individual processing jobs:
-        //   - TEMPLATE_MATCH_LIST.JOB_NAME: The name of the template matching search (e.g., "Template: myprotein.mrc")
-        //   - TEMPLATE_MATCH_QUEUE.JOB_NAME: Same as above - the search name
-        // This naming is historical and maintained for database compatibility. In the C++ code, we use more
-        // accurate terminology like "search_name" and refer to these as "template matching searches" or "runs".
+        // searches/runs, not individual distributed processing jobs:
+        //   - TEMPLATE_MATCH_QUEUE.SEARCH_NAME: The name of the template matching search (e.g., "Template: myprotein.mrc")
+        //   - TEMPLATE_MATCH_LIST.SEARCH_TYPE_CODE: Type of search (retained for historical reasons)
+        //   - TemplateMatchJobResults.job_id: Maps to SEARCH_ID column in database
+        // This "JOB" naming is historical and maintained for database compatibility. In the C++ code, we use more
+        // accurate terminology like "search_name" and "search_id" to refer to template matching searches or runs.
+        // MIGRATION NOTE: JOB_NAME and JOB_TYPE_CODE have been migrated to SEARCH_NAME and SEARCH_TYPE_CODE
         {"TEMPLATE_MATCHES_PACKAGE_ASSETS", "pttii", {"TEMPLATE_MATCHES_PACKAGE_ASSET_ID", "NAME", "STARFILE_FILENAME", "NUMBER_OF_MATCHES", "NUMER_OF_IMAGES"}},
-        {"TEMPLATE_MATCH_LIST", "ptlllilliitttttttttttttrr", {"TEMPLATE_MATCH_ID", "JOB_NAME", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID", "JOB_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID", "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE", "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE", "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE", "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2"}},
-        {"TEMPLATE_MATCH_QUEUE", "ptllliiiitrrrrrrrrrrrrrrrrrrrrrrtiirrttt", {"QUEUE_ID", "JOB_NAME", "SEARCH_ID", "QUEUE_POSITION", "DATETIME_QUEUED", "IMAGE_GROUP_ID", "REFERENCE_VOLUME_ASSET_ID", "RUN_PROFILE_ID", "USE_GPU", "USE_FAST_FFT", "SYMMETRY", "PIXEL_SIZE", "VOLTAGE", "SPHERICAL_ABERRATION", "AMPLITUDE_CONTRAST", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "LOW_RESOLUTION_LIMIT", "HIGH_RESOLUTION_LIMIT", "OUT_OF_PLANE_ANGULAR_STEP", "IN_PLANE_ANGULAR_STEP", "DEFOCUS_SEARCH_RANGE", "DEFOCUS_STEP", "PIXEL_SIZE_SEARCH_RANGE", "PIXEL_SIZE_STEP", "REFINEMENT_THRESHOLD", "REF_BOX_SIZE_IN_ANGSTROMS", "MASK_RADIUS", "MIN_PEAK_RADIUS", "XY_CHANGE_THRESHOLD", "EXCLUDE_ABOVE_XY_THRESHOLD", "CUSTOM_CLI_ARGS", "FUTURE_INT_1", "FUTURE_INT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2", "FUTURE_TEXT_1", "FUTURE_TEXT_2"}}
+        {"TEMPLATE_MATCH_LIST", "plllilliitttttttttttttrr", {"TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID", "SEARCH_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID", "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE", "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE", "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE", "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2"}},
+        {"TEMPLATE_MATCH_QUEUE", "ptllliiiitrrrrrrrrrrrrrrrrrrrrrrtiirrttt", {"QUEUE_ID", "SEARCH_NAME", "SEARCH_ID", "QUEUE_POSITION", "DATETIME_QUEUED", "IMAGE_GROUP_ID", "REFERENCE_VOLUME_ASSET_ID", "RUN_PROFILE_ID", "USE_GPU", "USE_FAST_FFT", "SYMMETRY", "PIXEL_SIZE", "VOLTAGE", "SPHERICAL_ABERRATION", "AMPLITUDE_CONTRAST", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "LOW_RESOLUTION_LIMIT", "HIGH_RESOLUTION_LIMIT", "OUT_OF_PLANE_ANGULAR_STEP", "IN_PLANE_ANGULAR_STEP", "DEFOCUS_SEARCH_RANGE", "DEFOCUS_STEP", "PIXEL_SIZE_SEARCH_RANGE", "PIXEL_SIZE_STEP", "REFINEMENT_THRESHOLD", "REF_BOX_SIZE_IN_ANGSTROMS", "MASK_RADIUS", "MIN_PEAK_RADIUS", "XY_CHANGE_THRESHOLD", "EXCLUDE_ABOVE_XY_THRESHOLD", "CUSTOM_CLI_ARGS", "FUTURE_INT_1", "FUTURE_INT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2", "FUTURE_TEXT_1", "FUTURE_TEXT_2"}}
 };
 
 std::vector<TableData> dynamic_tables{

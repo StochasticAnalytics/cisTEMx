@@ -66,7 +66,7 @@ class TemplateMatchQueueItem {
   public:
     long     database_queue_id; ///< Persistent database queue identifier (TEMPLATE_MATCH_QUEUE.QUEUE_ID)
     long     search_id; ///< Results table identifier (TEMPLATE_MATCH_LIST.SEARCH_ID, -1 if no results yet)
-    wxString search_name; ///< User-friendly name for this template matching search (maps to JOB_NAME in database)
+    wxString search_name; ///< User-friendly name for this template matching search (maps to SEARCH_NAME in TEMPLATE_MATCH_QUEUE)
     wxString queue_status; ///< Computed status: "pending", "running", "partial", "complete" (not stored in DB)
     int      queue_order; ///< Priority order: 0=running, 1+=pending queue position, -1=available queue
     wxString custom_cli_args; ///< Additional command-line arguments for this search

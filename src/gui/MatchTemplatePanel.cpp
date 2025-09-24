@@ -555,6 +555,8 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 
     main_frame->current_project.database.Begin( );
 
+    // NOTE: job_id field in structure maps to SEARCH_ID column in database
+    // SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
     cached_results[image_number - 1].job_id = search_id;
     main_frame->current_project.database.AddTemplateMatchingResult(database_queue_id, cached_results[image_number - 1]);
     database_queue_id++;
@@ -1693,8 +1695,9 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
             QM_LOG_DB("Queue item %ld resuming with existing search_id %d", running_queue_id, search_id);
 
             // Verify that results exist for this search_id (sanity check)
+            // NOTE: SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
             int result_count = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(
-                wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_LIST WHERE JOB_ID = %d", search_id));
+                wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %d", search_id));
             MyDebugAssertTrue(result_count > 0,
                              "Queue item has search_id %d but no results in TEMPLATE_MATCH_LIST", search_id);
         }

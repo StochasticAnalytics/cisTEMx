@@ -349,9 +349,10 @@ void MatchTemplatePanel::SetInfo( ) {
 
 void MatchTemplatePanel::FillGroupComboBox( ) {
     // Called from constructor (when panel is created) or OnUpdateUI (when groups change)
-    // Both scenarios require an open project, so this should never fail
-    MyDebugAssertTrue(main_frame->current_project.is_open,
-                      "FillGroupComboBox called without open project - should only be called from constructor or when groups are dirtied");
+    // Return early if no project is open (can happen during workflow switching)
+    if ( ! main_frame->current_project.is_open ) {
+        return;
+    }
 
     GroupComboBox->FillComboBox(true);
 

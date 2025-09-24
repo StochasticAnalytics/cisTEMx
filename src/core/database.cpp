@@ -1561,6 +1561,35 @@ RefinementPackage* Database::GetNextRefinementPackage( ) {
 
     Finalize(list_statement);
 
+    // Load multi-view data if table exists
+    if ( DoesRefinementPackageHaveMultiView(temp_package->asset_id) ) {
+        wxString multi_view_sql = wxString::Format("SELECT * FROM REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li ORDER BY POSITION_IN_STACK", temp_package->asset_id);
+
+        Prepare(multi_view_sql, &list_statement);
+        return_code = Step(list_statement);
+
+        long particle_index = 0;
+        while ( return_code == SQLITE_ROW && particle_index < temp_package->contained_particles.GetCount( ) ) {
+            long position_in_stack = sqlite3_column_int64(list_statement, 0);
+
+            // Find the corresponding particle by position_in_stack
+            for ( long i = particle_index; i < temp_package->contained_particles.GetCount( ); i++ ) {
+                if ( temp_package->contained_particles.Item(i).position_in_stack == position_in_stack ) {
+                    temp_package->contained_particles.Item(i).particle_group  = sqlite3_column_int(list_statement, 1);
+                    temp_package->contained_particles.Item(i).pre_exposure    = sqlite3_column_double(list_statement, 2);
+                    temp_package->contained_particles.Item(i).total_exposure  = sqlite3_column_double(list_statement, 3);
+                    // Skip FUTURE columns (4-7) for now
+                    particle_index = i;
+                    break;
+                }
+            }
+
+            return_code = Step(list_statement);
+        }
+
+        Finalize(list_statement);
+    }
+
     // 3d references
 
     group_sql_select_command = wxString::Format("SELECT * FROM REFINEMENT_PACKAGE_CURRENT_REFERENCES_%li", temp_package->asset_id);
@@ -1853,6 +1882,29 @@ void Database::AddRefinementPackageAsset(RefinementPackage* asset_to_add) {
     }
 
     EndBatchInsert( );
+
+    // Write multi-view data if present
+    if ( asset_to_add->ContainsMultiViewData( ) ) {
+        CreateRefinementPackageContainedParticlesMultiViewTable(asset_to_add->asset_id);
+
+        BeginBatchInsert(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li", asset_to_add->asset_id), 8,
+                        "POSITION_IN_STACK", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE",
+                        "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2");
+
+        for ( long counter = 0; counter < asset_to_add->contained_particles.GetCount( ); counter++ ) {
+            AddToBatchInsert("lirrttrr",
+                           asset_to_add->contained_particles.Item(counter).position_in_stack,
+                           asset_to_add->contained_particles.Item(counter).particle_group,
+                           asset_to_add->contained_particles.Item(counter).pre_exposure,
+                           asset_to_add->contained_particles.Item(counter).total_exposure,
+                           "",   // FUTURE_TEXT_1
+                           "",   // FUTURE_TEXT_2
+                           0.0f, // FUTURE_FLOAT_1
+                           0.0f);// FUTURE_FLOAT_2
+        }
+
+        EndBatchInsert( );
+    }
 
     BeginBatchInsert(wxString::Format("REFINEMENT_PACKAGE_CURRENT_REFERENCES_%li", asset_to_add->asset_id), 2, "CLASS_NUMBER", "VOLUME_ASSET_ID");
 

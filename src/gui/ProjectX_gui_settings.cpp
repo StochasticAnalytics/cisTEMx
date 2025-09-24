@@ -56,42 +56,6 @@ RunProfilesPanel::RunProfilesPanel( wxWindow* parent, wxWindowID id, const wxPoi
 	ExportButton = new wxButton( ProfilesPanel, wxID_ANY, wxT("Export"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer431->Add( ExportButton, 0, wxALL, 5 );
 
-	m_staticline261 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline261, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline2611 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline2611, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline2612 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline2612, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline2613 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline2613, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline2614 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline2614, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline2615 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline2615, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline26151 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline26151, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline26152 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline26152, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline26153 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline26153, 0, wxEXPAND | wxALL, 5 );
-
-	m_staticline26154 = new wxStaticLine( ProfilesPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
-	bSizer431->Add( m_staticline26154, 0, wxEXPAND | wxALL, 5 );
-
-	ShowDeletedProfiles = new wxButton( ProfilesPanel, wxID_ANY, wxT("Show Deleted"), wxDefaultPosition, wxDefaultSize, 0 );
-	bSizer431->Add( ShowDeletedProfiles, 0, wxALL, 5 );
-
-	PermenantlyDelete = new wxButton( ProfilesPanel, wxID_ANY, wxT("Permenantly Delete"), wxDefaultPosition, wxDefaultSize, 0 );
-	bSizer431->Add( PermenantlyDelete, 0, wxALL, 5 );
-
 
 	bSizer57->Add( bSizer431, 0, wxALIGN_LEFT, 5 );
 
@@ -263,8 +227,6 @@ RunProfilesPanel::RunProfilesPanel( wxWindow* parent, wxWindowID id, const wxPoi
 	DuplicateProfileButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnDuplicateProfileClick ), NULL, this );
 	ImportButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnImportButtonClick ), NULL, this );
 	ExportButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnExportButtonClick ), NULL, this );
-	ShowDeletedProfiles->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnShowDeletedProfiles ), NULL, this );
-	PermenantlyDelete->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnPermenantlyDelete ), NULL, this );
 	ManagerTextCtrl->Connect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( RunProfilesPanel::ManagerTextChanged ), NULL, this );
 	GuiAutoButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::GuiAddressAutoClick ), NULL, this );
 	ControllerSpecifyButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::GuiAddressSpecifyClick ), NULL, this );
@@ -311,8 +273,6 @@ RunProfilesPanel::~RunProfilesPanel()
 	DuplicateProfileButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnDuplicateProfileClick ), NULL, this );
 	ImportButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnImportButtonClick ), NULL, this );
 	ExportButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnExportButtonClick ), NULL, this );
-	ShowDeletedProfiles->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnShowDeletedProfiles ), NULL, this );
-	PermenantlyDelete->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::OnPermenantlyDelete ), NULL, this );
 	ManagerTextCtrl->Disconnect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( RunProfilesPanel::ManagerTextChanged ), NULL, this );
 	GuiAutoButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::GuiAddressAutoClick ), NULL, this );
 	ControllerSpecifyButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( RunProfilesPanel::GuiAddressSpecifyClick ), NULL, this );

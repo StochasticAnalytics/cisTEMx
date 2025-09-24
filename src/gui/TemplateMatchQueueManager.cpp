@@ -251,7 +251,7 @@ TemplateMatchQueueManager::~TemplateMatchQueueManager( ) {
 
 bool TemplateMatchQueueManager::ValidateQueueItem(const TemplateMatchQueueItem& item, wxString& error_message) {
     // Validate basic parameters
-    if (item.image_group_id < 1) {
+    if (item.image_group_id < -1) {
         error_message = wxString::Format("Invalid image group ID: %d", item.image_group_id);
         return false;
     }

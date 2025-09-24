@@ -229,6 +229,9 @@ ImportRefinementPackageWizardParent::ImportRefinementPackageWizardParent( wxWind
 	FrealignRadioButton = new wxRadioButton( ImportTypePage, wxID_ANY, wxT("Frealign (Requires particle stack and PAR file)"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer3941->Add( FrealignRadioButton, 0, wxALL, 5 );
 
+	emClarityRadioButton = new wxRadioButton( ImportTypePage, wxID_ANY, wxT("emClarity (Requires particle stack and STAR file. experimental)"), wxDefaultPosition, wxDefaultSize, 0 );
+	bSizer3941->Add( emClarityRadioButton, 0, wxALL, 5 );
+
 
 	bSizer3931->Add( bSizer3941, 1, wxEXPAND, 5 );
 
@@ -367,6 +370,15 @@ ImportRefinementPackageWizardParent::ImportRefinementPackageWizardParent( wxWind
 	LargestDimensionTextCtrl->SetMinSize( wxSize( 100,-1 ) );
 
 	fgSizer23->Add( LargestDimensionTextCtrl, 0, wxALL, 5 );
+
+	m_staticText2141 = new wxStaticText( GetParametersPage, wxID_ANY, wxT("Limit Total Exposure  (e-/Å-2) : "), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText2141->Wrap( -1 );
+	fgSizer23->Add( m_staticText2141, 0, wxALL, 5 );
+
+	LimitTotalExposureTextCtrl = new NumericTextCtrl( GetParametersPage, wxID_ANY, wxT("120"), wxDefaultPosition, wxDefaultSize, 0 );
+	LimitTotalExposureTextCtrl->SetMinSize( wxSize( 100,-1 ) );
+
+	fgSizer23->Add( LimitTotalExposureTextCtrl, 0, wxALL, 5 );
 
 	m_staticText462 = new wxStaticText( GetParametersPage, wxID_ANY, wxT("Protein Density in Stack is : "), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText462->Wrap( -1 );

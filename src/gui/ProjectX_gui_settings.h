@@ -50,18 +50,6 @@ class RunProfilesPanel : public wxPanel
 		wxStaticLine* m_staticline26;
 		wxButton* ImportButton;
 		wxButton* ExportButton;
-		wxStaticLine* m_staticline261;
-		wxStaticLine* m_staticline2611;
-		wxStaticLine* m_staticline2612;
-		wxStaticLine* m_staticline2613;
-		wxStaticLine* m_staticline2614;
-		wxStaticLine* m_staticline2615;
-		wxStaticLine* m_staticline26151;
-		wxStaticLine* m_staticline26152;
-		wxStaticLine* m_staticline26153;
-		wxStaticLine* m_staticline26154;
-		wxButton* ShowDeletedProfiles;
-		wxButton* PermenantlyDelete;
 		wxPanel* CommandsPanel;
 		wxStaticLine* m_staticline15;
 		wxStaticText* m_staticText34;
@@ -98,8 +86,6 @@ class RunProfilesPanel : public wxPanel
 		virtual void OnDuplicateProfileClick( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnImportButtonClick( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnExportButtonClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnShowDeletedProfiles( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnPermenantlyDelete( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ManagerTextChanged( wxCommandEvent& event ) { event.Skip(); }
 		virtual void GuiAddressAutoClick( wxCommandEvent& event ) { event.Skip(); }
 		virtual void GuiAddressSpecifyClick( wxCommandEvent& event ) { event.Skip(); }

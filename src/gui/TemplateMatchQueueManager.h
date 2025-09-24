@@ -148,7 +148,7 @@ class TemplateMatchQueueItem {
      */
     bool AreSearchParametersValid( ) const {
         MyDebugAssertTrue(database_queue_id >= 0, "database_queue_id must be >= 0, got %ld", database_queue_id);
-        MyDebugAssertTrue(image_group_id >= 1, "image_group_id must be >= 1, got %d", image_group_id);
+        MyDebugAssertTrue(image_group_id >= -1, "image_group_id must be >= -1, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
         MyDebugAssertTrue(run_profile_id >= 0, "run_profile_id must be >= 0, got %d", run_profile_id);
         MyDebugAssertTrue(pixel_size > 0.0f, "pixel_size must be > 0.0, got %f", pixel_size);

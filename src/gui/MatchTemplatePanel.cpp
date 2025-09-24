@@ -931,8 +931,14 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
     current_custom_cli_args = item.custom_cli_args;
 
     // Set the group and reference selections
-    if ( GroupComboBox && item.image_group_id >= 1 ) {
-        GroupComboBox->SetSelection(item.image_group_id - 1); // Convert 1-based database index to 0-based ComboBox selection
+    if ( GroupComboBox && image_asset_panel && image_asset_panel->all_groups_list ) {
+        // Find the group with matching database ID and set ComboBox to that index
+        for ( int group_index = 0; group_index < image_asset_panel->all_groups_list->number_of_groups; group_index++ ) {
+            if ( image_asset_panel->all_groups_list->groups[group_index].id == item.image_group_id ) {
+                GroupComboBox->SetSelection(group_index);
+                break;
+            }
+        }
         // Enable combo box if we're editing
         if ( for_editing && ! IsJobRunning( ) ) {
             GroupComboBox->Enable(true);
@@ -1072,7 +1078,10 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui( ) {
 
     // Collect actual parameters from GUI controls
     new_job.database_queue_id         = -1; // Will be assigned when stored to database
-    new_job.image_group_id            = GroupComboBox->GetSelection( ) + 1; // Convert 0-based ComboBox selection to 1-based database index
+    // Use the group's database ID directly from the groups array
+    // groups[0].id = -1 ("All Images" virtual group)
+    // groups[N].id = database GROUP_ID for real groups
+    new_job.image_group_id = image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection()].id;
     new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection( );
     new_job.run_profile_id            = RunProfileComboBox->GetSelection( );
 
@@ -1772,7 +1781,7 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed" || queue_item->queue_status == "partial",
                           "Cannot execute job with status '%s', must be 'pending', 'failed', or 'partial'", queue_item->queue_status.mb_str( ).data( ));
         MyDebugAssertFalse(queue_item->search_name.IsEmpty( ), "Cannot execute search with empty search_name");
-        MyDebugAssertTrue(queue_item->image_group_id >= 1, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
+        MyDebugAssertTrue(queue_item->image_group_id >= -1, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
         MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);
 
         // Check if another job is already running

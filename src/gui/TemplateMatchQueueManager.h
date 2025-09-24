@@ -4,6 +4,7 @@
 #include <wx/wx.h>
 #include <wx/dataview.h>
 #include <deque>
+#include "TemplateMatchQueueLogger.h"
 
 // Forward declarations
 class MyMainFrame;
@@ -147,7 +148,7 @@ class TemplateMatchQueueItem {
      */
     bool AreSearchParametersValid( ) const {
         MyDebugAssertTrue(database_queue_id >= 0, "database_queue_id must be >= 0, got %ld", database_queue_id);
-        MyDebugAssertTrue(image_group_id >= 0, "image_group_id must be >= 0, got %d", image_group_id);
+        MyDebugAssertTrue(image_group_id >= 1, "image_group_id must be >= 1, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
         MyDebugAssertTrue(run_profile_id >= 0, "run_profile_id must be >= 0, got %d", run_profile_id);
         MyDebugAssertTrue(pixel_size > 0.0f, "pixel_size must be > 0.0, got %f", pixel_size);
@@ -218,6 +219,13 @@ class TemplateMatchQueueManager : public wxPanel {
 
     // UI Controls - Panel display toggle
     wxToggleButton* panel_display_toggle; ///< Toggle switch between Input and Progress panels
+
+#ifdef cisTEM_QM_LOGGING
+    // UI Controls - Logging controls (only visible when cisTEM_QM_LOGGING is defined)
+    wxPanel* logging_panel; ///< Container panel for logging controls
+    wxToggleButton* logging_toggle; ///< Toggle to enable/disable logging
+    wxStaticText* log_file_text; ///< Display current log file path
+#endif
 
     // Data Collections - In-memory queue storage
     std::deque<TemplateMatchQueueItem> execution_queue; ///< Searches ready for execution (queue_order >= 0)
@@ -470,6 +478,11 @@ class TemplateMatchQueueManager : public wxPanel {
     void OnMouseLeftDown(wxMouseEvent& event); ///< Tracks mouse down for drag start
     void OnMouseMotion(wxMouseEvent& event); ///< Handles drag motion for visual feedback
     void OnMouseLeftUp(wxMouseEvent& event); ///< Completes drag operation and reorders queue
+
+#ifdef cisTEM_QM_LOGGING
+    // Logging event handler
+    void OnLoggingToggle(wxCommandEvent& event); ///< Enables/disables logging
+#endif
 
     /**
      * @brief Reorders execution queue items by changing their positions

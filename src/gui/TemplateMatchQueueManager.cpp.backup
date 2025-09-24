@@ -3,13 +3,7 @@
 #include "MatchTemplatePanel.h"
 #include <algorithm>
 
-#ifdef cisTEM_QM_LOGGING
-// Initialize static members for QueueManagerLogger
-std::ofstream QueueManagerLogger::log_file;
-wxDateTime    QueueManagerLogger::start_time;
-bool          QueueManagerLogger::is_enabled = false;
-wxString      QueueManagerLogger::log_file_path;
-#endif
+// No more static members needed with unified architecture
 
 BEGIN_EVENT_TABLE(TemplateMatchQueueManager, wxPanel)
 EVT_BUTTON(wxID_ANY, TemplateMatchQueueManager::OnRunSelectedClick)
@@ -18,6 +12,7 @@ EVT_LIST_ITEM_DESELECTED(wxID_ANY, TemplateMatchQueueManager::OnSelectionChanged
 EVT_LIST_BEGIN_DRAG(wxID_ANY, TemplateMatchQueueManager::OnBeginDrag)
 #ifdef cisTEM_QM_LOGGING
 EVT_TOGGLEBUTTON(wxID_ANY, TemplateMatchQueueManager::OnLoggingToggle)
+EVT_CHECKBOX(wxID_ANY, TemplateMatchQueueManager::OnLoggingMaskChanged)
 #endif
 END_EVENT_TABLE( )
 
@@ -71,7 +66,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     panel_display_toggle->SetValue(false);  // Start with input panel visible
     panel_display_toggle->SetToolTip("Toggle between Input and Progress panels");
 
-    QM_LOG_UI("Created toggle button, initial value=%s, label='%s'",
+    wxPrintf("TemplateMatchQueueManager: Created toggle button, initial value=%s, label='%s'\n",
              panel_display_toggle->GetValue() ? "true" : "false",
              panel_display_toggle->GetLabel().mb_str().data());
 
@@ -99,7 +94,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     // Set minimum size to ensure visibility
     available_searches_ctrl->SetMinSize(wxSize(700, 150));
-    QM_LOG_UI("Created available_searches_ctrl: %p with min size 700x150", available_searches_ctrl);
+    wxPrintf("Created available_searches_ctrl: %p with min size 700x150\n", available_searches_ctrl); // Debug output
 
     // Add columns to available searches (same structure as execution queue)
     available_searches_ctrl->AppendColumn("Queue ID", wxLIST_FORMAT_LEFT, 70);
@@ -125,19 +120,73 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     cli_args_panel->SetSizer(cli_args_sizer);
 
 #ifdef cisTEM_QM_LOGGING
-    // Create simplified logging controls panel (only visible when cisTEM_QM_LOGGING is defined)
+    // Create logging controls panel (only visible when cisTEM_QM_LOGGING is defined)
     logging_panel = new wxPanel(this, wxID_ANY);
-    wxStaticBoxSizer* logging_sizer = new wxStaticBoxSizer(wxHORIZONTAL, logging_panel, "Queue Manager Logging (Debug)");
+    wxStaticBoxSizer* logging_sizer = new wxStaticBoxSizer(wxVERTICAL, logging_panel, "Queue Manager Logging (Debug)");
 
-    // Simple toggle and file path display
+    // Top row - main toggle and file path
+    wxBoxSizer* log_top_sizer = new wxBoxSizer(wxHORIZONTAL);
     logging_toggle = new wxToggleButton(logging_panel, wxID_ANY, "Enable Logging");
     logging_toggle->SetValue(false); // Off by default
     log_file_text = new wxStaticText(logging_panel, wxID_ANY, "");
+    log_top_sizer->Add(logging_toggle, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+    log_top_sizer->Add(log_file_text, 1, wxALL | wxALIGN_CENTER_VERTICAL | wxEXPAND, 5);
 
-    logging_sizer->Add(logging_toggle, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
-    logging_sizer->Add(log_file_text, 1, wxALL | wxALIGN_CENTER_VERTICAL | wxEXPAND, 5);
+    // Create mask checkboxes in two columns
+    wxStaticText* mask_label = new wxStaticText(logging_panel, wxID_ANY, "Logging Masks:");
+
+    wxFlexGridSizer* mask_grid = new wxFlexGridSizer(4, 2, 5, 10);
+
+    log_method_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "Method Entry/Exit");
+    log_method_checkbox->SetValue(true);
+    log_method_checkbox->Enable(false); // Initially disabled until logging is on
+
+    log_db_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "Database Transactions");
+    log_db_checkbox->SetValue(true);
+    log_db_checkbox->Enable(false);
+
+    log_db_values_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "Database Values (verbose)");
+    log_db_values_checkbox->SetValue(false); // Off by default as it's verbose
+    log_db_values_checkbox->Enable(false);
+
+    log_state_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "State Changes");
+    log_state_checkbox->SetValue(true);
+    log_state_checkbox->Enable(false);
+
+    log_ui_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "UI Updates");
+    log_ui_checkbox->SetValue(true);
+    log_ui_checkbox->Enable(false);
+
+    log_search_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "Search Execution");
+    log_search_checkbox->SetValue(true);
+    log_search_checkbox->Enable(false);
+
+    log_error_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "Errors/Warnings");
+    log_error_checkbox->SetValue(true);
+    log_error_checkbox->Enable(false);
+
+    log_debug_checkbox = new wxCheckBox(logging_panel, wxID_ANY, "Debug Output");
+    log_debug_checkbox->SetValue(false); // Off by default as it's verbose
+    log_debug_checkbox->Enable(false);
+
+    mask_grid->Add(log_method_checkbox, 0, wxEXPAND);
+    mask_grid->Add(log_db_checkbox, 0, wxEXPAND);
+    mask_grid->Add(log_db_values_checkbox, 0, wxEXPAND);
+    mask_grid->Add(log_state_checkbox, 0, wxEXPAND);
+    mask_grid->Add(log_ui_checkbox, 0, wxEXPAND);
+    mask_grid->Add(log_search_checkbox, 0, wxEXPAND);
+    mask_grid->Add(log_error_checkbox, 0, wxEXPAND);
+    mask_grid->Add(log_debug_checkbox, 0, wxEXPAND);
+
+    // Add everything to logging sizer
+    logging_sizer->Add(log_top_sizer, 0, wxEXPAND | wxALL, 5);
+    logging_sizer->Add(mask_label, 0, wxALL, 5);
+    logging_sizer->Add(mask_grid, 0, wxEXPAND | wxALL, 5);
 
     logging_panel->SetSizer(logging_sizer);
+
+    // Initially hide the logging panel if logging is not enabled
+    logging_panel->Show(true); // Always show when cisTEM_QM_LOGGING is defined
 #endif
 
     // Create bottom controls panel with left and right button groups
@@ -180,7 +229,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     // Force layout update - important for dialog visibility
     Layout( );
-    QM_LOG_UI("Layout() called");
+    wxPrintf("TemplateMatchQueueManager: Layout() called\n");
 
     // Connect events
     update_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnUpdateSelectedClick, this);
@@ -202,8 +251,16 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     execution_queue_ctrl->Bind(wxEVT_LEFT_UP, &TemplateMatchQueueManager::OnMouseLeftUp, this);
 
 #ifdef cisTEM_QM_LOGGING
-    // Bind logging event
+    // Bind logging events
     logging_toggle->Bind(wxEVT_TOGGLEBUTTON, &TemplateMatchQueueManager::OnLoggingToggle, this);
+    log_method_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
+    log_db_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
+    log_db_values_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
+    log_state_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
+    log_ui_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
+    log_search_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
+    log_error_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
+    log_debug_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnLoggingMaskChanged, this);
 #endif
 
     // Don't load from database in constructor - it may be called during workflow switch
@@ -216,7 +273,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
         bool input_visible = match_template_panel_ptr->InputPanel->IsShown();
         bool progress_visible = match_template_panel_ptr->ProgressPanel->IsShown();
 
-        QM_LOG_UI("Constructor: InputPanel visible=%s, ProgressPanel visible=%s",
+        wxPrintf("TemplateMatchQueueManager constructor: InputPanel visible=%s, ProgressPanel visible=%s\n",
                  input_visible ? "true" : "false",
                  progress_visible ? "true" : "false");
 
@@ -231,7 +288,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
             panel_display_toggle->SetLabel("Show Progress Panel");
         }
 
-        QM_LOG_UI("Set toggle button value=%s, label='%s'",
+        wxPrintf("TemplateMatchQueueManager: Set toggle button value=%s, label='%s'\n",
                  panel_display_toggle->GetValue() ? "true" : "false",
                  panel_display_toggle->GetLabel().mb_str().data());
     }
@@ -251,7 +308,7 @@ TemplateMatchQueueManager::~TemplateMatchQueueManager( ) {
 
 bool TemplateMatchQueueManager::ValidateQueueItem(const TemplateMatchQueueItem& item, wxString& error_message) {
     // Validate basic parameters
-    if (item.image_group_id < 1) {
+    if (item.image_group_id < 0) {
         error_message = wxString::Format("Invalid image group ID: %d", item.image_group_id);
         return false;
     }
@@ -326,20 +383,21 @@ void TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem
     }
 }
 
+// revert - DEBUG helper function to print queue state
 void TemplateMatchQueueManager::PrintQueueState( ) {
-    QM_LOG_DEBUG("  Execution Queue (%zu items):", execution_queue.size( ));
+    wxPrintf("  Execution Queue (%zu items):\n", execution_queue.size( ));
     for ( const auto& item : execution_queue ) {
         if ( item.queue_order >= 0 ) {
-            QM_LOG_DEBUG("    [%d] ID=%ld, Status=%s, Name=%s",
+            wxPrintf("    [%d] ID=%ld, Status=%s, Name=%s\n",
                      item.queue_order, item.database_queue_id,
                      item.queue_status.mb_str( ).data( ), item.search_name.mb_str( ).data( ));
         }
     }
-    QM_LOG_DEBUG("  Available items in execution_queue (queue_order < 0): %d",
+    wxPrintf("  Available items in execution_queue (queue_order < 0): %d\n",
              int(std::count_if(execution_queue.begin( ), execution_queue.end( ),
                                [](const auto& item) { return item.queue_order < 0; })));
-    QM_LOG_DEBUG("  Available Queue (%zu items)", available_queue.size( ));
-    QM_LOG_DEBUG("  Currently running search ID: %ld", currently_running_id);
+    wxPrintf("  Available Queue (%zu items)\n", available_queue.size( ));
+    wxPrintf("  Currently running search ID: %ld\n\n", currently_running_id);
 }
 
 bool TemplateMatchQueueManager::IsDatabaseAvailable(MyMainFrame* frame_ptr) const {
@@ -415,14 +473,14 @@ void TemplateMatchQueueManager::SetExecutionQueuePosition(int search_index, int 
     // Set the moved search to its new position
     execution_queue[search_index].queue_order = new_position;
 
-    QM_LOG_STATE("SetSearchPosition: Moved search %ld from position %d to %d",
+    wxPrintf("SetSearchPosition: Moved search %ld from position %d to %d\n",
              execution_queue[search_index].database_queue_id, current_position, new_position);
 }
 
 void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
     if constexpr ( skip_search_execution_for_queue_debugging ) {
-        QM_LOG_DEBUG("=== PROGRESS EXECUTION QUEUE CALLED ===");
-        QM_LOG_DEBUG("Queue state at start of ProgressExecutionQueue:");
+        wxPrintf("\n=== PROGRESS EXECUTION QUEUE CALLED ===\n");
+        wxPrintf("Queue state at start of ProgressExecutionQueue:\n");
         PrintQueueState( );
     }
 
@@ -432,7 +490,7 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
         if ( item.queue_order == 0 && item.queue_status != "complete" ) {
             next_search = &item;
             if constexpr ( skip_search_execution_for_queue_debugging ) {
-                QM_LOG_DEBUG("Found next search to run: ID=%ld at queue_order=0", item.database_queue_id);
+                wxPrintf("Found next search to run: ID=%ld at queue_order=0\n", item.database_queue_id);
             }
             break;
         }
@@ -451,12 +509,12 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
             }
         }
 
-        QM_LOG_SEARCH("ProgressQueue: Starting search %ld (moved to priority -1, status: %s)",
+        wxPrintf("ProgressQueue: Starting search %ld (moved to priority -1, status: %s)\n",
                  next_search->database_queue_id, next_search->queue_status);
 
         // Execute the search - status will be changed to "running" by MatchTemplatePanel after validation
         if ( ExecuteSearch(*next_search) ) {
-            QM_LOG_SEARCH("ProgressQueue: Search %ld execution started successfully", next_search->database_queue_id);
+            wxPrintf("ProgressQueue: Search %ld execution started successfully\n", next_search->database_queue_id);
         }
         else {
             // If execution failed, mark as failed and ensure it stays in available queue
@@ -467,7 +525,7 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
             // ExecuteSearch should not have set it if it returned false, but clear it to be safe
             currently_running_id = -1;
 
-            QM_LOG_ERROR("ProgressQueue: Search %ld execution failed, trying next search", next_search->database_queue_id);
+            wxPrintf("ProgressQueue: Search %ld execution failed, trying next search\n", next_search->database_queue_id);
 
             // Update display and save failed search status
             SaveQueueToDatabase( );
@@ -475,7 +533,7 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
 
             // Recursively try the next search in the queue
             if ( auto_progress_queue ) {
-                QM_LOG_SEARCH("ProgressQueue: Attempting next search after failure");
+                wxPrintf("ProgressQueue: Attempting next search after failure\n");
                 ProgressExecutionQueue( );
             }
             return; // Early return to avoid duplicate save/update below
@@ -486,7 +544,7 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
         UpdateQueueDisplay( );
     }
     else {
-        QM_LOG_SEARCH("ProgressQueue: No pending searches found at priority 0");
+        wxPrintf("ProgressQueue: No pending searches found at priority 0\n");
     }
 }
 
@@ -576,7 +634,7 @@ void TemplateMatchQueueManager::PopulateListControl(wxListCtrl*                 
         ctrl->SetItem(row, 2, item->search_name);
         // Status is column 3
         if (item->queue_status == "complete" || item->queue_status == "running") {
-            QM_LOG_UI("PopulateListControl: Setting status for queue_id %ld to '%s' in row %zu",
+            wxPrintf("PopulateListControl: Setting status for queue_id %ld to '%s' in row %zu\n",
                     item->database_queue_id, item->queue_status.mb_str().data(), idx);
         }
         SetStatusDisplay(ctrl, row, item->queue_status);
@@ -647,7 +705,7 @@ void TemplateMatchQueueManager::UpdateQueueDisplay( ) {
 }
 
 void TemplateMatchQueueManager::UpdateAvailableSearchesDisplay( ) {
-    QM_LOG_METHOD_ENTRY("UpdateAvailableSearchesDisplay");
+    wxPrintf("UpdateAvailableSearchesDisplay called\n");
     MyDebugAssertTrue(available_searches_ctrl != nullptr, "available_searches_ctrl is null in UpdateAvailableSearchesDisplay");
 
     // Build list of available items
@@ -659,7 +717,7 @@ void TemplateMatchQueueManager::UpdateAvailableSearchesDisplay( ) {
             // Skip completed searches if hide_completed_searches is enabled
             if ( ! hide_completed_searches || job.queue_status != "complete" ) {
                 available_items.push_back(&job);
-                QM_LOG_UI("UpdateAvailableSearchesDisplay: Added queue_id %ld (status: %s) to available list",
+                wxPrintf("UpdateAvailableSearchesDisplay: Added queue_id %ld (status: %s) to available list\n",
                         job.database_queue_id, job.queue_status.mb_str().data());
             }
         }
@@ -689,8 +747,7 @@ void TemplateMatchQueueManager::UpdateAvailableSearchesDisplay( ) {
     // Use consolidated method to populate the list
     PopulateListControl(available_searches_ctrl, available_items, false);
 
-    QM_LOG_UI("UpdateAvailableSearchesDisplay: Added %zu available searches", available_items.size( ));
-    QM_LOG_METHOD_EXIT("UpdateAvailableSearchesDisplay");
+    wxPrintf("UpdateAvailableSearchesDisplay: Added %zu available searches\n", available_items.size( ));
 }
 
 int TemplateMatchQueueManager::GetSelectedRow( ) {
@@ -710,11 +767,11 @@ void TemplateMatchQueueManager::RunNextSearch( ) {
     // Check if a search is already running or finalizing
     if ( IsSearchRunning( ) ) {
         if ( search_is_finalizing ) {
-            QM_LOG_SEARCH("Search is still finalizing - deferring RunNextSearch");
+            wxPrintf("Search is still finalizing - deferring RunNextSearch\n");
             // Schedule another attempt after finalization completes
             wxTimer* retry_timer = new wxTimer();
             retry_timer->Bind(wxEVT_TIMER, [this, retry_timer](wxTimerEvent&) {
-                QM_LOG_SEARCH("Retrying RunNextSearch after finalization delay");
+                wxPrintf("Retrying RunNextSearch after finalization delay\n");
                 if ( ! IsSearchRunning( ) ) {
                     RunNextSearch();
                 }
@@ -767,14 +824,14 @@ void TemplateMatchQueueManager::RunNextSearch( ) {
 
     // Execute the job - status will be changed to "running" by MatchTemplatePanel after validation
     if ( ExecuteSearch(*next_search) ) {
-        QM_LOG_SEARCH("RunNextSearch: Started search %ld (moved to priority -1, status: %s)",
+        wxPrintf("RunNextSearch: Started search %ld (moved to priority -1, status: %s)\n",
                  next_search->database_queue_id, next_search->queue_status);
     }
     else {
         // If execution failed, mark as failed and restore to available queue
         next_search->queue_status = "failed";
         // queue_order already set to -1, which is correct for available queue
-        QM_LOG_ERROR("RunNextSearch: Search %ld execution failed", next_search->database_queue_id);
+        wxPrintf("RunNextSearch: Search %ld execution failed\n", next_search->database_queue_id);
     }
 
     // Save queue state and update display
@@ -802,15 +859,15 @@ bool TemplateMatchQueueManager::ExecuteSearch(TemplateMatchQueueItem& search_to_
 
         if constexpr ( skip_search_execution_for_queue_debugging ) {
             // Debug mode: Mark job as running immediately, then simulate execution time
-            QM_LOG_DEBUG("=== DEBUG MODE: Starting search in debug mode ===");
-            QM_LOG_DEBUG("Search %ld will be marked as running", search_to_run.database_queue_id);
-            QM_LOG_DEBUG("Current queue state BEFORE marking as running:");
+            wxPrintf("\n=== DEBUG MODE: Starting search in debug mode ===\n");
+            wxPrintf("Search %ld will be marked as running\n", search_to_run.database_queue_id);
+            wxPrintf("Current queue state BEFORE marking as running:\n");
             PrintQueueState( );
 
             // Mark search as running (same as production code path)
             UpdateSearchStatus(search_to_run.database_queue_id, "running");
             currently_running_id = search_to_run.database_queue_id;
-            QM_LOG_STATE("Search %ld is now marked as RUNNING (currently_running_id set)", search_to_run.database_queue_id);
+            wxPrintf("Search %ld is now marked as RUNNING (currently_running_id set)\n", search_to_run.database_queue_id);
 
             // Update button state when search starts
             UpdateButtonState();
@@ -819,13 +876,13 @@ bool TemplateMatchQueueManager::ExecuteSearch(TemplateMatchQueueItem& search_to_
             UpdateQueueDisplay( );
             UpdateAvailableSearchesDisplay( );
 
-            QM_LOG_DEBUG("Queue state AFTER marking as running:");
+            wxPrintf("Queue state AFTER marking as running:\n");
             PrintQueueState( );
 
             // Non-blocking wait for 5 seconds to simulate search execution
             // Process events during this time so GUI remains responsive
-            QM_LOG_DEBUG(">>> Starting 5 second wait to simulate search execution...");
-            QM_LOG_DEBUG(">>> You can now interact with the queue (remove searches, etc.)");
+            wxPrintf("\n>>> Starting 5 second wait to simulate search execution...\n");
+            wxPrintf(">>> You can now interact with the queue (remove searches, etc.)\n");
 
             wxStopWatch timer;
             timer.Start( );
@@ -835,12 +892,12 @@ bool TemplateMatchQueueManager::ExecuteSearch(TemplateMatchQueueItem& search_to_
                 wxMilliSleep(50); // Small sleep to avoid consuming 100% CPU
             }
 
-            QM_LOG_DEBUG(">>> Execution simulation complete for search %ld", search_to_run.database_queue_id);
+            wxPrintf(">>> Execution simulation complete for search %ld\n\n", search_to_run.database_queue_id);
 
             // Now simulate search completion
-            QM_LOG_DEBUG("=== DEBUG: Simulating search completion ===");
+            wxPrintf("=== DEBUG: Simulating search completion ===\n");
             OnSearchCompleted(search_to_run.database_queue_id, true); // Simulate successful completion
-            QM_LOG_DEBUG("=== Search completion simulation done ===");
+            wxPrintf("=== Search completion simulation done ===\n\n");
 
             return true;
         }
@@ -852,7 +909,7 @@ bool TemplateMatchQueueManager::ExecuteSearch(TemplateMatchQueueItem& search_to_
                 // Search executed successfully - now mark it as running and track it
                 UpdateSearchStatus(search_to_run.database_queue_id, "running");
                 currently_running_id = search_to_run.database_queue_id;
-                QM_LOG_SEARCH("Search %ld started successfully and marked as running", search_to_run.database_queue_id);
+                wxPrintf("Search %ld started successfully and marked as running\n", search_to_run.database_queue_id);
 
                 // Update button state when search starts
                 UpdateButtonState();
@@ -861,7 +918,7 @@ bool TemplateMatchQueueManager::ExecuteSearch(TemplateMatchQueueItem& search_to_
                 return true;
             }
             else {
-                QM_LOG_ERROR("Failed to start search %ld", search_to_run.database_queue_id);
+                wxPrintf("Failed to start search %ld\n", search_to_run.database_queue_id);
                 UpdateSearchStatus(search_to_run.database_queue_id, "failed");
                 return false;
             }
@@ -870,7 +927,7 @@ bool TemplateMatchQueueManager::ExecuteSearch(TemplateMatchQueueItem& search_to_
     else {
         // Critical failure - template panel not available
         MyAssertTrue(false, "Critical error: match_template_panel not available for search execution");
-        QM_LOG_ERROR("Error: match_template_panel not available");
+        wxPrintf("Error: match_template_panel not available\n");
         UpdateSearchStatus(search_to_run.database_queue_id, "failed");
         currently_running_id = -1;
     }
@@ -883,9 +940,9 @@ bool TemplateMatchQueueManager::IsSearchRunning( ) const {
     bool is_running = currently_running_id != -1 || search_is_finalizing;
     if ( is_running ) {
         if ( search_is_finalizing ) {
-            QM_LOG_STATE("IsSearchRunning: Search is in finalization phase");
+            wxPrintf("IsSearchRunning: Search is in finalization phase\n");
         } else {
-            QM_LOG_STATE("IsSearchRunning: Search %ld is currently running", currently_running_id);
+            wxPrintf("IsSearchRunning: Search %ld is currently running\n", currently_running_id);
         }
     }
     return is_running;
@@ -914,7 +971,7 @@ void TemplateMatchQueueManager::UpdateSearchStatus(long database_queue_id, const
             }
             else if ( item.queue_status == "partial" && (new_status == "complete" || new_status == "failed") ) {
                 // Valid: partial -> complete/failed (when partial search finishes or fails)
-                QM_LOG_STATE("Partial search %ld transitioning to %s", database_queue_id, new_status);
+                wxPrintf("Partial search %ld transitioning to %s\n", database_queue_id, new_status);
             }
             else if ( item.queue_status == "pending" && new_status == "running" ) {
                 // Valid: pending -> running
@@ -922,17 +979,17 @@ void TemplateMatchQueueManager::UpdateSearchStatus(long database_queue_id, const
             }
             else if ( item.queue_status == "pending" && new_status == "failed" ) {
                 // Valid: pending -> failed (when search fails to start)
-                QM_LOG_STATE("Search %ld failed to start, marking as failed", database_queue_id);
+                wxPrintf("Search %ld failed to start, marking as failed\n", database_queue_id);
             }
             else if ( item.queue_status == "failed" && new_status == "running" ) {
                 // Valid: failed -> running (when resuming a failed search)
                 MyDebugAssertFalse(IsSearchRunning( ), "Cannot resume failed search %ld when search %ld is already running", database_queue_id, currently_running_id);
-                QM_LOG_STATE("Resuming failed search %ld, marking as running", database_queue_id);
+                wxPrintf("Resuming failed search %ld, marking as running\n", database_queue_id);
             }
             else if ( item.queue_status == "partial" && new_status == "running" ) {
                 // Valid: partial -> running (when resuming a partially complete search)
                 MyDebugAssertFalse(IsSearchRunning( ), "Cannot resume partial search %ld when search %ld is already running", database_queue_id, currently_running_id);
-                QM_LOG_STATE("Resuming partial search %ld, marking as running", database_queue_id);
+                wxPrintf("Resuming partial search %ld, marking as running\n", database_queue_id);
             }
             else {
                 MyDebugAssertTrue(false, "Invalid status transition: %s -> %s for search %ld",
@@ -980,14 +1037,14 @@ void TemplateMatchQueueManager::OnClearQueueClick(wxCommandEvent& event) {
 
 void TemplateMatchQueueManager::OnHideCompletedToggle(wxCommandEvent& event) {
     hide_completed_searches = event.IsChecked( );
-    QM_LOG_UI("Hide completed searches toggled to: %s", hide_completed_searches ? "true" : "false");
+    wxPrintf("Hide completed searches toggled to: %s\n", hide_completed_searches ? "true" : "false");
 
     // Refresh the available jobs display with the new filter
     UpdateAvailableSearchesDisplay( );
 }
 
 void TemplateMatchQueueManager::OnAvailableSearchesSelectionChanged(wxListEvent& event) {
-    QM_LOG_METHOD_ENTRY("OnAvailableSearchesSelectionChanged");
+    wxPrintf("OnAvailableSearchesSelectionChanged called\n");
 
     // Check if any items are selected in available jobs table
     bool                    has_available_selection = false;
@@ -1033,7 +1090,7 @@ void TemplateMatchQueueManager::OnAvailableSearchesSelectionChanged(wxListEvent&
                            first_selected_item->queue_status == "partial");
 
         if (is_editable || !gui_update_frozen) {
-            QM_LOG_UI("Populating GUI from available queue item: %s (status: %s)",
+            wxPrintf("Populating GUI from available queue item: %s (status: %s)\n",
                     first_selected_item->search_name, first_selected_item->queue_status);
             match_template_panel_ptr->PopulateGuiFromQueueItem(*first_selected_item, true);
 
@@ -1048,9 +1105,8 @@ void TemplateMatchQueueManager::OnAvailableSearchesSelectionChanged(wxListEvent&
         }
     }
 
-    QM_LOG_UI("Available jobs selection changed - Add to Queue button %s",
+    wxPrintf("Available jobs selection changed - Add to Queue button %s\n",
              has_available_selection ? "enabled" : "disabled");
-    QM_LOG_METHOD_EXIT("OnAvailableSearchesSelectionChanged");
 }
 
 void TemplateMatchQueueManager::UpdateButtonState() {
@@ -1085,12 +1141,12 @@ void TemplateMatchQueueManager::UpdateButtonState() {
     update_selected_button->Enable(should_enable);
 
     if (should_enable) {
-        QM_LOG_UI("Update button enabled for pending item %ld", last_populated_queue_id);
+        wxPrintf("Update button enabled for pending item %ld\n", last_populated_queue_id);
     } else if (item) {
-        QM_LOG_UI("Update button disabled - item %ld has status '%s'",
+        wxPrintf("Update button disabled - item %ld has status '%s'\n",
                  last_populated_queue_id, item->queue_status);
     } else {
-        QM_LOG_UI("Update button disabled - item %ld not found", last_populated_queue_id);
+        wxPrintf("Update button disabled - item %ld not found\n", last_populated_queue_id);
     }
 }
 
@@ -1319,7 +1375,7 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
                            selected_item.queue_status == "partial");
 
         if (is_editable || !gui_update_frozen) {
-            QM_LOG_UI("Populating GUI from execution queue item %d (status: %s)",
+            wxPrintf("Populating GUI from execution queue item %d (status: %s)\n",
                     first_selected_index, selected_item.queue_status.mb_str().data());
             match_template_panel_ptr->PopulateGuiFromQueueItem(selected_item, true);
 
@@ -1371,14 +1427,14 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
         // Check if this search is selected (by database_queue_id)
         for ( long selected_id : selected_database_ids ) {
             if ( search->database_queue_id == selected_id ) {
-                QM_LOG_DEBUG("Processing search %ld with status '%s' for adding to queue",
+                wxPrintf("DEBUG: Processing search %ld with status '%s' for adding to queue\n",
                          search->database_queue_id, search->queue_status);
                 // Allow pending, failed, or partial searches to be moved to execution queue
                 // Do NOT allow running or complete searches
                 if ( search->queue_status == "pending" ||
                      search->queue_status == "failed" ||
                      search->queue_status == "partial" ) {
-                    QM_LOG_DEBUG("Search %ld allowed - status '%s' can be queued",
+                    wxPrintf("DEBUG: Search %ld allowed - status '%s' can be queued\n",
                              search->database_queue_id, search->queue_status);
                     search->queue_order = next_queue_order++;
                     selected_job_ids.push_back(search->database_queue_id);
@@ -1391,7 +1447,7 @@ void TemplateMatchQueueManager::OnAddToQueueClick(wxCommandEvent& event) {
                     }
                 }
                 else {
-                    QM_LOG_DEBUG("Search %ld BLOCKED - status '%s' cannot be queued",
+                    wxPrintf("DEBUG: Search %ld BLOCKED - status '%s' cannot be queued\n",
                              search->database_queue_id, search->queue_status);
                     blocked_jobs.push_back(wxString::Format("Search %ld (%s)",
                                                             search->database_queue_id,
@@ -1478,8 +1534,8 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
 
     if ( dialog.ShowModal( ) == wxID_YES ) {
         if constexpr ( skip_search_execution_for_queue_debugging ) {
-            QM_LOG_DEBUG("=== REMOVING JOBS FROM EXECUTION QUEUE ===");
-            QM_LOG_DEBUG("Queue state BEFORE removal:");
+            wxPrintf("\n=== REMOVING JOBS FROM EXECUTION QUEUE ===\n");
+            wxPrintf("Queue state BEFORE removal:\n");
             PrintQueueState( );
         }
 
@@ -1490,7 +1546,7 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
             for ( long id : selected_ids ) {
                 for ( const auto& job : execution_queue ) {
                     if ( job.database_queue_id == id ) {
-                        QM_LOG_DEBUG("Selected job: ID=%ld, queue_order=%d",
+                        wxPrintf("Selected job: ID=%ld, queue_order=%d\n",
                                  job.database_queue_id, job.queue_order);
                         break;
                     }
@@ -1503,7 +1559,7 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
             for ( auto& job : execution_queue ) {
                 if ( job.database_queue_id == job_id ) {
                     if constexpr ( skip_search_execution_for_queue_debugging ) {
-                        QM_LOG_DEBUG("Moving job %ld from queue_order %d to -1 (available)",
+                        wxPrintf("Moving job %ld from queue_order %d to -1 (available)\n",
                                  job_id, job.queue_order);
                     }
                     job.queue_order = -1; // Move to available jobs
@@ -1521,16 +1577,16 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
         }
 
         if constexpr ( skip_search_execution_for_queue_debugging ) {
-            QM_LOG_DEBUG("Queue state AFTER removal and renumbering:");
+            wxPrintf("Queue state AFTER removal and renumbering:\n");
             PrintQueueState( );
         }
 
         UpdateQueueDisplay( );
         SaveQueueToDatabase( );
-        QM_LOG_STATE("Removed %zu jobs from execution queue", selected_ids.size( ));
+        wxPrintf("Removed %zu jobs from execution queue\n", selected_ids.size( ));
 
         if constexpr ( skip_search_execution_for_queue_debugging ) {
-            QM_LOG_DEBUG("=== REMOVAL COMPLETE ===");
+            wxPrintf("=== REMOVAL COMPLETE ===\n\n");
         }
     }
 }
@@ -1538,7 +1594,7 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
 void TemplateMatchQueueManager::OnBeginDrag(wxListEvent& event) {
     // Note: This event handler exists for compatibility but manual drag-and-drop
     // is now handled through mouse events (OnMouseLeftDown, OnMouseMotion, OnMouseLeftUp)
-    QM_LOG_UI("OnBeginDrag called - using manual mouse drag implementation");
+    wxPrintf("OnBeginDrag called - using manual mouse drag implementation\n");
 }
 
 void TemplateMatchQueueManager::CleanupDragState( ) {
@@ -1665,7 +1721,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
     bool found_orphaned_jobs = false;
     for ( auto& item : execution_items ) {
         if ( item.queue_status == "running" ) {
-            QM_LOG_ERROR("CRASH RECOVERY: Found orphaned running job %ld, marking as failed", item.database_queue_id);
+            wxPrintf("CRASH RECOVERY: Found orphaned running job %ld, marking as failed\n", item.database_queue_id);
             item.queue_status = "failed";
             item.queue_order  = -1; // Move to available queue
             available_items.push_back(item);
@@ -1677,7 +1733,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
     }
     for ( auto& item : available_items ) {
         if ( item.queue_status == "running" ) {
-            QM_LOG_ERROR("CRASH RECOVERY: Found orphaned running job %ld, marking as failed", item.database_queue_id);
+            wxPrintf("CRASH RECOVERY: Found orphaned running job %ld, marking as failed\n", item.database_queue_id);
             item.queue_status   = "failed";
             found_orphaned_jobs = true;
 
@@ -1704,7 +1760,7 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
 
     // Save crash recovery changes back to database
     if ( found_orphaned_jobs ) {
-        QM_LOG_STATE("CRASH RECOVERY: Saving corrected job statuses to database");
+        wxPrintf("CRASH RECOVERY: Saving corrected job statuses to database\n");
         SaveQueueToDatabase( );
     }
 
@@ -1840,7 +1896,7 @@ bool TemplateMatchQueueManager::UpdateQueueItemInDatabase(const TemplateMatchQue
 
     // Commit the transaction
     main_frame->current_project.database.Commit();
-    QM_LOG_DB("Successfully updated queue item %ld in database", item.database_queue_id);
+    wxPrintf("Successfully updated queue item %ld in database\n", item.database_queue_id);
     return true;
 }
 
@@ -1931,7 +1987,7 @@ void TemplateMatchQueueManager::ReorderQueueItems(int old_position, int new_posi
     }
 
     if ( ! moved_job ) {
-        QM_LOG_ERROR("Could not find job at position %d", old_position);
+        wxPrintf("ERROR: Could not find job at position %d\n", old_position);
         return;
     }
 
@@ -2005,21 +2061,21 @@ void TemplateMatchQueueManager::ContinueQueueExecution( ) {
     // Instance method to continue queue execution after a job completes
     // This is called from ProcessAllJobsFinished to continue with the next job
 
-    QM_LOG_SEARCH("ContinueQueueExecution: currently_running_id=%ld, finalizing=%s",
+    wxPrintf("ContinueQueueExecution: currently_running_id=%ld, finalizing=%s\n",
              currently_running_id, search_is_finalizing ? "true" : "false");
 
     if ( IsSearchRunning( ) ) {
         // A job is already running or finalizing, don't start another
         if ( search_is_finalizing ) {
-            QM_LOG_SEARCH("ContinueQueueExecution: Job is finalizing, not continuing queue execution");
+            wxPrintf("ContinueQueueExecution: Job is finalizing, not continuing queue execution\n");
         } else {
-            QM_LOG_SEARCH("ContinueQueueExecution: Job %ld is still running, not continuing queue execution", currently_running_id);
+            wxPrintf("ContinueQueueExecution: Job %ld is still running, not continuing queue execution\n", currently_running_id);
         }
         return;
     }
 
     // Continue execution using this instance
-    QM_LOG_SEARCH("ContinueQueueExecution: No job running, continuing with next job");
+    wxPrintf("ContinueQueueExecution: No job running, continuing with next job\n");
     RunNextSearch( );
 }
 
@@ -2038,7 +2094,7 @@ bool TemplateMatchQueueManager::ExecutionQueueHasActiveItems() const {
 void TemplateMatchQueueManager::OnSearchEnteringFinalization(long database_queue_id) {
     // Mark that a job is entering finalization phase
     // This prevents auto-advance from starting a new job prematurely
-    QM_LOG_STATE("Job %ld entering finalization phase", database_queue_id);
+    wxPrintf("Job %ld entering finalization phase\n", database_queue_id);
 
     // Only set the finalization flag, don't clear currently_running_id yet
     // because UpdateSearchStatus still needs it for validation
@@ -2052,20 +2108,20 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
     MyDebugAssertTrue(IsDatabaseAvailable(main_frame), "OnSearchCompleted: Database not available");
 
     if constexpr ( skip_search_execution_for_queue_debugging ) {
-        QM_LOG_DEBUG("=== OnSearchCompleted called ===");
-        QM_LOG_DEBUG("Job ID: %ld, Success: %s", database_queue_id, success ? "true" : "false");
-        QM_LOG_DEBUG("Currently running ID was: %ld", currently_running_id);
-        QM_LOG_DEBUG("Queue state at job completion:");
+        wxPrintf("\n=== OnSearchCompleted called ===\n");
+        wxPrintf("Job ID: %ld, Success: %s\n", database_queue_id, success ? "true" : "false");
+        wxPrintf("Currently running ID was: %ld\n", currently_running_id);
+        wxPrintf("Queue state at job completion:\n");
         PrintQueueState( );
     }
 
-    QM_LOG_SEARCH("Queue manager received job completion notification for job %ld (success: %s)",
+    wxPrintf("Queue manager received job completion notification for job %ld (success: %s)\n",
              database_queue_id, success ? "true" : "false");
 
     // Update job status in our queue
     const wxString& status = success ? "complete" : "failed";
 
-    QM_LOG_STATE("OnSearchCompleted: About to update status for queue_id %ld to '%s'",
+    wxPrintf("OnSearchCompleted: About to update status for queue_id %ld to '%s'\n",
              database_queue_id, status.mb_str().data());
 
     UpdateSearchStatus(database_queue_id, status);
@@ -2074,12 +2130,12 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
     bool job_found = false;
     for ( auto& job : execution_queue ) {
         if ( job.database_queue_id == database_queue_id ) {
-            QM_LOG_DEBUG("Found completed job %ld at priority %d with status %s",
+            wxPrintf("Found completed job %ld at priority %d with status %s\n",
                      database_queue_id, job.queue_order, job.queue_status.mb_str().data());
             // Job should already be at queue_order = -1 (available queue) from when it started running
             // and status should already be updated by UpdateSearchStatus above
             if ( job.queue_order != -1 ) {
-                QM_LOG_ERROR("WARNING: Completed job %ld was not at priority -1 (was %d), correcting",
+                wxPrintf("WARNING: Completed job %ld was not at priority -1 (was %d), correcting\n",
                          database_queue_id, job.queue_order);
                 job.queue_order = -1;
                 // Need to update display since we changed queue_order
@@ -2091,7 +2147,7 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
     }
 
     if ( ! job_found ) {
-        QM_LOG_ERROR("WARNING: Could not find completed job %ld in execution queue", database_queue_id);
+        wxPrintf("WARNING: Could not find completed job %ld in execution queue\n", database_queue_id);
     }
 
     // No need to renumber - jobs were already shifted when the completed job started running
@@ -2107,21 +2163,21 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
     UpdateButtonState();
 
     // Update display to show new status (UpdateQueueDisplay already calls UpdateAvailableSearchesDisplay)
-    QM_LOG_UI("OnSearchCompleted: Calling UpdateQueueDisplay to refresh status display");
+    wxPrintf("OnSearchCompleted: Calling UpdateQueueDisplay to refresh status display\n");
     UpdateQueueDisplay( );
 
     // Save changes to database - using auto-commit mode (each UPDATE commits immediately)
     SaveQueueToDatabase( );
 
     if constexpr ( skip_search_execution_for_queue_debugging ) {
-        QM_LOG_DEBUG("Queue state after job completion processing:");
+        wxPrintf("\nQueue state after job completion processing:\n");
         PrintQueueState( );
     }
 
     // Only auto-progress if enabled (default false - user controls progression)
     if ( auto_progress_queue ) {
         if constexpr ( skip_search_execution_for_queue_debugging ) {
-            QM_LOG_DEBUG("=== Auto-progressing to next job in queue ===");
+            wxPrintf("\n=== Auto-progressing to next job in queue ===\n");
         }
 
         // Add a small delay before auto-advancing to ensure all finalization completes
@@ -2129,23 +2185,23 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
         // job's results are fully written to the database or UI is updated
         wxTimer* delay_timer = new wxTimer();
         delay_timer->Bind(wxEVT_TIMER, [this, delay_timer](wxTimerEvent&) {
-            QM_LOG_SEARCH("Auto-advance timer fired - progressing queue");
+            wxPrintf("Auto-advance timer fired - progressing queue\n");
             // Force another display update before starting next search to ensure complete status is visible
             UpdateQueueDisplay();
             ProgressExecutionQueue( );
             delete delay_timer;  // Clean up the timer
         });
         delay_timer->StartOnce(500);  // 500ms delay before auto-advancing
-        QM_LOG_SEARCH("Scheduled auto-advance in 500ms");
+        wxPrintf("Scheduled auto-advance in 500ms\n");
     }
     else {
         if constexpr ( skip_search_execution_for_queue_debugging ) {
-            QM_LOG_DEBUG("Job completed - auto-progression disabled (user controls queue progression)");
+            wxPrintf("\nJob completed - auto-progression disabled (user controls queue progression)\n");
         }
     }
 
     if constexpr ( skip_search_execution_for_queue_debugging ) {
-        QM_LOG_DEBUG("=== OnSearchCompleted finished ===");
+        wxPrintf("=== OnSearchCompleted finished ===\n\n");
     }
 }
 
@@ -2158,11 +2214,11 @@ void TemplateMatchQueueManager::DeselectSearchInUI(long database_queue_id) {
     for ( size_t i = 0; i < execution_queue.size( ); ++i ) {
         if ( execution_queue[i].database_queue_id == database_queue_id ) {
             queue_list_ctrl->SetItemState(int(i), 0, wxLIST_STATE_SELECTED);
-            QM_LOG_UI("Deselected job %ld from UI (row %zu)", database_queue_id, i);
+            wxPrintf("Deselected job %ld from UI (row %zu)\n", database_queue_id, i);
             return;
         }
     }
-    QM_LOG_UI("Could not find job %ld to deselect in UI", database_queue_id);
+    wxPrintf("Could not find job %ld to deselect in UI\n", database_queue_id);
 }
 
 SearchCompletionInfo TemplateMatchQueueManager::GetSearchCompletionInfo(long queue_id) {
@@ -2270,7 +2326,7 @@ SearchCompletionInfo TemplateMatchQueueManager::GetSearchCompletionInfo(long que
     }
 
     // Debug output for n/N tracking
-    QM_LOG_DB_VALUES("GetSearchCompletionInfo: Queue ID %ld, SEARCH_ID %ld, ImageGroup %d -> %d/%d",
+    wxPrintf("GetSearchCompletionInfo: Queue ID %ld, SEARCH_ID %ld, ImageGroup %d -> %d/%d\n",
              queue_id, search_id, image_group_id,
              info.completed_count, info.total_count);
 
@@ -2286,7 +2342,7 @@ void TemplateMatchQueueManager::RefreshSearchCompletionInfo( ) {
 }
 
 void TemplateMatchQueueManager::OnResultAdded(long search_id) {
-    QM_LOG_SEARCH("OnResultAdded called for job %ld - refreshing n/N display", search_id);
+    wxPrintf("OnResultAdded called for job %ld - refreshing n/N display\n", search_id);
 
     // Refresh the completion info for this job and update displays
     RefreshSearchCompletionInfo( );
@@ -2294,13 +2350,13 @@ void TemplateMatchQueueManager::OnResultAdded(long search_id) {
 
 void TemplateMatchQueueManager::UpdateSearchIdForQueueItem(long queue_database_queue_id, long database_search_id) {
     // Update the queue item with the actual SEARCH_ID for correct n/N tracking
-    QM_LOG_DB("UpdateSearchIdForQueueItem: Mapping queue ID %ld to database SEARCH_ID %ld",
+    wxPrintf("UpdateSearchIdForQueueItem: Mapping queue ID %ld to database SEARCH_ID %ld\n",
              queue_database_queue_id, database_search_id);
 
     // Check execution queue first
     for ( auto& item : execution_queue ) {
         if ( item.database_queue_id == queue_database_queue_id ) {
-            QM_LOG_DB("Found queue item %ld in execution queue, setting search_id = %ld",
+            wxPrintf("Found queue item %ld in execution queue, setting search_id = %ld\n",
                      queue_database_queue_id, database_search_id);
             item.search_id = database_search_id;
 
@@ -2315,7 +2371,7 @@ void TemplateMatchQueueManager::UpdateSearchIdForQueueItem(long queue_database_q
     // Check available queue
     for ( auto& item : available_queue ) {
         if ( item.database_queue_id == queue_database_queue_id ) {
-            QM_LOG_DB("Found queue item %ld in available queue, setting search_id = %ld",
+            wxPrintf("Found queue item %ld in available queue, setting search_id = %ld\n",
                      queue_database_queue_id, database_search_id);
             item.search_id = database_search_id;
 
@@ -2327,7 +2383,7 @@ void TemplateMatchQueueManager::UpdateSearchIdForQueueItem(long queue_database_q
         }
     }
 
-    QM_LOG_ERROR("Warning: Could not find queue item %ld to update with database job ID %ld",
+    wxPrintf("Warning: Could not find queue item %ld to update with database job ID %ld\n",
              queue_database_queue_id, database_search_id);
 }
 
@@ -2381,9 +2437,9 @@ void TemplateMatchQueueManager::PopulateAvailableSearchesNotInQueueFromDatabase(
         // If not found in either queue, add to available queue
         if ( ! found_in_execution && ! found_in_available ) {
             // Skip orphaned searches for now - they shouldn't be in the queue manager
-        // These are searches that have results but no queue entry, likely from
+            // These are searches that have results but no queue entry, likely from
             // legacy projects or manual database edits
-            QM_LOG_DB("Skipping orphaned search %ld - has results but no queue entry", search_id);
+            wxPrintf("Skipping orphaned search %ld - has results but no queue entry\n", search_id);
             continue;
         }
     }
@@ -2394,14 +2450,14 @@ void TemplateMatchQueueManager::PopulateAvailableSearchesNotInQueueFromDatabase(
 
 void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
     if (!match_template_panel_ptr) {
-        QM_LOG_ERROR("OnPanelDisplayToggle: match_template_panel_ptr is null");
+        wxPrintf("OnPanelDisplayToggle: match_template_panel_ptr is null\n");
         return;
     }
 
     bool show_progress = event.IsChecked();
     bool actual_state = panel_display_toggle->GetValue();
 
-    QM_LOG_UI("OnPanelDisplayToggle: event.IsChecked()=%s, GetValue()=%s, show_progress=%s",
+    wxPrintf("OnPanelDisplayToggle: event.IsChecked()=%s, GetValue()=%s, show_progress=%s\n",
              event.IsChecked() ? "true" : "false",
              actual_state ? "true" : "false",
              show_progress ? "true" : "false");
@@ -2480,6 +2536,8 @@ void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
 }
 #ifdef cisTEM_QM_LOGGING
 void TemplateMatchQueueManager::OnLoggingToggle(wxCommandEvent& event) {
+    QM_LOG_METHOD_ENTRY("OnLoggingToggle");
+
     bool enable_logging = logging_toggle->GetValue();
 
     if (enable_logging) {
@@ -2488,17 +2546,47 @@ void TemplateMatchQueueManager::OnLoggingToggle(wxCommandEvent& event) {
 
         // Display the log file path
         wxString log_path = QueueManagerLogManager::GetLogFilePath();
-        log_file_text->SetLabel(wxString::Format("Log: %s", log_path));
+        log_file_text->SetLabel(wxString::Format("Log file: %s", log_path));
+
+        // Enable all mask checkboxes
+        log_method_checkbox->Enable(true);
+        log_db_checkbox->Enable(true);
+        log_db_values_checkbox->Enable(true);
+        log_state_checkbox->Enable(true);
+        log_ui_checkbox->Enable(true);
+        log_search_checkbox->Enable(true);
+        log_error_checkbox->Enable(true);
+        log_debug_checkbox->Enable(true);
+
+        // Apply current mask settings
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_METHOD, log_method_checkbox->GetValue());
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_DB, log_db_checkbox->GetValue());
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_DB_VALUES, log_db_values_checkbox->GetValue());
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_STATE, log_state_checkbox->GetValue());
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_UI, log_ui_checkbox->GetValue());
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_SEARCH, log_search_checkbox->GetValue());
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_ERROR, log_error_checkbox->GetValue());
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_DEBUG, log_debug_checkbox->GetValue());
+
+        QM_LOG_STATE("Logging enabled with selected masks");
+        wxLogMessage("Queue Manager logging enabled to: %s", log_path);
 
         // Update button label
         logging_toggle->SetLabel("Disable Logging");
-
-        // Log that we've started
-        QM_LOG_STATE("Queue Manager logging enabled");
     }
     else {
-        // Log that we're stopping
-        QM_LOG_STATE("Queue Manager logging disabled");
+        // Disable logging
+        QM_LOG_STATE("Logging being disabled");
+
+        // Disable all mask checkboxes
+        log_method_checkbox->Enable(false);
+        log_db_checkbox->Enable(false);
+        log_db_values_checkbox->Enable(false);
+        log_state_checkbox->Enable(false);
+        log_ui_checkbox->Enable(false);
+        log_search_checkbox->Enable(false);
+        log_error_checkbox->Enable(false);
+        log_debug_checkbox->Enable(false);
 
         // Clear log file path display
         log_file_text->SetLabel("");
@@ -2506,8 +2594,68 @@ void TemplateMatchQueueManager::OnLoggingToggle(wxCommandEvent& event) {
         // Update button label
         logging_toggle->SetLabel("Enable Logging");
 
-        // Disable logging
+        // Disable logging (this should be done last)
         QueueManagerLogManager::DisableLogging();
+
+        wxLogMessage("Queue Manager logging disabled");
     }
+
+    QM_LOG_METHOD_EXIT("OnLoggingToggle");
+}
+
+void TemplateMatchQueueManager::OnLoggingMaskChanged(wxCommandEvent& event) {
+    QM_LOG_METHOD_ENTRY("OnLoggingMaskChanged");
+
+    if (!QueueManagerLogManager::IsLoggingEnabled()) {
+        QM_LOG_METHOD_EXIT("OnLoggingMaskChanged - logging not enabled");
+        return;
+    }
+
+    // Update the corresponding mask based on which checkbox was changed
+    wxCheckBox* checkbox = dynamic_cast<wxCheckBox*>(event.GetEventObject());
+    if (!checkbox) {
+        QM_LOG_ERROR("Failed to cast event object to checkbox");
+        QM_LOG_METHOD_EXIT("OnLoggingMaskChanged - cast failed");
+        return;
+    }
+
+    bool enable = checkbox->GetValue();
+    wxString label = checkbox->GetLabel();
+
+    // Map checkbox to corresponding mask
+    if (checkbox == log_method_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_METHOD, enable);
+        QM_LOG_STATE("Method logging %s", enable ? "enabled" : "disabled");
+    }
+    else if (checkbox == log_db_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_DB, enable);
+        QM_LOG_STATE("Database logging %s", enable ? "enabled" : "disabled");
+    }
+    else if (checkbox == log_db_values_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_DB_VALUES, enable);
+        QM_LOG_STATE("Database values logging %s", enable ? "enabled" : "disabled");
+    }
+    else if (checkbox == log_state_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_STATE, enable);
+        QM_LOG_STATE("State logging %s", enable ? "enabled" : "disabled");
+    }
+    else if (checkbox == log_ui_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_UI, enable);
+        QM_LOG_STATE("UI logging %s", enable ? "enabled" : "disabled");
+    }
+    else if (checkbox == log_search_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_SEARCH, enable);
+        QM_LOG_STATE("Search logging %s", enable ? "enabled" : "disabled");
+    }
+    else if (checkbox == log_error_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_ERROR, enable);
+        QM_LOG_STATE("Error logging %s", enable ? "enabled" : "disabled");
+    }
+    else if (checkbox == log_debug_checkbox) {
+        QueueManagerLogManager::SetTraceMask(QM_TRACE_DEBUG, enable);
+        QM_LOG_STATE("Debug logging %s", enable ? "enabled" : "disabled");
+    }
+
+    QM_LOG_METHOD_EXIT("OnLoggingMaskChanged");
 }
 #endif

@@ -2,6 +2,7 @@
 #include "../constants/constants.h"
 #include "../core/gui_core_headers.h"
 #include "TemplateMatchQueueManager.h"
+#include "TemplateMatchQueueLogger.h"
 
 // File-specific debug flags
 // #define cisTEM_DEBUG_ORPHANED_SEARCH_IDS  // Uncomment to enable orphaned search_id checking
@@ -141,7 +142,7 @@ void MatchTemplatePanel::Reset( ) {
 
         // If this was a queue job, notify the queue manager of termination
         if ( running_queue_id > 0 && queue_completion_callback ) {
-            wxPrintf("Reset: Notifying queue manager of job termination for queue ID %ld\n", running_queue_id);
+            QM_LOG_SEARCH("Reset: Notifying queue manager of job termination for queue ID %ld", running_queue_id);
             queue_completion_callback->OnSearchCompleted(running_queue_id, false); // false = job failed/terminated
             running_queue_id = -1;
         }
@@ -488,7 +489,7 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         // This matches what QueueManager::RunNextSearch does before execution
         wxString sql = wxString::Format("UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_POSITION = -1 WHERE QUEUE_ID = %ld;", queue_id);
         main_frame->current_project.database.ExecuteSQL(sql);
-        wxPrintf("StartEstimationClick: Moved job %ld to available queue (position -1)\n", queue_id);
+        QM_LOG_STATE("StartEstimationClick: Moved job %ld to available queue (position -1)", queue_id);
 
         // Execute the job via unified method
         if ( ! ExecuteJob(&new_job) ) {
@@ -528,7 +529,7 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
         // The ONLY source of truth for search_id is TEMPLATE_MATCH_LIST
         search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
 
-        wxPrintf("First result for queue item %ld - assigning search_id %d\n", running_queue_id, search_id);
+        QM_LOG_DB("First result for queue item %ld - assigning search_id %d", running_queue_id, search_id);
 
         // Update the queue item with the new search_id
         if ( queue_completion_callback ) {
@@ -538,7 +539,7 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
         else {
             // No queue manager (StartEstimationClick path) - update database directly
             main_frame->current_project.database.UpdateSearchIdInQueueTable(running_queue_id, search_id);
-            wxPrintf("Direct database update: Linked queue ID %ld to search ID %d\n", running_queue_id, search_id);
+            QM_LOG_DB("Direct database update: Linked queue ID %ld to search ID %d", running_queue_id, search_id);
         }
 
         // Note: We can't check for orphaned search_ids here because we're about to write
@@ -618,7 +619,7 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
 
     // If this was a queue job, notify the queue manager of termination
     if ( running_queue_id > 0 && queue_completion_callback ) {
-        wxPrintf("Notifying queue manager of job termination for queue ID %ld\n", running_queue_id);
+        QM_LOG_SEARCH("Notifying queue manager of job termination for queue ID %ld", running_queue_id);
         queue_completion_callback->OnSearchCompleted(running_queue_id, false); // false = job failed/terminated
         running_queue_id = -1;
     }
@@ -712,7 +713,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     // Notify queue manager that job is entering finalization phase
     // This prevents auto-advance from starting a new job while we're cleaning up
     if ( running_queue_id > 0 && queue_completion_callback ) {
-        wxPrintf("Notifying queue manager that search with queue ID %ld is entering finalization\n", running_queue_id);
+        QM_LOG_STATE("Notifying queue manager that search with queue ID %ld is entering finalization", running_queue_id);
         queue_completion_callback->OnSearchEnteringFinalization(running_queue_id);
     }
 
@@ -739,13 +740,13 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     // Update queue status if this was a queue job
     if ( running_queue_id > 0 ) {
-        wxPrintf("Search with queue ID %ld completed - updating status\n", running_queue_id);
+        QM_LOG_SEARCH("Search with queue ID %ld completed - updating status", running_queue_id);
 
         // Note: Queue status is now computed from completion data, no database update needed
 
         // Notify queue manager if callback is registered - called AFTER clearing job state
         if ( queue_completion_callback ) {
-            wxPrintf("Notifying queue manager of job completion\n");
+            QM_LOG_SEARCH("Notifying queue manager of job completion");
             queue_completion_callback->OnSearchCompleted(running_queue_id, true);
         }
 
@@ -783,7 +784,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             // - Not currently running a job
             if ( my_job_id == job_id_at_timeout_start && ! IsJobRunning( ) &&
                  FinishButton && ! FinishButton->IsShown( ) ) {
-                wxPrintf("Queue transition timeout after 30 seconds - showing Finish button\n");
+                QM_LOG_ERROR("Queue transition timeout after 30 seconds - showing Finish button");
                 wxPrintf("Job ID at timeout: %ld, Current job ID: %ld\n", job_id_at_timeout_start, my_job_id);
                 TimeRemainingText->SetLabel("Time Remaining : Queue timeout - manual intervention needed");
                 FinishButton->Show(true);
@@ -791,7 +792,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
                 // Try to trigger queue progression one more time if callback exists
                 if ( queue_completion_callback ) {
-                    wxPrintf("Attempting to trigger queue progression after timeout\n");
+                    QM_LOG_SEARCH("Attempting to trigger queue progression after timeout");
                     queue_completion_callback->ProgressExecutionQueue( );
                 }
             }
@@ -862,7 +863,7 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
     // Check if we already have a queue dialog open
     if ( active_queue_dialog && active_queue_dialog->IsShown( ) ) {
         // Just bring the existing dialog to front
-        wxPrintf("Queue manager dialog already open - bringing to front\n");
+        QM_LOG_UI("Queue manager dialog already open - bringing to front");
         active_queue_dialog->Raise( );
         active_queue_dialog->SetFocus( );
         return;
@@ -929,8 +930,8 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
     current_custom_cli_args = item.custom_cli_args;
 
     // Set the group and reference selections
-    if ( GroupComboBox && item.image_group_id >= 0 ) {
-        GroupComboBox->SetSelection(item.image_group_id);
+    if ( GroupComboBox && item.image_group_id >= 1 ) {
+        GroupComboBox->SetSelection(item.image_group_id - 1); // Convert 1-based database index to 0-based ComboBox selection
         // Enable combo box if we're editing
         if ( for_editing && ! IsJobRunning( ) ) {
             GroupComboBox->Enable(true);
@@ -948,7 +949,7 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
     // Set run profile
     if ( RunProfileComboBox && item.run_profile_id >= 0 ) {
         RunProfileComboBox->SetSelection(item.run_profile_id);
-        wxPrintf("Set RunProfileComboBox to selection %d from queue item\n", item.run_profile_id);
+        QM_LOG_UI("Set RunProfileComboBox to selection %d from queue item", item.run_profile_id);
         // Enable combo box if we're editing
         if ( for_editing && ! IsJobRunning( ) ) {
             RunProfileComboBox->Enable(true);
@@ -1039,7 +1040,7 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
 bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
     // Check if we're ready to run
     if ( IsJobRunning( ) ) {
-        wxPrintf("Cannot run queued job - another job is already running\n");
+        QM_LOG_ERROR("Cannot run queued job - another job is already running");
         return false;
     }
 
@@ -1070,7 +1071,7 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui( ) {
 
     // Collect actual parameters from GUI controls
     new_job.database_queue_id         = -1; // Will be assigned when stored to database
-    new_job.image_group_id            = GroupComboBox->GetSelection( );
+    new_job.image_group_id            = GroupComboBox->GetSelection( ) + 1; // Convert 0-based ComboBox selection to 1-based database index
     new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection( );
     new_job.run_profile_id            = RunProfileComboBox->GetSelection( );
 
@@ -1165,18 +1166,18 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui( ) {
     new_job.exclude_above_xy_threshold = false;
 
     // Debug print for run profile information
-    wxPrintf("\n=== DEBUG: Run Profile Information ===\n");
-    wxPrintf("Run Profile ID (stored in queue): %d\n", new_job.run_profile_id);
+    QM_LOG_DEBUG("=== DEBUG: Run Profile Information ===");
+    QM_LOG_DEBUG("Run Profile ID (stored in queue): %d", new_job.run_profile_id);
     if ( new_job.run_profile_id >= 0 && new_job.run_profile_id < RunProfileComboBox->GetCount( ) ) {
         wxString run_profile_name = RunProfileComboBox->GetString(new_job.run_profile_id);
-        wxPrintf("Run Profile Name: %s\n", run_profile_name);
-        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount( ));
+        QM_LOG_DEBUG("Run Profile Name: %s", run_profile_name);
+        QM_LOG_DEBUG("Run Profile ComboBox Count: %d", RunProfileComboBox->GetCount( ));
     }
     else {
-        wxPrintf("No run profile selected or invalid selection\n");
-        wxPrintf("Run Profile ComboBox Count: %d\n", RunProfileComboBox->GetCount( ));
+        QM_LOG_DEBUG("No run profile selected or invalid selection");
+        QM_LOG_DEBUG("Run Profile ComboBox Count: %d", RunProfileComboBox->GetCount( ));
     }
-    wxPrintf("=== END DEBUG ===\n\n");
+    QM_LOG_DEBUG("=== END DEBUG ===");
 
     return new_job;
 }
@@ -1188,7 +1189,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         // Check if we already have a queue dialog open
         if ( active_queue_dialog && active_queue_dialog->IsShown( ) ) {
             // Reuse the existing dialog
-            wxPrintf("Reusing existing queue manager dialog\n");
+            QM_LOG_UI("Reusing existing queue manager dialog");
 
             // Find the queue manager in the dialog's children
             wxWindowList& children = active_queue_dialog->GetChildren( );
@@ -1317,11 +1318,11 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     PopulateGuiFromQueueItem(job);
 
     // Debug prints to check job parameters
-    wxPrintf("\n=== DEBUG: SetupSearchFromQueueItem Parameters ===\n");
-    wxPrintf("Search Name: %s\n", job.search_name);
-    wxPrintf("Image Group ID: %d\n", job.image_group_id);
-    wxPrintf("Reference Volume Asset ID: %d\n", job.reference_volume_asset_id);
-    wxPrintf("Run Profile ID: %d\n", job.run_profile_id);
+    QM_LOG_DEBUG("=== DEBUG: SetupSearchFromQueueItem Parameters ===");
+    QM_LOG_DEBUG("Search Name: %s", job.search_name);
+    QM_LOG_DEBUG("Image Group ID: %d", job.image_group_id);
+    QM_LOG_DEBUG("Reference Volume Asset ID: %d", job.reference_volume_asset_id);
+    QM_LOG_DEBUG("Run Profile ID: %d", job.run_profile_id);
     wxPrintf("Use GPU: %s\n", job.use_gpu ? "true" : "false");
     wxPrintf("Use Fast FFT: %s\n", job.use_fast_fft ? "true" : "false");
     wxPrintf("Symmetry: %s\n", job.symmetry);
@@ -1340,7 +1341,7 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     wxPrintf("Min Peak Radius: %.2f\n", job.min_peak_radius);
     wxPrintf("Reference Box Size (Angstroms): %.2f\n", job.ref_box_size_in_angstroms);
     wxPrintf("Mask Radius: %.2f\n", job.mask_radius);
-    wxPrintf("=== END DEBUG ===\n\n");
+    QM_LOG_DEBUG("=== END DEBUG ===");
 
     // Now run the existing setup logic that was in StartEstimationClick
     // This mirrors the logic from StartEstimationClick but uses the job parameters directly
@@ -1690,7 +1691,7 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
             // This queue item has been run before and has results in TEMPLATE_MATCH_LIST
             // The search_id is FIXED - we MUST reuse it
             search_id = existing_search_id;
-            wxPrintf("Queue item %ld resuming with existing search_id %d\n", running_queue_id, search_id);
+            QM_LOG_DB("Queue item %ld resuming with existing search_id %d", running_queue_id, search_id);
 
             // Verify that results exist for this search_id (sanity check)
             // NOTE: JOB_NAME column retained for compatibility but represents the search name
@@ -1703,13 +1704,13 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
             // This queue item has NEVER had results written
             // DO NOT assign a search_id now - it will be assigned when first result is written
             search_id = -1;
-            wxPrintf("Queue item %ld starting fresh - search_id will be assigned when first result is written\n", running_queue_id);
+            QM_LOG_DB("Queue item %ld starting fresh - search_id will be assigned when first result is written", running_queue_id);
         }
     }
     else {
         // Non-queue job - assign ID immediately since it's not tracked in queue
         search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID() + 1;
-        wxPrintf("Non-queue job - assigning search_id %d immediately\n", search_id);
+        QM_LOG_DB("Non-queue job - assigning search_id %d immediately", search_id);
     }
 
     // Unfreeze GUI updates in queue manager now that setup is complete
@@ -1726,7 +1727,7 @@ bool MatchTemplatePanel::ExecuteCurrentJob( ) {
 
     // Debug print to verify run profile is correctly set
     if ( running_queue_id > 0 ) {
-        wxPrintf("Executing search with queue ID %ld using run profile selection %d\n",
+        QM_LOG_SEARCH("Executing search with queue ID %ld using run profile selection %d",
                  running_queue_id, run_profile_to_use);
     }
     else {
@@ -1770,7 +1771,7 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed" || queue_item->queue_status == "partial",
                           "Cannot execute job with status '%s', must be 'pending', 'failed', or 'partial'", queue_item->queue_status.mb_str( ).data( ));
         MyDebugAssertFalse(queue_item->search_name.IsEmpty( ), "Cannot execute search with empty search_name");
-        MyDebugAssertTrue(queue_item->image_group_id >= 0, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
+        MyDebugAssertTrue(queue_item->image_group_id >= 1, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
         MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);
 
         // Check if another job is already running
@@ -1784,11 +1785,11 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
         running_queue_id = queue_item->database_queue_id;
 
         // Setup job from queue item
-        wxPrintf("Setting up job %ld from queue item...\n", queue_item->database_queue_id);
+        QM_LOG_SEARCH("Setting up job %ld from queue item...", queue_item->database_queue_id);
         bool setup_success = SetupSearchFromQueueItem(*queue_item);
 
         if ( ! setup_success ) {
-            wxPrintf("Failed to setup job %ld\n", queue_item->database_queue_id);
+            QM_LOG_ERROR("Failed to setup job %ld", queue_item->database_queue_id);
             running_queue_id = -1;
             return false;
         }
@@ -1808,10 +1809,10 @@ bool MatchTemplatePanel::ExecuteJob(const TemplateMatchQueueItem* queue_item) {
 
 void MatchTemplatePanel::SetQueueCompletionCallback(TemplateMatchQueueManager* queue_manager) {
     queue_completion_callback = queue_manager;
-    wxPrintf("Queue completion callback set for queue manager %p\n", queue_manager);
+    QM_LOG_STATE("Queue completion callback set for queue manager %p", queue_manager);
 }
 
 void MatchTemplatePanel::ClearQueueCompletionCallback( ) {
-    wxPrintf("Queue completion callback cleared\n");
+    QM_LOG_STATE("Queue completion callback cleared");
     queue_completion_callback = nullptr;
 }

@@ -225,6 +225,13 @@ void ResampleDialog::OnOK(wxCommandEvent& event) {
             resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].score                              = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].score;
             resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].image_is_active                    = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].image_is_active;
             resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].sigma                              = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].sigma;
+
+            // Copy multi-view data
+            resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group;
+            resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].particle_group  = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].particle_group;
+            resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure    = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure;
+            resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure  = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure;
+
             overall_progress++;
             my_dialog->Update(overall_progress, "Filling Refinement Package with particles...");
         }

@@ -153,7 +153,7 @@
     "github.copilot.chat.codeGeneration.useInstructionFiles": false,
     "workbench.colorCustomizations": {
         // Character-level highlights (use transparency)
-        "diffEditor.insertedTextBackground": "#94b09e00",
+        "diffEditor.insertedTextBackground": "#94b09e30",
         "diffEditor.removedTextBackground": "#98484878",
         // "diffEditor.insertedTextBorder": "transparent",
         // "diffEditor.removedTextBorder": "transparent",

@@ -1756,7 +1756,7 @@ bool TemplateMatchQueueManager::UpdateQueueItemInDatabase(const TemplateMatchQue
     // Part 1: Update first 15 fields
     wxString update_sql_part1 = wxString::Format(
         "UPDATE TEMPLATE_MATCH_QUEUE SET "
-        "JOB_NAME = '%s', "
+        "SEARCH_NAME = '%s', "
         "IMAGE_GROUP_ID = %d, "
         "REFERENCE_VOLUME_ASSET_ID = %d, "
         "RUN_PROFILE_ID = %d, "

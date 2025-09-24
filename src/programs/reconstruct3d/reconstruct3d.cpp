@@ -280,6 +280,31 @@ bool Reconstruct3DApp::DoCalculation( ) {
     // TODO: remove this - there may be cases when there are multiple particle groups and yet we do NOT want to apply an exposure filter during reconstruction
     apply_exposure_filter_during_reconstruction = input_star_file.ContainsMultipleParticleGroups( );
 
+    // revert - debug: Check what columns are present
+    bool has_particle_group = input_star_file.parameters_that_were_read.particle_group;
+    bool has_exposure_data = input_star_file.parameters_that_were_read.pre_exposure &&
+                             input_star_file.parameters_that_were_read.total_exposure;
+
+    // revert - debug: show multi-view detection
+    wxPrintf("\n=== MULTI-VIEW DATA DETECTION ===\n");
+    wxPrintf("Star file has particle_group column: %s\n", has_particle_group ? "YES" : "NO");
+    wxPrintf("Star file has exposure data (pre & total): %s\n", has_exposure_data ? "YES" : "NO");
+    wxPrintf("ContainsMultipleParticleGroups() returns: %s\n", apply_exposure_filter_during_reconstruction ? "YES" : "NO");
+
+    // revert - debug: Sample some particle groups to see what values are present
+    if (has_particle_group && input_star_file.ReturnNumberofLines() > 0) {
+        wxPrintf("Sample particle_group values:\n");
+        int samples_to_show = std::min(5, (int)input_star_file.ReturnNumberofLines());
+        for (int i = 0; i < samples_to_show; i++) {
+            cisTEMParameterLine params = input_star_file.ReturnLine(i);
+            wxPrintf("  Line %d: particle_group=%d, pre_exp=%.2f, total_exp=%.2f\n",
+                    i, params.particle_group, params.pre_exposure, params.total_exposure);
+        }
+    }
+
+    wxPrintf("\nFinal apply_exposure_filter: %s\n", apply_exposure_filter_during_reconstruction ? "YES" : "NO");
+    wxPrintf("==================================\n\n");
+
     //	input_par_file.ReadFile(true, input_stack.ReturnZSize());
     /*	input_par_file.ReduceAngles();
 	min_class = myroundint(input_par_file.ReturnMin(7));
@@ -588,8 +613,9 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 }
                 if ( input_parameters.position_in_stack < first_particle || input_parameters.position_in_stack > last_particle )
                     continue;
-                if ( apply_exposure_filter_during_reconstruction && input_parameters.beam_tilt_group == 0 )
-                    continue;
+                // Removed beam_tilt_group==0 skip - particles already filtered during import
+                // if ( apply_exposure_filter_during_reconstruction && input_parameters.beam_tilt_group == 0 )
+                //     continue;
 
                 image_counter++;
                 if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
@@ -781,8 +807,18 @@ bool Reconstruct3DApp::DoCalculation( ) {
             if ( input_parameters.position_in_stack < first_particle || input_parameters.position_in_stack > last_particle )
                 continue;
 
-            if ( apply_exposure_filter_during_reconstruction && input_parameters.beam_tilt_group == 0 )
-                continue;
+            // revert - debug: show particle filtering decision
+            if ( apply_exposure_filter_during_reconstruction ) {
+                if ( input_parameters.beam_tilt_group == 0 ) {
+                    // revert - debug
+                    if ( image_counter < 10 ) {
+                        wxPrintf("DEBUG: Found particle %d with beam_tilt_group=0 (NOT skipping - already filtered during import)\n",
+                                input_parameters.position_in_stack);
+                    }
+                    // Don't skip - particles are already filtered in import
+                    // continue;
+                }
+            }
 
             if ( input_parameters.occupancy == 0.0f || input_parameters.score < score_threshold || input_parameters.image_is_active < 0.0 ) {
                 if ( is_running_locally == false ) {
@@ -805,6 +841,17 @@ bool Reconstruct3DApp::DoCalculation( ) {
 
             input_particle.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, std::max(input_parameters.amplitude_contrast, 0.001f), input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, input_parameters.image_shift_x, input_parameters.image_shift_y, calculate_complex_ctf);
             if ( apply_exposure_filter_during_reconstruction ) {
+                // revert - debug: show exposure filtering details
+                if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
+                    wxPrintf("DEBUG: Applying exposure filter to particle %d (stack pos %d)\n",
+                            image_counter, input_parameters.position_in_stack);
+                    wxPrintf("  - Pre-exposure: %.2f e-/A^2\n", input_parameters.pre_exposure);
+                    wxPrintf("  - Total exposure: %.2f e-/A^2\n", input_parameters.total_exposure);
+                    wxPrintf("  - Particle group: %d\n", input_parameters.particle_group);
+                    wxPrintf("  - Beam tilt group: %d\n", input_parameters.beam_tilt_group);
+                    wxPrintf("  - Assigned subset: %d\n", input_parameters.assigned_subset);
+                }
+
                 ElectronDose my_electron_dose(input_parameters.microscope_voltage_kv, input_parameters.pixel_size);
                 float        dose_filter[input_particle.ctf_image->real_memory_allocated / 2];
 
@@ -1168,35 +1215,39 @@ bool Reconstruct3DApp::DoCalculation( ) {
             /*
 		 * Assign each particle to one of the two half-maps for later FSC
 		 */
-            if ( apply_exposure_filter_during_reconstruction ) // TODO - remove this branch - this was a hack for going from emClarity to cisTEM before particle_group and assigned_subset were available
-            {
-                if ( input_parameters.beam_tilt_group == 1 )
-                    input_particle.insert_even = false;
-                else if ( input_parameters.beam_tilt_group == 2 )
-                    input_particle.insert_even = true;
+            // revert - debug: show half-set assignment logic
+            if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
+                wxPrintf("DEBUG: Half-set assignment for particle %d:\n", image_counter);
+                wxPrintf("  - apply_exposure_filter: %s\n", apply_exposure_filter_during_reconstruction ? "true" : "false");
+                wxPrintf("  - assigned_subset: %d\n", input_parameters.assigned_subset);
+                wxPrintf("  - beam_tilt_group: %d\n", input_parameters.beam_tilt_group);
+            }
+
+            // Always use assigned_subset now, regardless of exposure filtering
+            // The beam_tilt_group hack has been handled during import
+            if ( input_parameters.assigned_subset < 1 ) {
+                // This particle has not yet been assigned to a subset. Let's do so now
+                if ( current_image_local == 0 )
+                    SendInfo("Warning: No assigned subset for FSC. This should not happen. Will use even/odd assignment.");
+                if ( input_parameters.position_in_stack % fsc_particle_repeat < fsc_particle_repeat / 2 ) {
+                    input_parameters.assigned_subset = 2;
+                }
                 else {
-                    wxPrintf("\nReconstruct subtomogram average is temporarily using the beam_tilt_group to specify odd/even (1/2) or ignore (0), found %d\n", input_parameters.beam_tilt_group);
-                    exit(-1);
+                    input_parameters.assigned_subset = 1;
                 }
             }
+            if ( input_parameters.assigned_subset == 2 ) {
+                input_particle.insert_even = true;
+            }
             else {
-                if ( input_parameters.assigned_subset < 1 ) {
-                    // This particle has not yet been assigned to a subset. Let's do so now
-                    if ( current_image_local == 0 )
-                        SendInfo("Warning: No assigned subset for FSC. This should not happen. Will use even/odd assignment.");
-                    if ( input_parameters.position_in_stack % fsc_particle_repeat < fsc_particle_repeat / 2 ) {
-                        input_parameters.assigned_subset = 2;
-                    }
-                    else {
-                        input_parameters.assigned_subset = 1;
-                    }
-                }
-                if ( input_parameters.assigned_subset == 2 ) {
-                    input_particle.insert_even = true;
-                }
-                else {
-                    input_particle.insert_even = false;
-                }
+                input_particle.insert_even = false;
+            }
+
+            // revert - debug: show final assignment
+            if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
+                wxPrintf("  - Final: insert_even = %s (subset %d)\n",
+                        input_particle.insert_even ? "true" : "false",
+                        input_parameters.assigned_subset);
             }
 
             //		input_particle.particle_image->BackwardFFT();

@@ -536,10 +536,10 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
 
         // If we're filtering out particles, create new stack and update arrays
         if (particles_to_keep.GetCount() < stack_num_images && particles_to_keep.GetCount() > 0) {
-            // Generate filtered stack filename
+            // Generate filtered stack filename with exposure limit value
             wxFileName stack_file(temp_refinement_package->stack_filename);
             wxString filtered_stack_filename = stack_file.GetPath() + "/" +
-                                              stack_file.GetName() + "_filtered." +
+                                              stack_file.GetName() + wxString::Format("_filtered_%d.", int(total_exposure_limit)) +
                                               stack_file.GetExt();
 
 

@@ -22,6 +22,10 @@ ImportRefinementPackageWizard::ImportRefinementPackageWizard(wxWindow* parent)
     SymmetryComboBox->SetSelection(0);
     PixelSizeTextCtrl->SetPrecision(4);
 
+    // Initially hide the exposure limit control (will be shown for emClarity)
+    LimitTotalExposureTextCtrl->Show(false);
+    m_staticText2141->Show(false);  // Label for exposure limit
+
     if ( cisTEMRadioButton->GetValue( ) == true ) {
         MicroscopeVoltageTextCtrl->Show(false);
         MicroscopeVoltageTextCtrlLabel->Show(false);
@@ -89,38 +93,114 @@ void ImportRefinementPackageWizard::OnPageChanged(wxWizardEvent& event) {
         else if ( cisTEMRadioButton->GetValue( ) == true ) {
             MetaFilenameStaticText->SetLabel("STAR Filename :-   ");
         }
+        else if ( emClarityRadioButton->GetValue( ) == true ) {
+            MetaFilenameStaticText->SetLabel("STAR Filename :-   ");
+        }
         CheckPaths( );
     }
     else if ( event.GetPage( ) == m_pages.Item(2) ) {
-        if ( FrealignRadioButton->GetValue( ) == true ) {
+        // Handle parameter page visibility for different import types
+
+        if ( emClarityRadioButton->GetValue( ) == true ) {
+            // emClarity: Hide all standard controls, show only exposure limit
+
+            // Hide parameter controls (all in star file)
+            MicroscopeVoltageTextCtrl->Show(false);
+            MicroscopeVoltageTextCtrlLabel->Show(false);
+            PixelSizeTextCtrl->Show(false);
+            PixelSizeTextCtrlLabel->Show(false);
+            AmplitudeContrastTextCtrl->Show(false);
+            AmplitudeContrastTextCtrlLabel->Show(false);
+            SphericalAberrationTextCtrl->Show(false);
+            m_staticText479->Show(false);  // Cs label
+
+            // Hide protein color options (known from star file)
+            WhiteProteinRadioButton->Show(false);
+            BlackProteinRadioButton->Show(false);
+            m_staticText459->Show(false);  // "Particles are white?" label
+            m_staticText460->Show(false);  // Additional label
+
+            // Show exposure limit control
+            LimitTotalExposureTextCtrl->Show(true);
+            m_staticText2141->Show(true);  // Exposure limit label
+
+            // Enable exposure filtering
+            should_apply_exposure_filter = true;
+        }
+        else if ( cisTEMRadioButton->GetValue( ) == true ) {
+            // cisTEM: Hide parameter controls, show protein color, hide exposure limit
+            MicroscopeVoltageTextCtrl->Show(false);
+            MicroscopeVoltageTextCtrlLabel->Show(false);
+            PixelSizeTextCtrl->Show(false);
+            PixelSizeTextCtrlLabel->Show(false);
+            AmplitudeContrastTextCtrl->Show(false);
+            AmplitudeContrastTextCtrlLabel->Show(false);
+            SphericalAberrationTextCtrl->Show(false);
+            m_staticText479->Show(false);
+
+            // Show protein color options
+            WhiteProteinRadioButton->Show(true);
+            BlackProteinRadioButton->Show(true);
+            m_staticText459->Show(true);
+            m_staticText460->Show(true);
             BlackProteinRadioButton->SetValue(true);
+
+            // Hide exposure limit
+            LimitTotalExposureTextCtrl->Show(false);
+            m_staticText2141->Show(false);
+            should_apply_exposure_filter = false;
+        }
+        else if ( FrealignRadioButton->GetValue( ) == true ) {
+            // Frealign: Show all parameter controls, hide exposure limit
+            MicroscopeVoltageTextCtrl->Show(true);
+            MicroscopeVoltageTextCtrlLabel->Show(true);
+            PixelSizeTextCtrl->Show(true);
+            PixelSizeTextCtrlLabel->Show(true);
+            AmplitudeContrastTextCtrl->Show(true);
+            AmplitudeContrastTextCtrlLabel->Show(true);
+            SphericalAberrationTextCtrl->Show(true);
+            m_staticText479->Show(true);
+
+            // Show protein color options
+            WhiteProteinRadioButton->Show(true);
+            BlackProteinRadioButton->Show(true);
+            m_staticText459->Show(true);
+            m_staticText460->Show(true);
+            BlackProteinRadioButton->SetValue(true);
+
+            // Hide exposure limit
+            LimitTotalExposureTextCtrl->Show(false);
+            m_staticText2141->Show(false);
+            should_apply_exposure_filter = false;
         }
         else if ( RelionRadioButton->GetValue( ) == true ) {
-            WhiteProteinRadioButton->SetValue(true);
-        }
-        if ( cisTEMRadioButton->GetValue( ) == true ) {
-            BlackProteinRadioButton->SetValue(true);
-        }
-        else
-            CheckPaths( );
-        EnableNextButton( );
-    }
+            // Relion: Show all parameter controls, hide exposure limit
+            MicroscopeVoltageTextCtrl->Show(true);
+            MicroscopeVoltageTextCtrlLabel->Show(true);
+            PixelSizeTextCtrl->Show(true);
+            PixelSizeTextCtrlLabel->Show(true);
+            AmplitudeContrastTextCtrl->Show(true);
+            AmplitudeContrastTextCtrlLabel->Show(true);
+            SphericalAberrationTextCtrl->Show(true);
+            m_staticText479->Show(true);
 
-    if ( cisTEMRadioButton->GetValue( ) == true ) {
-        MicroscopeVoltageTextCtrl->Show(false);
-        MicroscopeVoltageTextCtrlLabel->Show(false);
-        PixelSizeTextCtrl->Show(false);
-        PixelSizeTextCtrlLabel->Show(false);
-        AmplitudeContrastTextCtrl->Show(false);
-        AmplitudeContrastTextCtrlLabel->Show(false);
-    }
-    else {
-        MicroscopeVoltageTextCtrl->Show(true);
-        MicroscopeVoltageTextCtrlLabel->Show(true);
-        PixelSizeTextCtrl->Show(true);
-        PixelSizeTextCtrlLabel->Show(true);
-        AmplitudeContrastTextCtrl->Show(true);
-        AmplitudeContrastTextCtrlLabel->Show(true);
+            // Show protein color options
+            WhiteProteinRadioButton->Show(true);
+            BlackProteinRadioButton->Show(true);
+            m_staticText459->Show(true);
+            m_staticText460->Show(true);
+            WhiteProteinRadioButton->SetValue(true);
+
+            // Hide exposure limit
+            LimitTotalExposureTextCtrl->Show(false);
+            m_staticText2141->Show(false);
+            should_apply_exposure_filter = false;
+        }
+
+        // Refresh layout after showing/hiding controls
+        GetCurrentPage()->Layout();
+        CheckPaths( );
+        EnableNextButton( );
     }
 }
 
@@ -156,6 +236,25 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
     constexpr bool is_cistem_import   = std::is_same_v<StarFileSource_t, cisTEMParameters>;
     constexpr bool is_frealign_import = std::is_same_v<StarFileSource_t, FrealignParameterFile>;
     constexpr bool is_relion_import   = std::is_same_v<StarFileSource_t, BasicStarFileReader>;
+
+    // Detect multi-view data for cisTEM imports
+    bool needs_multi_view_table = false;
+    bool has_beam_tilt_group_hack = false;
+
+    if constexpr (is_cistem_import) {
+        // Check which multi-view columns are present
+        if (input_params_file.parameters_that_were_read.beam_tilt_group) {
+            has_beam_tilt_group_hack = true;
+            needs_multi_view_table = true;
+            wxPrintf("Import: Detected beam_tilt_group column - will use for gold standard half-set assignment\n");
+        }
+        if (input_params_file.parameters_that_were_read.particle_group ||
+            input_params_file.parameters_that_were_read.pre_exposure ||
+            input_params_file.parameters_that_were_read.total_exposure) {
+            needs_multi_view_table = true;
+            wxPrintf("Import: Detected multi-view metadata columns\n");
+        }
+    }
 
     if constexpr ( is_cistem_import ) {
         refinement_package_name = wxString::Format("Refinement Package #%li (cisTEM Import)",
@@ -197,7 +296,7 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
     temp_refinement_package->output_pixel_size        = pixel_size;
 
     temp_refinement.number_of_classes                = temp_refinement_package->number_of_classes;
-    temp_refinement.number_of_particles              = stack_num_images;
+    temp_refinement.number_of_particles              = stack_num_images;  // Initially use all particles
     temp_refinement.name                             = "Imported Parameters";
     temp_refinement.resolution_statistics_box_size   = stack_x_size;
     temp_refinement.resolution_statistics_pixel_size = pixel_size;
@@ -231,6 +330,7 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
     temp_refinement.class_refinement_results[0].class_resolution_statistics.GenerateDefaultStatistics(temp_refinement_package->estimated_particle_weight_in_kda);
 
     for ( int particle_counter = 0; particle_counter < stack_num_images; particle_counter++ ) {
+
         // cisTEMParameters and BasicStarFileReader (for reading Relion format) have several identical function names that can be lumped together; so, to save code,
         // they are included in this if block, with further specific checks for divergence in parameter loading.
         if constexpr ( is_cistem_import || is_relion_import ) {
@@ -269,6 +369,48 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
             else if constexpr ( is_cistem_import ) {
                 temp_particle_info.pixel_size         = input_params_file.ReturnPixelSize(particle_counter);
                 temp_particle_info.amplitude_contrast = input_params_file.ReturnAmplitudeContrast(particle_counter);
+
+                // Handle beam_tilt_group hack for gold standard assignment
+                if (has_beam_tilt_group_hack) {
+                    int beam_tilt_group = input_params_file.ReturnBeamTiltGroup(particle_counter);
+
+                    // Use beam_tilt_group to set assigned_subset for gold standard FSC
+                    if (beam_tilt_group == 0) {
+                        // Particle should be ignored or assigned randomly
+                        temp_particle_info.assigned_subset = (particle_counter % 2) + 1;
+                    } else if (beam_tilt_group == 1) {
+                        temp_particle_info.assigned_subset = 1;  // Odd half-set
+                    } else if (beam_tilt_group == 2) {
+                        temp_particle_info.assigned_subset = 2;  // Even half-set
+                    } else {
+                        wxPrintf("Warning: Unexpected beam_tilt_group value %d for particle %d\n",
+                                beam_tilt_group, particle_counter);
+                        temp_particle_info.assigned_subset = (particle_counter % 2) + 1;
+                    }
+                } else {
+                    // Use the standard assigned_subset if present
+                    temp_particle_info.assigned_subset = input_params_file.ReturnAssignedSubset(particle_counter);
+                }
+
+                // Store multi-view fields in particle info
+                if (input_params_file.parameters_that_were_read.particle_group) {
+                    temp_particle_info.particle_group = input_params_file.ReturnParticleGroup(particle_counter);
+                } else {
+                    temp_particle_info.particle_group = 1;  // Default: all in same group
+                }
+
+                if (input_params_file.parameters_that_were_read.pre_exposure) {
+                    temp_particle_info.pre_exposure = input_params_file.ReturnPreExposure(particle_counter);
+                } else {
+                    temp_particle_info.pre_exposure = 0.0f;  // Default: no pre-exposure
+                }
+
+                if (input_params_file.parameters_that_were_read.total_exposure) {
+                    temp_particle_info.total_exposure = input_params_file.ReturnTotalExposure(particle_counter);
+                } else {
+                    temp_particle_info.total_exposure = 0.1f;  // Default: minimal exposure
+                }
+
                 temp_refinement_package->contained_particles.Add(temp_particle_info);
 
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].xshift          = input_params_file.ReturnXShift(particle_counter);
@@ -281,10 +423,11 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_x   = input_params_file.ReturnImageShiftX(particle_counter);
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_y   = input_params_file.ReturnImageShiftY(particle_counter);
 
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = input_params_file.ReturnBeamTiltGroup(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].particle_group  = input_params_file.ReturnParticleGroup(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure    = input_params_file.ReturnPreExposure(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure  = input_params_file.ReturnTotalExposure(particle_counter);
+                // Set refinement results - beam_tilt_group is set to 0 after using for assignment
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = 0;  // Reset after using for assignment
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].particle_group  = temp_particle_info.particle_group;
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure    = temp_particle_info.pre_exposure;
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure  = temp_particle_info.total_exposure;
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].logp            = input_params_file.ReturnLogP(particle_counter);
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].occupancy       = input_params_file.ReturnOccupancy(particle_counter);
             }
@@ -299,7 +442,17 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].phi             = input_params_file.ReturnPhi(particle_counter);
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].theta           = input_params_file.ReturnTheta(particle_counter);
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].psi             = input_params_file.ReturnPsi(particle_counter);
-            temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].assigned_subset = input_params_file.ReturnAssignedSubset(particle_counter);
+
+            // For cisTEM import with beam_tilt_group hack, use the assigned_subset we set earlier
+            if constexpr (is_cistem_import) {
+                if (has_beam_tilt_group_hack) {
+                    temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].assigned_subset = temp_particle_info.assigned_subset;
+                } else {
+                    temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].assigned_subset = input_params_file.ReturnAssignedSubset(particle_counter);
+                }
+            } else {
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].assigned_subset = input_params_file.ReturnAssignedSubset(particle_counter);
+            }
         }
         else if constexpr ( is_frealign_import ) {
             float input_parameters[17];
@@ -352,6 +505,100 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
         my_dialog->Update(particle_counter + 1);
     }
 
+    // Apply exposure filtering if needed - create filtered stack and update arrays
+    if constexpr (is_cistem_import) {
+        if (should_apply_exposure_filter &&
+            input_params_file.parameters_that_were_read.total_exposure) {
+
+        // Count particles that meet exposure criteria
+        wxArrayInt particles_to_keep;
+        for (int i = 0; i < temp_refinement_package->contained_particles.GetCount(); i++) {
+            if (temp_refinement_package->contained_particles[i].total_exposure <= total_exposure_limit) {
+                particles_to_keep.Add(i);
+            }
+        }
+
+
+        // If we're filtering out particles, create new stack and update arrays
+        if (particles_to_keep.GetCount() < stack_num_images && particles_to_keep.GetCount() > 0) {
+            // Generate filtered stack filename
+            wxFileName stack_file(temp_refinement_package->stack_filename);
+            wxString filtered_stack_filename = stack_file.GetPath() + "/" +
+                                              stack_file.GetName() + "_filtered." +
+                                              stack_file.GetExt();
+
+
+            // Open input stack and prepare for filtering
+            MRCFile input_stack(temp_refinement_package->stack_filename.ToStdString(), false);
+            float pixel_size_for_output = input_stack.ReturnPixelSize();
+
+            // Create temp arrays for filtered data
+            ArrayOfRefinmentPackageParticleInfos filtered_particles;
+            Refinement filtered_refinement;
+            filtered_refinement.SizeAndFillWithEmpty(particles_to_keep.GetCount(), temp_refinement.number_of_classes);
+
+            // Prepare image for particle copying
+            Image temp_image;
+            temp_image.Allocate(stack_x_size, stack_x_size, 1);
+
+            // Create output stack - let the first WriteSlice set up the header
+            MRCFile output_stack(filtered_stack_filename.ToStdString(), true);
+
+            for (int i = 0; i < particles_to_keep.GetCount(); i++) {
+                int original_index = particles_to_keep[i];
+
+                // Read from original position and write to new position
+                temp_image.ReadSlice(&input_stack,
+                                   temp_refinement_package->contained_particles[original_index].position_in_stack);
+                temp_image.WriteSlice(&output_stack, i + 1);  // Contiguous numbering
+
+                // Copy particle info with updated position_in_stack
+                RefinementPackageParticleInfo particle_copy = temp_refinement_package->contained_particles[original_index];
+                particle_copy.position_in_stack = i + 1;  // Contiguous numbering
+                filtered_particles.Add(particle_copy);
+
+                // Copy refinement results for all classes
+                for (int class_counter = 0; class_counter < temp_refinement.number_of_classes; class_counter++) {
+                    filtered_refinement.class_refinement_results[class_counter].particle_refinement_results[i] =
+                        temp_refinement.class_refinement_results[class_counter].particle_refinement_results[original_index];
+                    filtered_refinement.class_refinement_results[class_counter].particle_refinement_results[i].position_in_stack = i + 1;
+                }
+            }
+
+            // Set pixel size and update header after all particles are written
+            output_stack.SetPixelSize(pixel_size_for_output);
+            output_stack.WriteHeader();
+
+            // Close files
+            input_stack.CloseFile();
+            output_stack.CloseFile();
+
+            // Update with filtered data
+            temp_refinement_package->stack_filename = filtered_stack_filename;
+            temp_refinement_package->contained_particles = filtered_particles;
+
+            // Copy metadata from temp_refinement to filtered_refinement before overwriting
+            filtered_refinement.refinement_id = temp_refinement.refinement_id;
+            filtered_refinement.refinement_package_asset_id = temp_refinement.refinement_package_asset_id;
+            filtered_refinement.name = temp_refinement.name;
+            filtered_refinement.resolution_statistics_box_size = temp_refinement.resolution_statistics_box_size;
+            filtered_refinement.resolution_statistics_pixel_size = temp_refinement.resolution_statistics_pixel_size;
+            filtered_refinement.resolution_statistics_are_generated = temp_refinement.resolution_statistics_are_generated;
+
+            // Copy resolution statistics
+            for (int class_counter = 0; class_counter < temp_refinement.number_of_classes; class_counter++) {
+                filtered_refinement.class_refinement_results[class_counter].class_resolution_statistics =
+                    temp_refinement.class_refinement_results[class_counter].class_resolution_statistics;
+            }
+
+            // Now replace temp_refinement with filtered version
+            temp_refinement = filtered_refinement;
+            temp_refinement.number_of_particles = particles_to_keep.GetCount();
+
+        }
+        }  // end if (should_apply_exposure_filter)
+    }  // end if constexpr (is_cistem_import)
+
     // add to the database and panel..
     main_frame->current_project.database.Begin( );
     refinement_package_asset_panel->AddAsset(temp_refinement_package);
@@ -392,7 +639,16 @@ void ImportRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         return;
     }
 
-    if ( cisTEMRadioButton->GetValue( ) == true ) {
+    if ( cisTEMRadioButton->GetValue( ) == true || emClarityRadioButton->GetValue( ) == true ) {
+
+        // Set up exposure filtering for emClarity
+        if ( emClarityRadioButton->GetValue( ) == true ) {
+            should_apply_exposure_filter = true;
+            total_exposure_limit = LimitTotalExposureTextCtrl->ReturnValue();
+
+        } else {
+            should_apply_exposure_filter = false;
+        }
 
         cisTEMParameters input_star_file;
         input_star_file.ReadFromcisTEMStarFile(MetaDataFileTextCtrl->GetLineText(0), true);

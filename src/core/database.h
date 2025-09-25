@@ -5,9 +5,9 @@
 // TODO: When moving to C++17/20, convert to a concept
 template <typename T>
 using IsDatabaseNumeric = cistem::EnableIf<
-    std::is_same<T, long>::value ||
-    std::is_same<T, int>::value ||
-    std::is_same<T, float>::value>;  // Defaults to void when condition is true
+        std::is_same<T, long>::value ||
+        std::is_same<T, int>::value ||
+        std::is_same<T, float>::value>; // Defaults to void when condition is true
 
 class Database {
 
@@ -295,17 +295,6 @@ class Database {
 
     bool CreateRefinementPackageContainedParticlesTable(const long refinement_package_asset_id) { return CreateTable(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_%li", refinement_package_asset_id), "piirrrrrrrrrri", "ORIGINAL_PARTICLE_POSITION_ASSET_ID", "PARENT_IMAGE_ASSET_ID", "POSITION_IN_STACK", "X_POSITION", "Y_POSITION", "PIXEL_SIZE", "DEFOCUS_1", "DEFOCUS_2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "SPHERICAL_ABERRATION", "MICROSCOPE_VOLTAGE", "AMPLITUDE_CONTRAST", "ASSIGNED_SUBSET"); };
 
-    bool CreateRefinementPackageContainedParticlesMultiViewTable(const long refinement_package_asset_id) {
-        return CreateTable(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li", refinement_package_asset_id),
-                          "pirrttrr",
-                          "POSITION_IN_STACK", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE",
-                          "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2");
-    };
-
-    bool DoesRefinementPackageHaveMultiView(const long refinement_package_asset_id) {
-        return DoesTableExist(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li", refinement_package_asset_id));
-    };
-
     bool CreateRefinementPackageCurrent3DReferencesTable(const long refinement_package_asset_id) { return CreateTable(wxString::Format("REFINEMENT_PACKAGE_CURRENT_REFERENCES_%li", refinement_package_asset_id), "pi", "CLASS_NUMBER", "VOLUME_ASSET_ID"); };
 
     bool CreateRefinementPackageRefinementsList(const long refinement_package_asset_id) { return CreateTable(wxString::Format("REFINEMENT_PACKAGE_REFINEMENTS_LIST_%li", refinement_package_asset_id), "pl", "REFINEMENT_NUMBER", "REFINEMENT_ID"); };
@@ -326,7 +315,7 @@ class Database {
 
     bool CreateTemplateMatchPeakChangeListTable(const long template_match_job_id) { return CreateTable(wxString::Format("TEMPLATE_MATCH_PEAK_CHANGE_LIST_%li", template_match_job_id), "prrrrrrrrii", "PEAK_NUMBER", "X_POSITION", "Y_POSITION", "PSI", "THETA", "PHI", "DEFOCUS", "PIXEL_SIZE", "PEAK_HEIGHT", "ORIGINAL_PEAK_NUMBER", "NEW_PEAK_NUMBER"); }
 
-    bool CreateRefinementResultTable(const long refinement_id, const int class_number) { return CreateTable(wxString::Format("REFINEMENT_RESULT_%li_%i", refinement_id, class_number), "Prrrrrrrrrrrrrirrrrrrrriiirr", "POSITION_IN_STACK", "PSI", "THETA", "PHI", "XSHIFT", "YSHIFT", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "OCCUPANCY", "LOGP", "SIGMA", "SCORE", "IMAGE_IS_ACTIVE", "PIXEL_SIZE", "MICROSCOPE_VOLTAGE", "MICROSCOPE_CS", "AMPLITUDE_CONTRAST", "BEAM_TILT_X", "BEAM_TILT_Y", "IMAGE_SHIFT_X", "IMAGE_SHIFT_Y", "ASSIGNED_SUBSET", "BEAM_TILT_GROUP", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE"); };
+    bool CreateRefinementResultTable(const long refinement_id, const int class_number) { return CreateTable(wxString::Format("REFINEMENT_RESULT_%li_%i", refinement_id, class_number), "Prrrrrrrrrrrrrirrrrrrrriir", "POSITION_IN_STACK", "PSI", "THETA", "PHI", "XSHIFT", "YSHIFT", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "OCCUPANCY", "LOGP", "SIGMA", "SCORE", "IMAGE_IS_ACTIVE", "PIXEL_SIZE", "MICROSCOPE_VOLTAGE", "MICROSCOPE_CS", "AMPLITUDE_CONTRAST", "BEAM_TILT_X", "BEAM_TILT_Y", "IMAGE_SHIFT_X", "IMAGE_SHIFT_Y", "ASSIGNED_SUBSET", "PARTICLE_GROUP", "TOTAL_EXPOSURE"); };
 
     bool CreateRefinementResolutionStatisticsTable(const long refinement_id, int class_number) { return CreateTable(wxString::Format("REFINEMENT_RESOLUTION_STATISTICS_%li_%i", refinement_id, class_number), "prrrrr", "SHELL", "RESOLUTION", "FSC", "PART_FSC", "PART_SSNR", "REC_SSNR"); };
 
@@ -475,7 +464,7 @@ class Database {
     void UpdateQueuePosition(long queue_id, int position);
     void UpdateSearchIdInQueueTable(long queue_id, long search_id);
     int  GetSearchIdForQueueItem(long queue_id);
-    int  GetHighestSearchIdFromQueue();
+    int  GetHighestSearchIdFromQueue( );
     void RemoveFromQueue(long queue_id);
     void ClearTemplateMatchQueue( );
 

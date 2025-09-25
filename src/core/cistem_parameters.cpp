@@ -756,15 +756,6 @@ int cisTEMParameters::ReturnNumberOfParametersToWrite( ) {
 
 void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int first_image_to_write, int last_image_to_write) {
 
-    // revert - debug: trace binary file writing
-    wxPrintf("\n=== WriteTocisTEMBinaryFile DEBUG ===\n");
-    wxPrintf("Writing binary file: %s\n", wanted_filename);
-    wxPrintf("Multi-view parameters_to_write flags:\n");
-    wxPrintf("  beam_tilt_group: %s\n", parameters_to_write.beam_tilt_group ? "YES" : "NO");
-    wxPrintf("  particle_group: %s\n", parameters_to_write.particle_group ? "YES" : "NO");
-    wxPrintf("  pre_exposure: %s\n", parameters_to_write.pre_exposure ? "YES" : "NO");
-    wxPrintf("  total_exposure: %s\n", parameters_to_write.total_exposure ? "YES" : "NO");
-
     wxFileName cisTEM_bin_filename = wanted_filename;
     if ( wanted_filename.IsSameAs("/dev/null") )
         return; // if the user gave us /dev/null, they didn't intend to write anything - let's stop here. This saves trouble later on -some OSes will throw errors when we try to write to /dev/null
@@ -785,12 +776,6 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
 
     int number_of_lines = ReturnNumberOfLinesToWrite(first_image_to_write, last_image_to_write);
     fwrite(&number_of_lines, sizeof(int), 1, cisTEM_bin_file);
-
-    // revert - debug: show file dimensions
-    wxPrintf("Writing %d columns and %d lines to binary file\n", number_of_columns, number_of_lines);
-
-    // write an identifier for each column based on bit mask values above, after the identifier which is a long, write the type
-    // of the data.  This is needed so that we can skip that contains unknown columns (e.g. from a later version of cisTEM).
 
     // The data type can be :-
 
@@ -988,8 +973,6 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     }
 
     if ( parameters_to_write.beam_tilt_group == true ) {
-        // revert - debug
-        wxPrintf("Writing BEAM_TILT_GROUP column header\n");
         bitmask_identifier = BEAM_TILT_GROUP;
         data_type          = INTEGER;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
@@ -1018,8 +1001,6 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     }
 
     if ( parameters_to_write.particle_group == true ) {
-        // revert - debug
-        wxPrintf("Writing PARTICLE_GROUP column header\n");
         bitmask_identifier = PARTICLE_GROUP;
         data_type          = INTEGER;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
@@ -1034,8 +1015,6 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     }
 
     if ( parameters_to_write.pre_exposure == true ) {
-        // revert - debug
-        wxPrintf("Writing PRE_EXPOSURE column header\n");
         bitmask_identifier = PRE_EXPOSURE;
         data_type          = FLOAT;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
@@ -1043,8 +1022,6 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     }
 
     if ( parameters_to_write.total_exposure == true ) {
-        // revert - debug
-        wxPrintf("Writing TOTAL_EXPOSURE column header\n");
         bitmask_identifier = TOTAL_EXPOSURE;
         data_type          = FLOAT;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
@@ -1811,7 +1788,7 @@ float cisTEMParameters::ReturnAverageScore(bool exclude_negative_film_numbers) {
 bool cisTEMParameters::ContainsMultipleParticleGroups( ) {
     bool particle_group_different_from_first = false;
     bool particle_group_to_compare_to_is_set = false; // use to record the first active particle group
-    int  particle_group_to_compare_to = 0; // all other groups are compared to this
+    int  particle_group_to_compare_to        = 0; // all other groups are compared to this
 
     // First, check to see if the particle_group field is even set.
     if ( parameters_that_were_read.particle_group ) {

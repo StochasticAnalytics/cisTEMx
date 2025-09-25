@@ -169,8 +169,6 @@ void Particle::Init( ) {
     apply_2D_masking                  = false;
     no_ctf_weighting                  = false;
     complex_ctf                       = false;
-    // revert - debug: Initialize exposure values for debugging
-    pre_exposure                      = 0.0;
     total_exposure                    = 0.0;
     particle_group                    = 0;  // 0 indicates single-view particle, >0 for multi-view groups
 }

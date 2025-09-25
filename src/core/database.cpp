@@ -157,23 +157,23 @@ template <typename T>
 IsDatabaseNumeric<T> Database::FillVectorFromSelectCommand(const wxString& select_command, std::vector<T>& vector_to_fill) {
     MyDebugAssertTrue(is_open == true, "database not open!");
 
-    vector_to_fill.clear();
+    vector_to_fill.clear( );
 
     sqlite3_stmt* current_statement;
-    int return_code;
+    int           return_code;
 
     Prepare(select_command, &current_statement);
     return_code = Step(current_statement);
 
-    while (return_code == SQLITE_ROW) {
+    while ( return_code == SQLITE_ROW ) {
         T value;
-        if constexpr (std::is_same<T, long>::value) {
+        if constexpr ( std::is_same<T, long>::value ) {
             value = sqlite3_column_int64(current_statement, 0);
         }
-        else if constexpr (std::is_same<T, int>::value) {
+        else if constexpr ( std::is_same<T, int>::value ) {
             value = sqlite3_column_int(current_statement, 0);
         }
-        else if constexpr (std::is_same<T, float>::value) {
+        else if constexpr ( std::is_same<T, float>::value ) {
             value = static_cast<float>(sqlite3_column_double(current_statement, 0));
         }
 
@@ -1561,35 +1561,6 @@ RefinementPackage* Database::GetNextRefinementPackage( ) {
 
     Finalize(list_statement);
 
-    // Load multi-view data if table exists
-    if ( DoesRefinementPackageHaveMultiView(temp_package->asset_id) ) {
-        wxString multi_view_sql = wxString::Format("SELECT * FROM REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li ORDER BY POSITION_IN_STACK", temp_package->asset_id);
-
-        Prepare(multi_view_sql, &list_statement);
-        return_code = Step(list_statement);
-
-        long particle_index = 0;
-        while ( return_code == SQLITE_ROW && particle_index < temp_package->contained_particles.GetCount( ) ) {
-            long position_in_stack = sqlite3_column_int64(list_statement, 0);
-
-            // Find the corresponding particle by position_in_stack
-            for ( long i = particle_index; i < temp_package->contained_particles.GetCount( ); i++ ) {
-                if ( temp_package->contained_particles.Item(i).position_in_stack == position_in_stack ) {
-                    temp_package->contained_particles.Item(i).particle_group  = sqlite3_column_int(list_statement, 1);
-                    temp_package->contained_particles.Item(i).pre_exposure    = sqlite3_column_double(list_statement, 2);
-                    temp_package->contained_particles.Item(i).total_exposure  = sqlite3_column_double(list_statement, 3);
-                    // Skip FUTURE columns (4-7) for now
-                    particle_index = i;
-                    break;
-                }
-            }
-
-            return_code = Step(list_statement);
-        }
-
-        Finalize(list_statement);
-    }
-
     // 3d references
 
     group_sql_select_command = wxString::Format("SELECT * FROM REFINEMENT_PACKAGE_CURRENT_REFERENCES_%li", temp_package->asset_id);
@@ -1883,29 +1854,6 @@ void Database::AddRefinementPackageAsset(RefinementPackage* asset_to_add) {
 
     EndBatchInsert( );
 
-    // Write multi-view data if present
-    if ( asset_to_add->ContainsMultiViewData( ) ) {
-        CreateRefinementPackageContainedParticlesMultiViewTable(asset_to_add->asset_id);
-
-        BeginBatchInsert(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li", asset_to_add->asset_id), 8,
-                        "POSITION_IN_STACK", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE",
-                        "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2");
-
-        for ( long counter = 0; counter < asset_to_add->contained_particles.GetCount( ); counter++ ) {
-            AddToBatchInsert("lirrttrr",
-                           asset_to_add->contained_particles.Item(counter).position_in_stack,
-                           asset_to_add->contained_particles.Item(counter).particle_group,
-                           asset_to_add->contained_particles.Item(counter).pre_exposure,
-                           asset_to_add->contained_particles.Item(counter).total_exposure,
-                           "",   // FUTURE_TEXT_1
-                           "",   // FUTURE_TEXT_2
-                           0.0f, // FUTURE_FLOAT_1
-                           0.0f);// FUTURE_FLOAT_2
-        }
-
-        EndBatchInsert( );
-    }
-
     BeginBatchInsert(wxString::Format("REFINEMENT_PACKAGE_CURRENT_REFERENCES_%li", asset_to_add->asset_id), 2, "CLASS_NUMBER", "VOLUME_ASSET_ID");
 
     for ( long counter = 0; counter < asset_to_add->references_for_next_refinement.GetCount( ); counter++ ) {
@@ -1988,28 +1936,28 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
     // For v3 schema: only result-specific data goes in TEMPLATE_MATCH_LIST
     // Search parameters are already in TEMPLATE_MATCH_QUEUE via job_details.job_id (SEARCH_ID)
     // Set DATETIME_OF_COMPLETION to current time since job is complete
-    long datetime_of_completion = wxDateTime::Now().GetAsDOS();
+    long datetime_of_completion = wxDateTime::Now( ).GetAsDOS( );
 
     // Type string matches database_schema.h: "plllilliitttttttttttttrr" (24 columns - removed JOB_NAME)
     InsertOrReplace("TEMPLATE_MATCH_LIST", "plllilliitttttttttttttrr",
-        "TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID",
-        "SEARCH_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID",
-        "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE",
-        "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE",
-        "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE",
-        "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2",
-        "FUTURE_FLOAT_1", "FUTURE_FLOAT_2",
-        wanted_template_match_id,
-        job_details.datetime_of_run, datetime_of_completion, job_details.job_id,
-        job_details.job_type, job_details.input_job_id, job_details.image_asset_id,
-        job_details.ref_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
-        job_details.mip_filename.ToUTF8().data(), job_details.scaled_mip_filename.ToUTF8().data(),
-        job_details.avg_filename.ToUTF8().data(), job_details.std_filename.ToUTF8().data(),
-        job_details.psi_filename.ToUTF8().data(), job_details.theta_filename.ToUTF8().data(),
-        job_details.phi_filename.ToUTF8().data(), job_details.defocus_filename.ToUTF8().data(),
-        job_details.pixel_size_filename.ToUTF8().data(), job_details.histogram_filename.ToUTF8().data(),
-        job_details.projection_result_filename.ToUTF8().data(),
-        "", "", 0.0f, 0.0f); // Future columns
+                    "TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID",
+                    "SEARCH_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID",
+                    "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE",
+                    "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE",
+                    "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE",
+                    "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2",
+                    "FUTURE_FLOAT_1", "FUTURE_FLOAT_2",
+                    wanted_template_match_id,
+                    job_details.datetime_of_run, datetime_of_completion, job_details.job_id,
+                    job_details.job_type, job_details.input_job_id, job_details.image_asset_id,
+                    job_details.ref_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
+                    job_details.mip_filename.ToUTF8( ).data( ), job_details.scaled_mip_filename.ToUTF8( ).data( ),
+                    job_details.avg_filename.ToUTF8( ).data( ), job_details.std_filename.ToUTF8( ).data( ),
+                    job_details.psi_filename.ToUTF8( ).data( ), job_details.theta_filename.ToUTF8( ).data( ),
+                    job_details.phi_filename.ToUTF8( ).data( ), job_details.defocus_filename.ToUTF8( ).data( ),
+                    job_details.pixel_size_filename.ToUTF8( ).data( ), job_details.histogram_filename.ToUTF8( ).data( ),
+                    job_details.projection_result_filename.ToUTF8( ).data( ),
+                    "", "", 0.0f, 0.0f); // Future columns
 
     CreateTemplateMatchPeakListTable(wanted_template_match_id);
 
@@ -2057,23 +2005,24 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     //               then output files...
     // Queue columns: all search parameters including SEARCH_NAME
     sql_select_command = wxString::Format(
-        "SELECT list.TEMPLATE_MATCH_ID, q.SEARCH_NAME, list.DATETIME_OF_RUN, list.SEARCH_ID, list.SEARCH_TYPE_CODE, "
-        "list.PARENT_SEARCH_ID, list.IMAGE_ASSET_ID, list.REFERENCE_VOLUME_ASSET_ID, list.IS_ACTIVE, "
-        "list.MIP_OUTPUT_FILE, list.SCALED_MIP_OUTPUT_FILE, list.AVG_OUTPUT_FILE, list.STD_OUTPUT_FILE, "
-        "list.PSI_OUTPUT_FILE, list.THETA_OUTPUT_FILE, list.PHI_OUTPUT_FILE, list.DEFOCUS_OUTPUT_FILE, "
-        "list.PIXEL_SIZE_OUTPUT_FILE, list.HISTOGRAM_OUTPUT_FILE, list.PROJECTION_RESULT_OUTPUT_FILE, "
-        "q.SYMMETRY, q.PIXEL_SIZE, q.VOLTAGE, q.SPHERICAL_ABERRATION, q.AMPLITUDE_CONTRAST, "
-        "q.DEFOCUS1, q.DEFOCUS2, q.DEFOCUS_ANGLE, q.PHASE_SHIFT, "
-        "q.LOW_RESOLUTION_LIMIT, q.HIGH_RESOLUTION_LIMIT, "
-        "q.OUT_OF_PLANE_ANGULAR_STEP, q.IN_PLANE_ANGULAR_STEP, "
-        "q.DEFOCUS_SEARCH_RANGE, q.DEFOCUS_STEP, "
-        "q.PIXEL_SIZE_SEARCH_RANGE, q.PIXEL_SIZE_STEP, "
-        "q.REFINEMENT_THRESHOLD, q.REF_BOX_SIZE_IN_ANGSTROMS, "
-        "q.MASK_RADIUS, q.MIN_PEAK_RADIUS, "
-        "q.XY_CHANGE_THRESHOLD, q.EXCLUDE_ABOVE_XY_THRESHOLD "
-        "FROM TEMPLATE_MATCH_LIST list "
-        "LEFT JOIN TEMPLATE_MATCH_QUEUE q ON list.SEARCH_ID = q.SEARCH_ID "
-        "WHERE list.TEMPLATE_MATCH_ID = %li", wanted_template_match_id);
+            "SELECT list.TEMPLATE_MATCH_ID, q.SEARCH_NAME, list.DATETIME_OF_RUN, list.SEARCH_ID, list.SEARCH_TYPE_CODE, "
+            "list.PARENT_SEARCH_ID, list.IMAGE_ASSET_ID, list.REFERENCE_VOLUME_ASSET_ID, list.IS_ACTIVE, "
+            "list.MIP_OUTPUT_FILE, list.SCALED_MIP_OUTPUT_FILE, list.AVG_OUTPUT_FILE, list.STD_OUTPUT_FILE, "
+            "list.PSI_OUTPUT_FILE, list.THETA_OUTPUT_FILE, list.PHI_OUTPUT_FILE, list.DEFOCUS_OUTPUT_FILE, "
+            "list.PIXEL_SIZE_OUTPUT_FILE, list.HISTOGRAM_OUTPUT_FILE, list.PROJECTION_RESULT_OUTPUT_FILE, "
+            "q.SYMMETRY, q.PIXEL_SIZE, q.VOLTAGE, q.SPHERICAL_ABERRATION, q.AMPLITUDE_CONTRAST, "
+            "q.DEFOCUS1, q.DEFOCUS2, q.DEFOCUS_ANGLE, q.PHASE_SHIFT, "
+            "q.LOW_RESOLUTION_LIMIT, q.HIGH_RESOLUTION_LIMIT, "
+            "q.OUT_OF_PLANE_ANGULAR_STEP, q.IN_PLANE_ANGULAR_STEP, "
+            "q.DEFOCUS_SEARCH_RANGE, q.DEFOCUS_STEP, "
+            "q.PIXEL_SIZE_SEARCH_RANGE, q.PIXEL_SIZE_STEP, "
+            "q.REFINEMENT_THRESHOLD, q.REF_BOX_SIZE_IN_ANGSTROMS, "
+            "q.MASK_RADIUS, q.MIN_PEAK_RADIUS, "
+            "q.XY_CHANGE_THRESHOLD, q.EXCLUDE_ABOVE_XY_THRESHOLD "
+            "FROM TEMPLATE_MATCH_LIST list "
+            "LEFT JOIN TEMPLATE_MATCH_QUEUE q ON list.SEARCH_ID = q.SEARCH_ID "
+            "WHERE list.TEMPLATE_MATCH_ID = %li",
+            wanted_template_match_id);
 
     Prepare(sql_select_command, &list_statement);
     return_code = Step(list_statement);
@@ -2090,17 +2039,17 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     // Column 8 is IS_ACTIVE which is not recorded in the class
 
     // Output files from LIST table (columns 9-19)
-    temp_result.mip_filename                    = sqlite3_column_text(list_statement, 9);
-    temp_result.scaled_mip_filename             = sqlite3_column_text(list_statement, 10);
-    temp_result.avg_filename                    = sqlite3_column_text(list_statement, 11);
-    temp_result.std_filename                    = sqlite3_column_text(list_statement, 12);
-    temp_result.psi_filename                    = sqlite3_column_text(list_statement, 13);
-    temp_result.theta_filename                  = sqlite3_column_text(list_statement, 14);
-    temp_result.phi_filename                    = sqlite3_column_text(list_statement, 15);
-    temp_result.defocus_filename                = sqlite3_column_text(list_statement, 16);
-    temp_result.pixel_size_filename             = sqlite3_column_text(list_statement, 17);
-    temp_result.histogram_filename              = sqlite3_column_text(list_statement, 18);
-    temp_result.projection_result_filename      = sqlite3_column_text(list_statement, 19);
+    temp_result.mip_filename               = sqlite3_column_text(list_statement, 9);
+    temp_result.scaled_mip_filename        = sqlite3_column_text(list_statement, 10);
+    temp_result.avg_filename               = sqlite3_column_text(list_statement, 11);
+    temp_result.std_filename               = sqlite3_column_text(list_statement, 12);
+    temp_result.psi_filename               = sqlite3_column_text(list_statement, 13);
+    temp_result.theta_filename             = sqlite3_column_text(list_statement, 14);
+    temp_result.phi_filename               = sqlite3_column_text(list_statement, 15);
+    temp_result.defocus_filename           = sqlite3_column_text(list_statement, 16);
+    temp_result.pixel_size_filename        = sqlite3_column_text(list_statement, 17);
+    temp_result.histogram_filename         = sqlite3_column_text(list_statement, 18);
+    temp_result.projection_result_filename = sqlite3_column_text(list_statement, 19);
 
     // Read search parameters from QUEUE table (columns 20-42)
     temp_result.symmetry                        = sqlite3_column_text(list_statement, 20);
@@ -2209,10 +2158,10 @@ void Database::AddRefinement(Refinement* refinement_to_add) {
     }
 
     for ( class_counter = 1; class_counter <= refinement_to_add->number_of_classes; class_counter++ ) {
-        BeginBatchInsert(wxString::Format("REFINEMENT_RESULT_%li_%i", refinement_to_add->refinement_id, class_counter), 28, "POSITION_IN_STACK", "PSI", "THETA", "PHI", "XSHIFT", "YSHIFT", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "OCCUPANCY", "LOGP", "SIGMA", "SCORE", "IMAGE_IS_ACTIVE", "PIXEL_SIZE", "MICROSCOPE_VOLTAGE", "MICROSCOPE_CS", "AMPLITUDE_CONTRAST", "BEAM_TILT_X", "BEAM_TILT_Y", "IMAGE_SHIFT_X", "IMAGE_SHIFT_Y", "ASSIGNED_SUBSET", "BEAM_TILT_GROUP", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE");
+        BeginBatchInsert(wxString::Format("REFINEMENT_RESULT_%li_%i", refinement_to_add->refinement_id, class_counter), 26, "POSITION_IN_STACK", "PSI", "THETA", "PHI", "XSHIFT", "YSHIFT", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "OCCUPANCY", "LOGP", "SIGMA", "SCORE", "IMAGE_IS_ACTIVE", "PIXEL_SIZE", "MICROSCOPE_VOLTAGE", "MICROSCOPE_CS", "AMPLITUDE_CONTRAST", "BEAM_TILT_X", "BEAM_TILT_Y", "IMAGE_SHIFT_X", "IMAGE_SHIFT_Y", "ASSIGNED_SUBSET", "PARTICLE_GROUP", "TOTAL_EXPOSURE");
 
         for ( counter = 0; counter < refinement_to_add->number_of_particles; counter++ ) {
-            AddToBatchInsert("lrrrrrrrrrrrrrirrrrrrrriiirr", refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].position_in_stack, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].psi, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].theta, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].phi, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].xshift, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].yshift, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].defocus1, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].defocus2, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].defocus_angle, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].phase_shift, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].occupancy, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].logp, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].sigma, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].score, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].image_is_active, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].pixel_size, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].microscope_voltage_kv, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].microscope_spherical_aberration_mm, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].amplitude_contrast, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].beam_tilt_x, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].beam_tilt_y, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].image_shift_x, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].image_shift_y, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].assigned_subset, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].beam_tilt_group, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].particle_group, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].pre_exposure, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].total_exposure);
+            AddToBatchInsert("lrrrrrrrrrrrrrirrrrrrrriir", refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].position_in_stack, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].psi, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].theta, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].phi, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].xshift, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].yshift, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].defocus1, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].defocus2, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].defocus_angle, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].phase_shift, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].occupancy, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].logp, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].sigma, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].score, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].image_is_active, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].pixel_size, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].microscope_voltage_kv, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].microscope_spherical_aberration_mm, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].amplitude_contrast, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].beam_tilt_x, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].beam_tilt_y, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].image_shift_x, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].image_shift_y, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].assigned_subset, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].particle_group, refinement_to_add->class_refinement_results[class_counter - 1].particle_refinement_results[counter].total_exposure);
         }
 
         EndBatchInsert( );
@@ -2354,7 +2303,8 @@ Refinement* Database::GetRefinementByID(long wanted_refinement_id, bool include_
             number_of_active_images                                                    = 0;
 
             while ( more_data == true ) {
-                more_data = GetFromBatchSelect("lssssssssssssisssssssssiiiss", &temp_result.position_in_stack,
+                more_data = GetFromBatchSelect("lsssssssssssssissssssssiis",
+                                               &temp_result.position_in_stack,
                                                &temp_result.psi,
                                                &temp_result.theta,
                                                &temp_result.phi,
@@ -2378,14 +2328,16 @@ Refinement* Database::GetRefinementByID(long wanted_refinement_id, bool include_
                                                &temp_result.image_shift_x,
                                                &temp_result.image_shift_y,
                                                &temp_result.assigned_subset,
-                                               &temp_result.beam_tilt_group,
                                                &temp_result.particle_group,
-                                               &temp_result.pre_exposure,
                                                &temp_result.total_exposure);
+
+                // Set default values for fields not in the database
+                temp_result.beam_tilt_group = 0;
+                temp_result.pre_exposure    = 0.0f;
 
                 temp_refinement->class_refinement_results[class_counter].particle_refinement_results.Add(temp_result);
 
-                if ( temp_result.image_is_active >= 0.0 ) {
+                if ( temp_result.image_is_active >= 0 ) {
                     temp_refinement->class_refinement_results[class_counter].average_occupancy += temp_result.occupancy;
                     number_of_active_images++;
                 }
@@ -2840,8 +2792,9 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
 
     // Helper function to check if a string exists in wxArrayString
     auto string_exists_in_array = [](const wxArrayString& array, const wxString& str) -> bool {
-        for ( size_t i = 0; i < array.GetCount(); i++ ) {
-            if ( array[i].IsSameAs(str) ) return true;
+        for ( size_t i = 0; i < array.GetCount( ); i++ ) {
+            if ( array[i].IsSameAs(str) )
+                return true;
         }
         return false;
     };
@@ -2852,28 +2805,29 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
         std::cerr << "Working on static table " << (&table - &static_tables[0] + 1) << " / " << static_tables.size( ) << ": " << std::get<0>(table) << std::endl;
 #endif
         wxString table_name = std::get<0>(table);
-        if ( !string_exists_in_array(all_tables, table_name) ) {
+        if ( ! string_exists_in_array(all_tables, table_name) ) {
             missing_tables.push_back(std::get<TABLE_NAME>(table));
             continue;
         }
 
         // Batch check all columns for this table in one query
-        if ( std::get<TABLE_COLUMNS>(table).size() > 0 ) {
+        if ( std::get<TABLE_COLUMNS>(table).size( ) > 0 ) {
             wxString column_list = "";
-            for ( size_t col_idx = 0; col_idx < std::get<TABLE_COLUMNS>(table).size(); col_idx++ ) {
-                if ( col_idx > 0 ) column_list += ",";
+            for ( size_t col_idx = 0; col_idx < std::get<TABLE_COLUMNS>(table).size( ); col_idx++ ) {
+                if ( col_idx > 0 )
+                    column_list += ",";
                 column_list += "'" + std::get<TABLE_COLUMNS>(table)[col_idx] + "'";
             }
 
             wxArrayString existing_columns = ReturnStringArrayFromSelectCommand(
-                wxString::Format("SELECT name FROM pragma_table_info('%s') WHERE name IN (%s);",
-                               table_name, column_list));
+                    wxString::Format("SELECT name FROM pragma_table_info('%s') WHERE name IN (%s);",
+                                     table_name, column_list));
 
             for ( size_t col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {
                 auto& column = std::get<TABLE_COLUMNS>(table)[col_counter];
                 char  type   = std::get<TABLE_TYPES>(table)[col_counter];
 
-                if ( !string_exists_in_array(existing_columns, column) ) {
+                if ( ! string_exists_in_array(existing_columns, column) ) {
                     missing_columns.push_back(ColumnChange(std::get<TABLE_NAME>(table), column, type));
                 }
             }
@@ -2898,11 +2852,11 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
 
         // Find matching dynamic tables
         wxArrayString matching_tables;
-        wxString pattern = std::get<0>(table);
-        for ( size_t i = 0; i < all_tables.GetCount(); i++ ) {
+        wxString      pattern = std::get<0>(table);
+        for ( size_t i = 0; i < all_tables.GetCount( ); i++ ) {
             const wxString& existing_table = all_tables[i];
-            if ( existing_table.StartsWith(pattern) && existing_table.length() > pattern.length() &&
-                 existing_table[pattern.length()] == '_' ) {
+            if ( existing_table.StartsWith(pattern) && existing_table.length( ) > pattern.length( ) &&
+                 existing_table[pattern.length( )] == '_' ) {
                 // Make sure it's not a static table that happens to match
                 bool is_static = false;
                 for ( const auto& static_table : static_tables ) {
@@ -2911,31 +2865,32 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
                         break;
                     }
                 }
-                if ( !is_static ) {
+                if ( ! is_static ) {
                     matching_tables.Add(existing_table);
                 }
             }
         }
 
         // Batch check columns for all matching tables
-        if ( matching_tables.GetCount() > 0 && std::get<TABLE_COLUMNS>(table).size() > 0 ) {
+        if ( matching_tables.GetCount( ) > 0 && std::get<TABLE_COLUMNS>(table).size( ) > 0 ) {
             wxString column_list = "";
-            for ( size_t col_idx = 0; col_idx < std::get<TABLE_COLUMNS>(table).size(); col_idx++ ) {
-                if ( col_idx > 0 ) column_list += ",";
+            for ( size_t col_idx = 0; col_idx < std::get<TABLE_COLUMNS>(table).size( ); col_idx++ ) {
+                if ( col_idx > 0 )
+                    column_list += ",";
                 column_list += "'" + std::get<TABLE_COLUMNS>(table)[col_idx] + "'";
             }
 
-            for ( size_t table_idx = 0; table_idx < matching_tables.GetCount(); table_idx++ ) {
-                const wxString& matching_table = matching_tables[table_idx];
-                wxArrayString existing_columns = ReturnStringArrayFromSelectCommand(
-                    wxString::Format("SELECT name FROM pragma_table_info('%s') WHERE name IN (%s);",
-                                   matching_table, column_list));
+            for ( size_t table_idx = 0; table_idx < matching_tables.GetCount( ); table_idx++ ) {
+                const wxString& matching_table   = matching_tables[table_idx];
+                wxArrayString   existing_columns = ReturnStringArrayFromSelectCommand(
+                          wxString::Format("SELECT name FROM pragma_table_info('%s') WHERE name IN (%s);",
+                                           matching_table, column_list));
 
                 for ( size_t col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {
                     auto& column = std::get<TABLE_COLUMNS>(table)[col_counter];
                     char  type   = std::get<TABLE_TYPES>(table)[col_counter];
 
-                    if ( !string_exists_in_array(existing_columns, column) ) {
+                    if ( ! string_exists_in_array(existing_columns, column) ) {
                         missing_columns.push_back(ColumnChange(matching_table, column, type));
                     }
                 }
@@ -2987,19 +2942,19 @@ bool Database::CheckIfCurrentWorkflowIsInteger( ) {
 // Template Match Queue database operations
 
 long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
-                                      bool use_gpu, bool use_fast_fft, const wxString& symmetry,
-                                      float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
-                                      float defocus1, float defocus2, float defocus_angle, float phase_shift,
-                                      float low_resolution_limit, float high_resolution_limit,
-                                      float out_of_plane_angular_step, float in_plane_angular_step,
-                                      float defocus_search_range, float defocus_step,
-                                      float pixel_size_search_range, float pixel_size_step,
-                                      float refinement_threshold, float ref_box_size_in_angstroms,
-                                      float mask_radius, float min_peak_radius,
-                                      float xy_change_threshold, bool exclude_above_xy_threshold,
-                                      const wxString& custom_cli_args) {
+                                       bool use_gpu, bool use_fast_fft, const wxString& symmetry,
+                                       float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
+                                       float defocus1, float defocus2, float defocus_angle, float phase_shift,
+                                       float low_resolution_limit, float high_resolution_limit,
+                                       float out_of_plane_angular_step, float in_plane_angular_step,
+                                       float defocus_search_range, float defocus_step,
+                                       float pixel_size_search_range, float pixel_size_step,
+                                       float refinement_threshold, float ref_box_size_in_angstroms,
+                                       float mask_radius, float min_peak_radius,
+                                       float xy_change_threshold, bool exclude_above_xy_threshold,
+                                       const wxString& custom_cli_args) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
-    MyDebugAssertFalse(job_name.IsEmpty(), "Job name cannot be empty");
+    MyDebugAssertFalse(job_name.IsEmpty( ), "Job name cannot be empty");
     MyDebugAssertTrue(image_group_id >= 0, "Image group ID must be >= 0");
     MyDebugAssertTrue(reference_volume_asset_id >= 0, "Reference volume asset ID must be >= 0");
     MyDebugAssertTrue(run_profile_id >= 0, "Run profile ID must be >= 0");
@@ -3008,39 +2963,39 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     int queue_position = ReturnSingleIntFromSelectCommand("SELECT COALESCE(MAX(QUEUE_POSITION), 0) + 1 FROM TEMPLATE_MATCH_QUEUE;");
 
     // Get current timestamp
-    wxDateTime current_time = wxDateTime::Now();
+    wxDateTime current_time = wxDateTime::Now( );
 
     const char* sql = "INSERT INTO TEMPLATE_MATCH_QUEUE ("
-                     "SEARCH_NAME, SEARCH_ID, QUEUE_POSITION, DATETIME_QUEUED, "
-                     "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
-                     "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
-                     "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
-                     "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
-                     "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
-                     "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
-                     "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, "
-                     "REFINEMENT_THRESHOLD, REF_BOX_SIZE_IN_ANGSTROMS, "
-                     "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
-                     "EXCLUDE_ABOVE_XY_THRESHOLD, CUSTOM_CLI_ARGS, "
-                     "FUTURE_INT_1, FUTURE_INT_2, FUTURE_FLOAT_1, FUTURE_FLOAT_2, FUTURE_TEXT_1, FUTURE_TEXT_2"
-                     ") VALUES (?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL);";
+                      "SEARCH_NAME, SEARCH_ID, QUEUE_POSITION, DATETIME_QUEUED, "
+                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
+                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
+                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
+                      "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
+                      "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
+                      "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
+                      "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, "
+                      "REFINEMENT_THRESHOLD, REF_BOX_SIZE_IN_ANGSTROMS, "
+                      "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
+                      "EXCLUDE_ABOVE_XY_THRESHOLD, CUSTOM_CLI_ARGS, "
+                      "FUTURE_INT_1, FUTURE_INT_2, FUTURE_FLOAT_1, FUTURE_FLOAT_2, FUTURE_TEXT_1, FUTURE_TEXT_2"
+                      ") VALUES (?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL);";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         DEBUG_ABORT;
     }
 
     // Bind all parameters
-    sqlite3_bind_text(stmt, 1, job_name.mb_str().data(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 1, job_name.mb_str( ).data( ), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 2, queue_position);
-    sqlite3_bind_int64(stmt, 3, current_time.GetAsDOS());
+    sqlite3_bind_int64(stmt, 3, current_time.GetAsDOS( ));
     sqlite3_bind_int(stmt, 4, image_group_id);
     sqlite3_bind_int(stmt, 5, reference_volume_asset_id);
     sqlite3_bind_int(stmt, 6, run_profile_id);
     sqlite3_bind_int(stmt, 7, use_gpu ? 1 : 0);
     sqlite3_bind_int(stmt, 8, use_fast_fft ? 1 : 0);
-    sqlite3_bind_text(stmt, 9, symmetry.mb_str().data(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 9, symmetry.mb_str( ).data( ), -1, SQLITE_TRANSIENT);
     sqlite3_bind_double(stmt, 10, pixel_size);
     sqlite3_bind_double(stmt, 11, voltage);
     sqlite3_bind_double(stmt, 12, spherical_aberration);
@@ -3063,9 +3018,9 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     sqlite3_bind_double(stmt, 29, min_peak_radius);
     sqlite3_bind_double(stmt, 30, xy_change_threshold);
     sqlite3_bind_int(stmt, 31, exclude_above_xy_threshold ? 1 : 0);
-    sqlite3_bind_text(stmt, 32, custom_cli_args.mb_str().data(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 32, custom_cli_args.mb_str( ).data( ), -1, SQLITE_TRANSIENT);
 
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
+    if ( sqlite3_step(stmt) != SQLITE_DONE ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         sqlite3_finalize(stmt);
         DEBUG_ABORT;
@@ -3080,16 +3035,16 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
 void Database::GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
-    queue_ids.clear(); // Ensure vector is empty before filling
+    queue_ids.clear( ); // Ensure vector is empty before filling
     const char* sql = "SELECT QUEUE_ID FROM TEMPLATE_MATCH_QUEUE ORDER BY QUEUE_POSITION ASC;";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         DEBUG_ABORT;
     }
 
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
+    while ( sqlite3_step(stmt) == SQLITE_ROW ) {
         queue_ids.push_back(sqlite3_column_int64(stmt, 0));
     }
 
@@ -3097,34 +3052,34 @@ void Database::GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids) {
 }
 
 bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& template_match_job_id, int& queue_position, wxString& custom_cli_args,
-                               int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
-                               float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
-                               float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
-                               float& low_resolution_limit, float& high_resolution_limit,
-                               float& out_of_plane_angular_step, float& in_plane_angular_step,
-                               float& defocus_search_range, float& defocus_step,
-                               float& pixel_size_search_range, float& pixel_size_step,
-                               float& refinement_threshold, float& ref_box_size_in_angstroms,
-                               float& mask_radius, float& min_peak_radius,
-                               float& xy_change_threshold, bool& exclude_above_xy_threshold) {
+                                int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
+                                float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
+                                float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
+                                float& low_resolution_limit, float& high_resolution_limit,
+                                float& out_of_plane_angular_step, float& in_plane_angular_step,
+                                float& defocus_search_range, float& defocus_step,
+                                float& pixel_size_search_range, float& pixel_size_step,
+                                float& refinement_threshold, float& ref_box_size_in_angstroms,
+                                float& mask_radius, float& min_peak_radius,
+                                float& xy_change_threshold, bool& exclude_above_xy_threshold) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertTrue(queue_id > 0, "Invalid queue ID: %ld", queue_id);
 
     const char* sql = "SELECT SEARCH_NAME, SEARCH_ID, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
-                     "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
-                     "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
-                     "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
-                     "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
-                     "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
-                     "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
-                     "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, "
-                     "REFINEMENT_THRESHOLD, REF_BOX_SIZE_IN_ANGSTROMS, "
-                     "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
-                     "EXCLUDE_ABOVE_XY_THRESHOLD "
-                     "FROM TEMPLATE_MATCH_QUEUE WHERE QUEUE_ID = ?;";
+                      "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
+                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
+                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
+                      "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
+                      "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
+                      "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
+                      "PIXEL_SIZE_SEARCH_RANGE, PIXEL_SIZE_STEP, "
+                      "REFINEMENT_THRESHOLD, REF_BOX_SIZE_IN_ANGSTROMS, "
+                      "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
+                      "EXCLUDE_ABOVE_XY_THRESHOLD "
+                      "FROM TEMPLATE_MATCH_QUEUE WHERE QUEUE_ID = ?;";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         DEBUG_ABORT;
     }
@@ -3132,52 +3087,51 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& templat
     sqlite3_bind_int64(stmt, 1, queue_id);
 
     bool found = false;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
+    if ( sqlite3_step(stmt) == SQLITE_ROW ) {
         found = true;
 
         // Extract string values
-        job_name = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+        job_name        = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
         custom_cli_args = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
-        symmetry = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
+        symmetry        = wxString::FromUTF8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
 
         // Extract integer/long values
-        template_match_job_id = sqlite3_column_int64(stmt, 1);
-        queue_position = sqlite3_column_int(stmt, 2);
-        image_group_id = sqlite3_column_int(stmt, 4);
-        reference_volume_asset_id = sqlite3_column_int(stmt, 5);
-        run_profile_id = sqlite3_column_int(stmt, 6);
-        use_gpu = sqlite3_column_int(stmt, 7) != 0;
-        use_fast_fft = sqlite3_column_int(stmt, 8) != 0;
+        template_match_job_id      = sqlite3_column_int64(stmt, 1);
+        queue_position             = sqlite3_column_int(stmt, 2);
+        image_group_id             = sqlite3_column_int(stmt, 4);
+        reference_volume_asset_id  = sqlite3_column_int(stmt, 5);
+        run_profile_id             = sqlite3_column_int(stmt, 6);
+        use_gpu                    = sqlite3_column_int(stmt, 7) != 0;
+        use_fast_fft               = sqlite3_column_int(stmt, 8) != 0;
         exclude_above_xy_threshold = sqlite3_column_int(stmt, 31) != 0;
 
         // Extract float values
-        pixel_size = float(sqlite3_column_double(stmt, 10));
-        voltage = float(sqlite3_column_double(stmt, 11));
-        spherical_aberration = float(sqlite3_column_double(stmt, 12));
-        amplitude_contrast = float(sqlite3_column_double(stmt, 13));
-        defocus1 = float(sqlite3_column_double(stmt, 14));
-        defocus2 = float(sqlite3_column_double(stmt, 15));
-        defocus_angle = float(sqlite3_column_double(stmt, 16));
-        phase_shift = float(sqlite3_column_double(stmt, 17));
-        low_resolution_limit = float(sqlite3_column_double(stmt, 18));
-        high_resolution_limit = float(sqlite3_column_double(stmt, 19));
+        pixel_size                = float(sqlite3_column_double(stmt, 10));
+        voltage                   = float(sqlite3_column_double(stmt, 11));
+        spherical_aberration      = float(sqlite3_column_double(stmt, 12));
+        amplitude_contrast        = float(sqlite3_column_double(stmt, 13));
+        defocus1                  = float(sqlite3_column_double(stmt, 14));
+        defocus2                  = float(sqlite3_column_double(stmt, 15));
+        defocus_angle             = float(sqlite3_column_double(stmt, 16));
+        phase_shift               = float(sqlite3_column_double(stmt, 17));
+        low_resolution_limit      = float(sqlite3_column_double(stmt, 18));
+        high_resolution_limit     = float(sqlite3_column_double(stmt, 19));
         out_of_plane_angular_step = float(sqlite3_column_double(stmt, 20));
-        in_plane_angular_step = float(sqlite3_column_double(stmt, 21));
-        defocus_search_range = float(sqlite3_column_double(stmt, 22));
-        defocus_step = float(sqlite3_column_double(stmt, 23));
-        pixel_size_search_range = float(sqlite3_column_double(stmt, 24));
-        pixel_size_step = float(sqlite3_column_double(stmt, 25));
-        refinement_threshold = float(sqlite3_column_double(stmt, 26));
+        in_plane_angular_step     = float(sqlite3_column_double(stmt, 21));
+        defocus_search_range      = float(sqlite3_column_double(stmt, 22));
+        defocus_step              = float(sqlite3_column_double(stmt, 23));
+        pixel_size_search_range   = float(sqlite3_column_double(stmt, 24));
+        pixel_size_step           = float(sqlite3_column_double(stmt, 25));
+        refinement_threshold      = float(sqlite3_column_double(stmt, 26));
         ref_box_size_in_angstroms = float(sqlite3_column_double(stmt, 27));
-        mask_radius = float(sqlite3_column_double(stmt, 28));
-        min_peak_radius = float(sqlite3_column_double(stmt, 29));
-        xy_change_threshold = float(sqlite3_column_double(stmt, 30));
+        mask_radius               = float(sqlite3_column_double(stmt, 28));
+        min_peak_radius           = float(sqlite3_column_double(stmt, 29));
+        xy_change_threshold       = float(sqlite3_column_double(stmt, 30));
     }
 
     sqlite3_finalize(stmt);
     return found;
 }
-
 
 void Database::UpdateQueuePosition(long queue_id, int position) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
@@ -3187,7 +3141,7 @@ void Database::UpdateQueuePosition(long queue_id, int position) {
     const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET QUEUE_POSITION = ? WHERE QUEUE_ID = ?;";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         DEBUG_ABORT;
     }
@@ -3195,7 +3149,7 @@ void Database::UpdateQueuePosition(long queue_id, int position) {
     sqlite3_bind_int(stmt, 1, position);
     sqlite3_bind_int64(stmt, 2, queue_id);
 
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
+    if ( sqlite3_step(stmt) != SQLITE_DONE ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         sqlite3_finalize(stmt);
         DEBUG_ABORT;
@@ -3212,7 +3166,7 @@ void Database::UpdateSearchIdInQueueTable(long queue_id, long search_id) {
     const char* sql = "UPDATE TEMPLATE_MATCH_QUEUE SET SEARCH_ID = ? WHERE QUEUE_ID = ?;";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         DEBUG_ABORT;
     }
@@ -3220,7 +3174,7 @@ void Database::UpdateSearchIdInQueueTable(long queue_id, long search_id) {
     sqlite3_bind_int64(stmt, 1, search_id);
     sqlite3_bind_int64(stmt, 2, queue_id);
 
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
+    if ( sqlite3_step(stmt) != SQLITE_DONE ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         sqlite3_finalize(stmt);
         DEBUG_ABORT;
@@ -3237,11 +3191,11 @@ int Database::GetSearchIdForQueueItem(long queue_id) {
     return ReturnSingleIntFromSelectCommand(sql);
 }
 
-int Database::GetHighestSearchIdFromQueue() {
+int Database::GetHighestSearchIdFromQueue( ) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
-    wxString sql = "SELECT MAX(SEARCH_ID) FROM TEMPLATE_MATCH_QUEUE WHERE SEARCH_ID IS NOT NULL;";
-    int highest_search_id = ReturnSingleIntFromSelectCommand(sql);
+    wxString sql               = "SELECT MAX(SEARCH_ID) FROM TEMPLATE_MATCH_QUEUE WHERE SEARCH_ID IS NOT NULL;";
+    int      highest_search_id = ReturnSingleIntFromSelectCommand(sql);
     // ReturnSingleIntFromSelectCommand returns 0 if NULL or no rows
     return highest_search_id > 0 ? highest_search_id : 0;
 }
@@ -3253,14 +3207,14 @@ void Database::RemoveFromQueue(long queue_id) {
     const char* sql = "DELETE FROM TEMPLATE_MATCH_QUEUE WHERE QUEUE_ID = ?;";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         DEBUG_ABORT;
     }
 
     sqlite3_bind_int64(stmt, 1, queue_id);
 
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
+    if ( sqlite3_step(stmt) != SQLITE_DONE ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         sqlite3_finalize(stmt);
         DEBUG_ABORT;
@@ -3269,18 +3223,18 @@ void Database::RemoveFromQueue(long queue_id) {
     sqlite3_finalize(stmt);
 }
 
-void Database::ClearTemplateMatchQueue() {
+void Database::ClearTemplateMatchQueue( ) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
     const char* sql = "DELETE FROM TEMPLATE_MATCH_QUEUE;";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         DEBUG_ABORT;
     }
 
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
+    if ( sqlite3_step(stmt) != SQLITE_DONE ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
         sqlite3_finalize(stmt);
         DEBUG_ABORT;
@@ -3293,41 +3247,41 @@ std::pair<int, int> Database::GetSearchCompletionCounts(long search_id, int imag
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
     wxString sql;
-    if (image_group_id == -1) {
+    if ( image_group_id == -1 ) {
         // All images in database
         sql = wxString::Format(
-            "SELECT "
-            "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
-            "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
-            "FROM IMAGE_ASSETS "
-            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld) COMP "
-            "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
-            search_id);
-    } else {
+                "SELECT "
+                "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
+                "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
+                "FROM IMAGE_ASSETS "
+                "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld) COMP "
+                "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
+                search_id);
+    }
+    else {
         // Specific image group
         sql = wxString::Format(
-            "SELECT "
-            "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
-            "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
-            "FROM IMAGE_GROUP_%d AS IMAGE_ASSETS "
-            "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld) COMP "
-            "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
-            image_group_id, search_id);
+                "SELECT "
+                "COUNT(CASE WHEN COMP.IMAGE_ASSET_ID IS NOT NULL THEN 1 END) as completed_count, "
+                "COUNT(IMAGE_ASSETS.IMAGE_ASSET_ID) as total_count "
+                "FROM IMAGE_GROUP_%d AS IMAGE_ASSETS "
+                "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld) COMP "
+                "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID",
+                image_group_id, search_id);
     }
 
-
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(sqlite_database, sql.ToUTF8().data(), -1, &stmt, NULL) != SQLITE_OK) {
-        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql.ToUTF8().data());
+    if ( sqlite3_prepare_v2(sqlite_database, sql.ToUTF8( ).data( ), -1, &stmt, NULL) != SQLITE_OK ) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql.ToUTF8( ).data( ));
         return std::make_pair(0, 0);
     }
 
     int completed_count = 0;
-    int total_count = 0;
+    int total_count     = 0;
 
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
+    if ( sqlite3_step(stmt) == SQLITE_ROW ) {
         completed_count = sqlite3_column_int(stmt, 0);
-        total_count = sqlite3_column_int(stmt, 1);
+        total_count     = sqlite3_column_int(stmt, 1);
     }
 
     sqlite3_finalize(stmt);
@@ -3337,7 +3291,7 @@ std::pair<int, int> Database::GetSearchCompletionCounts(long search_id, int imag
 void Database::GetAllTemplateMatchSearchIds(std::vector<std::pair<long, int>>& search_id_and_group_pairs) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
 
-    search_id_and_group_pairs.clear(); // Ensure vector is empty before filling
+    search_id_and_group_pairs.clear( ); // Ensure vector is empty before filling
 
     // Get unique SEARCH_IDs from TEMPLATE_MATCH_LIST and their corresponding IMAGE_GROUP_ID from TEMPLATE_MATCH_QUEUE
     // Every search MUST have an IMAGE_GROUP_ID in TEMPLATE_MATCH_QUEUE:
@@ -3350,14 +3304,14 @@ void Database::GetAllTemplateMatchSearchIds(std::vector<std::pair<long, int>>& s
                    "ORDER BY TML.SEARCH_ID";
 
     sqlite3_stmt* statement;
-    if (sqlite3_prepare_v2(sqlite_database, sql.ToUTF8().data(), -1, &statement, NULL) != SQLITE_OK) {
-        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql.ToUTF8().data());
+    if ( sqlite3_prepare_v2(sqlite_database, sql.ToUTF8( ).data( ), -1, &statement, NULL) != SQLITE_OK ) {
+        MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql.ToUTF8( ).data( ));
         DEBUG_ABORT;
     }
 
-    while (sqlite3_step(statement) == SQLITE_ROW) {
-        long search_id = sqlite3_column_int64(statement, 0);
-        int image_group_id = sqlite3_column_int(statement, 1);
+    while ( sqlite3_step(statement) == SQLITE_ROW ) {
+        long search_id      = sqlite3_column_int64(statement, 0);
+        int  image_group_id = sqlite3_column_int(statement, 1);
 
         // All searches must have a valid IMAGE_GROUP_ID (> 0) either from being newly created
         // or from migration where the original IMAGE_GROUP_ID was preserved in TEMPLATE_MATCH_LIST

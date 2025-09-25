@@ -244,20 +244,17 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
     constexpr bool is_relion_import   = std::is_same_v<StarFileSource_t, BasicStarFileReader>;
 
     // Detect multi-view data for cisTEM imports
-    bool needs_multi_view_table   = false;
     bool has_beam_tilt_group_hack = false;
 
     if constexpr ( is_cistem_import ) {
         // Check which multi-view columns are present
         if ( input_params_file.parameters_that_were_read.beam_tilt_group ) {
             has_beam_tilt_group_hack = true;
-            needs_multi_view_table   = true;
             wxPrintf("Import: Detected beam_tilt_group column - will use for gold standard half-set assignment\n");
         }
         if ( input_params_file.parameters_that_were_read.particle_group ||
              input_params_file.parameters_that_were_read.pre_exposure ||
              input_params_file.parameters_that_were_read.total_exposure ) {
-            needs_multi_view_table = true;
             wxPrintf("Import: Detected multi-view metadata columns\n");
         }
     }
@@ -430,11 +427,12 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].yshift          = input_params_file.ReturnYShift(particle_counter);
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].score           = input_params_file.ReturnScore(particle_counter);
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].image_is_active = (int)input_params_file.ReturnImageIsActive(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].sigma           = input_params_file.ReturnSigma(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_x     = input_params_file.ReturnBeamTiltX(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_y     = input_params_file.ReturnBeamTiltY(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_x   = input_params_file.ReturnImageShiftX(particle_counter);
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_y   = input_params_file.ReturnImageShiftY(particle_counter);
+
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].sigma         = input_params_file.ReturnSigma(particle_counter);
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_x   = input_params_file.ReturnBeamTiltX(particle_counter);
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_y   = input_params_file.ReturnBeamTiltY(particle_counter);
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_x = input_params_file.ReturnImageShiftX(particle_counter);
+                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_y = input_params_file.ReturnImageShiftY(particle_counter);
 
                 // Set refinement results - beam_tilt_group is set to 0 after using for assignment
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = 0; // Reset after using for assignment
@@ -575,8 +573,9 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                     temp_image.WriteSlice(&output_stack, i + 1); // Contiguous numbering
 
                     // Copy particle info with updated position_in_stack
-                    RefinementPackageParticleInfo particle_copy = temp_refinement_package->contained_particles[original_index];
-                    particle_copy.position_in_stack             = i + 1; // Contiguous numbering
+                    RefinementPackageParticleInfo particle_copy       = temp_refinement_package->contained_particles[original_index];
+                    particle_copy.position_in_stack                   = i + 1; // Contiguous numbering
+                    particle_copy.original_particle_position_asset_id = i + 1; // Update to match new position in filtered stack
                     filtered_particles.Add(particle_copy);
 
                     // Copy refinement results for all classes

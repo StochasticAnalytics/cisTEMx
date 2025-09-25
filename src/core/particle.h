@@ -107,9 +107,8 @@ class Particle {
     bool                 complex_ctf;
 
     // revert - debug: Add exposure tracking for debugging weighting
-    float                pre_exposure;
-    float                total_exposure;
-    int                  particle_group;  // Multi-view particle group identifier
+  float total_exposure;
+    int   particle_group; // Multi-view particle group identifier
 
     Particle( );
     Particle(int wanted_logical_x_dimension, int wanted_logical_y_dimension);

@@ -29,9 +29,9 @@ RefinementResult::RefinementResult( ) {
     beam_tilt_y                        = 0.0f;
     image_shift_x                      = 0.0f;
     image_shift_y                      = 0.0f;
-    beam_tilt_group                    = 0.0f;
-    particle_group                     = 0.0f;
-    assigned_subset                    = 0.0f;
+    beam_tilt_group                    = 0; // int, not float!
+    particle_group                     = 0; // int, not float!
+    assigned_subset                    = 0; // int, not float!
     pre_exposure                       = 0.0f;
     total_exposure                     = 0.0f;
 }
@@ -316,21 +316,8 @@ void Refinement::WriteSingleClasscisTEMStarFile(wxString filename, int wanted_cl
     long  particle_counter;
     float temp_float;
 
-    // revert - debug: trace star file writing
-    wxPrintf("\n=== WriteSingleClasscisTEMStarFile DEBUG ===\n");
-    wxPrintf("Writing star file: %s\n", filename);
-    wxPrintf("Number of particles: %ld\n", number_of_particles);
-    wxPrintf("Wanted class: %d\n", wanted_class);
-
     cisTEMParameters output_params;
     output_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | ASSIGNED_SUBSET | BEAM_TILT_GROUP | PARTICLE_GROUP | PRE_EXPOSURE | TOTAL_EXPOSURE);
-
-    // revert - debug: check if multi-view parameters are active
-    wxPrintf("Multi-view parameters active:\n");
-    wxPrintf("  BEAM_TILT_GROUP: %s\n", output_params.parameters_to_write.beam_tilt_group ? "YES" : "NO");
-    wxPrintf("  PARTICLE_GROUP: %s\n", output_params.parameters_to_write.particle_group ? "YES" : "NO");
-    wxPrintf("  PRE_EXPOSURE: %s\n", output_params.parameters_to_write.pre_exposure ? "YES" : "NO");
-    wxPrintf("  TOTAL_EXPOSURE: %s\n", output_params.parameters_to_write.total_exposure ? "YES" : "NO");
 
     output_params.PreallocateMemoryAndBlank(number_of_particles);
 
@@ -392,24 +379,7 @@ void Refinement::WriteSingleClasscisTEMStarFile(wxString filename, int wanted_cl
         output_params.all_parameters[particle_counter].assigned_subset = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].assigned_subset;
         output_params.all_parameters[particle_counter].pre_exposure    = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].pre_exposure;
         output_params.all_parameters[particle_counter].total_exposure  = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].total_exposure;
-
-        // revert - debug: sample first few particles to check multi-view data
-        if (particle_counter < 3) {
-            wxPrintf("Particle %ld multi-view data:\n", particle_counter);
-            wxPrintf("  beam_tilt_group in refinement: %d\n", class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_group);
-            wxPrintf("  particle_group in refinement: %d\n", class_refinement_results[wanted_class].particle_refinement_results[particle_counter].particle_group);
-            wxPrintf("  pre_exposure in refinement: %.2f\n", class_refinement_results[wanted_class].particle_refinement_results[particle_counter].pre_exposure);
-            wxPrintf("  total_exposure in refinement: %.2f\n", class_refinement_results[wanted_class].particle_refinement_results[particle_counter].total_exposure);
-            wxPrintf("  beam_tilt_group in output: %d\n", output_params.all_parameters[particle_counter].beam_tilt_group);
-            wxPrintf("  particle_group in output: %d\n", output_params.all_parameters[particle_counter].particle_group);
-            wxPrintf("  pre_exposure in output: %.2f\n", output_params.all_parameters[particle_counter].pre_exposure);
-            wxPrintf("  total_exposure in output: %.2f\n", output_params.all_parameters[particle_counter].total_exposure);
-        }
     }
-
-    // revert - debug: about to write file
-    wxPrintf("About to write %s file\n", write_binary_file ? "binary" : "star");
-    wxPrintf("==========================================\n\n");
 
     if ( write_binary_file == false )
         output_params.WriteTocisTEMStarFile(filename);

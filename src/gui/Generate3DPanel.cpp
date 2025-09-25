@@ -463,9 +463,10 @@ void Generate3DPanel::StartReconstructionClick(wxCommandEvent& event) {
     wxPrintf("Refinement ID: %ld\n", current_input_refinement_id);
     wxPrintf("Number of particles: %ld\n", input_refinement->number_of_particles);
     if (input_refinement->number_of_particles > 0 && input_refinement->number_of_classes > 0) {
-        wxPrintf("Sample first 3 particles from class 1:\n");
-        for (int i = 0; i < std::min(3L, input_refinement->number_of_particles); i++) {
+        wxPrintf("First 5 particles with scores from class 1:\n");
+        for (int i = 0; i < std::min(5L, input_refinement->number_of_particles); i++) {
             wxPrintf("  Particle %d:\n", i);
+            wxPrintf("    score: %f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].score);
             wxPrintf("    beam_tilt_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].beam_tilt_group);
             wxPrintf("    particle_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].particle_group);
             wxPrintf("    pre_exposure: %.2f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].pre_exposure);

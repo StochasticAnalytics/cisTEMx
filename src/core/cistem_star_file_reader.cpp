@@ -179,7 +179,7 @@ bool cisTEMStarFileReader::ExtractParametersFromLine(wxString& wanted_line, wxSt
     // image is active
 
     if ( image_is_active_column == -1 )
-        temp_parameters.image_is_active = 1.0;
+        temp_parameters.image_is_active = 1;
     else {
         if ( all_tokens[image_is_active_column].ToLong(&temp_long) == false ) {
             MyPrintWithDetails("Error: Converting to a number (%s)\n", all_tokens[image_is_active_column]);
@@ -676,6 +676,7 @@ bool cisTEMStarFileReader::ExtractParametersFromLine(wxString& wanted_line, wxSt
 
     cached_parameters->Add(temp_parameters);
 
+
     return true;
 }
 
@@ -1058,9 +1059,6 @@ bool cisTEMStarFileReader::ReadTextFile(wxString wanted_filename, wxString* erro
 }
 
 bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTEMParameterLines* alternate_cached_parameters_pointer, bool exclude_negative_film_numbers) {
-    // revert - debug: trace binary file reading
-    wxPrintf("\n=== ReadBinaryFile DEBUG ===\n");
-    wxPrintf("Reading binary file: %s\n", wanted_filename);
 
     Open(wanted_filename, alternate_cached_parameters_pointer, true);
     MyDebugAssertTrue(binary_file_size > 2, "Input binary file is too small")
@@ -1080,8 +1078,6 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
     if ( SafelyReadFromBinaryBufferIntoInteger(number_of_lines) == false )
         return false;
 
-    // revert - debug: show file dimensions
-    wxPrintf("Binary file has %d columns and %d lines\n", number_of_columns, number_of_lines);
 
     if ( number_of_columns < 1 || number_of_lines < 1 ) {
         MyPrintWithDetails("Format Error %i columns and %i lines", number_of_columns, number_of_lines);
@@ -1255,16 +1251,12 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
             parameters_that_were_read.best_2d_class = true;
         }
         else if ( column_order_buffer[current_column] == BEAM_TILT_GROUP ) {
-            // revert - debug
-            wxPrintf("Found BEAM_TILT_GROUP at column %d\n", current_column);
             if ( beam_tilt_group_column != -1 )
                 wxPrintf("Warning :: _cisTEMBeamTiltGroup occurs more than once. I will take the last occurrence\n");
             beam_tilt_group_column                    = current_column;
             parameters_that_were_read.beam_tilt_group = true;
         }
         else if ( column_order_buffer[current_column] == PARTICLE_GROUP ) {
-            // revert - debug
-            wxPrintf("Found PARTICLE_GROUP at column %d\n", current_column);
             if ( particle_group_column != -1 )
                 wxPrintf("Warning :: _cisTEMParticleGroup occurs more than once. I will take the last occurrence\n");
             particle_group_column                    = current_column;
@@ -1277,16 +1269,12 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
             parameters_that_were_read.assigned_subset = true;
         }
         else if ( column_order_buffer[current_column] == PRE_EXPOSURE ) {
-            // revert - debug
-            wxPrintf("Found PRE_EXPOSURE at column %d\n", current_column);
             if ( pre_exposure_column != -1 )
                 wxPrintf("Warning :: _cisTEMPreExposure occurs more than once. I will take the last occurrence\n");
             pre_exposure_column                    = current_column;
             parameters_that_were_read.pre_exposure = true;
         }
         else if ( column_order_buffer[current_column] == TOTAL_EXPOSURE ) {
-            // revert - debug
-            wxPrintf("Found TOTAL_EXPOSURE at column %d\n", current_column);
             if ( total_exposure_column != -1 )
                 wxPrintf("Warning :: _cisTEMTotalExposure occurs more than once. I will take the last occurrence\n");
             total_exposure_column                    = current_column;
@@ -1580,25 +1568,10 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
             }
         }
 
-        if ( temp_parameters.image_is_active >= 0 || exclude_negative_film_numbers == false )
+        if ( temp_parameters.image_is_active >= 0 || exclude_negative_film_numbers == false ) {
             cached_parameters->Add(temp_parameters);
+        }
     }
-
-    // revert - debug: summary of what was read
-    wxPrintf("\nBinary file read summary:\n");
-    wxPrintf("  parameters_that_were_read.beam_tilt_group: %s\n", parameters_that_were_read.beam_tilt_group ? "YES" : "NO");
-    wxPrintf("  parameters_that_were_read.particle_group: %s\n", parameters_that_were_read.particle_group ? "YES" : "NO");
-    wxPrintf("  parameters_that_were_read.pre_exposure: %s\n", parameters_that_were_read.pre_exposure ? "YES" : "NO");
-    wxPrintf("  parameters_that_were_read.total_exposure: %s\n", parameters_that_were_read.total_exposure ? "YES" : "NO");
-    wxPrintf("  Total particles read: %ld\n", cached_parameters->GetCount());
-    if (cached_parameters->GetCount() > 0) {
-        wxPrintf("  First particle multi-view data:\n");
-        wxPrintf("    beam_tilt_group: %d\n", cached_parameters->Item(0).beam_tilt_group);
-        wxPrintf("    particle_group: %d\n", cached_parameters->Item(0).particle_group);
-        wxPrintf("    pre_exposure: %.2f\n", cached_parameters->Item(0).pre_exposure);
-        wxPrintf("    total_exposure: %.2f\n", cached_parameters->Item(0).total_exposure);
-    }
-    wxPrintf("==========================================\n\n");
 
     return true;
 }

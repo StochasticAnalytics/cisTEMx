@@ -10,6 +10,8 @@ class Reconstruct3D {
     float          average_occupancy;
     float          average_score;
     float          score_weights_conversion;
+    float          average_logp;      // Average logP for normalized weighting
+    float          logp_variance;     // LogP variance for z-score calculation
     SymmetryMatrix symmetry_matrices;
     bool           edge_terms_were_added;
     bool           center_mass;
@@ -27,9 +29,9 @@ class Reconstruct3D {
 
     int images_processed;
 
-    Reconstruct3D(float wanted_pixel_size = 0.0, float wanted_average_occupancy = 0.0, float wanted_average_score = 0.0, float wanted_score_weights_conversion = 0.0, int wanted_correct_ewald_sphere = 0);
-    Reconstruct3D(float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere = 0);
-    Reconstruct3D(int wanted_logical_x_dimension, int wanted_logical_y_dimension, int wanted_logical_z_dimension, float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere = 0); // constructor with size
+    Reconstruct3D(float wanted_pixel_size = 0.0, float wanted_average_occupancy = 0.0, float wanted_average_score = 0.0, float wanted_score_weights_conversion = 0.0, int wanted_correct_ewald_sphere = 0, float wanted_average_logp = 0.0, float wanted_logp_variance = 0.0);
+    Reconstruct3D(float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere = 0, float wanted_average_logp = 0.0, float wanted_logp_variance = 0.0);
+    Reconstruct3D(int wanted_logical_x_dimension, int wanted_logical_y_dimension, int wanted_logical_z_dimension, float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere = 0, float wanted_average_logp = 0.0, float wanted_logp_variance = 0.0); // constructor with size
     ~Reconstruct3D( ); // destructor
 
     void           FreeMemory( );

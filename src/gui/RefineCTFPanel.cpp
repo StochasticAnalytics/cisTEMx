@@ -694,6 +694,7 @@ void CTFRefinementManager::BeginRefinementCycle( ) {
     active_defocus_search_range    = my_parent->DefocusSearchRangeTextCtrl->ReturnValue( );
     active_defocus_search_step     = my_parent->DefocusSearchStepTextCtrl->ReturnValue( );
     active_inner_mask_radius       = my_parent->InnerMaskRadiusTextCtrl->ReturnValue( );
+    active_sphere_radius           = 0.0f;  // CTF refinement doesn't use sphere masking
     active_resolution_limit_rec    = my_parent->ReconstructionResolutionLimitTextCtrl->ReturnValue( );
     active_score_weight_conversion = my_parent->ScoreToWeightConstantTextCtrl->ReturnValue( );
     active_score_threshold         = my_parent->ReconstructionScoreThreshold->ReturnValue( );
@@ -853,6 +854,12 @@ void CTFRefinementManager::RunRefinementJob( ) {
     output_refinement->datetime_of_run                     = wxDateTime::Now( );
     output_refinement->starting_refinement_id              = current_input_refinement_id;
 
+    /**
+     * @note Performance: This loop contains redundant parameter copying where the same values
+     * are assigned to each class. Only high_resolution_limit varies per class (when not refining CTF).
+     * Consider refactoring to set uniform parameters once and only iterate for class-specific values.
+     * This pattern is replicated in MyRefine3DPanel.cpp and should be addressed holistically.
+     */
     for ( int class_counter = 0; class_counter < active_refinement_package->number_of_classes; class_counter++ ) {
         output_refinement->class_refinement_results[class_counter].low_resolution_limit = active_low_resolution_limit;
 

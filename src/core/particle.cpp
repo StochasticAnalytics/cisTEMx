@@ -100,6 +100,7 @@ void Particle::CopyAllButImages(const Particle* other_particle) {
         apply_2D_masking                  = other_particle->apply_2D_masking;
         no_ctf_weighting                  = false;
         complex_ctf                       = other_particle->complex_ctf;
+        particle_group                    = other_particle->particle_group;
 
         if ( particle_image != NULL ) {
             delete particle_image;
@@ -168,6 +169,10 @@ void Particle::Init( ) {
     apply_2D_masking                  = false;
     no_ctf_weighting                  = false;
     complex_ctf                       = false;
+    // revert - debug: Initialize exposure values for debugging
+    pre_exposure                      = 0.0;
+    total_exposure                    = 0.0;
+    particle_group                    = 0;  // 0 indicates single-view particle, >0 for multi-view groups
 }
 
 void Particle::AllocateImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension) {

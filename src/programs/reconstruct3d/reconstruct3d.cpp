@@ -49,7 +49,7 @@ void Reconstruct3DApp::DoInteractiveUserInput( ) {
     bool     crop_images              = false;
     bool     split_even_odd           = true;
     bool     center_mass              = false;
-    bool     use_input_reconstruction = false;
+    bool     use_input_reconstruction = false; // Actually controls ML (Maximum Likelihood) blurring - poorly named variable
     bool     threshold_input_3d       = true;
     int      correct_ewald_sphere     = 0;
     bool     dump_arrays              = false;
@@ -93,7 +93,7 @@ void Reconstruct3DApp::DoInteractiveUserInput( ) {
     crop_images              = my_input->GetYesNoFromUser("Crop particle images", "Should the particle images be cropped to speed up computation?", "No");
     split_even_odd           = my_input->GetYesNoFromUser("If no subset assigned, FSC calc with even/odd particles?", "Should the FSC half volumes be calculated using even and odd particles? (only relevant if star file does not specify cisTEMAssignedSubset", "Yes");
     center_mass              = my_input->GetYesNoFromUser("Center mass", "Should the calculated map be centered in the box according to the center of mass (only for C symmetry)?", "No");
-    use_input_reconstruction = my_input->GetYesNoFromUser("Apply likelihood blurring", "Should ML blurring be applied?", "No");
+    use_input_reconstruction = my_input->GetYesNoFromUser("Apply likelihood blurring", "Should ML blurring be applied?", "No"); // Note: variable name is misleading - this controls ML blurring, not use of input reconstruction
     threshold_input_3d       = my_input->GetYesNoFromUser("Threshold input reconstruction", "Should the input reconstruction thresholded to suppress some of the background noise", "No");
     //	correct_ewald_sphere = my_input->GetIntFromUser("Correct for Ewald sphere curvature (0 = no, 1 = correct hand, -1 = wrong hand)", "Should the reconstruction be corrected for the Ewald sphere curvature?", "0", -1, 1);
     dump_arrays = my_input->GetYesNoFromUser("Dump intermediate arrays (merge later)", "Should the 3D reconstruction arrays be dumped to a file for later merging with other jobs", "No");
@@ -514,13 +514,95 @@ bool Reconstruct3DApp::DoCalculation( ) {
     parameter_averages  = input_star_file.ReturnParameterAverages( );
     parameter_variances = input_star_file.ReturnParameterVariances( );
 
+    // revert - debug: Check what averages we're getting from the star file
+    wxPrintf("\n=== STAR FILE PARAMETER AVERAGES ===\n");
+    wxPrintf("  - Average score: %.6f\n", parameter_averages.score);
+    wxPrintf("  - Average sigma: %.6f\n", parameter_averages.sigma);
+    wxPrintf("  - Average occupancy: %.6f\n", parameter_averages.occupancy);
+    wxPrintf("  - Average logp: %.6f\n", parameter_averages.logp);
+
+    // revert - debug: Check variance values
+    wxPrintf("\n=== STAR FILE PARAMETER VARIANCES ===\n");
+    wxPrintf("  - Score variance: %.6f\n", parameter_variances.score);
+    wxPrintf("  - Sigma variance: %.6f\n", parameter_variances.sigma);
+    wxPrintf("  - LogP variance: %.6f\n", parameter_variances.logp);
+    wxPrintf("  - Occupancy variance: %.6f\n", parameter_variances.occupancy);
+
+    // revert - workaround: Calculate logP variance manually if it's zero
+    if ( parameter_variances.logp <= 0.0f && input_star_file.ReturnNumberofLines( ) > 1 ) {
+        wxPrintf("\nLogP variance is zero - calculating manually...\n");
+
+        // First recalculate the average logP from active particles
+        double sum_logp      = 0.0;
+        int    count_for_avg = 0;
+        for ( int i = 0; i < input_star_file.ReturnNumberofLines( ); i++ ) {
+            cisTEMParameterLine params = input_star_file.ReturnLine(i);
+            if ( params.position_in_stack >= first_particle &&
+                 params.position_in_stack <= last_particle &&
+                 params.occupancy != 0.0 &&
+                 params.image_is_active >= 0.0 ) {
+                sum_logp += params.logp;
+                count_for_avg++;
+                if ( count_for_avg <= 5 ) {
+                    wxPrintf("  Sample particle %d: logp = %.3f\n", i, params.logp);
+                }
+            }
+        }
+
+        if ( count_for_avg > 0 ) {
+            parameter_averages.logp = float(sum_logp / count_for_avg);
+            wxPrintf("Recalculated average logP: %.6f (from %d particles)\n",
+                     parameter_averages.logp, count_for_avg);
+        }
+
+        // Now calculate variance with the correct average
+        double sum_squared_diff = 0.0;
+        int    count            = 0;
+        for ( int i = 0; i < input_star_file.ReturnNumberofLines( ); i++ ) {
+            cisTEMParameterLine params = input_star_file.ReturnLine(i);
+            if ( params.position_in_stack >= first_particle &&
+                 params.position_in_stack <= last_particle &&
+                 params.occupancy != 0.0 &&
+                 params.image_is_active >= 0.0 ) {
+                double diff = params.logp - parameter_averages.logp;
+                sum_squared_diff += diff * diff;
+                count++;
+            }
+        }
+        if ( count > 1 ) {
+            parameter_variances.logp = float(sum_squared_diff / (count - 1));
+            wxPrintf("Manually calculated logP variance: %.6f (from %d particles)\n",
+                     parameter_variances.logp, count);
+        }
+    }
+
+    // revert - debug: Show final logP statistics
+    wxPrintf("\nFinal logP statistics for Reconstruct3D:\n");
+    wxPrintf("  - Average logP: %.6f\n", parameter_averages.logp);
+    wxPrintf("  - LogP variance: %.6f\n", parameter_variances.logp);
+    if ( parameter_variances.logp > 0 ) {
+        wxPrintf("  - LogP std dev: %.6f\n", sqrtf(parameter_variances.logp));
+    }
+
+    // revert - debug: Sample a few individual scores from the star file
+    if ( input_star_file.ReturnNumberofLines( ) > 0 ) {
+        wxPrintf("\nSample of individual particle scores:\n");
+        int samples_to_show = std::min(10, (int)input_star_file.ReturnNumberofLines( ));
+        for ( int i = 0; i < samples_to_show; i++ ) {
+            cisTEMParameterLine sample_params = input_star_file.ReturnLine(i);
+            wxPrintf("  Particle %d: score=%.6f, sigma=%.6f, logp=%.6f\n",
+                     i + 1, sample_params.score, sample_params.sigma, sample_params.logp);
+        }
+    }
+    wxPrintf("=====================================\n\n");
+
     input_particle.SetParameterStatistics(parameter_averages, parameter_variances);
     input_particle.mask_radius  = outer_mask_radius;
     input_particle.mask_falloff = mask_falloff;
     //input_par_file.Rewind();
 
-    Reconstruct3D my_reconstruction_1(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
-    Reconstruct3D my_reconstruction_2(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
+    Reconstruct3D my_reconstruction_1(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
+    Reconstruct3D my_reconstruction_2(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
     my_reconstruction_1.original_x_dimension = original_box_size;
     my_reconstruction_1.original_y_dimension = original_box_size;
     my_reconstruction_1.original_z_dimension = original_box_size;
@@ -770,8 +852,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
         input_particle.SetParameterStatistics(parameter_averages, parameter_variances);
         input_particle.mask_radius  = outer_mask_radius;
         input_particle.mask_falloff = mask_falloff;
-        Reconstruct3D my_reconstruction_1_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
-        Reconstruct3D my_reconstruction_2_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
+        Reconstruct3D my_reconstruction_1_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
+        Reconstruct3D my_reconstruction_2_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
         my_reconstruction_1_local.original_x_dimension = original_box_size;
         my_reconstruction_1_local.original_y_dimension = original_box_size;
         my_reconstruction_1_local.original_z_dimension = original_box_size;
@@ -852,14 +934,21 @@ bool Reconstruct3DApp::DoCalculation( ) {
                     wxPrintf("  - Assigned subset: %d\n", input_parameters.assigned_subset);
                 }
 
+                // FIXME: we should probably just have this on the heap and set it once outside the loop
                 ElectronDose my_electron_dose(input_parameters.microscope_voltage_kv, input_parameters.pixel_size);
                 float        dose_filter[input_particle.ctf_image->real_memory_allocated / 2];
 
                 ZeroFloatArray(dose_filter, input_particle.ctf_image->real_memory_allocated / 2);
                 my_electron_dose.CalculateDoseFilterAs1DArray(&input_image_local, dose_filter, input_parameters.pre_exposure, input_parameters.total_exposure);
 
+                // FIXME: for now we have no way to incorporate weighting based on the tilt angle (directly, I guess the image noise may be higher for high tilt)
+                // Assuming: we only have multi view for tomography, we are using a dose-symmetric scheme, and the total exposure is evenly distributed over all tilts
+                // float tilt_angle_weight = cosf(deg_2_rad(input_parameters.total_exposure / 2.0f));
+                // tilt_angle_weight *= tilt_angle_weight; // approximate to cos^2
+                // wxPrintf("  - Tilt angle weight: %.3f for total exposure %0.3f \n", tilt_angle_weight, input_parameters.total_exposure); // revert - debug
+                float tilt_angle_weight = 1.0f;
                 for ( int pixel_counter = 0; pixel_counter < input_particle.ctf_image->real_memory_allocated / 2; pixel_counter++ ) {
-                    input_particle.ctf_image->complex_values[pixel_counter] *= dose_filter[pixel_counter];
+                    input_particle.ctf_image->complex_values[pixel_counter] *= dose_filter[pixel_counter] * tilt_angle_weight;
                 }
             }
             if ( use_input_reconstruction ) {
@@ -1208,9 +1297,32 @@ bool Reconstruct3DApp::DoCalculation( ) {
 
             input_particle.particle_score     = input_parameters.score;
             input_particle.particle_occupancy = input_parameters.occupancy;
-            input_particle.sigma_noise        = input_parameters.sigma;
+            input_particle.logp               = input_parameters.logp;
+            input_particle.particle_group     = input_parameters.particle_group;
+            // revert - debug: Add exposure tracking
+            input_particle.pre_exposure   = input_parameters.pre_exposure;
+            input_particle.total_exposure = input_parameters.total_exposure;
+            input_particle.sigma_noise    = input_parameters.sigma;
             if ( input_particle.sigma_noise <= 0.0 )
                 input_particle.sigma_noise = parameter_averages.sigma;
+
+            // revert - debug: Track exposure data transfer to particle
+            if ( image_counter <= 20 || (image_counter % 1000 == 0) ) {
+                wxPrintf("\n=== PARTICLE DATA (Image %d, Stack pos %d) ===", image_counter, input_parameters.position_in_stack);
+                wxPrintf("\n  Exposure values:");
+                wxPrintf("\n    - Pre-exposure: %.2f e-/A^2", input_parameters.pre_exposure);
+                wxPrintf("\n    - Total exposure: %.2f e-/A^2", input_parameters.total_exposure);
+                wxPrintf("\n    - Exposure filter applied: %s", apply_exposure_filter_during_reconstruction ? "YES" : "NO");
+                wxPrintf("\n  Score/noise values:");
+                wxPrintf("\n    - Score: %.6f (avg: %.6f, diff: %.6f)", input_particle.particle_score, parameter_averages.score, input_particle.particle_score - parameter_averages.score);
+                wxPrintf("\n    - Sigma noise: %.6f (avg: %.6f, ratio: %.3f)", input_particle.sigma_noise, parameter_averages.sigma, input_particle.sigma_noise / parameter_averages.sigma);
+                wxPrintf("\n    - Occupancy: %.6f (avg: %.6f)", input_particle.particle_occupancy, parameter_averages.occupancy);
+                wxPrintf("\n================================\n");
+            }
+
+            // revert - debug: Transfer exposure data to particle for InsertSliceWithCTF debugging
+            input_particle.pre_exposure   = input_parameters.pre_exposure;
+            input_particle.total_exposure = input_parameters.total_exposure;
 
             /*
 		 * Assign each particle to one of the two half-maps for later FSC

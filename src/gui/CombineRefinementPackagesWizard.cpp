@@ -330,6 +330,20 @@ void CombineRefinementPackagesWizard::OnFinished(wxWizardEvent& event) {
                     temp_combined_refinement_package->contained_particles[output_particle_counter].position_in_stack                   = output_particle_counter + 1;
                     temp_combined_refinement_package->contained_particles[output_particle_counter].original_particle_position_asset_id = output_particle_counter + 1; // Question of whether this will be needed here; it probably is
 
+                    /**
+                     * @brief Complete copy of refinement parameters when combining packages
+                     *
+                     * Copies all refinement parameters from the source refinement to the combined package.
+                     * Position_in_stack is updated to reflect the new contiguous numbering.
+                     * Multi-view data is preserved during the combination process.
+                     *
+                     * @note Similar complete parameter copying exists in:
+                     *  - ResampleDialog.cpp:~220-246
+                     *  - AutoRefine3dPanel.cpp:~1800-1840 (between classes)
+                     *  - Second instance at line ~371 in this file (for non-duplicate removal)
+                     *
+                     * @todo Refactor into centralized RefinementResult::CopyAllFrom() method
+                     */
                     temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].position_in_stack = output_particle_counter + 1;
                     temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].defocus1          = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].defocus1;
                     temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].defocus2          = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].defocus2;
@@ -373,6 +387,21 @@ void CombineRefinementPackagesWizard::OnFinished(wxWizardEvent& event) {
                 temp_combined_refinement_package->contained_particles[output_particle_counter].position_in_stack                   = output_particle_counter + 1;
                 temp_combined_refinement_package->contained_particles[output_particle_counter].original_particle_position_asset_id = output_particle_counter + 1; // Appears this is necessary when combining and not wanting to remove duplicates; at least this is resolved
 
+                /**
+                 * @brief Complete copy of refinement parameters when combining packages (no duplicate removal)
+                 *
+                 * Copies all refinement parameters from the source refinement to the combined package.
+                 * This path is taken when the user chooses not to remove duplicates.
+                 * Position_in_stack is updated to reflect the new contiguous numbering.
+                 * Multi-view data is preserved during the combination process.
+                 *
+                 * @note Similar complete parameter copying exists in:
+                 *  - ResampleDialog.cpp:~220-246
+                 *  - AutoRefine3dPanel.cpp:~1800-1840 (between classes)
+                 *  - First instance at line ~347 in this file (with duplicate removal)
+                 *
+                 * @todo Refactor into centralized RefinementResult::CopyAllFrom() method
+                 */
                 temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].position_in_stack = output_particle_counter + 1;
                 temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].defocus1          = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].defocus1;
                 temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].defocus2          = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].defocus2;

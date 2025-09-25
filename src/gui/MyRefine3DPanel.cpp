@@ -1878,6 +1878,20 @@ void RefinementManager::ProcessJobResult(JobResult* result_to_process) {
         //	wxPrintf("Received a refinement result for class #%i, particle %li\n", current_class + 1, current_particle + 1);
         //wxPrintf("output refinement has %i classes and %li particles\n", output_refinement->number_of_classes, output_refinement->number_of_particles);
 
+        /**
+         * @brief Update refinement parameters from worker results
+         *
+         * Updates all refinement parameters from the worker result array, including
+         * angles, shifts, CTF parameters (when CTF refinement is enabled), and scores.
+         * Multi-view data is preserved from input_refinement as it doesn't change during refinement.
+         *
+         * @note Similar parameter update code exists in:
+         *  - AbInitio3DPanel.cpp:~2190
+         *  - AutoRefine3dPanel.cpp:~1580
+         *  - RefineCTFPanel.cpp:~1394 (CTF-specific)
+         *
+         * @todo Refactor into centralized RefinementResult::UpdateFromWorkerResult() method
+         */
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].position_in_stack                  = long(result_to_process->result_data[1] + 0.5);
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].image_is_active                    = int(result_to_process->result_data[2]);
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].psi                                = result_to_process->result_data[3];

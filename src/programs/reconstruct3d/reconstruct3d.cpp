@@ -282,7 +282,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
 
     // revert - debug: Check what columns are present
     bool has_particle_group = input_star_file.parameters_that_were_read.particle_group;
-    bool has_exposure_data = input_star_file.parameters_that_were_read.pre_exposure &&
+    bool has_exposure_data  = input_star_file.parameters_that_were_read.pre_exposure &&
                              input_star_file.parameters_that_were_read.total_exposure;
 
     // revert - debug: show multi-view detection
@@ -292,13 +292,13 @@ bool Reconstruct3DApp::DoCalculation( ) {
     wxPrintf("ContainsMultipleParticleGroups() returns: %s\n", apply_exposure_filter_during_reconstruction ? "YES" : "NO");
 
     // revert - debug: Sample some particle groups to see what values are present
-    if (has_particle_group && input_star_file.ReturnNumberofLines() > 0) {
+    if ( has_particle_group && input_star_file.ReturnNumberofLines( ) > 0 ) {
         wxPrintf("Sample particle_group values:\n");
-        int samples_to_show = std::min(5, (int)input_star_file.ReturnNumberofLines());
-        for (int i = 0; i < samples_to_show; i++) {
+        int samples_to_show = std::min(5, (int)input_star_file.ReturnNumberofLines( ));
+        for ( int i = 0; i < samples_to_show; i++ ) {
             cisTEMParameterLine params = input_star_file.ReturnLine(i);
             wxPrintf("  Line %d: particle_group=%d, pre_exp=%.2f, total_exp=%.2f\n",
-                    i, params.particle_group, params.pre_exposure, params.total_exposure);
+                     i, params.particle_group, params.pre_exposure, params.total_exposure);
         }
     }
 
@@ -813,7 +813,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                     // revert - debug
                     if ( image_counter < 10 ) {
                         wxPrintf("DEBUG: Found particle %d with beam_tilt_group=0 (NOT skipping - already filtered during import)\n",
-                                input_parameters.position_in_stack);
+                                 input_parameters.position_in_stack);
                     }
                     // Don't skip - particles are already filtered in import
                     // continue;
@@ -844,7 +844,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 // revert - debug: show exposure filtering details
                 if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
                     wxPrintf("DEBUG: Applying exposure filter to particle %d (stack pos %d)\n",
-                            image_counter, input_parameters.position_in_stack);
+                             image_counter, input_parameters.position_in_stack);
                     wxPrintf("  - Pre-exposure: %.2f e-/A^2\n", input_parameters.pre_exposure);
                     wxPrintf("  - Total exposure: %.2f e-/A^2\n", input_parameters.total_exposure);
                     wxPrintf("  - Particle group: %d\n", input_parameters.particle_group);
@@ -1246,8 +1246,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
             // revert - debug: show final assignment
             if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
                 wxPrintf("  - Final: insert_even = %s (subset %d)\n",
-                        input_particle.insert_even ? "true" : "false",
-                        input_parameters.assigned_subset);
+                         input_particle.insert_even ? "true" : "false",
+                         input_parameters.assigned_subset);
             }
 
             //		input_particle.particle_image->BackwardFFT();

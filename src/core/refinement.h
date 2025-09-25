@@ -3,6 +3,115 @@ class RefinementResult {
   public:
     RefinementResult( );
     ~RefinementResult( );
+
+    // Copy type enum for different copying contexts
+    enum class CopyType : int {
+        Refine3D        = 0,  // MyRefine3DPanel - copy non-refinement parameters
+        AbInitio        = 1,  // AbInitio3DPanel - copy non-refinement parameters
+        AutoRefine      = 2,  // AutoRefine3dPanel - copy non-refinement parameters
+        CTFRefine       = 3,  // RefineCTFPanel - copy all except defocus
+        Resample        = 4,  // ResampleDialog - complete copy
+        Combine         = 5,  // CombineRefinementPackagesWizard - complete copy
+        ClassCopy       = 6   // AutoRefine3dPanel - copying between classes
+    };
+
+    // Templated copy method for different contexts
+    template<CopyType copy_type>
+    void CopyFrom(const RefinementResult& source) {
+        if constexpr (copy_type == CopyType::Refine3D ||
+                      copy_type == CopyType::AbInitio ||
+                      copy_type == CopyType::AutoRefine) {
+            // Copy parameters that don't change during 3D refinement
+            // These are set at import/creation and remain constant
+            position_in_stack = source.position_in_stack;
+            image_is_active = source.image_is_active;
+            defocus1 = source.defocus1;
+            defocus2 = source.defocus2;
+            defocus_angle = source.defocus_angle;
+            phase_shift = source.phase_shift;
+            pixel_size = source.pixel_size;
+            microscope_voltage_kv = source.microscope_voltage_kv;
+            microscope_spherical_aberration_mm = source.microscope_spherical_aberration_mm;
+            amplitude_contrast = source.amplitude_contrast;
+            beam_tilt_x = source.beam_tilt_x;
+            beam_tilt_y = source.beam_tilt_y;
+            image_shift_x = source.image_shift_x;
+            image_shift_y = source.image_shift_y;
+
+            // Multi-view data
+            beam_tilt_group = source.beam_tilt_group;
+            particle_group = source.particle_group;
+            pre_exposure = source.pre_exposure;
+            total_exposure = source.total_exposure;
+
+            // Don't copy: psi, theta, phi, xshift, yshift,
+            // occupancy, logp, score, sigma, assigned_subset
+            // These are updated by the refinement workers
+        }
+        else if constexpr (copy_type == CopyType::CTFRefine) {
+            // Copy everything except defocus values which are being refined
+            position_in_stack = source.position_in_stack;
+            psi = source.psi;
+            theta = source.theta;
+            phi = source.phi;
+            xshift = source.xshift;
+            yshift = source.yshift;
+            // Skip defocus1 and defocus2 - these are set by CTF refinement
+            defocus_angle = source.defocus_angle;
+            phase_shift = source.phase_shift;
+            occupancy = source.occupancy;
+            logp = source.logp;
+            sigma = source.sigma;
+            score = source.score;
+            image_is_active = source.image_is_active;
+            pixel_size = source.pixel_size;
+            microscope_voltage_kv = source.microscope_voltage_kv;
+            microscope_spherical_aberration_mm = source.microscope_spherical_aberration_mm;
+            amplitude_contrast = source.amplitude_contrast;
+            beam_tilt_x = source.beam_tilt_x;
+            beam_tilt_y = source.beam_tilt_y;
+            image_shift_x = source.image_shift_x;
+            image_shift_y = source.image_shift_y;
+            assigned_subset = source.assigned_subset;
+            beam_tilt_group = source.beam_tilt_group;
+            particle_group = source.particle_group;
+            pre_exposure = source.pre_exposure;
+            total_exposure = source.total_exposure;
+        }
+        else if constexpr (copy_type == CopyType::Resample ||
+                           copy_type == CopyType::Combine ||
+                           copy_type == CopyType::ClassCopy) {
+            // Complete copy of all parameters
+            position_in_stack = source.position_in_stack;
+            psi = source.psi;
+            theta = source.theta;
+            phi = source.phi;
+            xshift = source.xshift;
+            yshift = source.yshift;
+            defocus1 = source.defocus1;
+            defocus2 = source.defocus2;
+            defocus_angle = source.defocus_angle;
+            phase_shift = source.phase_shift;
+            occupancy = source.occupancy;
+            logp = source.logp;
+            sigma = source.sigma;
+            score = source.score;
+            image_is_active = source.image_is_active;
+            pixel_size = source.pixel_size;
+            microscope_voltage_kv = source.microscope_voltage_kv;
+            microscope_spherical_aberration_mm = source.microscope_spherical_aberration_mm;
+            amplitude_contrast = source.amplitude_contrast;
+            beam_tilt_x = source.beam_tilt_x;
+            beam_tilt_y = source.beam_tilt_y;
+            image_shift_x = source.image_shift_x;
+            image_shift_y = source.image_shift_y;
+            assigned_subset = source.assigned_subset;
+            beam_tilt_group = source.beam_tilt_group;
+            particle_group = source.particle_group;
+            pre_exposure = source.pre_exposure;
+            total_exposure = source.total_exposure;
+        }
+    }
     long  position_in_stack;
     float psi;
     float theta;

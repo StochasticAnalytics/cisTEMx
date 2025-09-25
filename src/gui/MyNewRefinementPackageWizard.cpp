@@ -41,6 +41,7 @@ MyNewRefinementPackageWizard::MyNewRefinementPackageWizard(wxWindow* parent)
     initial_reference_page = new InitialReferencesWizardPage(this);
     symmetry_page          = new SymmetryWizardPage(this);
     molecular_weight_page  = new MolecularWeightWizardPage(this);
+    limit_exposure_page    = new LimitTotalExposureWizardPage(this);
     largest_dimension_page = new LargestDimensionWizardPage(this);
     class_selection_page   = new ClassSelectionWizardPage(this);
 
@@ -194,9 +195,84 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
         //	 wxPrintf("filled\n");
 
         parameter_page->my_panel->GroupComboBox->SetSelection(parameter_page->my_panel->GroupComboBox->GetCount( ) - 1);
+
+        // Check if the selected refinement package has multi-view data
+        if (template_page->my_panel->GroupComboBox->GetSelection( ) > 2) {
+            long refinement_package_index = template_page->my_panel->GroupComboBox->GetSelection( ) - 4;
+            RefinementPackage* template_package = &refinement_package_asset_panel->all_refinement_packages.Item(refinement_package_index);
+
+            // Reset multi-view state
+            has_multi_view_data = false;
+            maximum_exposure = 0.0f;
+
+            // revert - debug output for multi-view detection
+            wxPrintf("\n=== MULTI-VIEW DETECTION in MyNewRefinementPackageWizard ===\n");
+            wxPrintf("Checking refinement package index %ld with %ld particles\n",
+                    refinement_package_index, template_package->contained_particles.GetCount());
+
+            int multi_view_particle_count = 0; // revert - debug counter
+
+            // Check for multi-view data in the contained particles
+            for (long particle_counter = 0; particle_counter < template_package->contained_particles.GetCount(); particle_counter++) {
+                // Check particle_group, pre_exposure, and total_exposure for multi-view data
+                if (template_package->contained_particles[particle_counter].particle_group != 0 ||
+                    template_package->contained_particles[particle_counter].pre_exposure != 0.0f ||
+                    template_package->contained_particles[particle_counter].total_exposure != 0.0f) {
+                    has_multi_view_data = true;
+                    multi_view_particle_count++; // revert - increment debug counter
+                    if (template_package->contained_particles[particle_counter].total_exposure > maximum_exposure) {
+                        maximum_exposure = template_package->contained_particles[particle_counter].total_exposure;
+                    }
+                    // revert - debug output for first 5 multi-view particles
+                    if (multi_view_particle_count <= 5) {
+                        wxPrintf("  Particle %ld: particle_group=%d, pre_exp=%.2f, total_exp=%.2f\n",
+                                particle_counter,
+                                template_package->contained_particles[particle_counter].particle_group,
+                                template_package->contained_particles[particle_counter].pre_exposure,
+                                template_package->contained_particles[particle_counter].total_exposure);
+                    }
+                }
+            }
+            // revert - debug summary
+            wxPrintf("Multi-view detected: %s\n", has_multi_view_data ? "YES" : "NO");
+            wxPrintf("Total multi-view particles: %d/%ld\n", multi_view_particle_count,
+                    template_package->contained_particles.GetCount());
+            wxPrintf("Maximum exposure: %.2f\n", maximum_exposure);
+            wxPrintf("==================================================\n\n");
+        } else {
+            has_multi_view_data = false;
+            maximum_exposure = 0.0f;
+            // revert - debug output for non-refinement package selection
+            wxPrintf("Not checking multi-view: selection=%d (not from existing refinement)\n",
+                    template_page->my_panel->GroupComboBox->GetSelection());
+        }
+
         parameter_page->Thaw( );
     }
-    if ( event.GetPage( ) == particle_group_page ) {
+    else if ( event.GetPage( ) == limit_exposure_page ) {
+        if ( limit_exposure_page->my_panel->InfoText->has_autowrapped == false ) {
+            limit_exposure_page->Freeze( );
+            limit_exposure_page->my_panel->InfoText->AutoWrap( );
+            limit_exposure_page->Layout( );
+            limit_exposure_page->Thaw( );
+        }
+
+        // revert - debug output for exposure limit page
+        wxPrintf("\n=== ENTERING EXPOSURE LIMIT PAGE ===\n");
+        wxPrintf("has_multi_view_data: %s\n", has_multi_view_data ? "YES" : "NO");
+        wxPrintf("maximum_exposure: %.2f\n", maximum_exposure);
+
+        // Set the maximum exposure value
+        if (has_multi_view_data && maximum_exposure > 0.0f) {
+            limit_exposure_page->my_panel->LimitExposureToWizardTextCtrl->ChangeValueFloat(maximum_exposure);
+            // revert - debug output
+            wxPrintf("Set exposure limit text control to: %.2f\n", maximum_exposure);
+        }
+
+        // revert - debug output
+        wxPrintf("====================================\n\n");
+    }
+    else if ( event.GetPage( ) == particle_group_page ) {
         if ( particle_group_page->my_panel->InfoText->has_autowrapped == false ) {
             particle_group_page->Freeze( );
             particle_group_page->my_panel->InfoText->AutoWrap( );
@@ -1600,10 +1676,59 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
         wxArrayLong particles_to_take;
 
+        // Check if we need to apply exposure limiting
+        bool apply_exposure_limit = false;
+        float exposure_limit = 0.0f;
+
+        // revert - debug output for exposure limiting decision
+        wxPrintf("\n=== EXPOSURE LIMITING DECISION in OnFinished ===\n");
+        wxPrintf("has_multi_view_data: %s\n", has_multi_view_data ? "YES" : "NO");
+        wxPrintf("limit_exposure_page exists: %s\n", limit_exposure_page != nullptr ? "YES" : "NO");
+
+        if (has_multi_view_data && limit_exposure_page != nullptr) {
+            exposure_limit = limit_exposure_page->my_panel->LimitExposureToWizardTextCtrl->ReturnValue();
+            // revert - debug output
+            wxPrintf("User-set exposure limit: %.2f\n", exposure_limit);
+            wxPrintf("Maximum exposure in package: %.2f\n", maximum_exposure);
+
+            if (exposure_limit > 0.0f && exposure_limit < maximum_exposure) {
+                apply_exposure_limit = true;
+                should_apply_exposure_limit = true;
+                // revert - debug output
+                wxPrintf("APPLYING EXPOSURE LIMIT: YES (%.2f < %.2f)\n", exposure_limit, maximum_exposure);
+            } else {
+                // revert - debug output
+                wxPrintf("APPLYING EXPOSURE LIMIT: NO (limit not less than max)\n");
+            }
+        } else {
+            // revert - debug output
+            wxPrintf("APPLYING EXPOSURE LIMIT: NO (no multi-view data or page)\n");
+        }
+        wxPrintf("=================================================\n\n");
+
         if ( class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == true || template_refinement_package->number_of_classes == 1 ) // All particles
         {
+            int particles_filtered_by_exposure = 0; // revert - debug counter
+
             for ( particle_counter = 0; particle_counter < template_refinement_package->contained_particles.GetCount( ); particle_counter++ ) {
-                particles_to_take.Add(particle_counter);
+                // Apply exposure limit if needed
+                if (apply_exposure_limit) {
+                    if (template_refinement_package->contained_particles[particle_counter].total_exposure <= exposure_limit) {
+                        particles_to_take.Add(particle_counter);
+                    } else {
+                        particles_filtered_by_exposure++; // revert - increment counter
+                    }
+                } else {
+                    particles_to_take.Add(particle_counter);
+                }
+            }
+
+            // revert - debug output for particle selection
+            if (apply_exposure_limit) {
+                wxPrintf("Particles filtered by exposure limit: %d/%ld\n",
+                        particles_filtered_by_exposure,
+                        template_refinement_package->contained_particles.GetCount());
+                wxPrintf("Particles kept: %ld\n", particles_to_take.GetCount());
             }
         }
         else // Selection
@@ -1613,6 +1738,11 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
             wxArrayBool is_class_selected = class_setup_pageB->ReturnSelectedClasses( );
 
             for ( particle_counter = 0; particle_counter < template_refinement_package->contained_particles.GetCount( ); particle_counter++ ) {
+                // Apply exposure limit first if needed
+                if (apply_exposure_limit && template_refinement_package->contained_particles[particle_counter].total_exposure > exposure_limit) {
+                    continue; // Skip this particle due to exposure limit
+                }
+
                 // work out which class has the highest occupancy, then check if that class is selected to carry particles over
 
                 best_class        = 0;
@@ -1641,13 +1771,48 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         MRCFile* output_stack;
         Image    image_for_new_stack;
 
-        if ( class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == true ) // taking over all particles, don't need to make a new stack
+        // Check if we need to create a new stack
+        // We need a new stack if: we're not carrying over all particles OR we're applying exposure limits
+        bool need_new_stack = (class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == false) ||
+                              (apply_exposure_limit && particles_to_take.GetCount() < template_refinement_package->contained_particles.GetCount());
+
+        // revert - debug output for stack decision
+        wxPrintf("\n=== STACK CREATION DECISION ===\n");
+        wxPrintf("CarryOverYes: %s\n", class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) ? "YES" : "NO");
+        wxPrintf("Apply exposure limit: %s\n", apply_exposure_limit ? "YES" : "NO");
+        wxPrintf("Particles to take: %ld/%ld\n", particles_to_take.GetCount(),
+                template_refinement_package->contained_particles.GetCount());
+        wxPrintf("Need new stack: %s\n", need_new_stack ? "YES" : "NO");
+        wxPrintf("================================\n\n");
+
+        if ( !need_new_stack ) // taking over all particles, don't need to make a new stack
         {
             temp_refinement_package->stack_filename = template_refinement_package->stack_filename;
+            // revert - debug output
+            wxPrintf("Using existing stack: %s\n", temp_refinement_package->stack_filename.ToStdString().c_str());
         }
         else // we are going to make a new stack..
         {
-            wxFileName output_stack_filename        = main_frame->current_project.particle_stack_directory.GetFullPath( ) + wxString::Format("/particle_stack_%li.mrc", refinement_package_asset_panel->current_asset_number);
+            wxFileName output_stack_filename;
+
+            // Include exposure limit in filename if that's why we're creating a new stack
+            if (apply_exposure_limit && should_apply_exposure_limit) {
+                output_stack_filename = main_frame->current_project.particle_stack_directory.GetFullPath( ) +
+                                       wxString::Format("/particle_stack_%li_exposure_%d.mrc",
+                                                       refinement_package_asset_panel->current_asset_number,
+                                                       int(exposure_limit));
+                // revert - debug output
+                wxPrintf("Creating new stack WITH exposure limit in name: %s\n",
+                        output_stack_filename.GetFullPath().ToStdString().c_str());
+            } else {
+                output_stack_filename = main_frame->current_project.particle_stack_directory.GetFullPath( ) +
+                                       wxString::Format("/particle_stack_%li.mrc",
+                                                       refinement_package_asset_panel->current_asset_number);
+                // revert - debug output
+                wxPrintf("Creating new stack WITHOUT exposure limit in name: %s\n",
+                        output_stack_filename.GetFullPath().ToStdString().c_str());
+            }
+
             temp_refinement_package->stack_filename = output_stack_filename.GetFullPath( );
 
             // open the input/output stack
@@ -1659,14 +1824,14 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         for ( particle_counter = 0; particle_counter < number_of_particles; particle_counter++ ) {
             temp_particle_info = template_refinement_package->contained_particles[particles_to_take[particle_counter]];
 
-            if ( class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == false )
+            if ( need_new_stack )
                 temp_particle_info.position_in_stack = particle_counter + 1;
 
             temp_refinement_package->contained_particles.Add(temp_particle_info);
 
             // do we have to write to a new stack?
 
-            if ( class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == false ) // yes we do
+            if ( need_new_stack ) // yes we do
             {
                 image_for_new_stack.ReadSlice(input_stack, template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack);
                 image_for_new_stack.WriteSlice(output_stack, particle_counter + 1);
@@ -1717,7 +1882,7 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                     }
                 }
 
-                if ( class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == false )
+                if ( need_new_stack )
                     temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].position_in_stack = particle_counter + 1;
                 else
                     temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].position_in_stack = active_result.position_in_stack;
@@ -1754,6 +1919,12 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].image_shift_x                      = active_result.image_shift_x;
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].image_shift_y                      = active_result.image_shift_y;
 
+                // Copy multi-view parameters
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group                    = active_result.beam_tilt_group;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group                     = active_result.particle_group;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure                       = active_result.pre_exposure;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure                     = active_result.total_exposure;
+
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].assigned_subset = active_result.assigned_subset;
             }
 
@@ -1763,7 +1934,7 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         my_dialog->Destroy( );
         delete refinement_to_copy;
 
-        if ( class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == false ) {
+        if ( need_new_stack ) {
             delete input_stack;
             delete output_stack;
         }
@@ -1901,7 +2072,12 @@ wxWizardPage* InputParameterWizardPage::GetPrev( ) const {
 wxWizardPage* InputParameterWizardPage::GetNext( ) const {
     // wxPrintf("Template Next\n");
 
-    return wizard_pointer->molecular_weight_page;
+    // Check if we have multi-view data and should show exposure filtering page
+    if (wizard_pointer->has_multi_view_data) {
+        return wizard_pointer->limit_exposure_page;
+    } else {
+        return wizard_pointer->molecular_weight_page;
+    }
 }
 
 //////////////////////
@@ -2078,8 +2254,14 @@ wxWizardPage* MolecularWeightWizardPage::GetPrev( ) const {
     //  wxPrintf("Box Prev\n");
     //	   if (wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection() > 1) return wizard_pointer->parameter_page;
     //   else return wizard_pointer->box_size_page;
-    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 2 )
-        return wizard_pointer->parameter_page;
+    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 2 ) {
+        // If we have multi-view data, go back to exposure page
+        if (wizard_pointer->has_multi_view_data) {
+            return wizard_pointer->limit_exposure_page;
+        } else {
+            return wizard_pointer->parameter_page;
+        }
+    }
     else if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) == 1 )
         return wizard_pointer->class_selection_page;
     else if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) == 2 )
@@ -2091,6 +2273,32 @@ wxWizardPage* MolecularWeightWizardPage::GetPrev( ) const {
 wxWizardPage* MolecularWeightWizardPage::GetNext( ) const {
     //  wxPrintf("Box Next\n");
     return wizard_pointer->largest_dimension_page;
+}
+
+//////////////////////////
+
+// Limit Total Exposure PAGE
+
+////////////////////////////
+
+LimitTotalExposureWizardPage::LimitTotalExposureWizardPage(MyNewRefinementPackageWizard* parent, const wxBitmap& bitmap)
+    : wxWizardPage(parent, bitmap) {
+    wizard_pointer = parent;
+    wxBoxSizer* main_sizer;
+    my_panel = new LimitTotalExposurePanel(this);
+
+    main_sizer = new wxBoxSizer(wxVERTICAL);
+    this->SetSizer(main_sizer);
+    main_sizer->Fit(this);
+    main_sizer->Add(my_panel);
+}
+
+wxWizardPage* LimitTotalExposureWizardPage::GetPrev( ) const {
+    return wizard_pointer->parameter_page;
+}
+
+wxWizardPage* LimitTotalExposureWizardPage::GetNext( ) const {
+    return wizard_pointer->molecular_weight_page;
 }
 
 //////////////////////////

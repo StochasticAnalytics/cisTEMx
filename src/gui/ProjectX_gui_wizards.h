@@ -542,6 +542,26 @@ class NumberofClassesWizardPanel : public wxPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
+/// Class LimitTotalExposurePanel
+///////////////////////////////////////////////////////////////////////////////
+class LimitTotalExposurePanel : public wxPanel
+{
+	private:
+
+	protected:
+		wxStaticText* m_staticText214;
+
+	public:
+		NumericTextCtrl* LimitExposureToWizardTextCtrl;
+		AutoWrapStaticText* InfoText;
+
+		LimitTotalExposurePanel( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 600,400 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+
+		~LimitTotalExposurePanel();
+
+};
+
+///////////////////////////////////////////////////////////////////////////////
 /// Class InputTemplateMatchesPackageWizardPanel
 ///////////////////////////////////////////////////////////////////////////////
 class InputTemplateMatchesPackageWizardPanel : public wxPanel

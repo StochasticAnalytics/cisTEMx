@@ -280,46 +280,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
     // TODO: remove this - there may be cases when there are multiple particle groups and yet we do NOT want to apply an exposure filter during reconstruction
     apply_exposure_filter_during_reconstruction = input_star_file.ContainsMultipleParticleGroups( );
 
-    // revert - debug: Check what columns are present
-    bool has_particle_group = input_star_file.parameters_that_were_read.particle_group;
-    bool has_exposure_data  = input_star_file.parameters_that_were_read.total_exposure;
-
-    // revert - debug: show multi-view detection
-    wxPrintf("\n=== MULTI-VIEW DATA DETECTION ===\n");
-    wxPrintf("Star file has particle_group column: %s\n", has_particle_group ? "YES" : "NO");
-    wxPrintf("Star file has exposure data (pre & total): %s\n", has_exposure_data ? "YES" : "NO");
-    wxPrintf("ContainsMultipleParticleGroups() returns: %s\n", apply_exposure_filter_during_reconstruction ? "YES" : "NO");
-
-    // revert - debug: Sample some particle groups to see what values are present
-    if ( has_particle_group && input_star_file.ReturnNumberofLines( ) > 0 ) {
-        wxPrintf("Sample particle_group values:\n");
-        int samples_to_show = std::min(5, (int)input_star_file.ReturnNumberofLines( ));
-        for ( int i = 0; i < samples_to_show; i++ ) {
-            cisTEMParameterLine params = input_star_file.ReturnLine(i);
-            wxPrintf("  Line %d: particle_group=%d, total_exp=%.2f\n",
-                     i, params.particle_group, params.total_exposure);
-        }
-    }
-
-    wxPrintf("\nFinal apply_exposure_filter: %s\n", apply_exposure_filter_during_reconstruction ? "YES" : "NO");
-    wxPrintf("==================================\n\n");
-
-    //	input_par_file.ReadFile(true, input_stack.ReturnZSize());
-    /*	input_par_file.ReduceAngles();
-	min_class = myroundint(input_par_file.ReturnMin(7));
-	max_class = myroundint(input_par_file.ReturnMax(7));
-	for (i = min_class; i <= max_class; i++)
-	{
-		temp_float = input_par_file.ReturnDistributionMax(2, i);
-		sigma = input_par_file.ReturnDistributionSigma(2, temp_float, i);
-		if (temp_float != 0.0) wxPrintf("theta max, sigma, phi max, sigma = %i %g %g", i, temp_float, sigma);
-		input_par_file.SetParameters(2, temp_float, sigma / 2.0, i);
-		temp_float = input_par_file.ReturnDistributionMax(3, i);
-		sigma = input_par_file.ReturnDistributionSigma(3, temp_float, i);
-		if (temp_float != 0.0) wxPrintf(" %g %g\n", temp_float, sigma);
-		input_par_file.SetParameters(3, temp_float, sigma / 2.0, i);
-	} */
-
     // sigma values
     input_star_file.RemoveSigmaOutliers(2.0, false, true);
 
@@ -503,13 +463,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
             images_for_noise_power++;
     }
 
-    /*	for (i = 0; i < input_particle.number_of_parameters; i++)
-	{
-		parameter_average[i] /= input_par_file.number_of_lines;
-		parameter_variance[i] /= input_par_file.number_of_lines;
-		parameter_variance[i] -= powf(parameter_average[i],2);
-	}*/
-
     parameter_averages  = input_star_file.ReturnParameterAverages( );
     parameter_variances = input_star_file.ReturnParameterVariances( );
 
@@ -526,74 +479,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
     wxPrintf("  - Sigma variance: %.6f\n", parameter_variances.sigma);
     wxPrintf("  - LogP variance: %.6f\n", parameter_variances.logp);
     wxPrintf("  - Occupancy variance: %.6f\n", parameter_variances.occupancy);
-
-    // revert - workaround: Calculate logP variance manually if it's zero
-    if ( parameter_variances.logp <= 0.0f && input_star_file.ReturnNumberofLines( ) > 1 ) {
-        wxPrintf("\nLogP variance is zero - calculating manually...\n");
-
-        // First recalculate the average logP from active particles
-        double sum_logp      = 0.0;
-        int    count_for_avg = 0;
-        for ( int i = 0; i < input_star_file.ReturnNumberofLines( ); i++ ) {
-            cisTEMParameterLine params = input_star_file.ReturnLine(i);
-            if ( params.position_in_stack >= first_particle &&
-                 params.position_in_stack <= last_particle &&
-                 params.occupancy != 0.0 &&
-                 params.image_is_active >= 0.0 ) {
-                sum_logp += params.logp;
-                count_for_avg++;
-                if ( count_for_avg <= 5 ) {
-                    wxPrintf("  Sample particle %d: logp = %.3f\n", i, params.logp);
-                }
-            }
-        }
-
-        if ( count_for_avg > 0 ) {
-            parameter_averages.logp = float(sum_logp / count_for_avg);
-            wxPrintf("Recalculated average logP: %.6f (from %d particles)\n",
-                     parameter_averages.logp, count_for_avg);
-        }
-
-        // Now calculate variance with the correct average
-        double sum_squared_diff = 0.0;
-        int    count            = 0;
-        for ( int i = 0; i < input_star_file.ReturnNumberofLines( ); i++ ) {
-            cisTEMParameterLine params = input_star_file.ReturnLine(i);
-            if ( params.position_in_stack >= first_particle &&
-                 params.position_in_stack <= last_particle &&
-                 params.occupancy != 0.0 &&
-                 params.image_is_active >= 0.0 ) {
-                double diff = params.logp - parameter_averages.logp;
-                sum_squared_diff += diff * diff;
-                count++;
-            }
-        }
-        if ( count > 1 ) {
-            parameter_variances.logp = float(sum_squared_diff / (count - 1));
-            wxPrintf("Manually calculated logP variance: %.6f (from %d particles)\n",
-                     parameter_variances.logp, count);
-        }
-    }
-
-    // revert - debug: Show final logP statistics
-    wxPrintf("\nFinal logP statistics for Reconstruct3D:\n");
-    wxPrintf("  - Average logP: %.6f\n", parameter_averages.logp);
-    wxPrintf("  - LogP variance: %.6f\n", parameter_variances.logp);
-    if ( parameter_variances.logp > 0 ) {
-        wxPrintf("  - LogP std dev: %.6f\n", sqrtf(parameter_variances.logp));
-    }
-
-    // revert - debug: Sample a few individual scores from the star file
-    if ( input_star_file.ReturnNumberofLines( ) > 0 ) {
-        wxPrintf("\nSample of individual particle scores:\n");
-        int samples_to_show = std::min(10, (int)input_star_file.ReturnNumberofLines( ));
-        for ( int i = 0; i < samples_to_show; i++ ) {
-            cisTEMParameterLine sample_params = input_star_file.ReturnLine(i);
-            wxPrintf("  Particle %d: score=%.6f, sigma=%.6f, logp=%.6f\n",
-                     i + 1, sample_params.score, sample_params.sigma, sample_params.logp);
-        }
-    }
-    wxPrintf("=====================================\n\n");
 
     input_particle.SetParameterStatistics(parameter_averages, parameter_variances);
     input_particle.mask_radius  = outer_mask_radius;
@@ -892,7 +777,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
             if ( apply_exposure_filter_during_reconstruction ) {
                 if ( input_parameters.beam_tilt_group == 0 ) {
                     // revert - debug
-                    if ( image_counter < 10 ) {
+                    if ( image_counter % 500 == 0 ) {
                         wxPrintf("DEBUG: Found particle %d with beam_tilt_group=0 (NOT skipping - already filtered during import)\n",
                                  input_parameters.position_in_stack);
                     }
@@ -923,12 +808,11 @@ bool Reconstruct3DApp::DoCalculation( ) {
             input_particle.InitCTFImage(input_parameters.microscope_voltage_kv, input_parameters.microscope_spherical_aberration_mm, std::max(input_parameters.amplitude_contrast, 0.001f), input_parameters.defocus_1, input_parameters.defocus_2, input_parameters.defocus_angle, input_parameters.phase_shift, input_parameters.beam_tilt_x / 1000.0f, input_parameters.beam_tilt_y / 1000.0f, input_parameters.image_shift_x, input_parameters.image_shift_y, calculate_complex_ctf);
             if ( apply_exposure_filter_during_reconstruction ) {
                 // revert - debug: show exposure filtering details
-                if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
+                if ( image_counter % 500 == 0 ) {
                     wxPrintf("DEBUG: Applying exposure filter to particle %d (stack pos %d)\n",
                              image_counter, input_parameters.position_in_stack);
                     wxPrintf("  - Total exposure: %.2f e-/A^2\n", input_parameters.total_exposure);
                     wxPrintf("  - Particle group: %d\n", input_parameters.particle_group);
-                    wxPrintf("  - Beam tilt group: %d\n", input_parameters.beam_tilt_group);
                     wxPrintf("  - Assigned subset: %d\n", input_parameters.assigned_subset);
                 }
 
@@ -939,14 +823,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 ZeroFloatArray(dose_filter, input_particle.ctf_image->real_memory_allocated / 2);
                 my_electron_dose.CalculateDoseFilterAs1DArray(&input_image_local, dose_filter, 0.0f, input_parameters.total_exposure);
 
-                // FIXME: for now we have no way to incorporate weighting based on the tilt angle (directly, I guess the image noise may be higher for high tilt)
-                // Assuming: we only have multi view for tomography, we are using a dose-symmetric scheme, and the total exposure is evenly distributed over all tilts
-                // float tilt_angle_weight = cosf(deg_2_rad(input_parameters.total_exposure / 2.0f));
-                // tilt_angle_weight *= tilt_angle_weight; // approximate to cos^2
-                // wxPrintf("  - Tilt angle weight: %.3f for total exposure %0.3f \n", tilt_angle_weight, input_parameters.total_exposure); // revert - debug
-                float tilt_angle_weight = 1.0f;
                 for ( int pixel_counter = 0; pixel_counter < input_particle.ctf_image->real_memory_allocated / 2; pixel_counter++ ) {
-                    input_particle.ctf_image->complex_values[pixel_counter] *= dose_filter[pixel_counter] * tilt_angle_weight;
+                    input_particle.ctf_image->complex_values[pixel_counter] *= dose_filter[pixel_counter];
                 }
             }
             if ( use_input_reconstruction ) {
@@ -1303,7 +1181,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 input_particle.sigma_noise = parameter_averages.sigma;
 
             // revert - debug: Track exposure data transfer to particle
-            if ( image_counter <= 20 || (image_counter % 1000 == 0) ) {
+            if ( image_counter % 500 == 0 ) {
                 wxPrintf("\n=== PARTICLE DATA (Image %d, Stack pos %d) ===", image_counter, input_parameters.position_in_stack);
                 wxPrintf("\n  Exposure values:");
                 wxPrintf("\n    - Total exposure: %.2f e-/A^2", input_parameters.total_exposure);
@@ -1313,20 +1191,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 wxPrintf("\n    - Sigma noise: %.6f (avg: %.6f, ratio: %.3f)", input_particle.sigma_noise, parameter_averages.sigma, input_particle.sigma_noise / parameter_averages.sigma);
                 wxPrintf("\n    - Occupancy: %.6f (avg: %.6f)", input_particle.particle_occupancy, parameter_averages.occupancy);
                 wxPrintf("\n================================\n");
-            }
-
-            // revert - debug: Transfer exposure data to particle for InsertSliceWithCTF debugging
-            input_particle.total_exposure = input_parameters.total_exposure;
-
-            /*
-		 * Assign each particle to one of the two half-maps for later FSC
-		 */
-            // revert - debug: show half-set assignment logic
-            if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
-                wxPrintf("DEBUG: Half-set assignment for particle %d:\n", image_counter);
-                wxPrintf("  - apply_exposure_filter: %s\n", apply_exposure_filter_during_reconstruction ? "true" : "false");
-                wxPrintf("  - assigned_subset: %d\n", input_parameters.assigned_subset);
-                wxPrintf("  - beam_tilt_group: %d\n", input_parameters.beam_tilt_group);
             }
 
             // Always use assigned_subset now, regardless of exposure filtering
@@ -1349,33 +1213,11 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 input_particle.insert_even = false;
             }
 
-            // revert - debug: show final assignment
-            if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
-                wxPrintf("  - Final: insert_even = %s (subset %d)\n",
-                         input_particle.insert_even ? "true" : "false",
-                         input_parameters.assigned_subset);
-            }
-
-            //		input_particle.particle_image->BackwardFFT();
-            //		input_particle.particle_image->AddGaussianNoise(input_particle.particle_image->ReturnSumOfSquares());
-            //		input_particle.particle_image->AddGaussianNoise(100.0 * FLT_MIN);
-            //		input_particle.particle_image->ForwardFFT();
-            //		input_particle.particle_image->QuickAndDirtyWriteSlice("blurred.mrc", image_counter);
-
-            /*
-		 * Insert the particle image into one of the two half maps
-		 */
             if ( input_particle.insert_even ) {
                 my_reconstruction_2_local.InsertSliceWithCTF(input_particle, symmetry_weight);
             }
             else {
-                //			for (i = 0; i < input_particle.particle_image->real_memory_allocated / 2; i++) input_particle.particle_image->complex_values[i] = 1.0f + I * 0.0f;
-                //			for (i = 0; i < input_particle.ctf_image->real_memory_allocated / 2; i++) input_particle.ctf_image->complex_values[i] = 1.0f + I * 0.0f;
-                //			wxPrintf("2D central pixel = %g\n", std::abs(input_particle.particle_image->complex_values[0]));
-                //			wxPrintf("2D central CTF   = %g\n", std::abs(input_particle.ctf_image->complex_values[0]));
                 my_reconstruction_1_local.InsertSliceWithCTF(input_particle, symmetry_weight);
-                //			wxPrintf("3D central pixel = %g ratio = %g\n", std::abs(my_reconstruction_1.image_reconstruction.complex_values[0]), std::abs(my_reconstruction_1.image_reconstruction.complex_values[0])/std::abs(input_particle.particle_image->complex_values[0]));
-                //			wxPrintf("3D central CTF   = %g\n", std::abs(my_reconstruction_1.ctf_reconstruction[0]));
             }
 
             if ( is_running_locally == false ) {
@@ -1383,7 +1225,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 JobResult* temp_result = new JobResult;
                 temp_result->SetResult(1, &temp_float);
                 AddJobToResultQueue(temp_result);
-                //wxPrintf("Refine3D : Adding job to job queue..\n");
             }
 
             if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )

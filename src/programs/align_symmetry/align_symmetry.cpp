@@ -147,7 +147,6 @@ bool AlignSymmetryApp::DoCalculation( ) {
 
     // input_3d.density_map->CopyFrom(&input_volume);
     // input_3d.density_map->ForwardFFT( );
-    // input_3d.density_map->SwapRealSpaceQuadrants( ); // revert
 
     delete input_file;
 

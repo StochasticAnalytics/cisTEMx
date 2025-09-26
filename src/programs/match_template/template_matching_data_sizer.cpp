@@ -92,8 +92,6 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image, bool sw
     local_whitening_filter.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
     number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
 
-    // revert
-    // temporarily skip the second whitening step
     bool is_first_whitening = false;
     if ( ! whitening_filter_ptr ) {
         is_first_whitening = true;

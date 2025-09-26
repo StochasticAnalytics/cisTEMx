@@ -106,8 +106,7 @@ class Particle {
     bool                 no_ctf_weighting;
     bool                 complex_ctf;
 
-    // revert - debug: Add exposure tracking for debugging weighting
-  float total_exposure;
+    float total_exposure;
     int   particle_group; // Multi-view particle group identifier
 
     Particle( );
@@ -141,6 +140,7 @@ class Particle {
     void  WeightBySSNR(Curve& SSNR, int include_reference_weighting = 1, bool no_ctf = false);
     void  WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_particle_image = true, bool weight_projection_image = true);
     void  CalculateProjection(Image& projection_image, ReconstructedVolume& input_3d);
+    
     void  GetParameters(cisTEMParameterLine& output_parameters);
     void  SetParameters(cisTEMParameterLine& wanted_parameters, bool initialize_scores = false);
     void  SetAlignmentParameters(float wanted_euler_phi, float wanted_euler_theta, float wanted_euler_psi, float wanted_shift_x = 0.0, float wanted_shift_y = 0.0);

@@ -2580,10 +2580,9 @@ bool Database::UpdateSchema(ColumnChanges columns, UpdateProgressTracker* progre
     };
 
     for ( ColumnChange& column : columns ) {
-        // revert - Check if this is a DROP_TABLE marker
-        if (std::get<COLUMN_CHANGE_NAME>(column) == "DROP_TABLE") {
+        if ( std::get<COLUMN_CHANGE_NAME>(column) == "DROP_TABLE" ) {
             wxString table_to_drop = std::get<COLUMN_CHANGE_TABLE>(column);
-            wxPrintf("  Dropping obsolete table: %s\n", table_to_drop.c_str());
+            wxPrintf("  Dropping obsolete table: %s\n", table_to_drop.c_str( ));
             ExecuteSQL(wxString::Format("DROP TABLE IF EXISTS %s;", table_to_drop));
             if ( progress_bar ) {
                 increments_processed++;
@@ -2801,7 +2800,7 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
     MyDebugAssertTrue(is_open == true, "database not open!");
     TableChanges  missing_tables;
     ColumnChanges missing_columns;
-    TableChanges  obsolete_tables;  // revert - tables to drop that aren't in current schema
+    TableChanges  obsolete_tables;
 
     // Optimized schema check using batch queries
 
@@ -2852,11 +2851,10 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
         }
     }
 
-    // revert - First, identify ALL obsolete tables (tables in DB but not in current schema)
     // Check which existing tables are not in either static or dynamic schemas
     for ( size_t i = 0; i < all_tables.GetCount( ); i++ ) {
-        const wxString& existing_table = all_tables[i];
-        bool found_in_schema = false;
+        const wxString& existing_table  = all_tables[i];
+        bool            found_in_schema = false;
 
         // Check if it's a static table
         for ( const auto& static_table : static_tables ) {
@@ -2867,13 +2865,13 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
         }
 
         // Check if it's a valid dynamic table instance
-        if (!found_in_schema) {
+        if ( ! found_in_schema ) {
             for ( const auto& dynamic_table : dynamic_tables ) {
                 wxString pattern = std::get<0>(dynamic_table);
                 if ( existing_table.StartsWith(pattern) && existing_table.length( ) > pattern.length( ) ) {
-                    wxString suffix = existing_table.Mid(pattern.length());
+                    wxString suffix = existing_table.Mid(pattern.length( ));
                     // Valid dynamic tables should have numeric IDs immediately after the pattern
-                    if (!suffix.IsEmpty() && wxIsdigit(suffix[0])) {
+                    if ( ! suffix.IsEmpty( ) && wxIsdigit(suffix[0]) ) {
                         found_in_schema = true;
                         break;
                     }
@@ -2882,9 +2880,9 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
         }
 
         // If not found in either, it's obsolete
-        if (!found_in_schema) {
+        if ( ! found_in_schema ) {
             obsolete_tables.push_back(existing_table);
-            wxPrintf("  Found obsolete table to drop: %s\n", existing_table.c_str());
+            wxPrintf("  Found obsolete table to drop: %s\n", existing_table.c_str( ));
         }
     }
 
@@ -2908,22 +2906,8 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
         wxArrayString matching_tables;
         wxString      pattern = std::get<0>(table);
 
-        // revert - debug dynamic table checking
-        if (pattern == "REFINEMENT_PACKAGE_CONTAINED_PARTICLES_") {
-            wxPrintf("  Checking pattern: %s\n", pattern.c_str());
-        }
         for ( size_t i = 0; i < all_tables.GetCount( ); i++ ) {
             const wxString& existing_table = all_tables[i];
-            // revert - debug table matching
-            if (pattern == "REFINEMENT_PACKAGE_CONTAINED_PARTICLES_" &&
-                existing_table.StartsWith("REFINEMENT_PACKAGE_CONTAINED_PARTICLES")) {
-                wxPrintf("    Examining table: %s (pattern: %s)\n", existing_table.c_str(), pattern.c_str());
-                wxPrintf("      StartsWith? %d, length check? %d, char at pos %zu: %c\n",
-                         existing_table.StartsWith(pattern),
-                         existing_table.length() > pattern.length(),
-                         pattern.length(),
-                         existing_table.length() > pattern.length() ? char(existing_table[pattern.length()]) : '?');
-            }
             // Pattern already ends with underscore, so just check if there's more after it
             if ( existing_table.StartsWith(pattern) && existing_table.length( ) > pattern.length( ) ) {
                 // Make sure it's not a static table that happens to match
@@ -2935,14 +2919,9 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
                     }
                 }
                 if ( ! is_static ) {
-                    // revert - Only add if it has a numeric suffix (valid dynamic table)
-                    wxString suffix = existing_table.Mid(pattern.length());
-                    if (!suffix.IsEmpty() && wxIsdigit(suffix[0])) {
+                    wxString suffix = existing_table.Mid(pattern.length( ));
+                    if ( ! suffix.IsEmpty( ) && wxIsdigit(suffix[0]) ) {
                         matching_tables.Add(existing_table);
-                        // revert - debug matching tables
-                        if (pattern == "REFINEMENT_PACKAGE_CONTAINED_PARTICLES_") {
-                            wxPrintf("    Found matching table: %s\n", existing_table.c_str());
-                        }
                     }
                 }
             }
@@ -2950,11 +2929,6 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
 
         // Batch check columns for all matching tables
         if ( matching_tables.GetCount( ) > 0 && std::get<TABLE_COLUMNS>(table).size( ) > 0 ) {
-            // revert - debug column checking
-            if (pattern == "REFINEMENT_PACKAGE_CONTAINED_PARTICLES_") {
-                wxPrintf("    Checking %zu columns for %zu matching tables\n",
-                         std::get<TABLE_COLUMNS>(table).size(), matching_tables.GetCount());
-            }
             wxString column_list = "";
             for ( size_t col_idx = 0; col_idx < std::get<TABLE_COLUMNS>(table).size( ); col_idx++ ) {
                 if ( col_idx > 0 )
@@ -2968,32 +2942,16 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
                           wxString::Format("SELECT name FROM pragma_table_info('%s') WHERE name IN (%s);",
                                            matching_table, column_list));
 
-                // revert - debug columns found
-                if (pattern == "REFINEMENT_PACKAGE_CONTAINED_PARTICLES_") {
-                    wxPrintf("      Table %s: found %zu columns\n", matching_table.c_str(), existing_columns.GetCount());
-                    wxPrintf("      Expected %zu columns\n", std::get<TABLE_COLUMNS>(table).size());
-                }
-
                 for ( size_t col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {
                     auto& column = std::get<TABLE_COLUMNS>(table)[col_counter];
                     char  type   = std::get<TABLE_TYPES>(table)[col_counter];
 
                     if ( ! string_exists_in_array(existing_columns, column) ) {
                         missing_columns.push_back(ColumnChange(matching_table, column, type));
-                        // revert - debug missing columns
-                        if (pattern == "REFINEMENT_PACKAGE_CONTAINED_PARTICLES_") {
-                            wxPrintf("        Missing column: %s in table %s\n", column.c_str(), matching_table.c_str());
-                        }
                     }
                 }
             }
         }
-    }
-
-    // revert - Add obsolete tables to missing_columns with special marker for dropping
-    for (const auto& obsolete_table : obsolete_tables) {
-        missing_columns.push_back(ColumnChange(obsolete_table, "DROP_TABLE", 'X'));
-        wxPrintf("  Marking table for removal: %s\n", obsolete_table.c_str());
     }
 
     return std::pair<TableChanges, ColumnChanges>(missing_tables, missing_columns);

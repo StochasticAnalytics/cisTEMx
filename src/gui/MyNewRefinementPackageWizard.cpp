@@ -213,46 +213,46 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
                  parameter_page->my_panel->GroupComboBox->GetSelection( ) < parent_package->refinement_ids.GetCount( ) ) {
                 // Load the refinement to check for multi-view data in the results
                 Refinement* temp_refinement_for_check = main_frame->current_project.database.GetRefinementByID(
-                    parent_package->refinement_ids[parameter_page->my_panel->GroupComboBox->GetSelection( )], false);  // false = don't load particle data yet
+                        parent_package->refinement_ids[parameter_page->my_panel->GroupComboBox->GetSelection( )], false); // false = don't load particle data yet
 
                 // Quick check of first few particles for multi-view data
-                if (temp_refinement_for_check->number_of_particles > 0 && temp_refinement_for_check->number_of_classes > 0) {
+                if ( temp_refinement_for_check->number_of_particles > 0 && temp_refinement_for_check->number_of_classes > 0 ) {
                     // Load just first 100 particles to check for multi-view data
                     wxString sql_command = wxString::Format("SELECT PARTICLE_GROUP, TOTAL_EXPOSURE FROM REFINEMENT_RESULT_%ld_1 LIMIT 100",
-                                                           temp_refinement_for_check->refinement_id);
+                                                            temp_refinement_for_check->refinement_id);
 
-                    bool more_data = main_frame->current_project.database.BeginBatchSelect(sql_command);
-                    int temp_particle_group;
+                    bool  more_data = main_frame->current_project.database.BeginBatchSelect(sql_command);
+                    int   temp_particle_group;
                     float temp_total_exposure;
 
-                    int debug_count = 0;  // revert - debug counter
-                    while (more_data && debug_count < 5) {  // revert - limit to 5 for debug
+                    int debug_count = 0; // revert - debug counter
+                    while ( more_data && debug_count < 5 ) { // revert - limit to 5 for debug
                         more_data = main_frame->current_project.database.GetFromBatchSelect("is", &temp_particle_group, &temp_total_exposure);
 
                         // revert - debug print first few values
-                        if (debug_count < 5) {
+                        if ( debug_count < 5 ) {
                             wxPrintf("DEBUG: Row %d - particle_group=%d, total_exposure=%.2f\n", debug_count, temp_particle_group, temp_total_exposure);
                         }
                         debug_count++;
 
-                        if (temp_particle_group != 0 || temp_total_exposure > 0.0f) {
+                        if ( temp_particle_group != 0 || temp_total_exposure > 0.0f ) {
                             has_multi_view_data = true;
-                            if (temp_total_exposure > maximum_exposure) {
+                            if ( temp_total_exposure > maximum_exposure ) {
                                 maximum_exposure = temp_total_exposure;
                             }
                         }
                     }
                     // revert - finish reading remaining rows without debug
-                    while (more_data) {
+                    while ( more_data ) {
                         more_data = main_frame->current_project.database.GetFromBatchSelect("is", &temp_particle_group, &temp_total_exposure);
-                        if (temp_particle_group != 0 || temp_total_exposure > 0.0f) {
+                        if ( temp_particle_group != 0 || temp_total_exposure > 0.0f ) {
                             has_multi_view_data = true;
-                            if (temp_total_exposure > maximum_exposure) {
+                            if ( temp_total_exposure > maximum_exposure ) {
                                 maximum_exposure = temp_total_exposure;
                             }
                         }
                     }
-                    main_frame->current_project.database.EndBatchSelect();
+                    main_frame->current_project.database.EndBatchSelect( );
 
                     // revert - debug print after checking refinement for multi-view data
                     wxPrintf("DEBUG: After checking refinement %ld for multi-view data: has_multi_view_data=%s, maximum_exposure=%.2f\n",
@@ -1793,11 +1793,12 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                 if ( apply_exposure_limit ) {
                     // Get the total_exposure from any class (it's the same across all classes for a given particle)
                     float particle_exposure = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(
-                        0, template_refinement_package->contained_particles[particle_counter].position_in_stack).total_exposure;
+                                                                        0, template_refinement_package->contained_particles[particle_counter].position_in_stack)
+                                                      .total_exposure;
 
                     // revert - debug print for first few particles in "All particles" branch
                     static int debug_all_count = 0;
-                    if (debug_all_count < 10) {
+                    if ( debug_all_count < 10 ) {
                         wxPrintf("DEBUG: All particles branch - particle %ld, pos_in_stack=%ld, exposure=%.2f, limit=%.2f, include=%s\n",
                                  particle_counter,
                                  template_refinement_package->contained_particles[particle_counter].position_in_stack,
@@ -1823,17 +1824,18 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
             // revert - debug counter for exposure filtering
             int debug_particle_count = 0;
-            int excluded_count = 0;
+            int excluded_count       = 0;
 
             for ( particle_counter = 0; particle_counter < template_refinement_package->contained_particles.GetCount( ); particle_counter++ ) {
                 // Apply exposure limit first if needed - need to get the exposure from refinement results, not package
                 if ( apply_exposure_limit ) {
                     // Get the total_exposure from any class (it's the same across all classes for a given particle)
                     float particle_exposure = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(
-                        0, template_refinement_package->contained_particles[particle_counter].position_in_stack).total_exposure;
+                                                                        0, template_refinement_package->contained_particles[particle_counter].position_in_stack)
+                                                      .total_exposure;
 
                     // revert - debug print first few particles regardless of exclusion
-                    if (debug_particle_count < 10) {
+                    if ( debug_particle_count < 10 ) {
                         wxPrintf("DEBUG: Particle %ld checking - pos_in_stack=%ld, exposure=%.2f, limit=%.2f, will_exclude=%s\n",
                                  particle_counter,
                                  template_refinement_package->contained_particles[particle_counter].position_in_stack,
@@ -1848,10 +1850,10 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                     }
                 }
 
-            // revert - debug print total excluded
-            if (apply_exposure_limit && particle_counter == template_refinement_package->contained_particles.GetCount() - 1) {
-                wxPrintf("DEBUG: Total excluded by exposure limit: %d\n", excluded_count);
-            }
+                // revert - debug print total excluded
+                if ( apply_exposure_limit && particle_counter == template_refinement_package->contained_particles.GetCount( ) - 1 ) {
+                    wxPrintf("DEBUG: Total excluded by exposure limit: %d\n", excluded_count);
+                }
 
                 // work out which class has the highest occupancy, then check if that class is selected to carry particles over
 
@@ -1876,14 +1878,14 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         temp_refinement.number_of_particles = number_of_particles;
 
         // revert - debug print for particle filtering results
-        if (apply_exposure_limit) {
+        if ( apply_exposure_limit ) {
             wxPrintf("DEBUG: After exposure filtering - selected %ld out of %ld particles (excluded %ld)\n",
                      number_of_particles,
-                     template_refinement_package->contained_particles.GetCount(),
-                     template_refinement_package->contained_particles.GetCount() - number_of_particles);
+                     template_refinement_package->contained_particles.GetCount( ),
+                     template_refinement_package->contained_particles.GetCount( ) - number_of_particles);
         }
 
-        OneSecondProgressDialog* my_dialog  = new OneSecondProgressDialog("Refinement Package", "Creating Refinement Package...", number_of_particles, this);
+        OneSecondProgressDialog* my_dialog = new OneSecondProgressDialog("Refinement Package", "Creating Refinement Package...", number_of_particles, this);
         temp_refinement.SizeAndFillWithEmpty(number_of_particles, temp_refinement.number_of_classes);
 
         MRCFile* input_stack;
@@ -1945,10 +1947,7 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                 // set the active result for this class..
 
                 if ( template_refinement_package->number_of_classes == 1 ) {
-                    // revert - Debug: Check refinement source before copy
                     long pos_in_stack = template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack;
-                    if ( particle_counter < 5 )
-                        wxPrintf("  Getting result from class 0, position_in_stack %ld\n", pos_in_stack);
 
                     active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(0, pos_in_stack);
                 }
@@ -1961,8 +1960,6 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                         // revert - Debug: Check refinement source before copy (single class from multiple)
                         long pos_in_stack   = template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack;
                         int  selected_class = selected_input_classes[0];
-                        if ( particle_counter < 5 )
-                            wxPrintf("  Getting result from class %d, position_in_stack %ld\n", selected_class, pos_in_stack);
 
                         active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(selected_class, pos_in_stack);
                     }
@@ -1984,8 +1981,6 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                             //active_result = &refinement_to_copy->class_refinement_results[best_class].particle_refinement_results[particles_to_take[particle_counter]];
                             // revert - Debug: Check refinement source before copy (best occupancy)
                             long pos_in_stack = template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack;
-                            if ( particle_counter < 5 )
-                                wxPrintf("  Getting result from best_class %d, position_in_stack %ld\n", best_class, pos_in_stack);
 
                             active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(best_class, pos_in_stack);
                         }

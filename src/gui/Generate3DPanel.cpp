@@ -395,12 +395,6 @@ void Generate3DPanel::TerminateButtonClick(wxCommandEvent& event) {
     CancelAlignmentButton->Show(false);
     FinishButton->Show(true);
     ProgressPanel->Layout( );
-    /*
-	if (buffered_results != NULL)
-	{
-		delete [] buffered_results;
-		buffered_results = NULL;
-	}*/
 }
 
 void Generate3DPanel::FinishButtonClick(wxCommandEvent& event) {
@@ -416,11 +410,7 @@ void Generate3DPanel::FinishButtonClick(wxCommandEvent& event) {
     output_textctrl->Clear( );
     ShowRefinementResultsPanel->Show(false);
     ShowRefinementResultsPanel->Clear( );
-    //CTFResultsPanel->Show(false);
-    //graph_is_hidden = true;
     InfoPanel->Show(true);
-
-    //	if (my_refinement_manager.output_refinement != NULL) delete my_refinement_manager.output_refinement;
 
     if ( ExpertToggleButton->GetValue( ) == true )
         ExpertPanel->Show(true);
@@ -429,9 +419,6 @@ void Generate3DPanel::FinishButtonClick(wxCommandEvent& event) {
     running_job = false;
     delete input_refinement;
     Layout( );
-
-    //CTFResultsPanel->CTF2DResultsPanel->should_show = false;
-    //CTFResultsPanel->CTF2DResultsPanel->Refresh();
 }
 
 void Generate3DPanel::StartReconstructionClick(wxCommandEvent& event) {
@@ -458,22 +445,6 @@ void Generate3DPanel::StartReconstructionClick(wxCommandEvent& event) {
 
     input_refinement = main_frame->current_project.database.GetRefinementByID(current_input_refinement_id);
 
-    // revert - debug: check if multi-view data is loaded
-    wxPrintf("\n=== Generate3DPanel: Loaded refinement from database ===\n");
-    wxPrintf("Refinement ID: %ld\n", current_input_refinement_id);
-    wxPrintf("Number of particles: %ld\n", input_refinement->number_of_particles);
-    if (input_refinement->number_of_particles > 0 && input_refinement->number_of_classes > 0) {
-        wxPrintf("First 5 particles with scores from class 1:\n");
-        for (int i = 0; i < std::min(5L, input_refinement->number_of_particles); i++) {
-            wxPrintf("  Particle %d:\n", i);
-            wxPrintf("    score: %f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].score);
-            wxPrintf("    beam_tilt_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].beam_tilt_group);
-            wxPrintf("    particle_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].particle_group);
-            wxPrintf("    total_exposure: %.2f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].total_exposure);
-        }
-    }
-    wxPrintf("==========================================\n\n");
-
     Freeze( );
     StartPanel->Show(false);
     ProgressPanel->Show(true);
@@ -481,8 +452,6 @@ void Generate3DPanel::StartReconstructionClick(wxCommandEvent& event) {
     InfoPanel->Show(false);
     OutputTextPanel->Show(true);
     ShowRefinementResultsPanel->Clear( );
-
-    //if (ShowRefinementResultsPanel->LeftRightSplitter->IsSplit() == true) ShowRefinementResultsPanel->LeftRightSplitter->Unsplit();
 
     Layout( );
     Thaw( );
@@ -593,38 +562,13 @@ void Generate3DPanel::SetupReconstructionJob( ) {
             wxString input_reconstruction     = "";
             bool     use_input_reconstruction = false;
 
-            /*
-			if (active_should_apply_blurring == true)
-			{
-				// do we have a reference..
-
-				if (active_refinement_package->references_for_next_refinement[class_counter] == -1)
-				{
-					input_reconstruction			= "/dev/null";
-					use_input_reconstruction		= false;
-				}
-				else
-				{
-					input_reconstruction = current_reference_filenames.Item(class_counter);//volume_asset_panel->ReturnAssetLongFilename(volume_asset_panel->ReturnArrayPositionFromAssetID(refinement_package_asset_panel->all_refinement_packages.Item(my_parent->RefinementPackageComboBox->GetSelection()).references_for_next_refinement[class_counter]));
-					use_input_reconstruction = true;
-				}
-
-
-			}
-			else
-			{
-				input_reconstruction			= "/dev/null";
-				use_input_reconstruction		= false;
-			}
-*/
             float resolution_limit_ref = 0.0;
             float smoothing_factor     = 1.0f;
-            ;
-            float padding             = 1.0f;
-            bool  normalize_particles = true;
-            bool  exclude_blank_edges = false;
-            bool  split_even_odd      = false;
-            bool  centre_mass         = false;
+            float padding              = 1.0f;
+            bool  normalize_particles  = true;
+            bool  exclude_blank_edges  = false;
+            bool  split_even_odd       = false;
+            bool  centre_mass          = false;
 
             bool threshold_input_3d = true;
             int  max_threads        = 1;
@@ -686,13 +630,6 @@ void Generate3DPanel::RunReconstructionJob( ) {
     number_of_expected_results          = input_refinement->ReturnNumberOfActiveParticlesInFirstClass( ) * input_refinement->number_of_classes;
 
     // in the future store the reconstruction parameters..
-
-    // empty scratch directory..
-
-    //	if (wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath() + "/Refine3D/") == true) wxFileName::Rmdir(main_frame->current_project.scratch_directory.GetFullPath() + "/Refine3D/", wxPATH_RMDIR_RECURSIVE);
-    //	if (wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath() + "/Refine3D/") == false) wxFileName::Mkdir(main_frame->current_project.scratch_directory.GetFullPath() + "/Refine3D/");
-
-    // launch a controller
 
     if ( input_refinement->number_of_classes > 1 )
         WriteBlueText("Calculating Reconstructions...");

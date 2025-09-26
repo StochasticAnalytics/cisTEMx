@@ -1299,10 +1299,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
             input_particle.particle_occupancy = input_parameters.occupancy;
             input_particle.logp               = input_parameters.logp;
             input_particle.particle_group     = input_parameters.particle_group;
-            // revert - debug: Add exposure tracking
-            input_particle.pre_exposure   = input_parameters.pre_exposure;
-            input_particle.total_exposure = input_parameters.total_exposure;
-            input_particle.sigma_noise    = input_parameters.sigma;
+            input_particle.total_exposure     = input_parameters.total_exposure;
+            input_particle.sigma_noise        = input_parameters.sigma;
             if ( input_particle.sigma_noise <= 0.0 )
                 input_particle.sigma_noise = parameter_averages.sigma;
 
@@ -1321,7 +1319,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
             }
 
             // revert - debug: Transfer exposure data to particle for InsertSliceWithCTF debugging
-            input_particle.pre_exposure   = input_parameters.pre_exposure;
             input_particle.total_exposure = input_parameters.total_exposure;
 
             /*

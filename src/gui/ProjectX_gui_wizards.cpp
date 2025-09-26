@@ -778,7 +778,7 @@ TemplateWizardPanel::TemplateWizardPanel( wxWindow* parent, wxWindowID id, const
 	wxBoxSizer* bSizer147;
 	bSizer147 = new wxBoxSizer( wxHORIZONTAL );
 
-	m_staticText214 = new wxStaticText( this, wxID_ANY, wxT("Template Refinement Package :"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText214 = new wxStaticText( this, wxID_ANY, wxT("Parent Refinement Package :"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText214->Wrap( -1 );
 	bSizer147->Add( m_staticText214, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
@@ -791,7 +791,7 @@ TemplateWizardPanel::TemplateWizardPanel( wxWindow* parent, wxWindowID id, const
 
 	bSizer153->Add( 0, 0, 1, wxEXPAND, 5 );
 
-	InfoText = new AutoWrapStaticText( this, wxID_ANY, wxT("Select \"New Refinement Package\" to create a package from scratch.  Select \"Create From 2D Class Average Selection\" to create a new package based on one or more selections of 2D class averages. Alternatively, an existing refinement package can be used as a template.  Template based refinement packages will have the same particle stack as their template, but you will be able to change the other parameters, you may wish to do this to change the number of classes or symmetry for example."), wxDefaultPosition, wxDefaultSize, 0 );
+	InfoText = new AutoWrapStaticText( this, wxID_ANY, wxT("Select \"New Refinement Package\" to create a package from scratch.  Select \"Create From 2D Class Average Selection\" to create a new package based on one or more selections of 2D class averages. Alternatively, you can derive a new refinement package from an existing \"parent\" refinement package.  Derived refinement packages will have the same particle stack as their template, but you will be able to change the other parameters, you may wish to do this to change the number of classes or symmetry for example."), wxDefaultPosition, wxDefaultSize, 0 );
 	InfoText->Wrap( -1 );
 	bSizer153->Add( InfoText, 0, wxALL|wxEXPAND, 5 );
 

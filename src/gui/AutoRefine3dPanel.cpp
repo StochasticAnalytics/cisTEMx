@@ -1627,8 +1627,6 @@ void AutoRefinementManager::ProcessJobResult(JobResult* result_to_process) {
             input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group;
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group =
             input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group;
-        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure =
-            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure;
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure =
             input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure;
 
@@ -1836,7 +1834,6 @@ void AutoRefinementManager::ProcessAllJobsFinished( ) {
                     // Copy multi-view data between classes
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group                    = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group;
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group                     = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].particle_group;
-                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure                       = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure;
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure                     = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure;
                 }
 

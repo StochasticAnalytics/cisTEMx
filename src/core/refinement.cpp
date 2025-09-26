@@ -32,7 +32,6 @@ RefinementResult::RefinementResult( ) {
     beam_tilt_group                    = 0; // int, not float!
     particle_group                     = 0; // int, not float!
     assigned_subset                    = 0; // int, not float!
-    pre_exposure                       = 0.0f;
     total_exposure                     = 0.0f;
 }
 
@@ -377,7 +376,6 @@ void Refinement::WriteSingleClasscisTEMStarFile(wxString filename, int wanted_cl
         output_params.all_parameters[particle_counter].beam_tilt_group = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].beam_tilt_group;
         output_params.all_parameters[particle_counter].particle_group  = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].particle_group;
         output_params.all_parameters[particle_counter].assigned_subset = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].assigned_subset;
-        output_params.all_parameters[particle_counter].pre_exposure    = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].pre_exposure;
         output_params.all_parameters[particle_counter].total_exposure  = class_refinement_results[wanted_class].particle_refinement_results[particle_counter].total_exposure;
     }
 

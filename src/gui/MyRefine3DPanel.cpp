@@ -1748,8 +1748,6 @@ void RefinementManager::ProcessJobResult(JobResult* result_to_process) {
             input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group;
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group =
             input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group;
-        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure =
-            input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure;
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure =
             input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure;
 

@@ -253,7 +253,6 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
             wxPrintf("Import: Detected beam_tilt_group column - will use for gold standard half-set assignment\n");
         }
         if ( input_params_file.parameters_that_were_read.particle_group ||
-             input_params_file.parameters_that_were_read.pre_exposure ||
              input_params_file.parameters_that_were_read.total_exposure ) {
             wxPrintf("Import: Detected multi-view metadata columns\n");
         }
@@ -407,12 +406,6 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                     temp_particle_info.particle_group = 1; // Default: all in same group
                 }
 
-                if ( input_params_file.parameters_that_were_read.pre_exposure ) {
-                    temp_particle_info.pre_exposure = input_params_file.ReturnPreExposure(particle_counter);
-                }
-                else {
-                    temp_particle_info.pre_exposure = 0.0f; // Default: no pre-exposure
-                }
 
                 if ( input_params_file.parameters_that_were_read.total_exposure ) {
                     temp_particle_info.total_exposure = input_params_file.ReturnTotalExposure(particle_counter);
@@ -437,7 +430,6 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                 // Set refinement results - beam_tilt_group is set to 0 after using for assignment
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = 0; // Reset after using for assignment
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].particle_group  = temp_particle_info.particle_group;
-                temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure    = temp_particle_info.pre_exposure;
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure  = temp_particle_info.total_exposure;
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].logp            = input_params_file.ReturnLogP(particle_counter);
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].occupancy       = input_params_file.ReturnOccupancy(particle_counter);
@@ -520,7 +512,6 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
         if constexpr ( ! is_cistem_import ) {
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = 0;
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].particle_group  = 0;
-            temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure    = 0.0f;
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure  = 0.0f;
         }
 

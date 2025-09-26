@@ -469,7 +469,6 @@ void Generate3DPanel::StartReconstructionClick(wxCommandEvent& event) {
             wxPrintf("    score: %f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].score);
             wxPrintf("    beam_tilt_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].beam_tilt_group);
             wxPrintf("    particle_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].particle_group);
-            wxPrintf("    pre_exposure: %.2f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].pre_exposure);
             wxPrintf("    total_exposure: %.2f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].total_exposure);
         }
     }

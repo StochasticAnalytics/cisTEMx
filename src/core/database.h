@@ -293,7 +293,7 @@ class Database {
 
     bool CreateProcessLockTable( ) { return CreateTable("PROCESS_LOCK", "plt", "NUMBER", "ACTIVE_PROCESS", "ACTIVE_HOST"); };
 
-    bool CreateRefinementPackageContainedParticlesTable(const long refinement_package_asset_id) { return CreateTable(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_%li", refinement_package_asset_id), "piirrrrrrrrrri", "ORIGINAL_PARTICLE_POSITION_ASSET_ID", "PARENT_IMAGE_ASSET_ID", "POSITION_IN_STACK", "X_POSITION", "Y_POSITION", "PIXEL_SIZE", "DEFOCUS_1", "DEFOCUS_2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "SPHERICAL_ABERRATION", "MICROSCOPE_VOLTAGE", "AMPLITUDE_CONTRAST", "ASSIGNED_SUBSET"); };
+    bool CreateRefinementPackageContainedParticlesTable(const long refinement_package_asset_id) { return CreateTable(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_%li", refinement_package_asset_id), "piirrrrrrrrrriir", "ORIGINAL_PARTICLE_POSITION_ASSET_ID", "PARENT_IMAGE_ASSET_ID", "POSITION_IN_STACK", "X_POSITION", "Y_POSITION", "PIXEL_SIZE", "DEFOCUS_1", "DEFOCUS_2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "SPHERICAL_ABERRATION", "MICROSCOPE_VOLTAGE", "AMPLITUDE_CONTRAST", "ASSIGNED_SUBSET", "PARTICLE_GROUP", "TOTAL_EXPOSURE"); };
 
     bool CreateRefinementPackageCurrent3DReferencesTable(const long refinement_package_asset_id) { return CreateTable(wxString::Format("REFINEMENT_PACKAGE_CURRENT_REFERENCES_%li", refinement_package_asset_id), "pi", "CLASS_NUMBER", "VOLUME_ASSET_ID"); };
 

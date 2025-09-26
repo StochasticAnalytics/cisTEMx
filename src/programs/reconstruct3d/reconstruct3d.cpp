@@ -282,8 +282,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
 
     // revert - debug: Check what columns are present
     bool has_particle_group = input_star_file.parameters_that_were_read.particle_group;
-    bool has_exposure_data  = input_star_file.parameters_that_were_read.pre_exposure &&
-                             input_star_file.parameters_that_were_read.total_exposure;
+    bool has_exposure_data  = input_star_file.parameters_that_were_read.total_exposure;
 
     // revert - debug: show multi-view detection
     wxPrintf("\n=== MULTI-VIEW DATA DETECTION ===\n");
@@ -297,8 +296,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
         int samples_to_show = std::min(5, (int)input_star_file.ReturnNumberofLines( ));
         for ( int i = 0; i < samples_to_show; i++ ) {
             cisTEMParameterLine params = input_star_file.ReturnLine(i);
-            wxPrintf("  Line %d: particle_group=%d, pre_exp=%.2f, total_exp=%.2f\n",
-                     i, params.particle_group, params.pre_exposure, params.total_exposure);
+            wxPrintf("  Line %d: particle_group=%d, total_exp=%.2f\n",
+                     i, params.particle_group, params.total_exposure);
         }
     }
 
@@ -927,7 +926,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 if ( image_counter <= 10 || (image_counter % 1000 == 0) ) {
                     wxPrintf("DEBUG: Applying exposure filter to particle %d (stack pos %d)\n",
                              image_counter, input_parameters.position_in_stack);
-                    wxPrintf("  - Pre-exposure: %.2f e-/A^2\n", input_parameters.pre_exposure);
                     wxPrintf("  - Total exposure: %.2f e-/A^2\n", input_parameters.total_exposure);
                     wxPrintf("  - Particle group: %d\n", input_parameters.particle_group);
                     wxPrintf("  - Beam tilt group: %d\n", input_parameters.beam_tilt_group);
@@ -939,7 +937,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 float        dose_filter[input_particle.ctf_image->real_memory_allocated / 2];
 
                 ZeroFloatArray(dose_filter, input_particle.ctf_image->real_memory_allocated / 2);
-                my_electron_dose.CalculateDoseFilterAs1DArray(&input_image_local, dose_filter, input_parameters.pre_exposure, input_parameters.total_exposure);
+                my_electron_dose.CalculateDoseFilterAs1DArray(&input_image_local, dose_filter, 0.0f, input_parameters.total_exposure);
 
                 // FIXME: for now we have no way to incorporate weighting based on the tilt angle (directly, I guess the image noise may be higher for high tilt)
                 // Assuming: we only have multi view for tomography, we are using a dose-symmetric scheme, and the total exposure is evenly distributed over all tilts
@@ -1308,7 +1306,6 @@ bool Reconstruct3DApp::DoCalculation( ) {
             if ( image_counter <= 20 || (image_counter % 1000 == 0) ) {
                 wxPrintf("\n=== PARTICLE DATA (Image %d, Stack pos %d) ===", image_counter, input_parameters.position_in_stack);
                 wxPrintf("\n  Exposure values:");
-                wxPrintf("\n    - Pre-exposure: %.2f e-/A^2", input_parameters.pre_exposure);
                 wxPrintf("\n    - Total exposure: %.2f e-/A^2", input_parameters.total_exposure);
                 wxPrintf("\n    - Exposure filter applied: %s", apply_exposure_filter_during_reconstruction ? "YES" : "NO");
                 wxPrintf("\n  Score/noise values:");

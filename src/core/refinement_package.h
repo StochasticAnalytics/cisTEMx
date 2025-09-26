@@ -21,7 +21,6 @@ class RefinementPackageParticleInfo {
 
     // Multi-view support fields
     int   particle_group;     // Links views of same particle (e.g., across tilt series)
-    float pre_exposure;       // Accumulated dose before this image (e^-/A^2)
     float total_exposure;     // Total dose for this image (e^-/A^2)
 };
 

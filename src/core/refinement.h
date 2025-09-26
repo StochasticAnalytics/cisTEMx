@@ -30,7 +30,6 @@ class RefinementResult {
     int   beam_tilt_group;
     int   particle_group;
     int   assigned_subset;
-    float pre_exposure;
     float total_exposure;
 };
 

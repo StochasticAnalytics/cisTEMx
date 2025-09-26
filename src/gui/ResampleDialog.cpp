@@ -242,7 +242,6 @@ void ResampleDialog::OnOK(wxCommandEvent& event) {
             // Copy multi-view data
             resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group;
             resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].particle_group  = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].particle_group;
-            resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure    = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure;
             resampled_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure  = old_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure;
 
             overall_progress++;

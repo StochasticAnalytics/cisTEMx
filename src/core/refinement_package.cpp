@@ -25,7 +25,6 @@ RefinementPackageParticleInfo::RefinementPackageParticleInfo( ) {
 
     // Multi-view fields
     particle_group                      = 1;     // Default: all particles in same group
-    pre_exposure                        = 0.0f;  // Default: no pre-exposure
     total_exposure                      = 0.1f;  // Default: minimal exposure
 }
 
@@ -81,7 +80,6 @@ bool RefinementPackage::ContainsMultiViewData( ) const {
     //   1. Use std::any_of with a lambda for more idiomatic C++:
     //      return std::any_of(contained_particles.begin(), contained_particles.end(),
     //                         [](const auto& p) { return p.particle_group != 1 ||
-    //                                                    p.pre_exposure != 0.0f ||
     //                                                    p.total_exposure != 0.1f; });
     //   2. Consider making contained_particles private with getter/setter methods for better encapsulation
     //   3. Potentially use parallel algorithms (std::execution::par) for very large particle sets
@@ -91,7 +89,6 @@ bool RefinementPackage::ContainsMultiViewData( ) const {
 
         // Check for any non-default values
         if ( particle.particle_group != 1 ||
-             particle.pre_exposure != 0.0f ||
              particle.total_exposure != 0.1f ) {
             return true;
         }

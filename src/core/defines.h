@@ -5,7 +5,7 @@
 
 #include "../constants/constants.h"
 
-#define INTEGER_DATABASE_VERSION 3
+#define INTEGER_DATABASE_VERSION 4
 #define START_PORT 3000
 #define END_PORT 5000
 // Define PI constants

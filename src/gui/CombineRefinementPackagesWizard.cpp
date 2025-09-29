@@ -185,7 +185,7 @@ void CombineRefinementPackagesWizard::PageChanged(wxWizardEvent& event) {
                 CombinedPackageRefinementSelectPanel* panel1 = new CombinedPackageRefinementSelectPanel(refinement_selection_page->combined_package_refinement_selection_panel->CombinedRefinementScrollWindow, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
                 panel1->RefinementText->SetLabel("Refinement from " + refinement_package_asset_panel->all_refinement_packages[i].name + ": ");
                 panel1->RefinementText->Wrap(300);
-                panel1->RefinementComboBox->FillComboBox(i, false, true); // false = don't always select latest, true = include "Random Parameters" option
+                panel1->RefinementComboBox->FillComboBox(i);
                 refinement_selection_page->combined_package_refinement_selection_panel->CombinedRefinementScrollSizer->Add(panel1, 0, wxEXPAND | wxALL, 5);
             }
         }

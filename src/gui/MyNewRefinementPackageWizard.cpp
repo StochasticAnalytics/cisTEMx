@@ -28,6 +28,16 @@ static int wxCMPFUNC_CONV SortByParentImageID(RefinementPackageParticleInfo** a,
     }
 };
 
+static int wxCMPFUNC_CONV SortByParticleGroup(RefinementPackageParticleInfo** a, RefinementPackageParticleInfo** b) // function for sorting by particle_group to cluster particles from same group together
+{
+    if ( (*a)->particle_group > (*b)->particle_group )
+        return 1;
+    else if ( (*a)->particle_group < (*b)->particle_group )
+        return -1;
+    else
+        return 0;
+}
+
 MyNewRefinementPackageWizard::MyNewRefinementPackageWizard(wxWindow* parent)
     : NewRefinementPackageWizard(parent) {
     template_page         = new TemplateWizardPage(this);
@@ -197,54 +207,61 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
         parameter_page->my_panel->GroupComboBox->SetSelection(parameter_page->my_panel->GroupComboBox->GetCount( ) - 1);
 
         // Check if the selected refinement package has multi-view data
-        if (template_page->my_panel->GroupComboBox->GetSelection( ) > 2) {
-            long refinement_package_index = template_page->my_panel->GroupComboBox->GetSelection( ) - 4;
-            RefinementPackage* template_package = &refinement_package_asset_panel->all_refinement_packages.Item(refinement_package_index);
+        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 3 && parameter_page->my_panel->GroupComboBox->GetSelection( ) >= 0 ) {
+            long               refinement_package_index = template_page->my_panel->GroupComboBox->GetSelection( ) - 4;
+            RefinementPackage* parent_package           = &refinement_package_asset_panel->all_refinement_packages.Item(refinement_package_index);
 
             // Reset multi-view state
             has_multi_view_data = false;
-            maximum_exposure = 0.0f;
+            maximum_exposure    = 0.0f;
 
-            // revert - debug output for multi-view detection
-            wxPrintf("\n=== MULTI-VIEW DETECTION in MyNewRefinementPackageWizard ===\n");
-            wxPrintf("Checking refinement package index %ld with %ld particles\n",
-                    refinement_package_index, template_package->contained_particles.GetCount());
+            // Check if we have a refinement selected to check for multi-view data
+            if ( parameter_page->my_panel->GroupComboBox->GetSelection( ) >= 0 &&
+                 parameter_page->my_panel->GroupComboBox->GetSelection( ) < parent_package->refinement_ids.GetCount( ) ) {
+                // Load the refinement to check for multi-view data in the results
+                Refinement* temp_refinement_for_check = main_frame->current_project.database.GetRefinementByID(
+                        parent_package->refinement_ids[parameter_page->my_panel->GroupComboBox->GetSelection( )], false); // false = don't load particle data yet
 
-            int multi_view_particle_count = 0; // revert - debug counter
+                // Quick check of first few particles for multi-view data
+                if ( temp_refinement_for_check->number_of_particles > 0 && temp_refinement_for_check->number_of_classes > 0 ) {
+                    // Load just first 100 particles to check for multi-view data
+                    wxString sql_command = wxString::Format("SELECT PARTICLE_GROUP, TOTAL_EXPOSURE FROM REFINEMENT_RESULT_%ld_1 LIMIT 100",
+                                                            temp_refinement_for_check->refinement_id);
 
-            // Check for multi-view data in the contained particles
-            for (long particle_counter = 0; particle_counter < template_package->contained_particles.GetCount(); particle_counter++) {
-                // Check particle_group, pre_exposure, and total_exposure for multi-view data
-                if (template_package->contained_particles[particle_counter].particle_group != 0 ||
-                    template_package->contained_particles[particle_counter].pre_exposure != 0.0f ||
-                    template_package->contained_particles[particle_counter].total_exposure != 0.0f) {
-                    has_multi_view_data = true;
-                    multi_view_particle_count++; // revert - increment debug counter
-                    if (template_package->contained_particles[particle_counter].total_exposure > maximum_exposure) {
-                        maximum_exposure = template_package->contained_particles[particle_counter].total_exposure;
+                    bool  more_data = main_frame->current_project.database.BeginBatchSelect(sql_command);
+                    int   temp_particle_group;
+                    float temp_total_exposure;
+
+                    int debug_count = 0; // revert - debug counter
+                    while ( more_data && debug_count < 5 ) { // revert - limit to 5 for debug
+                        more_data = main_frame->current_project.database.GetFromBatchSelect("is", &temp_particle_group, &temp_total_exposure);
+
+                        if ( temp_particle_group != 0 || temp_total_exposure > 0.0f ) {
+                            has_multi_view_data = true;
+                            if ( temp_total_exposure > maximum_exposure ) {
+                                maximum_exposure = temp_total_exposure;
+                            }
+                        }
                     }
-                    // revert - debug output for first 5 multi-view particles
-                    if (multi_view_particle_count <= 5) {
-                        wxPrintf("  Particle %ld: particle_group=%d, pre_exp=%.2f, total_exp=%.2f\n",
-                                particle_counter,
-                                template_package->contained_particles[particle_counter].particle_group,
-                                template_package->contained_particles[particle_counter].pre_exposure,
-                                template_package->contained_particles[particle_counter].total_exposure);
+                    // revert - finish reading remaining rows without debug
+                    while ( more_data ) {
+                        more_data = main_frame->current_project.database.GetFromBatchSelect("is", &temp_particle_group, &temp_total_exposure);
+                        if ( temp_particle_group != 0 || temp_total_exposure > 0.0f ) {
+                            has_multi_view_data = true;
+                            if ( temp_total_exposure > maximum_exposure ) {
+                                maximum_exposure = temp_total_exposure;
+                            }
+                        }
                     }
+                    main_frame->current_project.database.EndBatchSelect( );
                 }
+
+                delete temp_refinement_for_check;
             }
-            // revert - debug summary
-            wxPrintf("Multi-view detected: %s\n", has_multi_view_data ? "YES" : "NO");
-            wxPrintf("Total multi-view particles: %d/%ld\n", multi_view_particle_count,
-                    template_package->contained_particles.GetCount());
-            wxPrintf("Maximum exposure: %.2f\n", maximum_exposure);
-            wxPrintf("==================================================\n\n");
-        } else {
+        }
+        else {
             has_multi_view_data = false;
-            maximum_exposure = 0.0f;
-            // revert - debug output for non-refinement package selection
-            wxPrintf("Not checking multi-view: selection=%d (not from existing refinement)\n",
-                    template_page->my_panel->GroupComboBox->GetSelection());
+            maximum_exposure    = 0.0f;
         }
 
         parameter_page->Thaw( );
@@ -257,20 +274,12 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
             limit_exposure_page->Thaw( );
         }
 
-        // revert - debug output for exposure limit page
-        wxPrintf("\n=== ENTERING EXPOSURE LIMIT PAGE ===\n");
-        wxPrintf("has_multi_view_data: %s\n", has_multi_view_data ? "YES" : "NO");
-        wxPrintf("maximum_exposure: %.2f\n", maximum_exposure);
-
         // Set the maximum exposure value
-        if (has_multi_view_data && maximum_exposure > 0.0f) {
+        if ( has_multi_view_data && maximum_exposure > 0.0f ) {
+            // revert - debug print when setting limit exposure page value
+            wxPrintf("DEBUG: Setting limit exposure page value to maximum_exposure=%.2f\n", maximum_exposure);
             limit_exposure_page->my_panel->LimitExposureToWizardTextCtrl->ChangeValueFloat(maximum_exposure);
-            // revert - debug output
-            wxPrintf("Set exposure limit text control to: %.2f\n", maximum_exposure);
         }
-
-        // revert - debug output
-        wxPrintf("====================================\n\n");
     }
     else if ( event.GetPage( ) == particle_group_page ) {
         if ( particle_group_page->my_panel->InfoText->has_autowrapped == false ) {
@@ -296,9 +305,9 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
             box_size_page->Thaw( );
         }
 
-        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 2 && box_size_page->my_panel->BoxSizeSpinCtrl->GetValue( ) == 1 ) {
-            RefinementPackage* template_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
-            box_size_page->my_panel->BoxSizeSpinCtrl->SetValue(template_package->stack_box_size);
+        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 3 && box_size_page->my_panel->BoxSizeSpinCtrl->GetValue( ) == 1 ) {
+            RefinementPackage* parent_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
+            box_size_page->my_panel->BoxSizeSpinCtrl->SetValue(parent_package->stack_box_size);
         }
         else if ( box_size_page->my_panel->BoxSizeSpinCtrl->GetValue( ) == 1 ) {
             // do an intelligent default..
@@ -328,7 +337,7 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
 
                 box_size_page->my_panel->BoxSizeSpinCtrl->SetValue(refinement_package_asset_panel->all_refinement_packages[parent_refinement_array_position].stack_box_size);
             }
-            else /// tempalte matching, will to have this output the same box size as the template..
+            else /// template matching, will have to output the same box size as the template..
             {
                 box_size_page->my_panel->BoxSizeSpinCtrl->SetValue(400);
             }
@@ -342,9 +351,9 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
             output_pixel_size_page->Thaw( );
         }
 
-        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 2 && box_size_page->my_panel->BoxSizeSpinCtrl->GetValue( ) == 1 ) {
-            RefinementPackage* template_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
-            output_pixel_size_page->my_panel->OutputPixelSizeTextCtrl->ChangeValueFloat(template_package->output_pixel_size);
+        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 3 && box_size_page->my_panel->BoxSizeSpinCtrl->GetValue( ) == 1 ) {
+            RefinementPackage* parent_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
+            output_pixel_size_page->my_panel->OutputPixelSizeTextCtrl->ChangeValueFloat(parent_package->output_pixel_size);
         }
         else if ( output_pixel_size_page->my_panel->OutputPixelSizeTextCtrl->ReturnValue( ) == 0.0f ) {
             // do an intelligent default..
@@ -408,9 +417,9 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
             symmetry_page->Thaw( );
         }
 
-        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 2 && symmetry_page->my_panel->SymmetryComboBox->GetValue( ) == "0" ) {
-            RefinementPackage* template_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
-            symmetry_page->my_panel->SymmetryComboBox->SetValue(template_package->symmetry);
+        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 3 && symmetry_page->my_panel->SymmetryComboBox->GetValue( ) == "0" ) {
+            RefinementPackage* parent_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
+            symmetry_page->my_panel->SymmetryComboBox->SetValue(parent_package->symmetry);
         }
         else if ( symmetry_page->my_panel->SymmetryComboBox->GetValue( ) == "0" ) {
             if ( template_page->my_panel->GroupComboBox->GetSelection( ) == 1 ) // take the value of the first selected classum selections refinement package
@@ -433,9 +442,9 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
             molecular_weight_page->Thaw( );
         }
 
-        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 2 && molecular_weight_page->my_panel->MolecularWeightTextCtrl->ReturnValue( ) == 0.0 ) {
-            RefinementPackage* template_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
-            molecular_weight_page->my_panel->MolecularWeightTextCtrl->ChangeValueFloat(template_package->estimated_particle_weight_in_kda);
+        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 3 && molecular_weight_page->my_panel->MolecularWeightTextCtrl->ReturnValue( ) == 0.0 ) {
+            RefinementPackage* parent_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
+            molecular_weight_page->my_panel->MolecularWeightTextCtrl->ChangeValueFloat(parent_package->estimated_particle_weight_in_kda);
         }
         else if ( molecular_weight_page->my_panel->MolecularWeightTextCtrl->ReturnValue( ) == 0.0 ) {
             if ( template_page->my_panel->GroupComboBox->GetSelection( ) == 1 ) // take the value of the first selected classum selections refinement package
@@ -458,9 +467,9 @@ void MyNewRefinementPackageWizard::PageChanged(wxWizardEvent& event) {
             largest_dimension_page->Thaw( );
         }
 
-        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 2 && largest_dimension_page->my_panel->LargestDimensionTextCtrl->ReturnValue( ) == 0.0 ) {
-            RefinementPackage* template_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
-            largest_dimension_page->my_panel->LargestDimensionTextCtrl->ChangeValueFloat(template_package->estimated_particle_size_in_angstroms);
+        if ( template_page->my_panel->GroupComboBox->GetSelection( ) > 3 && largest_dimension_page->my_panel->LargestDimensionTextCtrl->ReturnValue( ) == 0.0 ) {
+            RefinementPackage* parent_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
+            largest_dimension_page->my_panel->LargestDimensionTextCtrl->ChangeValueFloat(parent_package->estimated_particle_size_in_angstroms);
         }
         else if ( largest_dimension_page->my_panel->LargestDimensionTextCtrl->ReturnValue( ) == 0.0 ) {
             if ( template_page->my_panel->GroupComboBox->GetSelection( ) == 1 ) // take the value of the first selected classum selections refinement package
@@ -1085,6 +1094,10 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
             temp_particle_info.defocus_1 = import_parameters.all_parameters[counter].defocus_1;
             temp_particle_info.defocus_2 = import_parameters.all_parameters[counter].defocus_2;
 
+            // Set multi-view parameters from import
+            temp_particle_info.particle_group = import_parameters.all_parameters[counter].particle_group;
+            temp_particle_info.total_exposure = import_parameters.all_parameters[counter].total_exposure;
+
             temp_refinement_package->contained_particles.Add(temp_particle_info);
 
             for ( class_counter = 0; class_counter < temp_refinement_package->number_of_classes; class_counter++ ) {
@@ -1100,12 +1113,13 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                 else
                     temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].occupancy = fabsf(global_random_number_generator.GetUniformRandom( ) * (200.0f / float(temp_refinement_package->number_of_classes)));
 
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].phi                                = import_parameters.all_parameters[counter].phi;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].theta                              = import_parameters.all_parameters[counter].theta;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].psi                                = import_parameters.all_parameters[counter].psi;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].score                              = import_parameters.all_parameters[counter].score;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].image_is_active                    = 1;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].sigma                              = 1.0;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].phi             = import_parameters.all_parameters[counter].phi;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].theta           = import_parameters.all_parameters[counter].theta;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].psi             = import_parameters.all_parameters[counter].psi;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].score           = import_parameters.all_parameters[counter].score;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].image_is_active = 1;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].sigma           = 1.0;
+
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].pixel_size                         = import_parameters.all_parameters[counter].pixel_size;
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].microscope_voltage_kv              = import_parameters.all_parameters[counter].microscope_voltage_kv;
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[counter].microscope_spherical_aberration_mm = import_parameters.all_parameters[counter].microscope_spherical_aberration_mm;
@@ -1632,6 +1646,26 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         RefinementPackage* template_refinement_package = &refinement_package_asset_panel->all_refinement_packages.Item(template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
         Refinement*        refinement_to_copy          = main_frame->current_project.database.GetRefinementByID(refinement_package_asset_panel->all_refinement_packages[template_page->my_panel->GroupComboBox->GetSelection( ) - 4].refinement_ids[parameter_page->my_panel->GroupComboBox->GetSelection( )]);
 
+        // revert - debug print first 5 particles from refinement_to_copy after loading from database
+        wxPrintf("\n=== DEBUG: Dumping first 5 particles from refinement_to_copy (after database load) ===\n");
+        wxPrintf("Refinement ID: %ld\n", refinement_to_copy->refinement_id);
+        wxPrintf("Number of classes: %d\n", refinement_to_copy->number_of_classes);
+        wxPrintf("Number of particles: %ld\n", refinement_to_copy->number_of_particles);
+
+        // Check first class, first 5 particles
+        if ( refinement_to_copy->number_of_classes > 0 ) {
+            int particles_to_show = wxMin(5l, refinement_to_copy->number_of_particles);
+            wxPrintf("\nChecking class 0, first %d particles:\n", particles_to_show);
+            for ( int i = 0; i < particles_to_show; i++ ) {
+                wxPrintf("Particle %d:\n", i);
+                wxPrintf("  position_in_stack: %ld\n", refinement_to_copy->class_refinement_results[0].particle_refinement_results[i].position_in_stack);
+                wxPrintf("  particle_group: %d\n", refinement_to_copy->class_refinement_results[0].particle_refinement_results[i].particle_group);
+                wxPrintf("  total_exposure: %.2f\n", refinement_to_copy->class_refinement_results[0].particle_refinement_results[i].total_exposure);
+                wxPrintf("  occupancy: %.4f\n", refinement_to_copy->class_refinement_results[0].particle_refinement_results[i].occupancy);
+            }
+        }
+        wxPrintf("=== End refinement_to_copy debug dump ===\n");
+
         // this stuff should always apply..
 
         temp_refinement_package->name                     = wxString::Format("Refinement Package #%li", refinement_package_asset_panel->current_asset_number);
@@ -1672,63 +1706,90 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
             }
         }
 
-        // lets make a list of the particles we are going to take
-
-        wxArrayLong particles_to_take;
+        // Create a filtered copy of particles instead of using index array
+        ArrayOfRefinmentPackageParticleInfos filtered_particles;
 
         // Check if we need to apply exposure limiting
-        bool apply_exposure_limit = false;
-        float exposure_limit = 0.0f;
+        bool  apply_exposure_limit = false;
+        float exposure_limit       = 0.0f;
 
-        // revert - debug output for exposure limiting decision
-        wxPrintf("\n=== EXPOSURE LIMITING DECISION in OnFinished ===\n");
-        wxPrintf("has_multi_view_data: %s\n", has_multi_view_data ? "YES" : "NO");
-        wxPrintf("limit_exposure_page exists: %s\n", limit_exposure_page != nullptr ? "YES" : "NO");
+        if ( has_multi_view_data && limit_exposure_page != nullptr ) {
+            exposure_limit = limit_exposure_page->my_panel->LimitExposureToWizardTextCtrl->ReturnValue( );
+            // revert - debug print for exposure limit check block 1655-1662
+            wxPrintf("DEBUG: Block 1655-1662 - has_multi_view_data=%s, limit_exposure_page=%s, exposure_limit=%.2f\n",
+                     has_multi_view_data ? "true" : "false",
+                     limit_exposure_page != nullptr ? "not null" : "null",
+                     exposure_limit);
 
-        if (has_multi_view_data && limit_exposure_page != nullptr) {
-            exposure_limit = limit_exposure_page->my_panel->LimitExposureToWizardTextCtrl->ReturnValue();
-            // revert - debug output
-            wxPrintf("User-set exposure limit: %.2f\n", exposure_limit);
-            wxPrintf("Maximum exposure in package: %.2f\n", maximum_exposure);
-
-            if (exposure_limit > 0.0f && exposure_limit < maximum_exposure) {
-                apply_exposure_limit = true;
+            if ( exposure_limit > 0.0f && exposure_limit < maximum_exposure ) {
+                apply_exposure_limit        = true;
                 should_apply_exposure_limit = true;
-                // revert - debug output
-                wxPrintf("APPLYING EXPOSURE LIMIT: YES (%.2f < %.2f)\n", exposure_limit, maximum_exposure);
-            } else {
-                // revert - debug output
-                wxPrintf("APPLYING EXPOSURE LIMIT: NO (limit not less than max)\n");
             }
-        } else {
-            // revert - debug output
-            wxPrintf("APPLYING EXPOSURE LIMIT: NO (no multi-view data or page)\n");
+            else {
+                // revert - debug print when exposure limit will NOT be applied
+                wxPrintf("DEBUG: Exposure limit will NOT be applied: exposure_limit=%.2f, maximum_exposure=%.2f\n",
+                         exposure_limit, maximum_exposure);
+            }
         }
-        wxPrintf("=================================================\n\n");
+        else {
+            // revert - debug print when block 1655 condition is false
+            wxPrintf("DEBUG: Block 1655 condition false - has_multi_view_data=%s, limit_exposure_page=%s\n",
+                     has_multi_view_data ? "true" : "false",
+                     limit_exposure_page != nullptr ? "not null" : "null");
+        }
+
+        // revert - debug print for all values after block 1655-1662
+        wxPrintf("DEBUG: After block 1655-1662 values:\n");
+        wxPrintf("  apply_exposure_limit=%s\n", apply_exposure_limit ? "true" : "false");
+        wxPrintf("  exposure_limit=%.2f\n", exposure_limit);
+        wxPrintf("  has_multi_view_data=%s\n", has_multi_view_data ? "true" : "false");
+        wxPrintf("  maximum_exposure=%.2f\n", maximum_exposure);
+        wxPrintf("  should_apply_exposure_limit=%s\n", should_apply_exposure_limit ? "true" : "false");
+
+        // Sort particles by particle_group so they're clustered together in output
+        // This ensures particles from the same group are consecutive in the re-arranged stack/starfile
+        wxPrintf("DEBUG: Sorting %ld particles by particle_group before filtering\n", template_refinement_package->contained_particles.GetCount());
+        template_refinement_package->contained_particles.Sort(SortByParticleGroup);
+        wxPrintf("DEBUG: Finished sorting particles by particle_group\n");
+
+        // revert - debug output: show first 10 particles and their groups after sorting
+        wxPrintf("DEBUG: First 10 particles after sorting by particle_group:\n");
+        for ( long debug_i = 0; debug_i < wxMin(10l, template_refinement_package->contained_particles.GetCount()); debug_i++ ) {
+            wxPrintf("  [%ld] particle_group=%d, pos_in_stack=%ld\n",
+                     debug_i,
+                     template_refinement_package->contained_particles[debug_i].particle_group,
+                     template_refinement_package->contained_particles[debug_i].position_in_stack);
+        }
 
         if ( class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == true || template_refinement_package->number_of_classes == 1 ) // All particles
         {
-            int particles_filtered_by_exposure = 0; // revert - debug counter
-
+            // Copy particles directly to filtered array, applying exposure filter if needed
             for ( particle_counter = 0; particle_counter < template_refinement_package->contained_particles.GetCount( ); particle_counter++ ) {
-                // Apply exposure limit if needed
-                if (apply_exposure_limit) {
-                    if (template_refinement_package->contained_particles[particle_counter].total_exposure <= exposure_limit) {
-                        particles_to_take.Add(particle_counter);
-                    } else {
-                        particles_filtered_by_exposure++; // revert - increment counter
-                    }
-                } else {
-                    particles_to_take.Add(particle_counter);
-                }
-            }
+                // Apply exposure limit if needed - need to get exposure from refinement results
+                if ( apply_exposure_limit ) {
+                    // Get the total_exposure from any class (it's the same across all classes for a given particle)
+                    float particle_exposure = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(
+                                                                        0, template_refinement_package->contained_particles[particle_counter].position_in_stack)
+                                                      .total_exposure;
 
-            // revert - debug output for particle selection
-            if (apply_exposure_limit) {
-                wxPrintf("Particles filtered by exposure limit: %d/%ld\n",
-                        particles_filtered_by_exposure,
-                        template_refinement_package->contained_particles.GetCount());
-                wxPrintf("Particles kept: %ld\n", particles_to_take.GetCount());
+                    // revert - debug print for first few particles in "All particles" branch
+                    static int debug_all_count = 0;
+                    if ( debug_all_count < 10 ) {
+                        wxPrintf("DEBUG: All particles branch - particle %ld, pos_in_stack=%ld, exposure=%.2f, limit=%.2f, include=%s\n",
+                                 particle_counter,
+                                 template_refinement_package->contained_particles[particle_counter].position_in_stack,
+                                 particle_exposure, exposure_limit,
+                                 (particle_exposure <= exposure_limit) ? "YES" : "NO");
+                        debug_all_count++;
+                    }
+
+                    if ( particle_exposure <= exposure_limit ) {
+                        filtered_particles.Add(template_refinement_package->contained_particles[particle_counter]);
+                    }
+                }
+                else {
+                    filtered_particles.Add(template_refinement_package->contained_particles[particle_counter]);
+                }
             }
         }
         else // Selection
@@ -1737,10 +1798,38 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
             wxArrayBool is_class_selected = class_setup_pageB->ReturnSelectedClasses( );
 
+            // revert - debug counter for exposure filtering
+            int debug_particle_count = 0;
+            int excluded_count       = 0;
+
+            // Copy particles directly to filtered array, applying exposure and class selection filters
             for ( particle_counter = 0; particle_counter < template_refinement_package->contained_particles.GetCount( ); particle_counter++ ) {
-                // Apply exposure limit first if needed
-                if (apply_exposure_limit && template_refinement_package->contained_particles[particle_counter].total_exposure > exposure_limit) {
-                    continue; // Skip this particle due to exposure limit
+                // Apply exposure limit first if needed - need to get the exposure from refinement results, not package
+                if ( apply_exposure_limit ) {
+                    // Get the total_exposure from any class (it's the same across all classes for a given particle)
+                    float particle_exposure = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(
+                                                                        0, template_refinement_package->contained_particles[particle_counter].position_in_stack)
+                                                      .total_exposure;
+
+                    // revert - debug print first few particles regardless of exclusion
+                    if ( debug_particle_count < 10 ) {
+                        wxPrintf("DEBUG: Particle %ld checking - pos_in_stack=%ld, exposure=%.2f, limit=%.2f, will_exclude=%s\n",
+                                 particle_counter,
+                                 template_refinement_package->contained_particles[particle_counter].position_in_stack,
+                                 particle_exposure, exposure_limit,
+                                 (particle_exposure > exposure_limit) ? "YES" : "NO");
+                        debug_particle_count++;
+                    }
+
+                    if ( particle_exposure > exposure_limit ) {
+                        excluded_count++;
+                        continue; // Skip this particle due to exposure limit
+                    }
+                }
+
+                // revert - debug print total excluded
+                if ( apply_exposure_limit && particle_counter == template_refinement_package->contained_particles.GetCount( ) - 1 ) {
+                    wxPrintf("DEBUG: Total excluded by exposure limit: %d\n", excluded_count);
                 }
 
                 // work out which class has the highest occupancy, then check if that class is selected to carry particles over
@@ -1757,14 +1846,34 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                     }
                 }
 
-                if ( is_class_selected[best_class] == true )
-                    particles_to_take.Add(particle_counter);
+                if ( is_class_selected[best_class] == true ) {
+                    filtered_particles.Add(template_refinement_package->contained_particles[particle_counter]);
+                }
             }
         }
 
-        long number_of_particles            = particles_to_take.GetCount( );
+        long number_of_particles            = filtered_particles.GetCount( );
         temp_refinement.number_of_particles = number_of_particles;
-        OneSecondProgressDialog* my_dialog  = new OneSecondProgressDialog("Refinement Package", "Creating Refinement Package...", number_of_particles, this);
+
+        // revert - debug print for particle filtering results
+        if ( apply_exposure_limit ) {
+            wxPrintf("DEBUG: After exposure filtering - selected %ld out of %ld particles (excluded %ld)\n",
+                     number_of_particles,
+                     template_refinement_package->contained_particles.GetCount( ),
+                     template_refinement_package->contained_particles.GetCount( ) - number_of_particles);
+        }
+
+        // revert - debug output: show first 10 particles in filtered array and their groups
+        wxPrintf("DEBUG: First 10 particles in filtered array (final output order):\n");
+        for ( long debug_i = 0; debug_i < wxMin(10l, filtered_particles.GetCount()); debug_i++ ) {
+            wxPrintf("  [%ld] particle_group=%d, original_pos_in_stack=%ld, new_pos_in_stack=%ld\n",
+                     debug_i,
+                     filtered_particles[debug_i].particle_group,
+                     filtered_particles[debug_i].position_in_stack,
+                     debug_i + 1);
+        }
+
+        OneSecondProgressDialog* my_dialog = new OneSecondProgressDialog("Refinement Package", "Creating Refinement Package...", number_of_particles, this);
         temp_refinement.SizeAndFillWithEmpty(number_of_particles, temp_refinement.number_of_classes);
 
         MRCFile* input_stack;
@@ -1774,43 +1883,32 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         // Check if we need to create a new stack
         // We need a new stack if: we're not carrying over all particles OR we're applying exposure limits
         bool need_new_stack = (class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) == false) ||
-                              (apply_exposure_limit && particles_to_take.GetCount() < template_refinement_package->contained_particles.GetCount());
+                              (apply_exposure_limit && filtered_particles.GetCount( ) < template_refinement_package->contained_particles.GetCount( ));
 
-        // revert - debug output for stack decision
-        wxPrintf("\n=== STACK CREATION DECISION ===\n");
-        wxPrintf("CarryOverYes: %s\n", class_setup_pageA->my_panel->CarryOverYesButton->GetValue( ) ? "YES" : "NO");
-        wxPrintf("Apply exposure limit: %s\n", apply_exposure_limit ? "YES" : "NO");
-        wxPrintf("Particles to take: %ld/%ld\n", particles_to_take.GetCount(),
-                template_refinement_package->contained_particles.GetCount());
-        wxPrintf("Need new stack: %s\n", need_new_stack ? "YES" : "NO");
-        wxPrintf("================================\n\n");
-
-        if ( !need_new_stack ) // taking over all particles, don't need to make a new stack
-        {
-            temp_refinement_package->stack_filename = template_refinement_package->stack_filename;
-            // revert - debug output
-            wxPrintf("Using existing stack: %s\n", temp_refinement_package->stack_filename.ToStdString().c_str());
+        // taking over all particles, don't need to make a new stack
+        if ( ! need_new_stack ) {
+            // Ensure we have a full path for the stack filename
+            wxFileName stack_file(template_refinement_package->stack_filename);
+            if ( !stack_file.IsAbsolute() ) {
+                // If not absolute, assume it's in the project's particle stack directory
+                stack_file.SetPath(main_frame->current_project.particle_stack_directory.GetFullPath());
+            }
+            temp_refinement_package->stack_filename = stack_file.GetFullPath();
         }
-        else // we are going to make a new stack..
-        {
+        else {
             wxFileName output_stack_filename;
 
             // Include exposure limit in filename if that's why we're creating a new stack
-            if (apply_exposure_limit && should_apply_exposure_limit) {
+            if ( apply_exposure_limit && should_apply_exposure_limit ) {
                 output_stack_filename = main_frame->current_project.particle_stack_directory.GetFullPath( ) +
-                                       wxString::Format("/particle_stack_%li_exposure_%d.mrc",
-                                                       refinement_package_asset_panel->current_asset_number,
-                                                       int(exposure_limit));
-                // revert - debug output
-                wxPrintf("Creating new stack WITH exposure limit in name: %s\n",
-                        output_stack_filename.GetFullPath().ToStdString().c_str());
-            } else {
+                                        wxString::Format("/particle_stack_%li_exposure_%d.mrc",
+                                                         refinement_package_asset_panel->current_asset_number,
+                                                         int(exposure_limit));
+            }
+            else {
                 output_stack_filename = main_frame->current_project.particle_stack_directory.GetFullPath( ) +
-                                       wxString::Format("/particle_stack_%li.mrc",
-                                                       refinement_package_asset_panel->current_asset_number);
-                // revert - debug output
-                wxPrintf("Creating new stack WITHOUT exposure limit in name: %s\n",
-                        output_stack_filename.GetFullPath().ToStdString().c_str());
+                                        wxString::Format("/particle_stack_%li.mrc",
+                                                         refinement_package_asset_panel->current_asset_number);
             }
 
             temp_refinement_package->stack_filename = output_stack_filename.GetFullPath( );
@@ -1822,8 +1920,11 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
         }
 
         for ( particle_counter = 0; particle_counter < number_of_particles; particle_counter++ ) {
-            temp_particle_info = template_refinement_package->contained_particles[particles_to_take[particle_counter]];
 
+            temp_particle_info = filtered_particles[particle_counter];
+
+            // Store original position for reading from input stack, but update output position
+            long original_position_in_stack = temp_particle_info.position_in_stack;
             if ( need_new_stack )
                 temp_particle_info.position_in_stack = particle_counter + 1;
 
@@ -1831,9 +1932,8 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
             // do we have to write to a new stack?
 
-            if ( need_new_stack ) // yes we do
-            {
-                image_for_new_stack.ReadSlice(input_stack, template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack);
+            if ( need_new_stack ) {
+                image_for_new_stack.ReadSlice(input_stack, original_position_in_stack);
                 image_for_new_stack.WriteSlice(output_stack, particle_counter + 1);
             }
 
@@ -1842,16 +1942,20 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
                 // set the active result for this class..
 
-                if ( template_refinement_package->number_of_classes == 1 )
-                    active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(0, template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack); //&refinement_to_copy->class_refinement_results[0].particle_refinement_results[particles_to_take[particle_counter]]; // only option
+                if ( template_refinement_package->number_of_classes == 1 ) {
+                    active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(0, original_position_in_stack);
+                }
                 else {
                     // so does this class have more than one input
                     wxArrayInt selected_input_classes = class_setup_pageC->ReturnReferencesForClass(class_counter);
 
                     if ( selected_input_classes.GetCount( ) == 1 ) // there is only one class, so easy..
                     {
-                        //active_result = &refinement_to_copy->class_refinement_results[selected_input_classes[0]].particle_refinement_results[particles_to_take[particle_counter]];
-                        active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(selected_input_classes[0], template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack);
+                        // revert - Debug: Check refinement source before copy (single class from multiple)
+                        long pos_in_stack   = original_position_in_stack;
+                        int  selected_class = selected_input_classes[0];
+
+                        active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(selected_class, pos_in_stack);
                     }
                     else // so we have multiple classes, are we taking best occupancy or random?
                     {
@@ -1861,15 +1965,18 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
                             for ( input_class_counter = 0; input_class_counter < selected_input_classes.GetCount( ); input_class_counter++ ) {
                                 //if (refinement_to_copy->class_refinement_results[selected_input_classes[input_class_counter]].particle_refinement_results[particles_to_take[particle_counter]].occupancy > highest_occupancy)
-                                if ( refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(selected_input_classes[input_class_counter], template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack).occupancy > highest_occupancy ) {
+                                if ( refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(selected_input_classes[input_class_counter], original_position_in_stack).occupancy > highest_occupancy ) {
                                     //highest_occupancy = refinement_to_copy->class_refinement_results[selected_input_classes[input_class_counter]].particle_refinement_results[particles_to_take[particle_counter]].occupancy;
-                                    highest_occupancy = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(selected_input_classes[input_class_counter], template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack).occupancy;
+                                    highest_occupancy = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(selected_input_classes[input_class_counter], original_position_in_stack).occupancy;
                                     best_class        = selected_input_classes[input_class_counter];
                                 }
                             }
 
                             //active_result = &refinement_to_copy->class_refinement_results[best_class].particle_refinement_results[particles_to_take[particle_counter]];
-                            active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(best_class, template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack);
+                            // revert - Debug: Check refinement source before copy (best occupancy)
+                            long pos_in_stack = original_position_in_stack;
+
+                            active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(best_class, pos_in_stack);
                         }
                         else // random
                         {
@@ -1877,7 +1984,7 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
                             //active_result = &refinement_to_copy->class_refinement_results[selected_input_classes[myroundint(fabsf(global_random_number_generator.GetUniformRandom() * selected_input_classes.GetCount()))]].particle_refinement_results[particles_to_take[particle_counter]];
                             int current_class = selected_input_classes[myroundint(fabsf(global_random_number_generator.GetUniformRandom( ) * (selected_input_classes.GetCount( ) - 1)))];
-                            refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(current_class, template_refinement_package->contained_particles[particles_to_take[particle_counter]].position_in_stack);
+                            active_result = refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(current_class, original_position_in_stack);
                         }
                     }
                 }
@@ -1920,10 +2027,16 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].image_shift_y                      = active_result.image_shift_y;
 
                 // Copy multi-view parameters
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group                    = active_result.beam_tilt_group;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group                     = active_result.particle_group;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure                       = active_result.pre_exposure;
-                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure                     = active_result.total_exposure;
+                // revert - debug print when copying multi-view params (first 5 only)
+                if ( particle_counter < 5 ) {
+                    wxPrintf("DEBUG: Copying multi-view params for particle %ld:\n", particle_counter);
+                    wxPrintf("  active_result.particle_group: %d\n", active_result.particle_group);
+                    wxPrintf("  active_result.total_exposure: %.2f\n", active_result.total_exposure);
+                    wxPrintf("  active_result.position_in_stack: %ld\n", active_result.position_in_stack);
+                }
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group = active_result.beam_tilt_group;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group  = active_result.particle_group;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure  = active_result.total_exposure;
 
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].assigned_subset = active_result.assigned_subset;
             }
@@ -2073,9 +2186,14 @@ wxWizardPage* InputParameterWizardPage::GetNext( ) const {
     // wxPrintf("Template Next\n");
 
     // Check if we have multi-view data and should show exposure filtering page
-    if (wizard_pointer->has_multi_view_data) {
+    if ( wizard_pointer->has_multi_view_data ) {
+        // revert - debug print for GetNext multi-view check
+        wxPrintf("DEBUG: GetNext (line ~2061) - has_multi_view_data=true, navigating to limit_exposure_page\n");
         return wizard_pointer->limit_exposure_page;
-    } else {
+    }
+    else {
+        // revert - debug print when not navigating to limit_exposure_page
+        wxPrintf("DEBUG: GetNext (line ~2061) - has_multi_view_data=false, NOT navigating to limit_exposure_page\n");
         return wizard_pointer->molecular_weight_page;
     }
 }
@@ -2218,7 +2336,7 @@ wxWizardPage* OutputPixelSizeWizardPage::GetPrev( ) const {
  	  if (wizard_pointer->remove_duplicate_picks_page->my_panel->RemoveDuplicateYesButton->GetValue() == false) return wizard_pointer->remove_duplicate_picks_page;
  	  else return wizard_pointer->remove_duplicate_picks_threshold_page;*/
 
-    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 2 )
+    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 3 )
         return wizard_pointer->symmetry_page;
     else
         return wizard_pointer->box_size_page;
@@ -2254,11 +2372,16 @@ wxWizardPage* MolecularWeightWizardPage::GetPrev( ) const {
     //  wxPrintf("Box Prev\n");
     //	   if (wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection() > 1) return wizard_pointer->parameter_page;
     //   else return wizard_pointer->box_size_page;
-    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 2 ) {
+    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 3 ) {
         // If we have multi-view data, go back to exposure page
-        if (wizard_pointer->has_multi_view_data) {
+        if ( wizard_pointer->has_multi_view_data ) {
+            // revert - debug print for GetPrev multi-view check
+            wxPrintf("DEBUG: GetPrev (line ~2245) - has_multi_view_data=true, going back to limit_exposure_page\n");
             return wizard_pointer->limit_exposure_page;
-        } else {
+        }
+        else {
+            // revert - debug print when not going back to limit_exposure_page
+            wxPrintf("DEBUG: GetPrev (line ~2245) - has_multi_view_data=false, NOT going back to limit_exposure_page\n");
             return wizard_pointer->parameter_page;
         }
     }
@@ -2376,7 +2499,7 @@ wxWizardPage* SymmetryWizardPage::GetNext( ) const {
     //  wxPrintf("Box Next\n");
     //   	 return wizard_pointer->number_of_classes_page;
 
-    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 2 )
+    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 3 )
         return wizard_pointer->output_pixel_size_page;
     else
         return wizard_pointer->box_size_page;
@@ -2417,7 +2540,7 @@ wxWizardPage* NumberofClassesWizardPage::GetNext( ) const {
     //else return wizard_pointer->class_setup_page;
 
     // wxPrintf("Number classes Next\n");
-    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 2 ) {
+    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 3 ) {
         RefinementPackage* input_package = &refinement_package_asset_panel->all_refinement_packages.Item(wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
 
         if ( input_package->number_of_classes == 1 ) // if there is only 1 input class, there is no fancy class setup so we can just skip to initial references
@@ -2472,7 +2595,7 @@ wxWizardPage* InitialReferencesWizardPage::GetNext( ) const {
 
 wxWizardPage* InitialReferencesWizardPage::GetPrev( ) const {
     // wxPrintf("Initial Prev\n");
-    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 2 ) {
+    if ( wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) > 3 ) {
         RefinementPackage* input_package = &refinement_package_asset_panel->all_refinement_packages.Item(wizard_pointer->template_page->my_panel->GroupComboBox->GetSelection( ) - 4);
         if ( input_package->number_of_classes == 1 )
             return wizard_pointer->number_of_classes_page;

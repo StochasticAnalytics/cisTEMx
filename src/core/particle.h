@@ -136,6 +136,7 @@ class Particle {
     void  SetIndexForWeightedCorrelation(bool limit_resolution = true);
     void  WeightBySSNR(Curve& SSNR, int include_reference_weighting = 1, bool no_ctf = false);
     void  WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_particle_image = true, bool weight_projection_image = true);
+    void  ApplyExposureDecayToSSNRCurve(Curve& SSNR_curve, float total_exposure_electrons_per_angstrom2, float voltage_kV);
     void  CalculateProjection(Image& projection_image, ReconstructedVolume& input_3d);
     void  GetParameters(cisTEMParameterLine& output_parameters);
     void  SetParameters(cisTEMParameterLine& wanted_parameters, bool initialize_scores = false);
@@ -144,6 +145,7 @@ class Particle {
     void  SetParameterConstraints(float wanted_noise_variance);
     float ReturnParameterPenalty(cisTEMParameterLine& parameters);
     float ReturnParameterLogP(cisTEMParameterLine& parameters);
+    
     int   MapParameterAccuracy(float* accuracies);
     int   MapParametersFromExternal(cisTEMParameterLine& input_parameters, float* mapped_parameters);
     int   MapParameters(float* mapped_parameters);

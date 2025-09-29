@@ -496,6 +496,38 @@ void Particle::WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_pa
     includes_reference_ssnr_weighting = false;
 }
 
+void Particle::ApplyExposureDecayToSSNRCurve(Curve& SSNR_curve, float total_exposure_electrons_per_angstrom2, float voltage_kV) {
+    // Apply exposure-dependent decay to SSNR curve based on Grant & Grigorieff 2015
+    // SNR(k,N) = SNR(k,0) * exp(-N/Ne(k))
+    // Where N = accumulated exposure, Ne(k) = critical exposure at frequency k
+
+    if ( total_exposure_electrons_per_angstrom2 <= 0.0f ) return;
+    if ( SSNR_curve.NumberOfPoints() == 0 ) return;
+
+    // Create ElectronDose calculator for critical dose computation
+    ElectronDose dose_calculator(voltage_kV, pixel_size);
+
+    // Modify each point in the SSNR curve
+    for ( int i = 0; i < SSNR_curve.NumberOfPoints(); i++ ) {
+        // SSNR curve x-axis is in normalized frequency units (0 to 0.5)
+        // Convert to spatial frequency in 1/Angstrom for critical dose calculation
+        float normalized_frequency = SSNR_curve.data_x[i];
+        float spatial_frequency_angstrom = normalized_frequency / pixel_size;  // 1/Angstrom
+
+        // Get critical dose at this frequency
+        float critical_dose = dose_calculator.ReturnCriticalDose(spatial_frequency_angstrom);
+
+        // Apply exponential decay: SNR_new = SNR_old * exp(-exposure/critical_dose)
+        float dose_factor = expf(-total_exposure_electrons_per_angstrom2 / critical_dose);
+        SSNR_curve.data_y[i] *= dose_factor;
+
+        // Ensure SSNR doesn't go negative (should not happen with exponential, but be safe)
+        if ( SSNR_curve.data_y[i] < 0.0f ) {
+            SSNR_curve.data_y[i] = 0.0f;
+        }
+    }
+}
+
 void Particle::CalculateProjection(Image& projection_image, ReconstructedVolume& input_3d) {
     MyDebugAssertTrue(projection_image.is_in_memory, "Projection image memory not allocated");
     MyDebugAssertTrue(input_3d.density_map->is_in_memory, "3D reconstruction memory not allocated");

@@ -132,14 +132,6 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image, bool sw
 
         whitening_filter_ptr->MultiplyBy(local_whitening_filter);
     }
-    // revert (from skip temp)
-
-    // if ( whitening_filter_ptr ) {
-    //     whitening_filter_ptr->ResampleCurve(whitening_filter_ptr.get( ), local_whitening_filter.NumberOfPoints( ));
-    //     local_whitening_filter.ResampleCurve(&local_whitening_filter, whitening_filter_ptr->NumberOfPoints( ));
-    // }
-    // Record this filtering for later use
-    // whitening_filter_ptr->MultiplyBy(local_whitening_filter);
 
     input_image.ZeroCentralPixel( );
     if ( normalize_to_variance_one ) {

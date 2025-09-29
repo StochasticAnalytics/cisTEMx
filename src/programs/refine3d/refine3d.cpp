@@ -1278,11 +1278,7 @@ bool Refine3DApp::DoCalculation( ) {
             // Integrate exposure decay with SSNR weighting (Grant & Grigorieff 2015)
             // Create exposure-modified SSNR curve for local refinement
             if ( refine_particle_local.total_exposure > 0.0f ) {
-                // revert - debug: show exposure filtering details for first 5 particles
-                if ( image_counter <= 5 ) {
-                    wxPrintf("DEBUG: Refine3D LOCAL INTEGRATED exposure-SSNR - particle %d, total_exposure: %.2f e-/A^2\n",
-                             image_counter, refine_particle_local.total_exposure);
-                }
+                MyDebugAssertTrue(refine_particle_local.total_exposure > 0.0f, "Total exposure must be > 0 for exposure-SSNR filtering (particle %d)", image_counter);
 
                 // Make a copy of the SSNR curve and apply exposure decay
                 Curve exposure_modified_ssnr = refine_statistics.part_SSNR;
@@ -1368,11 +1364,7 @@ bool Refine3DApp::DoCalculation( ) {
                     // Integrate exposure decay with SSNR weighting (Grant & Grigorieff 2015)
                     // Create exposure-modified SSNR curve
                     if ( search_particle_local.total_exposure > 0.0f ) {
-                        // revert - debug: show exposure filtering details for first 5 particles
-                        if ( image_counter <= 5 ) {
-                            wxPrintf("DEBUG: Refine3D INTEGRATED exposure-SSNR - particle %d, total_exposure: %.2f e-/A^2\n",
-                                     image_counter, search_particle_local.total_exposure);
-                        }
+                        MyDebugAssertTrue(search_particle_local.total_exposure > 0.0f, "Total exposure must be > 0 for exposure-SSNR filtering (particle %d)", image_counter);
 
                         // Make a copy of the SSNR curve and apply exposure decay
                         Curve exposure_modified_ssnr = search_statistics.part_SSNR;

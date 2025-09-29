@@ -122,7 +122,7 @@ class TemplateMatchQueueManager : public wxPanel {
 private:
     wxListCtrl* execution_queue_ctrl;  // Top table for execution queue
     wxListCtrl* available_jobs_ctrl;   // Bottom table for available jobs
-    wxDataViewListCtrl* queue_list_ctrl;  // Legacy compatibility pointer
+    wxListCtrl* queue_list_ctrl;  // Legacy compatibility pointer - points to execution_queue_ctrl
     wxButton* run_selected_button;
     wxButton* clear_queue_button;
     wxButton* remove_selected_button;
@@ -157,6 +157,8 @@ private:
 
     wxColour GetStatusColor(const wxString& status);
     void UpdateQueueDisplay();
+    void UpdateExecutionQueueDisplay();
+    void UpdateAvailableJobsDisplay();
     int GetSelectedRow();
     void DeselectJobInUI(long template_match_id);
 

@@ -4,7 +4,12 @@
       "Bash(find:*)",
       "Bash(make:*)",
       "Bash(/dev/null)",
-      "Bash(./configure --help)"
+      "Bash(./configure --help)",
+      "Bash(git branch:*)",
+      "Bash(git show-branch:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

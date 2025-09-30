@@ -450,6 +450,8 @@ class Database {
                                    float& xy_change_threshold, bool& exclude_above_xy_threshold);
     void            UpdateQueuePosition(long queue_id, int position);
     void            UpdateSearchIdInQueueTable(long queue_id, long search_id);
+    int             GetSearchIdForQueueItem(long queue_id);
+    int             GetHighestSearchIdFromQueue();
     void            RemoveFromQueue(long queue_id);
     void            ClearTemplateMatchQueue();
 

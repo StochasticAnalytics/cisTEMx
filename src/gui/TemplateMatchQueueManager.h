@@ -188,6 +188,8 @@ class TemplateMatchQueueItem {
  * 3. Queue viewing: OnOpenQueueClick → dialog QM → load existing searches from database
  */
 class TemplateMatchQueueManager : public wxPanel {
+    friend class MatchTemplatePanel;  // Allow MatchTemplatePanel to access private methods
+
   private:
     // Debug flag for queue behavior testing - set to true to skip actual search execution
     static constexpr bool skip_search_execution_for_queue_debugging = false;

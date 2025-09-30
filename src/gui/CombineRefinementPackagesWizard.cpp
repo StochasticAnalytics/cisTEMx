@@ -334,6 +334,22 @@ void CombineRefinementPackagesWizard::OnFinished(wxWizardEvent& event) {
     // Create local random number generator with good seeding for random parameters
     RandomNumberGenerator local_rand(pi_v<float>);
 
+    // Calculate total number of particles for progress dialog
+    long total_particles_to_combine = 0;
+    for ( counter = 0; counter < array_of_packages_to_combine.GetCount( ); counter++ ) {
+        total_particles_to_combine += array_of_packages_to_combine[counter].contained_particles.GetCount( );
+    }
+
+    // Create progress dialog for stack creation
+    // NOTE: Progress updates using output_particle_counter which only increments for kept particles.
+    // This can cause jumpiness when duplicates are skipped (database lookups happen per package).
+    // Could be smoothed by: 1) checking duplicates before I/O, 2) using separate progress counter
+    OneSecondProgressDialog* my_dialog = new OneSecondProgressDialog("Combining Stacks",
+                                                                      wxString::Format("Creating combined stack (%ld particles)...", total_particles_to_combine),
+                                                                      total_particles_to_combine,
+                                                                      this,
+                                                                      wxPD_REMAINING_TIME | wxPD_AUTO_HIDE | wxPD_APP_MODAL);
+
     // Now loop through the existing MRC filenames to get to the files; open, read through, then write each particle to new MRC file, close.
     for ( counter = 0; counter < array_of_packages_to_combine.GetCount( ); counter++ ) {
         long refinement_id_to_query = corresponding_refinement_ids->Item(counter);
@@ -527,11 +543,13 @@ void CombineRefinementPackagesWizard::OnFinished(wxWizardEvent& event) {
                 temp_combined_refinement->class_refinement_results[class_counter].particle_refinement_results[output_particle_counter].assigned_subset = old_refinement->class_refinement_results[package_classes[counter]].particle_refinement_results[input_particle_counter].assigned_subset;
             }
             output_particle_counter++;
+            my_dialog->Update(output_particle_counter);
         }
         input_file.CloseFile( );
     }
 
     combined_stacks_file.CloseFile( );
+    my_dialog->Destroy( );
 
     main_frame->current_project.database.Begin( ); // Have to add the newly combined package and its refinement to the database
     refinement_package_asset_panel->AddAsset(temp_combined_refinement_package);

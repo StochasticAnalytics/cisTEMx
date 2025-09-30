@@ -550,6 +550,17 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                                                    stack_file.GetName( ) + wxString::Format("_filtered_%d.", int(total_exposure_limit)) +
                                                    stack_file.GetExt( );
 
+                // Destroy the initial progress dialog and create a new one for stack creation
+                // NOTE: Progress could be smoother by using a unified progress counter across both phases
+                // (metadata loading + stack writing) rather than separate dialogs
+                my_dialog->Destroy( );
+                my_dialog = new OneSecondProgressDialog("Creating Filtered Stack",
+                                                        wxString::Format("Creating filtered stack (%ld particles)...",
+                                                                         long(particles_to_keep.GetCount( ))),
+                                                        particles_to_keep.GetCount( ),
+                                                        this,
+                                                        wxPD_REMAINING_TIME | wxPD_AUTO_HIDE | wxPD_APP_MODAL);
+
                 // Open input stack and prepare for filtering
                 MRCFile input_stack(temp_refinement_package->stack_filename.ToStdString( ), false);
                 float   pixel_size_for_output = input_stack.ReturnPixelSize( );
@@ -585,6 +596,9 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[original_index];
                         filtered_refinement.class_refinement_results[class_counter].particle_refinement_results[i].position_in_stack = i + 1;
                     }
+
+                    // Update progress dialog
+                    my_dialog->Update(i + 1);
                 }
 
                 // Set pixel size and update header after all particles are written

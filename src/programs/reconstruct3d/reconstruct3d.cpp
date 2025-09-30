@@ -250,20 +250,19 @@ bool Reconstruct3DApp::DoCalculation( ) {
     bool       file_read;
     wxDateTime my_time_in;
 
+    wxPrintf("\nStarting C Refine3D\n");
+
     if ( ! DoesFileExist(input_star_filename) ) {
-        SendError(wxString::Format("Error: Input star file %s not found\n", input_star_filename));
-        exit(-1);
-    }
+        SendErrorAndCrash(wxString::Format("Error: Input star file %s not found\n", input_star_filename));
+        }
     if ( ! DoesFileExist(input_particle_stack) ) {
-        SendError(wxString::Format("Error: Input particle stack %s not found\n", input_particle_stack));
-        exit(-1);
+        SendErrorAndCrash(wxString::Format("Error: Input particle stack %s not found\n", input_particle_stack));
     }
     MRCFile  input_stack(input_particle_stack.ToStdString( ), false);
     MRCFile* input_3d_file;
     if ( use_input_reconstruction ) {
         if ( ! DoesFileExist(input_reconstruction) ) {
-            SendError(wxString::Format("Error: Input reconstruction %s not found\n", input_reconstruction));
-            exit(-1);
+            SendErrorAndCrash(wxString::Format("Error: Input reconstruction %s not found\n", input_reconstruction));
         }
         input_3d_file = new MRCFile(input_reconstruction.ToStdString( ), false);
     }
@@ -310,12 +309,10 @@ bool Reconstruct3DApp::DoCalculation( ) {
     }
 
     if ( input_stack.ReturnXSize( ) != input_stack.ReturnYSize( ) ) {
-        SendError("Error: Particles are not square\n");
-        exit(-1);
+        SendErrorAndCrash("Error: Particles are not square\n");
     }
     if ( last_particle < first_particle && last_particle != 0 ) {
-        SendError("Error: Number of last particle to refine smaller than number of first particle to refine\n");
-        exit(-1);
+        SendErrorAndCrash("Error: Number of last particle to refine smaller than number of first particle to refine\n");
     }
 
     if ( last_particle == 0 )

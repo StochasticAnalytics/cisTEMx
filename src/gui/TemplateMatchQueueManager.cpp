@@ -3,6 +3,9 @@
 #include "MatchTemplatePanel.h"
 #include <algorithm>
 
+// Debug flag for queue development - set to false to execute searches normally
+constexpr bool skip_search_execution_for_queue_debugging = false;
+
 #ifdef cisTEM_QM_LOGGING
 // Initialize static members for QueueManagerLogger
 std::ofstream QueueManagerLogger::log_file;

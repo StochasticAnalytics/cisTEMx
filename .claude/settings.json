@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "SlashCommand(/build-cistem)",
+      "Bash(.claude/commands/build-cistem.sh:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

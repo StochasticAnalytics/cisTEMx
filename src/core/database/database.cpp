@@ -1,4 +1,4 @@
-#include "core_headers.h"
+#include "../core_headers.h"
 #include "database_schema.h"
 
 // #define PRINT_FOR_SLOW_DEBUG
@@ -1962,31 +1962,24 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
 
     int peak_counter;
 
-    // For v3 schema: only result-specific data goes in TEMPLATE_MATCH_LIST
-    // Search parameters are already in TEMPLATE_MATCH_QUEUE via job_details.job_id (SEARCH_ID)
-    // Set DATETIME_OF_COMPLETION to current time since job is complete
-    long datetime_of_completion = wxDateTime::Now( ).GetAsDOS( );
-
-    // Type string matches database_schema.h: "plllilliitttttttttttttrr" (24 columns - removed JOB_NAME)
-    InsertOrReplace("TEMPLATE_MATCH_LIST", "plllilliitttttttttttttrr",
-                    "TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID",
+    // For v3 schema: Per-image data (including CTF params) goes in TEMPLATE_MATCH_LIST
+    // Search parameters (resolution limits, angular steps, etc.) are in TEMPLATE_MATCH_QUEUE
+    // Type string matches database_schema.h: "plrliiliitrrrrrrrrrr" (20 columns)
+    InsertOrReplace("TEMPLATE_MATCH_LIST", "plrliiliitrrrrrrrrrr",
+                    "TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "ELAPSED_TIME_SECONDS", "SEARCH_ID",
                     "SEARCH_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID",
-                    "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE",
-                    "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE",
-                    "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE",
-                    "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2",
+                    "IS_ACTIVE", "OUTPUT_FILENAME_BASE",
+                    "PIXEL_SIZE", "VOLTAGE", "SPHERICAL_ABERRATION", "AMPLITUDE_CONTRAST",
+                    "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT",
                     "FUTURE_FLOAT_1", "FUTURE_FLOAT_2",
                     wanted_template_match_id,
-                    job_details.datetime_of_run, datetime_of_completion, job_details.job_id,
+                    job_details.datetime_of_run, job_details.elapsed_time_seconds, job_details.job_id,
                     job_details.job_type, job_details.input_job_id, job_details.image_asset_id,
                     job_details.ref_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
-                    job_details.mip_filename.ToUTF8( ).data( ), job_details.scaled_mip_filename.ToUTF8( ).data( ),
-                    job_details.avg_filename.ToUTF8( ).data( ), job_details.std_filename.ToUTF8( ).data( ),
-                    job_details.psi_filename.ToUTF8( ).data( ), job_details.theta_filename.ToUTF8( ).data( ),
-                    job_details.phi_filename.ToUTF8( ).data( ), job_details.defocus_filename.ToUTF8( ).data( ),
-                    job_details.pixel_size_filename.ToUTF8( ).data( ), job_details.histogram_filename.ToUTF8( ).data( ),
-                    job_details.projection_result_filename.ToUTF8( ).data( ),
-                    "", "", 0.0f, 0.0f); // Future columns
+                    job_details.output_filename_base.ToUTF8( ).data( ),
+                    job_details.pixel_size, job_details.voltage, job_details.spherical_aberration, job_details.amplitude_contrast,
+                    job_details.defocus1, job_details.defocus2, job_details.defocus_angle, job_details.phase_shift,
+                    0.0f, 0.0f); // Future columns
 
     CreateTemplateMatchPeakListTable(wanted_template_match_id);
 
@@ -2029,19 +2022,15 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     bool          more_data;
 
     // For v3 schema: JOIN TEMPLATE_MATCH_LIST with TEMPLATE_MATCH_QUEUE to get all data
-    // List columns: TEMPLATE_MATCH_ID, DATETIME_OF_RUN, DATETIME_OF_COMPLETION, SEARCH_ID, SEARCH_TYPE_CODE,
-    //               PARENT_SEARCH_ID, IMAGE_ASSET_ID, REFERENCE_VOLUME_ASSET_ID, IS_ACTIVE,
-    //               then output files...
-    // Queue columns: all search parameters including SEARCH_NAME
+    // List columns: metadata, OUTPUT_FILENAME_BASE, CTF params (moved from queue)
+    // Queue columns: search parameters (resolution limits, angular steps, etc.)
     sql_select_command = wxString::Format(
-            "SELECT list.TEMPLATE_MATCH_ID, q.SEARCH_NAME, list.DATETIME_OF_RUN, list.SEARCH_ID, list.SEARCH_TYPE_CODE, "
+            "SELECT list.TEMPLATE_MATCH_ID, q.SEARCH_NAME, list.DATETIME_OF_RUN, list.ELAPSED_TIME_SECONDS, list.SEARCH_ID, list.SEARCH_TYPE_CODE, "
             "list.PARENT_SEARCH_ID, list.IMAGE_ASSET_ID, list.REFERENCE_VOLUME_ASSET_ID, list.IS_ACTIVE, "
-            "list.MIP_OUTPUT_FILE, list.SCALED_MIP_OUTPUT_FILE, list.AVG_OUTPUT_FILE, list.STD_OUTPUT_FILE, "
-            "list.PSI_OUTPUT_FILE, list.THETA_OUTPUT_FILE, list.PHI_OUTPUT_FILE, list.DEFOCUS_OUTPUT_FILE, "
-            "list.PIXEL_SIZE_OUTPUT_FILE, list.HISTOGRAM_OUTPUT_FILE, list.PROJECTION_RESULT_OUTPUT_FILE, "
-            "q.SYMMETRY, q.PIXEL_SIZE, q.VOLTAGE, q.SPHERICAL_ABERRATION, q.AMPLITUDE_CONTRAST, "
-            "q.DEFOCUS1, q.DEFOCUS2, q.DEFOCUS_ANGLE, q.PHASE_SHIFT, "
-            "q.LOW_RESOLUTION_LIMIT, q.HIGH_RESOLUTION_LIMIT, "
+            "list.OUTPUT_FILENAME_BASE, "
+            "list.PIXEL_SIZE, list.VOLTAGE, list.SPHERICAL_ABERRATION, list.AMPLITUDE_CONTRAST, "
+            "list.DEFOCUS1, list.DEFOCUS2, list.DEFOCUS_ANGLE, list.PHASE_SHIFT, "
+            "q.SYMMETRY, q.LOW_RESOLUTION_LIMIT, q.HIGH_RESOLUTION_LIMIT, "
             "q.OUT_OF_PLANE_ANGULAR_STEP, q.IN_PLANE_ANGULAR_STEP, "
             "q.DEFOCUS_SEARCH_RANGE, q.DEFOCUS_STEP, "
             "q.PIXEL_SIZE_SEARCH_RANGE, q.PIXEL_SIZE_STEP, "
@@ -2056,55 +2045,48 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     Prepare(sql_select_command, &list_statement);
     return_code = Step(list_statement);
 
-    // Read from LIST table (columns 0-19)
-    template_match_id               = sqlite3_column_int64(list_statement, 0);
-    temp_result.job_name            = sqlite3_column_text(list_statement, 1);
-    temp_result.datetime_of_run     = sqlite3_column_int64(list_statement, 2);
-    temp_result.job_id              = sqlite3_column_int64(list_statement, 3); // SEARCH_ID
-    temp_result.job_type            = sqlite3_column_int(list_statement, 4);
-    temp_result.input_job_id        = sqlite3_column_int64(list_statement, 5); // PARENT_SEARCH_ID
-    temp_result.image_asset_id      = sqlite3_column_int64(list_statement, 6);
-    temp_result.ref_volume_asset_id = sqlite3_column_int64(list_statement, 7);
-    // Column 8 is IS_ACTIVE which is not recorded in the class
+    // Read from joined query (columns 0-32)
+    template_match_id                           = sqlite3_column_int64(list_statement, 0);
+    temp_result.job_name                        = sqlite3_column_text(list_statement, 1);
+    temp_result.datetime_of_run                 = sqlite3_column_int64(list_statement, 2);
+    temp_result.elapsed_time_seconds            = sqlite3_column_double(list_statement, 3);
+    temp_result.job_id                          = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
+    temp_result.job_type                        = sqlite3_column_int(list_statement, 5);
+    temp_result.input_job_id                    = sqlite3_column_int64(list_statement, 6); // PARENT_SEARCH_ID
+    temp_result.image_asset_id                  = sqlite3_column_int64(list_statement, 7);
+    temp_result.ref_volume_asset_id             = sqlite3_column_int64(list_statement, 8);
+    // Column 9 is IS_ACTIVE which is not recorded in the class
 
-    // Output files from LIST table (columns 9-19)
-    temp_result.mip_filename               = sqlite3_column_text(list_statement, 9);
-    temp_result.scaled_mip_filename        = sqlite3_column_text(list_statement, 10);
-    temp_result.avg_filename               = sqlite3_column_text(list_statement, 11);
-    temp_result.std_filename               = sqlite3_column_text(list_statement, 12);
-    temp_result.psi_filename               = sqlite3_column_text(list_statement, 13);
-    temp_result.theta_filename             = sqlite3_column_text(list_statement, 14);
-    temp_result.phi_filename               = sqlite3_column_text(list_statement, 15);
-    temp_result.defocus_filename           = sqlite3_column_text(list_statement, 16);
-    temp_result.pixel_size_filename        = sqlite3_column_text(list_statement, 17);
-    temp_result.histogram_filename         = sqlite3_column_text(list_statement, 18);
-    temp_result.projection_result_filename = sqlite3_column_text(list_statement, 19);
+    // Output filename base from LIST table (column 10)
+    temp_result.output_filename_base = sqlite3_column_text(list_statement, 10);
 
-    // Read search parameters from QUEUE table (columns 20-42)
-    temp_result.symmetry                        = sqlite3_column_text(list_statement, 20);
-    temp_result.pixel_size                      = sqlite3_column_double(list_statement, 21);
-    temp_result.voltage                         = sqlite3_column_double(list_statement, 22);
-    temp_result.spherical_aberration            = sqlite3_column_double(list_statement, 23);
-    temp_result.amplitude_contrast              = sqlite3_column_double(list_statement, 24);
-    temp_result.defocus1                        = sqlite3_column_double(list_statement, 25);
-    temp_result.defocus2                        = sqlite3_column_double(list_statement, 26);
-    temp_result.defocus_angle                   = sqlite3_column_double(list_statement, 27);
-    temp_result.phase_shift                     = sqlite3_column_double(list_statement, 28);
-    temp_result.low_res_limit                   = sqlite3_column_double(list_statement, 29);
-    temp_result.high_res_limit                  = sqlite3_column_double(list_statement, 30);
-    temp_result.out_of_plane_step               = sqlite3_column_double(list_statement, 31);
-    temp_result.in_plane_step                   = sqlite3_column_double(list_statement, 32);
-    temp_result.defocus_search_range            = sqlite3_column_double(list_statement, 33);
-    temp_result.defocus_step                    = sqlite3_column_double(list_statement, 34);
-    temp_result.pixel_size_search_range         = sqlite3_column_double(list_statement, 35);
-    temp_result.pixel_size_step                 = sqlite3_column_double(list_statement, 36);
-    temp_result.refinement_threshold            = sqlite3_column_double(list_statement, 37);
+    // CTF parameters from LIST table (columns 11-18)
+    temp_result.pixel_size           = sqlite3_column_double(list_statement, 11);
+    temp_result.voltage              = sqlite3_column_double(list_statement, 12);
+    temp_result.spherical_aberration = sqlite3_column_double(list_statement, 13);
+    temp_result.amplitude_contrast   = sqlite3_column_double(list_statement, 14);
+    temp_result.defocus1             = sqlite3_column_double(list_statement, 15);
+    temp_result.defocus2             = sqlite3_column_double(list_statement, 16);
+    temp_result.defocus_angle        = sqlite3_column_double(list_statement, 17);
+    temp_result.phase_shift          = sqlite3_column_double(list_statement, 18);
+
+    // Search parameters from QUEUE table (columns 19-32)
+    temp_result.symmetry                        = sqlite3_column_text(list_statement, 19);
+    temp_result.low_res_limit                   = sqlite3_column_double(list_statement, 20);
+    temp_result.high_res_limit                  = sqlite3_column_double(list_statement, 21);
+    temp_result.out_of_plane_step               = sqlite3_column_double(list_statement, 22);
+    temp_result.in_plane_step                   = sqlite3_column_double(list_statement, 23);
+    temp_result.defocus_search_range            = sqlite3_column_double(list_statement, 24);
+    temp_result.defocus_step                    = sqlite3_column_double(list_statement, 25);
+    temp_result.pixel_size_search_range         = sqlite3_column_double(list_statement, 26);
+    temp_result.pixel_size_step                 = sqlite3_column_double(list_statement, 27);
+    temp_result.refinement_threshold            = sqlite3_column_double(list_statement, 28);
     temp_result.used_threshold                  = temp_result.refinement_threshold; // Same value now
-    temp_result.reference_box_size_in_angstroms = sqlite3_column_double(list_statement, 38);
-    temp_result.mask_radius                     = sqlite3_column_double(list_statement, 39);
-    temp_result.min_peak_radius                 = sqlite3_column_double(list_statement, 40);
-    temp_result.xy_change_threshold             = sqlite3_column_double(list_statement, 41);
-    temp_result.exclude_above_xy_threshold      = bool(sqlite3_column_int(list_statement, 42));
+    temp_result.reference_box_size_in_angstroms = sqlite3_column_double(list_statement, 29);
+    temp_result.mask_radius                     = sqlite3_column_double(list_statement, 30);
+    temp_result.min_peak_radius                 = sqlite3_column_double(list_statement, 31);
+    temp_result.xy_change_threshold             = sqlite3_column_double(list_statement, 32);
+    temp_result.exclude_above_xy_threshold      = bool(sqlite3_column_int(list_statement, 33));
 
     Finalize(list_statement);
 
@@ -3005,8 +2987,6 @@ bool Database::CheckIfCurrentWorkflowIsInteger( ) {
 
 long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
                                        bool use_gpu, bool use_fast_fft, const wxString& symmetry,
-                                       float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
-                                       float defocus1, float defocus2, float defocus_angle, float phase_shift,
                                        float low_resolution_limit, float high_resolution_limit,
                                        float out_of_plane_angular_step, float in_plane_angular_step,
                                        float defocus_search_range, float defocus_step,
@@ -3030,8 +3010,6 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     const char* sql = "INSERT INTO TEMPLATE_MATCH_QUEUE ("
                       "SEARCH_NAME, SEARCH_ID, QUEUE_POSITION, DATETIME_QUEUED, "
                       "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
-                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
-                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
                       "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
                       "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
                       "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
@@ -3040,7 +3018,7 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
                       "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
                       "EXCLUDE_ABOVE_XY_THRESHOLD, CUSTOM_CLI_ARGS, "
                       "FUTURE_INT_1, FUTURE_INT_2, FUTURE_FLOAT_1, FUTURE_FLOAT_2, FUTURE_TEXT_1, FUTURE_TEXT_2"
-                      ") VALUES (?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL);";
+                      ") VALUES (?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL);";
 
     sqlite3_stmt* stmt;
     if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {
@@ -3058,29 +3036,21 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     sqlite3_bind_int(stmt, 7, use_gpu ? 1 : 0);
     sqlite3_bind_int(stmt, 8, use_fast_fft ? 1 : 0);
     sqlite3_bind_text(stmt, 9, symmetry.mb_str( ).data( ), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_double(stmt, 10, pixel_size);
-    sqlite3_bind_double(stmt, 11, voltage);
-    sqlite3_bind_double(stmt, 12, spherical_aberration);
-    sqlite3_bind_double(stmt, 13, amplitude_contrast);
-    sqlite3_bind_double(stmt, 14, defocus1);
-    sqlite3_bind_double(stmt, 15, defocus2);
-    sqlite3_bind_double(stmt, 16, defocus_angle);
-    sqlite3_bind_double(stmt, 17, phase_shift);
-    sqlite3_bind_double(stmt, 18, low_resolution_limit);
-    sqlite3_bind_double(stmt, 19, high_resolution_limit);
-    sqlite3_bind_double(stmt, 20, out_of_plane_angular_step);
-    sqlite3_bind_double(stmt, 21, in_plane_angular_step);
-    sqlite3_bind_double(stmt, 22, defocus_search_range);
-    sqlite3_bind_double(stmt, 23, defocus_step);
-    sqlite3_bind_double(stmt, 24, pixel_size_search_range);
-    sqlite3_bind_double(stmt, 25, pixel_size_step);
-    sqlite3_bind_double(stmt, 26, refinement_threshold);
-    sqlite3_bind_double(stmt, 27, ref_box_size_in_angstroms);
-    sqlite3_bind_double(stmt, 28, mask_radius);
-    sqlite3_bind_double(stmt, 29, min_peak_radius);
-    sqlite3_bind_double(stmt, 30, xy_change_threshold);
-    sqlite3_bind_int(stmt, 31, exclude_above_xy_threshold ? 1 : 0);
-    sqlite3_bind_text(stmt, 32, custom_cli_args.mb_str( ).data( ), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 10, low_resolution_limit);
+    sqlite3_bind_double(stmt, 11, high_resolution_limit);
+    sqlite3_bind_double(stmt, 12, out_of_plane_angular_step);
+    sqlite3_bind_double(stmt, 13, in_plane_angular_step);
+    sqlite3_bind_double(stmt, 14, defocus_search_range);
+    sqlite3_bind_double(stmt, 15, defocus_step);
+    sqlite3_bind_double(stmt, 16, pixel_size_search_range);
+    sqlite3_bind_double(stmt, 17, pixel_size_step);
+    sqlite3_bind_double(stmt, 18, refinement_threshold);
+    sqlite3_bind_double(stmt, 19, ref_box_size_in_angstroms);
+    sqlite3_bind_double(stmt, 20, mask_radius);
+    sqlite3_bind_double(stmt, 21, min_peak_radius);
+    sqlite3_bind_double(stmt, 22, xy_change_threshold);
+    sqlite3_bind_int(stmt, 23, exclude_above_xy_threshold ? 1 : 0);
+    sqlite3_bind_text(stmt, 24, custom_cli_args.mb_str( ).data( ), -1, SQLITE_TRANSIENT);
 
     if ( sqlite3_step(stmt) != SQLITE_DONE ) {
         MyPrintWithDetails("SQL Error: %s\nTrying to execute: %s", sqlite3_errmsg(sqlite_database), sql);
@@ -3115,8 +3085,6 @@ void Database::GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids) {
 
 bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& template_match_job_id, int& queue_position, wxString& custom_cli_args,
                                 int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
-                                float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
-                                float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
                                 float& low_resolution_limit, float& high_resolution_limit,
                                 float& out_of_plane_angular_step, float& in_plane_angular_step,
                                 float& defocus_search_range, float& defocus_step,
@@ -3129,8 +3097,6 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& templat
 
     const char* sql = "SELECT SEARCH_NAME, SEARCH_ID, QUEUE_POSITION, CUSTOM_CLI_ARGS, "
                       "IMAGE_GROUP_ID, REFERENCE_VOLUME_ASSET_ID, RUN_PROFILE_ID, USE_GPU, USE_FAST_FFT, SYMMETRY, "
-                      "PIXEL_SIZE, VOLTAGE, SPHERICAL_ABERRATION, AMPLITUDE_CONTRAST, "
-                      "DEFOCUS1, DEFOCUS2, DEFOCUS_ANGLE, PHASE_SHIFT, "
                       "LOW_RESOLUTION_LIMIT, HIGH_RESOLUTION_LIMIT, "
                       "OUT_OF_PLANE_ANGULAR_STEP, IN_PLANE_ANGULAR_STEP, "
                       "DEFOCUS_SEARCH_RANGE, DEFOCUS_STEP, "
@@ -3165,30 +3131,22 @@ bool Database::GetQueueItemByID(long queue_id, wxString& job_name, long& templat
         run_profile_id             = sqlite3_column_int(stmt, 6);
         use_gpu                    = sqlite3_column_int(stmt, 7) != 0;
         use_fast_fft               = sqlite3_column_int(stmt, 8) != 0;
-        exclude_above_xy_threshold = sqlite3_column_int(stmt, 31) != 0;
+        exclude_above_xy_threshold = sqlite3_column_int(stmt, 23) != 0;
 
-        // Extract float values
-        pixel_size                = float(sqlite3_column_double(stmt, 10));
-        voltage                   = float(sqlite3_column_double(stmt, 11));
-        spherical_aberration      = float(sqlite3_column_double(stmt, 12));
-        amplitude_contrast        = float(sqlite3_column_double(stmt, 13));
-        defocus1                  = float(sqlite3_column_double(stmt, 14));
-        defocus2                  = float(sqlite3_column_double(stmt, 15));
-        defocus_angle             = float(sqlite3_column_double(stmt, 16));
-        phase_shift               = float(sqlite3_column_double(stmt, 17));
-        low_resolution_limit      = float(sqlite3_column_double(stmt, 18));
-        high_resolution_limit     = float(sqlite3_column_double(stmt, 19));
-        out_of_plane_angular_step = float(sqlite3_column_double(stmt, 20));
-        in_plane_angular_step     = float(sqlite3_column_double(stmt, 21));
-        defocus_search_range      = float(sqlite3_column_double(stmt, 22));
-        defocus_step              = float(sqlite3_column_double(stmt, 23));
-        pixel_size_search_range   = float(sqlite3_column_double(stmt, 24));
-        pixel_size_step           = float(sqlite3_column_double(stmt, 25));
-        refinement_threshold      = float(sqlite3_column_double(stmt, 26));
-        ref_box_size_in_angstroms = float(sqlite3_column_double(stmt, 27));
-        mask_radius               = float(sqlite3_column_double(stmt, 28));
-        min_peak_radius           = float(sqlite3_column_double(stmt, 29));
-        xy_change_threshold       = float(sqlite3_column_double(stmt, 30));
+        // Extract float values (CTF params removed, columns renumbered)
+        low_resolution_limit      = float(sqlite3_column_double(stmt, 10));
+        high_resolution_limit     = float(sqlite3_column_double(stmt, 11));
+        out_of_plane_angular_step = float(sqlite3_column_double(stmt, 12));
+        in_plane_angular_step     = float(sqlite3_column_double(stmt, 13));
+        defocus_search_range      = float(sqlite3_column_double(stmt, 14));
+        defocus_step              = float(sqlite3_column_double(stmt, 15));
+        pixel_size_search_range   = float(sqlite3_column_double(stmt, 16));
+        pixel_size_step           = float(sqlite3_column_double(stmt, 17));
+        refinement_threshold      = float(sqlite3_column_double(stmt, 18));
+        ref_box_size_in_angstroms = float(sqlite3_column_double(stmt, 19));
+        mask_radius               = float(sqlite3_column_double(stmt, 20));
+        min_peak_radius           = float(sqlite3_column_double(stmt, 21));
+        xy_change_threshold       = float(sqlite3_column_double(stmt, 22));
     }
 
     sqlite3_finalize(stmt);

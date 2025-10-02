@@ -290,8 +290,6 @@ void TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem
     long new_database_queue_id = main_frame->current_project.database.AddToTemplateMatchQueue(
             item.search_name, item.image_group_id, item.reference_volume_asset_id, item.run_profile_id,
             item.use_gpu, item.use_fast_fft, item.symmetry,
-            item.pixel_size, item.voltage, item.spherical_aberration, item.amplitude_contrast,
-            item.defocus1, item.defocus2, item.defocus_angle, item.phase_shift,
             item.low_resolution_limit, item.high_resolution_limit,
             item.out_of_plane_angular_step, item.in_plane_angular_step,
             item.defocus_search_range, item.defocus_step,
@@ -1590,14 +1588,6 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
                 temp_item.use_gpu,
                 temp_item.use_fast_fft,
                 temp_item.symmetry,
-                temp_item.pixel_size,
-                temp_item.voltage,
-                temp_item.spherical_aberration,
-                temp_item.amplitude_contrast,
-                temp_item.defocus1,
-                temp_item.defocus2,
-                temp_item.defocus_angle,
-                temp_item.phase_shift,
                 temp_item.low_resolution_limit,
                 temp_item.high_resolution_limit,
                 temp_item.out_of_plane_angular_step,
@@ -1758,7 +1748,7 @@ bool TemplateMatchQueueManager::UpdateQueueItemInDatabase(const TemplateMatchQue
     // The proper solution would be to use prepared statements like in database.cpp, but that would
     // require adding a new method to the Database class.
 
-    // Part 1: Update first 15 fields
+    // Update all fields (no longer need to split into parts after removing 8 CTF fields)
     wxString update_sql_part1 = wxString::Format(
             "UPDATE TEMPLATE_MATCH_QUEUE SET "
             "SEARCH_NAME = '%s', "
@@ -1767,32 +1757,16 @@ bool TemplateMatchQueueManager::UpdateQueueItemInDatabase(const TemplateMatchQue
             "RUN_PROFILE_ID = %d, "
             "USE_GPU = %d, "
             "USE_FAST_FFT = %d, "
-            "SYMMETRY = '%s', "
-            "PIXEL_SIZE = %f, "
-            "VOLTAGE = %f, "
-            "SPHERICAL_ABERRATION = %f, "
-            "AMPLITUDE_CONTRAST = %f, "
-            "DEFOCUS1 = %f, "
-            "DEFOCUS2 = %f, "
-            "DEFOCUS_ANGLE = %f, "
-            "PHASE_SHIFT = %f",
+            "SYMMETRY = '%s'",
             item.search_name.ToUTF8( ).data( ),
             item.image_group_id,
             item.reference_volume_asset_id,
             item.run_profile_id,
             item.use_gpu ? 1 : 0,
             item.use_fast_fft ? 1 : 0,
-            item.symmetry.ToUTF8( ).data( ),
-            item.pixel_size,
-            item.voltage,
-            item.spherical_aberration,
-            item.amplitude_contrast,
-            item.defocus1,
-            item.defocus2,
-            item.defocus_angle,
-            item.phase_shift);
+            item.symmetry.ToUTF8( ).data( ));
 
-    // Part 2: Update remaining 16 fields plus WHERE clause
+    // Part 2: Update remaining fields plus WHERE clause
     wxString update_sql_part2 = wxString::Format(
             ", LOW_RESOLUTION_LIMIT = %f"
             ", HIGH_RESOLUTION_LIMIT = %f"

@@ -294,8 +294,8 @@ class Tensor {
 // Implementation of inline methods
 // ============================================================================
 
-template <typename ScalarType, typename Layout, typename>
-Tensor<ScalarType, Layout>::Tensor( )
+template <typename ScalarType, typename Layout, typename EnableIf_t>
+Tensor<ScalarType, Layout, EnableIf_t>::Tensor( )
     : data_(NULL),
       dims_({0, 0, 0}),
       space_(Space::Position),
@@ -303,8 +303,8 @@ Tensor<ScalarType, Layout>::Tensor( )
       is_fft_centered_in_box_(false) {
 }
 
-template <typename ScalarType, typename Layout, typename>
-void Tensor<ScalarType, Layout>::AttachToBuffer(ScalarType* data, int3 dims) {
+template <typename ScalarType, typename Layout, typename EnableIf_t>
+void Tensor<ScalarType, Layout, EnableIf_t>::AttachToBuffer(ScalarType* data, int3 dims) {
     TENSOR_DEBUG_ASSERT(data != NULL, "Cannot attach to NULL buffer");
     TENSOR_DEBUG_ASSERT(dims.x > 0 && dims.y > 0 && dims.z > 0,
                         "Invalid dimensions: %d x %d x %d", dims.x, dims.y, dims.z);
@@ -317,8 +317,8 @@ void Tensor<ScalarType, Layout>::AttachToBuffer(ScalarType* data, int3 dims) {
     is_fft_centered_in_box_    = false;
 }
 
-template <typename ScalarType, typename Layout, typename>
-void Tensor<ScalarType, Layout>::Detach( ) {
+template <typename ScalarType, typename Layout, typename EnableIf_t>
+void Tensor<ScalarType, Layout, EnableIf_t>::Detach( ) {
     data_ = NULL;
     dims_ = {0, 0, 0};
     // Reset metadata but keep space_ for potential debugging

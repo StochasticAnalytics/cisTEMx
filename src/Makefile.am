@@ -1367,8 +1367,11 @@ endif
     unit_test_runner_SOURCES  += test/core/test_curve.cpp
     unit_test_runner_SOURCES  += test/core/image/test_image_memory.cpp
 if WANT_CISTEM_GPU_AM
-    unit_test_runner_SOURCES += test/gpu/test_gpu.cpp
-                            
+    unit_test_runner_SOURCES += test/gpu/test_gpu.cpp \
+                                test/core/tensor/test_tensor_memory_pool.cpp \
+                                test/core/tensor/test_tensor.cpp \
+                                test/core/tensor/test_memory_layout.cpp
+
     unit_test_runner_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     unit_test_runner_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     unit_test_runner_LDADD    =  libgpucore.a libcore.a $(WX_LIBS_BASE) $(MKL_LIBS) $(CUDA_LIBS)

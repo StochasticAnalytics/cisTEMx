@@ -4471,10 +4471,14 @@ void Image::Deallocate( ) {
     if ( is_in_memory == true && image_memory_should_not_be_deallocated == false ) {
         fftwf_free(real_values);
         is_in_memory = false;
+        // Set pointers to NULL to avoid dangling pointers (consistency with SetupInitialValues)
+        real_values    = NULL;
+        complex_values = NULL;
 
         if ( is_in_memory_16f ) {
             delete[] real_values_16f;
             is_in_memory_16f = false;
+            real_values_16f  = NULL;
         }
     }
 
@@ -4483,13 +4487,20 @@ void Image::Deallocate( ) {
         MyDebugAssertTrue(lock.IsOk( ), "Mute locking failed");
         fftwf_destroy_plan(plan_fwd);
         fftwf_destroy_plan(plan_bwd);
-        planned = false;
+        planned  = false;
+        plan_fwd = NULL;
+        plan_bwd = NULL;
     }
 
 #ifdef ENABLEGPU
     UnRegisterPageLockedMemory(real_values);
     UnRegisterPageLockedMemory(real_values_16f);
 #endif
+
+    // Reset dimensions to match initial state
+    logical_x_dimension = 0;
+    logical_y_dimension = 0;
+    logical_z_dimension = 0;
 }
 
 /**

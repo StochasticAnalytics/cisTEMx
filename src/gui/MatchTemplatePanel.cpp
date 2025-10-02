@@ -1526,39 +1526,26 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         int number_of_previous_template_matches = main_frame->current_project.database.ReturnNumberOfPreviousTemplateMatchesByAssetID(current_image->asset_id);
         main_frame->current_project.database.GetCTFParameters(current_image->ctf_estimation_id, voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, phase_shift, iciness);
 
-        // Generate output filenames
-        wxString mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        mip_output_file += wxString::Format("/%s_mip_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
+        // Set output filename base first - all individual filenames derived from this
+        wxString output_filename_base = main_frame->current_project.template_matching_asset_directory.GetFullPath( ) +
+                                        wxString::Format("/%s_%i_%i", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
 
-        wxString best_psi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_psi_output_file += wxString::Format("/%s_psi_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
+        // Create temp result object to use helper methods for generating filenames
+        TemplateMatchJobResults temp_filename_helper;
+        temp_filename_helper.output_filename_base = output_filename_base;
 
-        wxString best_theta_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_theta_output_file += wxString::Format("/%s_theta_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString best_phi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_phi_output_file += wxString::Format("/%s_phi_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString best_defocus_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_defocus_output_file += wxString::Format("/%s_defocus_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString best_pixel_size_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_pixel_size_output_file += wxString::Format("/%s_pixel_size_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString scaled_mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        scaled_mip_output_file += wxString::Format("/%s_scaled_mip_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString output_histogram_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        output_histogram_file += wxString::Format("/%s_histogram_%i_%i.txt", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString output_result_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        output_result_file += wxString::Format("/%s_plotted_result_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString correlation_avg_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        correlation_avg_output_file += wxString::Format("/%s_avg_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString correlation_std_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        correlation_std_output_file += wxString::Format("/%s_std_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
+        // Generate output filenames using helper methods
+        wxString mip_output_file             = temp_filename_helper.GetMipFilename( );
+        wxString best_psi_output_file        = temp_filename_helper.GetPsiFilename( );
+        wxString best_theta_output_file      = temp_filename_helper.GetThetaFilename( );
+        wxString best_phi_output_file        = temp_filename_helper.GetPhiFilename( );
+        wxString best_defocus_output_file    = temp_filename_helper.GetDefocusFilename( );
+        wxString best_pixel_size_output_file = temp_filename_helper.GetPixelSizeFilename( );
+        wxString scaled_mip_output_file      = temp_filename_helper.GetScaledMipFilename( );
+        wxString output_histogram_file       = temp_filename_helper.GetHistogramFilename( );
+        wxString output_result_file          = temp_filename_helper.GetProjectionResultFilename( );
+        wxString correlation_avg_output_file = temp_filename_helper.GetAvgFilename( );
+        wxString correlation_std_output_file = temp_filename_helper.GetStdFilename( );
 
         current_orientation_counter = 0;
 

@@ -2046,15 +2046,15 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     return_code = Step(list_statement);
 
     // Read from joined query (columns 0-32)
-    template_match_id                           = sqlite3_column_int64(list_statement, 0);
-    temp_result.job_name                        = sqlite3_column_text(list_statement, 1);
-    temp_result.datetime_of_run                 = sqlite3_column_int64(list_statement, 2);
-    temp_result.elapsed_time_seconds            = sqlite3_column_double(list_statement, 3);
-    temp_result.job_id                          = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
-    temp_result.job_type                        = sqlite3_column_int(list_statement, 5);
-    temp_result.input_job_id                    = sqlite3_column_int64(list_statement, 6); // PARENT_SEARCH_ID
-    temp_result.image_asset_id                  = sqlite3_column_int64(list_statement, 7);
-    temp_result.ref_volume_asset_id             = sqlite3_column_int64(list_statement, 8);
+    template_match_id                = sqlite3_column_int64(list_statement, 0);
+    temp_result.job_name             = sqlite3_column_text(list_statement, 1);
+    temp_result.datetime_of_run      = sqlite3_column_int64(list_statement, 2);
+    temp_result.elapsed_time_seconds = sqlite3_column_double(list_statement, 3);
+    temp_result.job_id               = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
+    temp_result.job_type             = sqlite3_column_int(list_statement, 5);
+    temp_result.input_job_id         = sqlite3_column_int64(list_statement, 6); // PARENT_SEARCH_ID
+    temp_result.image_asset_id       = sqlite3_column_int64(list_statement, 7);
+    temp_result.ref_volume_asset_id  = sqlite3_column_int64(list_statement, 8);
     // Column 9 is IS_ACTIVE which is not recorded in the class
 
     // Output filename base from LIST table (column 10)
@@ -2997,7 +2997,7 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
                                        const wxString& custom_cli_args) {
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertFalse(job_name.IsEmpty( ), "Job name cannot be empty");
-    MyDebugAssertTrue(image_group_id >= 0, "Image group ID must be >= 0");
+    MyDebugAssertTrue(image_group_id == -1 || image_group_id >= 1, "Image group ID must be -1 (All Images) or >= 1");
     MyDebugAssertTrue(reference_volume_asset_id >= 0, "Reference volume asset ID must be >= 0");
     MyDebugAssertTrue(run_profile_id >= 0, "Run profile ID must be >= 0");
 
@@ -3018,7 +3018,7 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
                       "MASK_RADIUS, MIN_PEAK_RADIUS, XY_CHANGE_THRESHOLD, "
                       "EXCLUDE_ABOVE_XY_THRESHOLD, CUSTOM_CLI_ARGS, "
                       "FUTURE_INT_1, FUTURE_INT_2, FUTURE_FLOAT_1, FUTURE_FLOAT_2, FUTURE_TEXT_1, FUTURE_TEXT_2"
-                      ") VALUES (?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL);";
+                      ") VALUES (?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL);";
 
     sqlite3_stmt* stmt;
     if ( sqlite3_prepare_v2(sqlite_database, sql, -1, &stmt, NULL) != SQLITE_OK ) {

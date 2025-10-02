@@ -1365,7 +1365,9 @@ endif
     unit_test_runner_SOURCES  += test/core/test_matrix.cpp
     unit_test_runner_SOURCES  += test/core/test_non_wx_functions.cpp
     unit_test_runner_SOURCES  += test/core/test_curve.cpp
-    unit_test_runner_SOURCES  += test/core/image/test_image_memory.cpp
+    unit_test_runner_SOURCES  += test/core/image/test_image_memory.cpp \
+                                 test/core/image/test_image_arithmetic.cpp \
+                                 test/core/image/test_image_statistics.cpp
 if WANT_CISTEM_GPU_AM
     unit_test_runner_SOURCES += test/gpu/test_gpu.cpp \
                                 test/core/tensor/test_tensor_memory_pool.cpp \

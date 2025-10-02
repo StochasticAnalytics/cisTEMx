@@ -161,7 +161,7 @@ void TemplateMatchesPackageAssetPanel::FillRefinementPackages( ) {
             ContainedParticlesListCtrl->SetColumnWidth(11, ContainedParticlesListCtrl->ReturnGuessAtColumnTextWidth(11));
         }
 
-        ContainedParticlesStaticText->SetLabel(wxString::Format("Contained Particles (%li) : ", all_template_matches_packages.Item(selected_refinement_package).contained_particles.GetCount( )));
+        ContainedParticlesStaticText->SetLabel(wxString::Format("Contained Particles (%zu) : ", all_template_matches_packages.Item(selected_refinement_package).contained_particles.GetCount( )));
 
         // 3D references..
 
@@ -279,8 +279,8 @@ void TemplateMatchesPackageAssetPanel::OnPackageFocusChange(wxListEvent& event) 
         is_dirty                    = true;
 
         if ( selected_refinement_package >= 0 ) {
-            ContainedParticlesStaticText->SetLabel(wxString::Format("Contained Matches (%li) : ", all_template_matches_packages.Item(selected_refinement_package).contained_match_count));
-            wxPrintf("Selected refinement package = %li %s\n", selected_refinement_package, all_template_matches_packages.Item(selected_refinement_package).starfile_filename);
+            ContainedParticlesStaticText->SetLabel(wxString::Format("Contained Matches (%ld) : ", all_template_matches_packages.Item(selected_refinement_package).contained_match_count));
+            wxPrintf("Selected refinement package = %d %s\n", int(selected_refinement_package), all_template_matches_packages.Item(selected_refinement_package).starfile_filename);
             StarFileNameText->SetValue(all_template_matches_packages.Item(selected_refinement_package).starfile_filename);
         }
         else

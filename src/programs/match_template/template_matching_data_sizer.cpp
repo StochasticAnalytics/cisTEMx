@@ -92,8 +92,6 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image, bool sw
     local_whitening_filter.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
     number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((input_image.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
 
-    // revert
-    // temporarily skip the second whitening step
     bool is_first_whitening = false;
     if ( ! whitening_filter_ptr ) {
         is_first_whitening = true;
@@ -132,14 +130,6 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image, bool sw
 
         whitening_filter_ptr->MultiplyBy(local_whitening_filter);
     }
-    // revert (from skip temp)
-
-    // if ( whitening_filter_ptr ) {
-    //     whitening_filter_ptr->ResampleCurve(whitening_filter_ptr.get( ), local_whitening_filter.NumberOfPoints( ));
-    //     local_whitening_filter.ResampleCurve(&local_whitening_filter, whitening_filter_ptr->NumberOfPoints( ));
-    // }
-    // Record this filtering for later use
-    // whitening_filter_ptr->MultiplyBy(local_whitening_filter);
 
     input_image.ZeroCentralPixel( );
     if ( normalize_to_variance_one ) {

@@ -5,9 +5,9 @@
 // TODO: When moving to C++17/20, convert to a concept
 template <typename T>
 using IsDatabaseNumeric = cistem::EnableIf<
-    std::is_same<T, long>::value ||
-    std::is_same<T, int>::value ||
-    std::is_same<T, float>::value>;  // Defaults to void when condition is true
+        std::is_same<T, long>::value ||
+        std::is_same<T, int>::value ||
+        std::is_same<T, float>::value>; // Defaults to void when condition is true
 
 class Database {
 
@@ -213,6 +213,7 @@ class Database {
     int  ReturnHighestTemplateMatchJobID( );
     int  ReturnHighestTemplateMatchesPackageID( );
     void SetActiveTemplateMatchJobForGivenImageAssetID(long image_asset, long template_match_job_id);
+    void GetCompletedImageAssetIdsForSearch(int search_id, std::set<long>& completed_ids);
 
     int ReturnNumberOfPreviousMovieAlignmentsByAssetID(int wanted_asset_id);
     int ReturnNumberOfPreviousTemplateMatchesByAssetID(int wanted_asset_id);
@@ -464,9 +465,9 @@ class Database {
     void UpdateQueuePosition(long queue_id, int position);
     void UpdateSearchIdInQueueTable(long queue_id, long search_id);
     int  GetSearchIdForQueueItem(long queue_id);
-    int  GetHighestSearchIdFromQueue();
+    int  GetHighestSearchIdFromQueue( );
     void RemoveFromQueue(long queue_id);
-    void ClearTemplateMatchQueue();
+    void ClearTemplateMatchQueue( );
 
     // Template match completion tracking methods
     std::pair<int, int> GetSearchCompletionCounts(long search_id, int image_group_id = -1);

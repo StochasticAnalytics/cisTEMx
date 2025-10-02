@@ -45,6 +45,7 @@ typedef struct CurvePoint {
 #include <utility>
 #include <vector>
 #include <unordered_map>
+#include <set> // Efficient O(log n) lookup for membership testing - useful for filtering operations
 #include <random>
 #include <functional>
 #ifdef MKL

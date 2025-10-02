@@ -148,7 +148,7 @@ class TemplateMatchQueueItem {
      */
     bool AreSearchParametersValid( ) const {
         MyDebugAssertTrue(database_queue_id >= 0, "database_queue_id must be >= 0, got %ld", database_queue_id);
-        MyDebugAssertTrue(image_group_id >= 1, "image_group_id must be >= 1, got %d", image_group_id);
+        MyDebugAssertTrue(image_group_id >= -1, "image_group_id must be >= -1, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
         MyDebugAssertTrue(run_profile_id >= 0, "run_profile_id must be >= 0, got %d", run_profile_id);
         MyDebugAssertTrue(pixel_size > 0.0f, "pixel_size must be > 0.0, got %f", pixel_size);
@@ -188,8 +188,6 @@ class TemplateMatchQueueItem {
  * 3. Queue viewing: OnOpenQueueClick → dialog QM → load existing searches from database
  */
 class TemplateMatchQueueManager : public wxPanel {
-    friend class MatchTemplatePanel;  // Allow MatchTemplatePanel to access private methods
-
   private:
     // Debug flag for queue behavior testing - set to true to skip actual search execution
     static constexpr bool skip_search_execution_for_queue_debugging = false;
@@ -224,9 +222,9 @@ class TemplateMatchQueueManager : public wxPanel {
 
 #ifdef cisTEM_QM_LOGGING
     // UI Controls - Logging controls (only visible when cisTEM_QM_LOGGING is defined)
-    wxPanel* logging_panel; ///< Container panel for logging controls
+    wxPanel*        logging_panel; ///< Container panel for logging controls
     wxToggleButton* logging_toggle; ///< Toggle to enable/disable logging
-    wxStaticText* log_file_text; ///< Display current log file path
+    wxStaticText*   log_file_text; ///< Display current log file path
 #endif
 
     // Data Collections - In-memory queue storage
@@ -265,6 +263,8 @@ class TemplateMatchQueueManager : public wxPanel {
     void     DeselectSearchInUI(long database_queue_id); ///< Removes UI selection for specified search
 
   public:
+    friend class MatchTemplatePanel; // Allow MatchTemplatePanel to call private methods like UpdateQueueDisplay
+
     TemplateMatchQueueManager(wxWindow* parent, MatchTemplatePanel* match_template_panel = nullptr);
     ~TemplateMatchQueueManager( );
 
@@ -274,7 +274,7 @@ class TemplateMatchQueueManager : public wxPanel {
      *
      * Persists search to database via AddToTemplateMatchQueue, assigns next available queue_order
      * for priority sequencing, and adds to in-memory execution_queue. Core method called by
-     * AddJobToQueue workflow for both immediate execution and interactive queueing.
+     * AddSearchToQueue workflow for both immediate execution and interactive queueing.
      */
     void AddToExecutionQueue(const TemplateMatchQueueItem& item);
     /**
@@ -401,7 +401,7 @@ class TemplateMatchQueueManager : public wxPanel {
     /**
      * @brief Links queue item to actual database search ID after search execution begins
      * @param queue_database_queue_id Queue database ID to update
-     * @param database_template_match_job_id Actual TEMPLATE_MATCH_JOB_ID from results table
+     * @param database_search_id Actual SEARCH_ID from results table
      */
     void UpdateSearchIdForQueueItem(long queue_database_queue_id, long database_search_id);
 

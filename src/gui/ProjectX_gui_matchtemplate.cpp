@@ -951,21 +951,26 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 	StartEstimationButton = new wxButton( StartPanel, wxID_ANY, wxT("Start Search"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer60->Add( StartEstimationButton, 0, wxALL, 5 );
 
-	AddToQueueButton = new wxButton( StartPanel, wxID_ANY, wxT("Add To Queue"), wxDefaultPosition, wxDefaultSize, 0 );
-	bSizer60->Add( AddToQueueButton, 0, wxALL, 5 );
-
-	OpenQueueButton = new wxButton( StartPanel, wxID_ANY, wxT("Open Queue"), wxDefaultPosition, wxDefaultSize, 0 );
-	OpenQueueButton->SetToolTip( wxT("Open the queue manager to view and manage queued jobs") );
-
-	bSizer60->Add( OpenQueueButton, 0, wxALL, 5 );
-
 
 	bSizer58->Add( bSizer60, 50, wxEXPAND, 5 );
 
-	ResumeRunCheckBox = new wxCheckBox( StartPanel, wxID_ANY, wxT("Resume Run"), wxDefaultPosition, wxDefaultSize, 0 );
-	ResumeRunCheckBox->Enable( false );
+	wxBoxSizer* bSizer6012;
+	bSizer6012 = new wxBoxSizer( wxVERTICAL );
 
-	bSizer58->Add( ResumeRunCheckBox, 0, wxALL|wxEXPAND, 5 );
+	AddToQueue = new wxButton( StartPanel, wxID_ANY, wxT("Add To Queue"), wxDefaultPosition, wxDefaultSize, 0 );
+	bSizer6012->Add( AddToQueue, 0, wxALL, 5 );
+
+
+	bSizer58->Add( bSizer6012, 1, wxEXPAND, 5 );
+
+	wxBoxSizer* bSizer6011;
+	bSizer6011 = new wxBoxSizer( wxVERTICAL );
+
+	OpenQueue = new wxButton( StartPanel, wxID_ANY, wxT("Open Queue"), wxDefaultPosition, wxDefaultSize, 0 );
+	bSizer6011->Add( OpenQueue, 0, wxALL, 5 );
+
+
+	bSizer58->Add( bSizer6011, 1, wxEXPAND, 5 );
 
 
 	StartPanel->SetSizer( bSizer58 );
@@ -987,9 +992,8 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 	FinishButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::FinishButtonClick ), NULL, this );
 	CancelAlignmentButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::TerminateButtonClick ), NULL, this );
 	StartEstimationButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::StartEstimationClick ), NULL, this );
-	AddToQueueButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
-	OpenQueueButton->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
-	ResumeRunCheckBox->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::ResumeRunCheckBoxOnCheckBox ), NULL, this );
+	AddToQueue->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
+	OpenQueue->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
 }
 
 MatchTemplatePanelParent::~MatchTemplatePanelParent()
@@ -1001,9 +1005,8 @@ MatchTemplatePanelParent::~MatchTemplatePanelParent()
 	FinishButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::FinishButtonClick ), NULL, this );
 	CancelAlignmentButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::TerminateButtonClick ), NULL, this );
 	StartEstimationButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::StartEstimationClick ), NULL, this );
-	AddToQueueButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
-	OpenQueueButton->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
-	ResumeRunCheckBox->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::ResumeRunCheckBoxOnCheckBox ), NULL, this );
+	AddToQueue->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnAddToQueueClick ), NULL, this );
+	OpenQueue->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MatchTemplatePanelParent::OnOpenQueueClick ), NULL, this );
 
 }
 

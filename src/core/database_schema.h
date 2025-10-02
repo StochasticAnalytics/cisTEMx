@@ -7,6 +7,20 @@
 //				 wxString : Database name prefix. Existing tables will have the result number as a suffix.
 //				 char *: The column types as a char array in cisTEM convention
 //               vector<wxString>: The column names
+//
+// IMPORTANT NAMING RULES FOR DYNAMIC TABLES:
+// ============================================
+// Dynamic table name patterns MUST NOT end with digits before the underscore.
+// The schema migration system identifies obsolete table variants by checking if the
+// character immediately after the pattern is a digit. If it's not a digit, the table
+// is considered an obsolete variant and will be dropped during migration.
+//
+// Examples:
+//   GOOD: REFINEMENT_PACKAGE_CONTAINED_PARTICLES_ (ends with underscore, no digits)
+//   BAD:  REFINEMENT_PACKAGE_CONTAINED_PARTICLES2_ (ends with digit before underscore)
+//
+// Valid dynamic tables: REFINEMENT_PACKAGE_CONTAINED_PARTICLES_1, _2, _10, etc.
+// Obsolete variants: REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_1 (non-digit after pattern)
 namespace database_schema {
 using TableData = std::tuple<wxString, char*, std::vector<wxString>>;
 
@@ -43,21 +57,9 @@ std::vector<TableData> static_tables{
         {"CLASSIFICATION_SELECTION_LIST", "Ptlllii", {"SELECTION_ID", "SELECTION_NAME", "CREATION_DATE", "REFINEMENT_PACKAGE_ID", "CLASSIFICATION_ID", "NUMBER_OF_CLASSES", "NUMBER_OF_SELECTIONS"}},
         {"STARTUP_LIST", "Pltiirriirrrir", {"STARTUP_ID", "REFINEMENT_PACKAGE_ASSET_ID", "NAME", "NUMBER_OF_STARTS", "NUMBER_OF_CYCLES", "INITIAL_RES_LIMIT", "FINAL_RES_LIMIT", "AUTO_MASK", "AUTO_PERCENT_USED", "INITIAL_PERCENT_USED", "FINAL_PERCENT_USED", "MASK_RADIUS", "APPLY_LIKELIHOOD_BLURRING", "SMOOTHING_FACTOR"}},
         {"RECONSTRUCTION_LIST", "Plltrrrriiiiril", {"RECONSTRUCTION_ID", "REFINEMENT_PACKAGE_ID", "REFINEMENT_ID", "NAME", "INNER_MASK_RADIUS", "OUTER_MASK_RADIUS", "RESOLUTION_LIMIT", "SCORE_WEIGHT_CONVERSION", "SHOULD_ADJUST_SCORES", "SHOULD_CROP_IMAGES", "SHOULD_SAVE_HALF_MAPS", "SHOULD_LIKELIHOOD_BLUR", "SMOOTHING_FACTOR", "CLASS_NUMBER", "VOLUME_ASSET_ID"}},
-
-        // TEMPLATE MATCHING TABLES
-        // IMPORTANT NAMING NOTE:
-        // The database schema uses "JOB" terminology in several places that actually refer to template matching
-        // searches/runs, not individual distributed processing jobs:
-        //   - TEMPLATE_MATCH_QUEUE.SEARCH_NAME: The name of the template matching search (e.g., "Template: myprotein.mrc")
-        //   - TEMPLATE_MATCH_LIST.SEARCH_TYPE_CODE: Type of search (retained for historical reasons)
-        //   - TemplateMatchJobResults.job_id: Maps to SEARCH_ID column in database
-        // This "JOB" naming is historical and maintained for database compatibility. In the C++ code, we use more
-        // accurate terminology like "search_name" and "search_id" to refer to template matching searches or runs.
-        // MIGRATION NOTE: JOB_NAME and JOB_TYPE_CODE have been migrated to SEARCH_NAME and SEARCH_TYPE_CODE
         {"TEMPLATE_MATCHES_PACKAGE_ASSETS", "pttii", {"TEMPLATE_MATCHES_PACKAGE_ASSET_ID", "NAME", "STARFILE_FILENAME", "NUMBER_OF_MATCHES", "NUMER_OF_IMAGES"}},
         {"TEMPLATE_MATCH_LIST", "plllilliitttttttttttttrr", {"TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "DATETIME_OF_COMPLETION", "SEARCH_ID", "SEARCH_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID", "IS_ACTIVE", "MIP_OUTPUT_FILE", "SCALED_MIP_OUTPUT_FILE", "AVG_OUTPUT_FILE", "STD_OUTPUT_FILE", "PSI_OUTPUT_FILE", "THETA_OUTPUT_FILE", "PHI_OUTPUT_FILE", "DEFOCUS_OUTPUT_FILE", "PIXEL_SIZE_OUTPUT_FILE", "HISTOGRAM_OUTPUT_FILE", "PROJECTION_RESULT_OUTPUT_FILE", "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2"}},
-        {"TEMPLATE_MATCH_QUEUE", "ptllliiiitrrrrrrrrrrrrrrrrrrrrrrtiirrttt", {"QUEUE_ID", "SEARCH_NAME", "SEARCH_ID", "QUEUE_POSITION", "DATETIME_QUEUED", "IMAGE_GROUP_ID", "REFERENCE_VOLUME_ASSET_ID", "RUN_PROFILE_ID", "USE_GPU", "USE_FAST_FFT", "SYMMETRY", "PIXEL_SIZE", "VOLTAGE", "SPHERICAL_ABERRATION", "AMPLITUDE_CONTRAST", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "LOW_RESOLUTION_LIMIT", "HIGH_RESOLUTION_LIMIT", "OUT_OF_PLANE_ANGULAR_STEP", "IN_PLANE_ANGULAR_STEP", "DEFOCUS_SEARCH_RANGE", "DEFOCUS_STEP", "PIXEL_SIZE_SEARCH_RANGE", "PIXEL_SIZE_STEP", "REFINEMENT_THRESHOLD", "REF_BOX_SIZE_IN_ANGSTROMS", "MASK_RADIUS", "MIN_PEAK_RADIUS", "XY_CHANGE_THRESHOLD", "EXCLUDE_ABOVE_XY_THRESHOLD", "CUSTOM_CLI_ARGS", "FUTURE_INT_1", "FUTURE_INT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2", "FUTURE_TEXT_1", "FUTURE_TEXT_2"}}
-};
+        {"TEMPLATE_MATCH_QUEUE", "ptllliiiitrrrrrrrrrrrrrrrrrrrrrrtiirrttt", {"QUEUE_ID", "SEARCH_NAME", "SEARCH_ID", "QUEUE_POSITION", "DATETIME_QUEUED", "IMAGE_GROUP_ID", "REFERENCE_VOLUME_ASSET_ID", "RUN_PROFILE_ID", "USE_GPU", "USE_FAST_FFT", "SYMMETRY", "PIXEL_SIZE", "VOLTAGE", "SPHERICAL_ABERRATION", "AMPLITUDE_CONTRAST", "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT", "LOW_RESOLUTION_LIMIT", "HIGH_RESOLUTION_LIMIT", "OUT_OF_PLANE_ANGULAR_STEP", "IN_PLANE_ANGULAR_STEP", "DEFOCUS_SEARCH_RANGE", "DEFOCUS_STEP", "PIXEL_SIZE_SEARCH_RANGE", "PIXEL_SIZE_STEP", "REFINEMENT_THRESHOLD", "REF_BOX_SIZE_IN_ANGSTROMS", "MASK_RADIUS", "MIN_PEAK_RADIUS", "XY_CHANGE_THRESHOLD", "EXCLUDE_ABOVE_XY_THRESHOLD", "CUSTOM_CLI_ARGS", "FUTURE_INT_1", "FUTURE_INT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2", "FUTURE_TEXT_1", "FUTURE_TEXT_2"}}};
 
 std::vector<TableData> dynamic_tables{
         {"MOVIE_ALIGNMENT_PARAMETERS_", "prr", {"FRAME_NUMBER", "X_SHIFT", "Y_SHIFT"}},

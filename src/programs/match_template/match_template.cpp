@@ -38,7 +38,8 @@ using namespace cistem_timer_noop;
 #define TEST_LOCAL_NORMALIZATION
 
 // Testing a size optimized approach for search
-#define MAX_SEARCH_SIZE 1024
+// Now replaced with --max-search-size CLI argument
+// #define MAX_SEARCH_SIZE 1024
 
 /**
  * @class AggregatedTemplateResult
@@ -211,6 +212,7 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
     command_line_parser.AddOption("", "n-expected-false-positives", "average number of false positives per image, (defaults to 1)", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddLongSwitch("ignore-defocus-for-threshold", "assume the defocus planes are not independent locs for threshold calc, (defaults false)");
     command_line_parser.AddLongSwitch("apply-result-rescaling", "Rescale the results their original size, (defaults false)");
+    command_line_parser.AddOption("", "max-search-size", "Maximum search size in pixels (must be > 32 if specified, 0 = no limit)", wxCMD_LINE_VAL_NUMBER);
 
 #ifdef TEST_LOCAL_NORMALIZATION
     command_line_parser.AddOption("", "healpix-file", "Healpix file for the input images", wxCMD_LINE_VAL_STRING);
@@ -429,6 +431,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool   ignore_defocus_for_threshold = false;
     bool   apply_result_rescaling{ };
     double n_expected_false_positives{1.0};
+    long   max_search_size = 0; // 0 means no limit
 
     if ( command_line_parser.FoundSwitch("apply-result-rescaling") ) {
         SendInfo("Applying result rescaling\n");
@@ -455,6 +458,18 @@ bool MatchTemplateApp::DoCalculation( ) {
     if ( command_line_parser.Found("n-expected-false-positives", &temp_double) ) {
         SendInfo("Using n expected false positives: " + wxString::Format("%f", temp_double) + "\n");
         n_expected_false_positives = temp_double;
+    }
+
+    // Parse max-search-size argument
+    if ( command_line_parser.Found("max-search-size", &temp_long) ) {
+        max_search_size = temp_long;
+        if ( max_search_size > 0 && max_search_size <= 32 ) {
+            SendError("max-search-size must be greater than 32 if specified (provided: " + wxString::Format("%ld", max_search_size) + ")\n");
+            return false;
+        }
+        if ( max_search_size > 0 ) {
+            SendInfo("Using maximum search size: " + wxString::Format("%ld", max_search_size) + " pixels\n");
+        }
     }
     // This allows an override for the TEST_LOCAL_NORMALIZATION
     bool allow_rotation_for_speed{true};
@@ -639,18 +654,17 @@ bool MatchTemplateApp::DoCalculation( ) {
     profile_timing.start("PreProcessInputImage");
     TemplateMatchingDataSizer data_sizer(this, input_image, input_reconstruction, input_pixel_size, padding);
 
-#ifdef MAX_SEARCH_SIZE
-
-    if ( input_image.logical_x_dimension > MAX_SEARCH_SIZE || input_image.logical_y_dimension > MAX_SEARCH_SIZE ) {
-        // Work out how much we have to change the high_resolution limit_search to make the image smaller
-        float high_limit_x = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_x_dimension, MAX_SEARCH_SIZE);
-        float high_limit_y = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_y_dimension, MAX_SEARCH_SIZE);
-        wxPrintf("Your input image is %i x %i pixels. To fit within the max search size of %i, the high resolution limit for the search has been changed from %3.2fA to %3.2fA\n",
-                 input_image.logical_x_dimension, input_image.logical_y_dimension, MAX_SEARCH_SIZE, high_resolution_limit_search, std::max(high_limit_x, high_limit_y));
-        high_resolution_limit_search = std::max(high_limit_x, high_limit_y);
+    // Apply max-search-size limit if specified
+    if ( max_search_size > 0 ) {
+        if ( input_image.logical_x_dimension > max_search_size || input_image.logical_y_dimension > max_search_size ) {
+            // Work out how much we have to change the high_resolution limit_search to make the image smaller
+            float high_limit_x = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_x_dimension, max_search_size);
+            float high_limit_y = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_y_dimension, max_search_size);
+            wxPrintf("Your input image is %i x %i pixels. To fit within the max search size of %ld, the high resolution limit for the search has been changed from %3.2fA to %3.2fA\n",
+                     input_image.logical_x_dimension, input_image.logical_y_dimension, max_search_size, high_resolution_limit_search, std::max(high_limit_x, high_limit_y));
+            high_resolution_limit_search = std::max(high_limit_x, high_limit_y);
+        }
     }
-
-#endif
 
     if ( use_local_normalization && data_sizer.IsResamplingNeeded( ) ) {
         SendError("Local normalization is not yet supported with resampling.");

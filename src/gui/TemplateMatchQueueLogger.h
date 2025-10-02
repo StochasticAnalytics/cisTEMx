@@ -19,15 +19,15 @@
 
 // Define which logging categories are enabled at compile time
 // Comment out any you don't want to log
-#define QM_TRACE_METHOD     // Method entry/exit with timestamps
-#define QM_TRACE_DB         // Database transaction initiation and results
-// #define QM_TRACE_DB_VALUES  // Detailed database values (verbose) - disabled by default
-#define QM_TRACE_DB_SCHEMA  // Database schema validation and table existence checks
-#define QM_TRACE_STATE      // Queue state changes and transitions
-#define QM_TRACE_UI         // UI updates and user interactions
-#define QM_TRACE_SEARCH     // Search execution flow and status
-#define QM_TRACE_ERROR      // Error conditions and warnings
-// #define QM_TRACE_DEBUG      // Detailed debug output (queue dumps, etc.) - disabled by default
+#define QM_TRACE_METHOD // Method entry/exit with timestamps
+#define QM_TRACE_DB // Database transaction initiation and results
+#define QM_TRACE_DB_VALUES // Detailed database values (verbose)
+#define QM_TRACE_DB_SCHEMA // Database schema validation and table existence checks
+#define QM_TRACE_STATE // Queue state changes and transitions
+#define QM_TRACE_UI // UI updates and user interactions
+#define QM_TRACE_SEARCH // Search execution flow and status
+#define QM_TRACE_ERROR // Error conditions and warnings
+#define QM_TRACE_DEBUG // Detailed debug output (queue dumps, etc.)
 
 // Simple direct file logger
 class QueueManagerLogger {
@@ -38,16 +38,17 @@ class QueueManagerLogger {
     static wxString      log_file_path;
 
   public:
-    static bool Initialize() {
-        if (is_enabled) return true;
+    static bool Initialize( ) {
+        if ( is_enabled )
+            return true;
 
         // Create log file in /tmp directory for debugging
-        wxDateTime now = wxDateTime::Now();
-        log_file_path = wxString::Format("/tmp/QM_log_%s.txt",
-                                        now.Format("%Y%m%d_%H%M%S"));
+        wxDateTime now = wxDateTime::Now( );
+        log_file_path  = wxString::Format("/tmp/QM_log_%s.txt",
+                                          now.Format("%Y%m%d_%H%M%S"));
 
-        log_file.open(log_file_path.ToStdString(), std::ios::out | std::ios::app);
-        if (!log_file.is_open()) {
+        log_file.open(log_file_path.ToStdString( ), std::ios::out | std::ios::app);
+        if ( ! log_file.is_open( ) ) {
             return false;
         }
 
@@ -55,65 +56,72 @@ class QueueManagerLogger {
         is_enabled = true;
 
         log_file << "\n=== Queue Manager Logging Session Started: "
-                 << now.Format("%Y-%m-%d %H:%M:%S").ToStdString()
-                 << " ===\n" << std::flush;
+                 << now.Format("%Y-%m-%d %H:%M:%S").ToStdString( )
+                 << " ===\n"
+                 << std::flush;
 
         return true;
     }
 
-    static void Shutdown() {
-        if (!is_enabled) return;
+    static void Shutdown( ) {
+        if ( ! is_enabled )
+            return;
 
-        wxDateTime end_time = wxDateTime::Now();
+        wxDateTime end_time = wxDateTime::Now( );
         wxTimeSpan duration = end_time - start_time;
 
         log_file << "=== Session Ended: "
-                 << end_time.Format("%Y-%m-%d %H:%M:%S").ToStdString()
-                 << " (Duration: " << duration.Format("%H:%M:%S").ToStdString()
-                 << ") ===\n\n" << std::flush;
+                 << end_time.Format("%Y-%m-%d %H:%M:%S").ToStdString( )
+                 << " (Duration: " << duration.Format("%H:%M:%S").ToStdString( )
+                 << ") ===\n\n"
+                 << std::flush;
 
-        log_file.close();
+        log_file.close( );
         is_enabled = false;
     }
 
     static void Log(const wxString& category, const wxString& message) {
-        if (!is_enabled) return;
+        if ( ! is_enabled )
+            return;
 
-        wxDateTime now = wxDateTime::Now();
+        wxDateTime now     = wxDateTime::Now( );
         wxTimeSpan elapsed = now - start_time;
 
-        log_file << "[" << now.Format("%H:%M:%S").ToStdString()
-                 << " +" << elapsed.Format("%M:%S").ToStdString()
-                 << "." << std::setfill('0') << std::setw(3) << now.GetMillisecond()
-                 << "] [" << category.ToStdString() << "] "
-                 << message.ToStdString() << "\n" << std::flush;
+        log_file << "[" << now.Format("%H:%M:%S").ToStdString( )
+                 << " +" << elapsed.Format("%M:%S").ToStdString( )
+                 << "." << std::setfill('0') << std::setw(3) << now.GetMillisecond( )
+                 << "] [" << category.ToStdString( ) << "] "
+                 << message.ToStdString( ) << "\n"
+                 << std::flush;
     }
 
-    static bool IsEnabled() { return is_enabled; }
-    static wxString GetLogPath() { return log_file_path; }
+    static bool IsEnabled( ) { return is_enabled; }
+
+    static wxString GetLogPath( ) { return log_file_path; }
 };
 
 // Simplified manager that just wraps our direct logger
 class QueueManagerLogManager {
   public:
     static void EnableLogging(bool enable = true) {
-        if (enable) {
-            QueueManagerLogger::Initialize();
-        } else {
-            DisableLogging();
+        if ( enable ) {
+            QueueManagerLogger::Initialize( );
+        }
+        else {
+            DisableLogging( );
         }
     }
 
-    static void DisableLogging() {
-        QueueManagerLogger::Shutdown();
+    static void DisableLogging( ) {
+        QueueManagerLogger::Shutdown( );
     }
 
-    static bool IsLoggingEnabled() {
-        return QueueManagerLogger::IsEnabled();
+    static bool IsLoggingEnabled( ) {
+        return QueueManagerLogger::IsEnabled( );
     }
 
-    static wxString GetLogFilePath() {
-        return QueueManagerLogger::GetLogPath();
+    static wxString GetLogFilePath( ) {
+        return QueueManagerLogger::GetLogPath( );
     }
 };
 

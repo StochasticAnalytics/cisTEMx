@@ -557,12 +557,21 @@ if ENABLE_LOCAL_BUILD_OF_FASTFFT_AM
     libgpucore_a_SOURCES += ../include/FastFFT/src/fastfft/FastFFT.cu
 endif
 
-libgpucore_OBJECTS=$(libgpucore_a_SOURCES:.cu=.o)                                                   
+# C++ files for GPU library (compiled with -DENABLEGPU but not device-linked)
+libgpucore_CPP_SOURCES = core/tensor/memory/tensor_memory_pool.cpp
+libgpucore_CPP_OBJECTS = $(libgpucore_CPP_SOURCES:.cpp=.o)
+
+# Add C++ sources to the library sources so automake compiles them
+libgpucore_a_SOURCES += $(libgpucore_CPP_SOURCES)
+
+# Extract .cu sources only for device linking
+libgpucore_CU_SOURCES = $(filter %.cu, $(libgpucore_a_SOURCES))
+libgpucore_OBJECTS = $(libgpucore_CU_SOURCES:.cu=.o)
 
 libgpucore_a_CFLAGS = -DENABLEGPU $(CUDA_CPPFLAGS) $(WX_CPPFLAGS_BASE)
 libgpucore_a_CXXFLAGS = -DENABLEGPU $(CUDA_CXXFLAGS) $(WX_CXXFLAGS_BASE)
-libgpucore_a_LIBADD = $(libFastFFT_OBJECTS) gpu/gpudevicecode.o
-libgpucore_a_AR = $(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) -lib -o
+libgpucore_a_LIBADD = $(libFastFFT_OBJECTS) gpu/gpudevicecode.o $(libgpucore_CPP_OBJECTS)
+Ylibgpucore_a_AR = $(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) -lib -o
 
 # Add SUFFIXES for CUDA compilation
 SUFFIXES = .cu .o
@@ -570,7 +579,11 @@ SUFFIXES = .cu .o
 # This line only knows about objects build from libgpucore_a_SOURCES. We have to add any others e.g. gpu/gpu_device_code.o mannually above in the LIBADD
 .cu.o:
 	$(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) $(WX_CPPFLAGS_BASE) -dc -o $@ $<
-    
+
+# Compilation rule for C++ files in libgpucore (must have -DENABLEGPU)
+$(libgpucore_CPP_OBJECTS): %.o: %.cpp
+	$(CXX) -DENABLEGPU $(CUDA_CXXFLAGS) $(WX_CXXFLAGS_BASE) -c -o $@ $<
+
 # FastFFT_LIBS will be empty if we are building the library, or /opt/FastFFT/lib/FastFFT.o if we are linking from the object included in the build container (latter prefered) $(libgpucore_OBJECTS) $(libFastFFT_OBJECTS)
 gpu/gpudevicecode.o: $(libgpucore_OBJECTS) $(libFastFFT_OBJECTS)
 	$(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) --device-link $^ -o gpu/gpudevicecode.o $(CUDA_LIBS)

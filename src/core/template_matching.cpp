@@ -34,17 +34,8 @@ TemplateMatchJobResults::TemplateMatchJobResults( ) {
     xy_change_threshold        = 0.0f;
     exclude_above_xy_threshold = false;
 
-    mip_filename               = "";
-    scaled_mip_filename        = "";
-    psi_filename               = "";
-    theta_filename             = "";
-    phi_filename               = "";
-    defocus_filename           = "";
-    pixel_size_filename        = "";
-    histogram_filename         = "";
-    projection_result_filename = "";
-    avg_filename               = "";
-    std_filename               = "";
+    output_filename_base = "";
+    elapsed_time_seconds = 0.0f;
 
     refinement_threshold            = 0.0f;
     used_threshold                  = 0.0f;

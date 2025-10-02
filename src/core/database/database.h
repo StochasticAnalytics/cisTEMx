@@ -1,5 +1,5 @@
-#include "../constants/constants.h"
-#include "../gui/UpdateProgressTracker.h"
+#include "../../constants/constants.h"
+#include "../../gui/UpdateProgressTracker.h"
 
 // Type alias for database-storable numeric types
 // TODO: When moving to C++17/20, convert to a concept
@@ -440,8 +440,6 @@ class Database {
      */
     long AddToTemplateMatchQueue(const wxString& job_name, int image_group_id, int reference_volume_asset_id, int run_profile_id,
                                  bool use_gpu, bool use_fast_fft, const wxString& symmetry,
-                                 float pixel_size, float voltage, float spherical_aberration, float amplitude_contrast,
-                                 float defocus1, float defocus2, float defocus_angle, float phase_shift,
                                  float low_resolution_limit, float high_resolution_limit,
                                  float out_of_plane_angular_step, float in_plane_angular_step,
                                  float defocus_search_range, float defocus_step,
@@ -453,8 +451,6 @@ class Database {
     void GetQueuedTemplateMatchIDs(std::vector<long>& queue_ids);
     bool GetQueueItemByID(long queue_id, wxString& job_name, long& template_match_job_id, int& queue_position, wxString& custom_cli_args,
                           int& image_group_id, int& reference_volume_asset_id, int& run_profile_id, bool& use_gpu, bool& use_fast_fft, wxString& symmetry,
-                          float& pixel_size, float& voltage, float& spherical_aberration, float& amplitude_contrast,
-                          float& defocus1, float& defocus2, float& defocus_angle, float& phase_shift,
                           float& low_resolution_limit, float& high_resolution_limit,
                           float& out_of_plane_angular_step, float& in_plane_angular_step,
                           float& defocus_search_range, float& defocus_step,

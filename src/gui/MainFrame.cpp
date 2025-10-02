@@ -1026,17 +1026,8 @@ bool MyMainFrame::MigrateProject(wxString old_project_directory, wxString new_pr
 
     // Commit
 
-    // Template Matching...
-
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET MIP_OUTPUT_FILE = REPLACE(MIP_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET SCALED_MIP_OUTPUT_FILE = REPLACE(SCALED_MIP_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PSI_OUTPUT_FILE = REPLACE(PSI_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET THETA_OUTPUT_FILE = REPLACE(THETA_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PHI_OUTPUT_FILE = REPLACE(PHI_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET DEFOCUS_OUTPUT_FILE = REPLACE(DEFOCUS_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PIXEL_SIZE_OUTPUT_FILE = REPLACE(PIXEL_SIZE_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET HISTOGRAM_OUTPUT_FILE = REPLACE(HISTOGRAM_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PROJECTION_RESULT_OUTPUT_FILE = REPLACE(PROJECTION_RESULT_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+    // Template Matching - update output filename base (single column now stores all paths)
+    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET OUTPUT_FILENAME_BASE = REPLACE(OUTPUT_FILENAME_BASE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
 
     current_project.database.Commit( );
 

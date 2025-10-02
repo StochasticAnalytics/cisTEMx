@@ -79,14 +79,6 @@ class TemplateMatchQueueItem {
     bool     use_gpu;
     bool     use_fast_fft;
     wxString symmetry;
-    float    pixel_size;
-    float    voltage;
-    float    spherical_aberration;
-    float    amplitude_contrast;
-    float    defocus1;
-    float    defocus2;
-    float    defocus_angle;
-    float    phase_shift;
     float    low_resolution_limit;
     float    high_resolution_limit;
     float    out_of_plane_angular_step;
@@ -114,14 +106,6 @@ class TemplateMatchQueueItem {
         use_fast_fft              = false;
 
         // Initialize other parameters to safe defaults
-        pixel_size                 = 0.0f;
-        voltage                    = 0.0f;
-        spherical_aberration       = 0.0f;
-        amplitude_contrast         = 0.0f;
-        defocus1                   = 0.0f;
-        defocus2                   = 0.0f;
-        defocus_angle              = 0.0f;
-        phase_shift                = 0.0f;
         low_resolution_limit       = 0.0f;
         high_resolution_limit      = 0.0f;
         out_of_plane_angular_step  = 0.0f;
@@ -151,10 +135,6 @@ class TemplateMatchQueueItem {
         MyDebugAssertTrue(image_group_id >= -1, "image_group_id must be >= -1, got %d", image_group_id);
         MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
         MyDebugAssertTrue(run_profile_id >= 0, "run_profile_id must be >= 0, got %d", run_profile_id);
-        MyDebugAssertTrue(pixel_size > 0.0f, "pixel_size must be > 0.0, got %f", pixel_size);
-        MyDebugAssertTrue(voltage > 0.0f, "voltage must be > 0.0, got %f", voltage);
-        MyDebugAssertTrue(spherical_aberration >= 0.0f, "spherical_aberration must be >= 0.0, got %f", spherical_aberration);
-        MyDebugAssertTrue(amplitude_contrast >= 0.0f && amplitude_contrast <= 1.0f, "amplitude_contrast must be 0.0-1.0, got %f", amplitude_contrast);
         MyDebugAssertTrue(queue_status == "pending" || queue_status == "running" || queue_status == "complete" || queue_status == "failed",
                           "Invalid queue_status: %s", queue_status.mb_str( ).data( ));
         MyDebugAssertTrue(! search_name.IsEmpty( ), "search_name cannot be empty");

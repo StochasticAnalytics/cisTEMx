@@ -51,15 +51,15 @@ void ShowTemplateMatchResultsPanel::OnSavePeaksClick(wxCommandEvent& event) {
         coordinate_file.WriteCommentLine(wxString::Format("Searched Image               : %s", image_asset_panel->ReturnAssetLongFilename(image_asset_panel->ReturnArrayPositionFromAssetID(current_result.image_asset_id))).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Reference Volume File        : %s", volume_asset_panel->ReturnAssetLongFilename(volume_asset_panel->ReturnArrayPositionFromAssetID(current_result.ref_volume_asset_id))).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Result Threshold        : %.2f", current_result.used_threshold).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("MIP File                     : %s", current_result.mip_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Scaled MIP File              : %s", current_result.scaled_mip_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Best Psi File                : %s", current_result.psi_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Best Theta File              : %s", current_result.theta_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Best Phi File                : %s", current_result.phi_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Best Defocus File            : %s", current_result.defocus_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Best Pixel Size File         : %s", current_result.pixel_size_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Histogram File               : %s", current_result.histogram_filename).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("2D Projected result File     : %s", current_result.projection_result_filename).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("MIP File                     : %s", current_result.GetMipFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Scaled MIP File              : %s", current_result.GetScaledMipFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Best Psi File                : %s", current_result.GetPsiFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Best Theta File              : %s", current_result.GetThetaFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Best Phi File                : %s", current_result.GetPhiFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Best Defocus File            : %s", current_result.GetDefocusFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Best Pixel Size File         : %s", current_result.GetPixelSizeFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Histogram File               : %s", current_result.GetHistogramFilename( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("2D Projected result File     : %s", current_result.GetProjectionResultFilename( )).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Symmetry                : %s", current_result.symmetry).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Pixel Size              : %.4f", current_result.pixel_size).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Spherical Aberration    : %.2f", current_result.spherical_aberration).ToUTF8( ).data( ));
@@ -155,7 +155,7 @@ void ShowTemplateMatchResultsPanel::SetActiveResult(TemplateMatchJobResults& res
 
     if ( current_result.job_type == cistem::job_type::template_match_full_search ) {
         SetHistogramLabelText(wxString::Format("Survival Histogram (%s)", current_result.job_name));
-        DrawHistogram(current_result.histogram_filename);
+        DrawHistogram(current_result.GetHistogramFilename( ));
         HistogramPlotPanel->Show(true);
         PeakChangesPanel->Show(false);
     }
@@ -174,10 +174,10 @@ void ShowTemplateMatchResultsPanel::SetActiveResult(TemplateMatchJobResults& res
 
     if ( ImageDisplayPanel->my_notebook->GetPageCount( ) == 0 ) {
         ImageDisplayPanel->OpenFile(input_file.GetFullPath( ), input_file.GetName( ));
-        ImageDisplayPanel->OpenFile(current_result.scaled_mip_filename, "Scaled MIP", NULL, false, true);
+        ImageDisplayPanel->OpenFile(current_result.GetScaledMipFilename( ), "Scaled MIP", NULL, false, true);
         DisplayNotebookPanel* current_panel         = reinterpret_cast<DisplayNotebookPanel*>(ImageDisplayPanel->my_notebook->GetPage(1));
         current_panel->use_unscaled_image_for_popup = true;
-        ImageDisplayPanel->OpenFile(current_result.projection_result_filename, "Plotted Result", NULL, false, true);
+        ImageDisplayPanel->OpenFile(current_result.GetProjectionResultFilename( ), "Plotted Result", NULL, false, true);
     }
     else {
 
@@ -194,8 +194,8 @@ void ShowTemplateMatchResultsPanel::SetActiveResult(TemplateMatchJobResults& res
 
         ImageDisplayPanel->ClearActiveTemplateMatchMarker( );
         ImageDisplayPanel->ChangeFileForTabNumber(0, input_file.GetFullPath( ), input_file.GetName( ));
-        ImageDisplayPanel->ChangeFileForTabNumber(1, current_result.scaled_mip_filename, "Scaled MIP");
-        ImageDisplayPanel->ChangeFileForTabNumber(2, current_result.projection_result_filename, "Plotted Result");
+        ImageDisplayPanel->ChangeFileForTabNumber(1, current_result.GetScaledMipFilename( ), "Scaled MIP");
+        ImageDisplayPanel->ChangeFileForTabNumber(2, current_result.GetProjectionResultFilename( ), "Plotted Result");
     }
 }
 

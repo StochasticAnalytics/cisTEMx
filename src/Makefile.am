@@ -44,8 +44,9 @@ noinst_HEADERS = core/stopwatch.h \
                  core/refinement_package.h \
                  core/template_matches_package.h \
                  core/refinement.h \
-                 core/database.h \
-                 core/project.h \
+                 core/database/database.h \
+                 core/database/database_schema.h \
+                 core/database/project.h \
                  core/job_packager.h \
                  core/job_tracker.h \
                  core/numeric_text_file.h \
@@ -600,8 +601,8 @@ libcore_a_SOURCES  = core/stopwatch.cpp \
                        core/dm_file.cpp \
                        core/image_file.cpp \
                        core/sqlite/sqlite3.c \
-                       core/database.cpp \
-                       core/project.cpp \
+                       core/database/database.cpp \
+                       core/database/project.cpp \
                        core/reconstruct_3d.cpp \
                        core/reconstructed_volume.cpp \
                        core/resolution_statistics.cpp \

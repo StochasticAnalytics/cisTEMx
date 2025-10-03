@@ -14,5 +14,8 @@ jobs:
       CC: clang
       CXX: clang++
       cppstandard: 17
-      run_tests: false
+      run_console_test: false
+      run_samples_functional_testing: false
+      run_unit_tests: false
+      unit_test_filter: ''
       n_threads: 4

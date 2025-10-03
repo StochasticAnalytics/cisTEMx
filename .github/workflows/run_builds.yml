@@ -31,10 +31,26 @@ on:
         description: 'The c++ standard to use = 17 or 20'
         required: true 
         type: string
-      run_tests:
-        description: 'Run tests, currently we can not run GPU code, so we skip tests for GPU builds'
-        required: true
+      run_console_test:
+        description: 'Run console_test'
+        required: false
         type: boolean
+        default: false
+      run_samples_functional_testing:
+        description: 'Run samples_functional_testing'
+        required: false
+        type: boolean
+        default: false
+      run_unit_tests:
+        description: 'Run unit_test_runner'
+        required: false
+        type: boolean
+        default: false
+      unit_test_filter:
+        description: 'Filter for unit_test_runner (e.g., "~[RequiresGPU]" to exclude GPU tests)'
+        required: false
+        type: string
+        default: ''
       n_threads:
         description: 'Number of threads to use for make. Current Free tier has 4 threads'
         required: true
@@ -98,7 +114,7 @@ jobs:
     #     path: build/${{ inputs.build_type }}/src
 
     - name: Console test
-      if: ${{ inputs.run_tests }}
+      if: ${{ inputs.run_console_test }}
       run: |
         . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
         cd build/${{ inputs.build_type }}/src
@@ -108,7 +124,7 @@ jobs:
         
     # chmod is redundant, but to keep this independent of Console test we keep it.
     - name: Samples functional testing
-      if: ${{ inputs.run_tests }}
+      if: ${{ inputs.run_samples_functional_testing }}
       run: |
         . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
         cd build/${{ inputs.build_type }}/src 
@@ -117,11 +133,11 @@ jobs:
 
     # chmod is redundant, but to keep this independent of Console test we keep it.
     - name: Unit tests
-      if: ${{ inputs.run_tests }}
+      if: ${{ inputs.run_unit_tests }}
       run: |
         . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
-        cd build/${{ inputs.build_type }}/src 
+        cd build/${{ inputs.build_type }}/src
         chmod +x unit_test_runner
-        ./unit_test_runner
+        ./unit_test_runner ${{ inputs.unit_test_filter }}
   
 

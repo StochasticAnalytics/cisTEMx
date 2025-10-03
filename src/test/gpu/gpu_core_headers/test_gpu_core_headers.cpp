@@ -3,7 +3,7 @@
 #include "../../../../include/catch2/catch.hpp"
 #include "test_gpu_core_headers.cuh"
 
-TEST_CASE("Gpu Core Headers ", "[Gpu Core Headers]") {
+TEST_CASE("Gpu Core Headers ", "[Gpu Core Headers][RequiresGPU]") {
 
     // Setup to test the complex math options
     Complex c1 = make_float2(1.0f, 2.0f);

@@ -39,7 +39,7 @@ namespace tensor {
  *
  * Tensor<float, FFTWPaddedLayout> img;
  * img.AttachToBuffer(buffer.data, buffer.dims);
- * img.SetSpace(Tensor<float>::Space::Position);
+ * img.SetSpace(Tensor<float>::Space_t::Position);
  *
  * // Access elements
  * img(x, y, z) = 42.0f;
@@ -50,12 +50,12 @@ namespace tensor {
  * pool.DeallocateBuffer(buffer);
  * @endcode
  *
- * @tparam ScalarType Scalar data type (float in Phase 1)
- * @tparam Layout Memory layout policy (DenseLayout, FFTWPaddedLayout, etc.)
+ * @tparam Scalar_t Scalar data type (float in Phase 1)
+ * @tparam Layout_t Memory layout policy (DenseLayout, FFTWPaddedLayout, etc.)
  */
-template <typename ScalarType,
-          typename Layout = DenseLayout,
-          typename        = cistem::EnableIf<is_phase1_supported_v<ScalarType>>>
+template <typename Scalar_t,
+          typename Layout_t = DenseLayout,
+          typename          = cistem::EnableIf<is_phase1_supported_v<Scalar_t>>>
 class Tensor {
   public:
     /**
@@ -68,7 +68,7 @@ class Tensor {
      * - Position space can have complex<float> data
      * - Momentum space typically has complex data after R2C transform
      */
-    enum class Space {
+    enum class Space_t {
         Position, ///< Spatial domain (formerly "real space")
         Momentum ///< Fourier domain (formerly "Fourier/complex space")
     };
@@ -102,7 +102,7 @@ class Tensor {
      * @param data Pointer to memory buffer
      * @param dims Logical dimensions of the data
      */
-    void AttachToBuffer(ScalarType* data, int3 dims);
+    void AttachToBuffer(Scalar_t* data, int3 dims);
 
     /**
      * @brief Detach tensor from memory
@@ -117,7 +117,7 @@ class Tensor {
      *
      * @return true if attached to valid memory
      */
-    bool IsAttached( ) const { return data_ != NULL; }
+    bool IsAttached( ) const { return data_ != nullptr; }
 
     // ========================================================================
     // Space management
@@ -128,7 +128,7 @@ class Tensor {
      *
      * @return Current space (Position or Momentum)
      */
-    Space GetSpace( ) const { return space_; }
+    Space_t GetSpace( ) const { return space_; }
 
     /**
      * @brief Set transform space
@@ -138,21 +138,21 @@ class Tensor {
      *
      * @param space New space state
      */
-    void SetSpace(Space space) { space_ = space; }
+    void SetSpace(Space_t space) { space_ = space; }
 
     /**
      * @brief Check if tensor is in position space
      *
      * @return true if in Position space
      */
-    bool IsInPositionSpace( ) const { return space_ == Space::Position; }
+    bool IsInPositionSpace( ) const { return space_ == Space_t::Position; }
 
     /**
      * @brief Check if tensor is in momentum space
      *
      * @return true if in Momentum space
      */
-    bool IsInMomentumSpace( ) const { return space_ == Space::Momentum; }
+    bool IsInMomentumSpace( ) const { return space_ == Space_t::Momentum; }
 
     // ========================================================================
     // Dimensions and size queries
@@ -180,7 +180,7 @@ class Tensor {
      * @return Pitch in elements
      */
     size_t GetPitch( ) const {
-        return AddressCalculator<Layout>::GetPitch(dims_);
+        return AddressCalculator<Layout_t>::GetPitch(dims_);
     }
 
     /**
@@ -189,7 +189,7 @@ class Tensor {
      * @return Total elements allocated
      */
     size_t GetPhysicalSize( ) const {
-        return AddressCalculator<Layout>::GetMemorySize(dims_);
+        return AddressCalculator<Layout_t>::GetMemorySize(dims_);
     }
 
     // ========================================================================
@@ -208,9 +208,9 @@ class Tensor {
      * @param z Physical Z coordinate
      * @return Reference to element
      */
-    inline ScalarType& operator( )(int x, int y, int z) {
+    inline Scalar_t& operator( )(int x, int y, int z) {
         TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
-        long addr = (space_ == Space::Position) ? AddressCalculator<Layout>::Real1DAddress(x, y, z, dims_) : AddressCalculator<Layout>::Fourier1DAddress(x, y, z, dims_);
+        long addr = (space_ == Space_t::Position) ? AddressCalculator<Layout_t>::PositionSpaceAddress(x, y, z, dims_) : AddressCalculator<Layout_t>::MomentumSpaceAddress(x, y, z, dims_);
         return data_[addr];
     }
 
@@ -222,9 +222,9 @@ class Tensor {
      * @param z Physical Z coordinate
      * @return Const reference to element
      */
-    inline const ScalarType& operator( )(int x, int y, int z) const {
+    inline const Scalar_t& operator( )(int x, int y, int z) const {
         TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
-        long addr = (space_ == Space::Position) ? AddressCalculator<Layout>::Real1DAddress(x, y, z, dims_) : AddressCalculator<Layout>::Fourier1DAddress(x, y, z, dims_);
+        long addr = (space_ == Space_t::Position) ? AddressCalculator<Layout_t>::PositionSpaceAddress(x, y, z, dims_) : AddressCalculator<Layout_t>::MomentumSpaceAddress(x, y, z, dims_);
         return data_[addr];
     }
 
@@ -235,14 +235,14 @@ class Tensor {
      *
      * @return Pointer to underlying data
      */
-    ScalarType* Data( ) { return data_; }
+    Scalar_t* Data( ) { return data_; }
 
     /**
      * @brief Get raw data pointer (const)
      *
      * @return Const pointer to underlying data
      */
-    const ScalarType* Data( ) const { return data_; }
+    const Scalar_t* Data( ) const { return data_; }
 
     // ========================================================================
     // Metadata (for compatibility with legacy Image)
@@ -283,29 +283,29 @@ class Tensor {
     void SetFFTCentered(bool centered) { is_fft_centered_in_box_ = centered; }
 
   private:
-    ScalarType* data_; ///< Non-owning pointer to data
-    int3        dims_; ///< Logical dimensions (x, y, z)
-    Space       space_; ///< Current transform space
-    bool        object_is_centered_in_box_; ///< Object centering (position space)
-    bool        is_fft_centered_in_box_; ///< FFT centering (momentum space)
+    Scalar_t* data_; ///< Non-owning pointer to data
+    int3      dims_; ///< Logical dimensions (x, y, z)
+    Space_t   space_; ///< Current transform space
+    bool      object_is_centered_in_box_; ///< Object centering (position space)
+    bool      is_fft_centered_in_box_; ///< FFT centering (momentum space)
 };
 
 // ============================================================================
 // Implementation of inline methods
 // ============================================================================
 
-template <typename ScalarType, typename Layout, typename EnableIf_t>
-Tensor<ScalarType, Layout, EnableIf_t>::Tensor( )
-    : data_(NULL),
+template <typename Scalar_t, typename Layout_t, typename EnableIf_t>
+Tensor<Scalar_t, Layout_t, EnableIf_t>::Tensor( )
+    : data_(nullptr),
       dims_({0, 0, 0}),
-      space_(Space::Position),
+      space_(Space_t::Position),
       object_is_centered_in_box_(false),
       is_fft_centered_in_box_(false) {
 }
 
-template <typename ScalarType, typename Layout, typename EnableIf_t>
-void Tensor<ScalarType, Layout, EnableIf_t>::AttachToBuffer(ScalarType* data, int3 dims) {
-    TENSOR_DEBUG_ASSERT(data != NULL, "Cannot attach to NULL buffer");
+template <typename Scalar_t, typename Layout_t, typename EnableIf_t>
+void Tensor<Scalar_t, Layout_t, EnableIf_t>::AttachToBuffer(Scalar_t* data, int3 dims) {
+    TENSOR_DEBUG_ASSERT(data != nullptr, "Cannot attach to nullptr buffer");
     TENSOR_DEBUG_ASSERT(dims.x > 0 && dims.y > 0 && dims.z > 0,
                         "Invalid dimensions: %d x %d x %d", dims.x, dims.y, dims.z);
 
@@ -317,9 +317,9 @@ void Tensor<ScalarType, Layout, EnableIf_t>::AttachToBuffer(ScalarType* data, in
     is_fft_centered_in_box_    = false;
 }
 
-template <typename ScalarType, typename Layout, typename EnableIf_t>
-void Tensor<ScalarType, Layout, EnableIf_t>::Detach( ) {
-    data_ = NULL;
+template <typename Scalar_t, typename Layout_t, typename EnableIf_t>
+void Tensor<Scalar_t, Layout_t, EnableIf_t>::Detach( ) {
+    data_ = nullptr;
     dims_ = {0, 0, 0};
     // Reset metadata but keep space_ for potential debugging
 }

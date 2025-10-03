@@ -17,11 +17,11 @@
  * Usage:
  * @code
  * // Position space addressing
- * long addr = AddressCalculator<FFTWPaddedLayout>::Position1DAddress(x, y, z, dims);
- * ScalarType& value = data[addr];
+ * long addr = AddressCalculator<FFTWPaddedLayout>::PositionSpaceAddress(x, y, z, dims);
+ * Scalar_t& value = data[addr];
  *
  * // Momentum space addressing (after FFT)
- * long addr_fft = AddressCalculator<FFTWPaddedLayout>::Momentum1DAddress(x, y, z, dims);
+ * long addr_fft = AddressCalculator<FFTWPaddedLayout>::MomentumSpaceAddress(x, y, z, dims);
  * complex<float>& fft_value = reinterpret_cast<complex<float>*>(data)[addr_fft];
  * @endcode
  */
@@ -41,9 +41,9 @@ namespace tensor {
  * Uses Position/Momentum nomenclature to match Tensor::Space enum.
  * This avoids confusion between "real space" (position) and "real type" (float).
  *
- * @tparam Layout Memory layout policy (DenseLayout, FFTWPaddedLayout, etc.)
+ * @tparam Layout_t Memory layout policy (DenseLayout, FFTWPaddedLayout, etc.)
  */
-template <typename Layout>
+template <typename Layout_t>
 class AddressCalculator {
   public:
     /**
@@ -61,11 +61,11 @@ class AddressCalculator {
      * @param dims Logical dimensions
      * @return 1D array index
      *
-     * @note For GPU kernels with known small dimensions, use Position1DAddress<int>() for faster 32-bit arithmetic
+     * @note For GPU kernels with known small dimensions, use PositionSpaceAddress<int>() for faster 32-bit arithmetic
      */
     template <typename IndexType = long>
-    static inline IndexType Position1DAddress(int x, int y, int z, int3 dims) {
-        size_t pitch = Layout::CalculatePitch(dims);
+    static inline IndexType PositionSpaceAddress(int x, int y, int z, int3 dims) {
+        size_t pitch = Layout_t::CalculatePitch(dims);
         if constexpr ( std::is_same_v<IndexType, long> ) {
             return long(pitch * dims.y) * long(z) + long(pitch) * long(y) + long(x);
         }
@@ -88,10 +88,10 @@ class AddressCalculator {
      * @param dims Logical dimensions (position space)
      * @return 1D array index (complex-valued element)
      *
-     * @note For GPU kernels with known small dimensions, use Momentum1DAddress<int>() for faster 32-bit arithmetic
+     * @note For GPU kernels with known small dimensions, use MomentumSpaceAddress<int>() for faster 32-bit arithmetic
      */
     template <typename IndexType = long>
-    static inline IndexType Momentum1DAddress(int x, int y, int z, int3 dims) {
+    static inline IndexType MomentumSpaceAddress(int x, int y, int z, int3 dims) {
         // Complex pitch: Hermitian symmetry means we only store half + 1 in X
         if constexpr ( std::is_same_v<IndexType, long> ) {
             long complex_pitch = dims.x / 2 + 1;
@@ -104,34 +104,8 @@ class AddressCalculator {
     }
 
     // ========================================================================
-    // Legacy aliases for compatibility with Image class terminology
+    // Utility methods
     // ========================================================================
-
-    /**
-     * @brief Legacy alias for Position1DAddress
-     * @deprecated Use Position1DAddress instead. "Real" is ambiguous (real space vs real type).
-     *
-     * Note: In legacy Image class, "real space" meant position space (not Fourier).
-     * This is distinct from "real type" (float vs complex). The Tensor system uses
-     * Position/Momentum to avoid this confusion.
-     */
-    template <typename IndexType = long>
-    static inline IndexType Real1DAddress(int x, int y, int z, int3 dims) {
-        return Position1DAddress<IndexType>(x, y, z, dims);
-    }
-
-    /**
-     * @brief Legacy alias for Momentum1DAddress
-     * @deprecated Use Momentum1DAddress instead for clarity.
-     *
-     * Note: In legacy Image class, "Fourier space" meant momentum space.
-     * The Tensor system uses Momentum to match physics nomenclature and avoid
-     * confusion with Fourier transform functions.
-     */
-    template <typename IndexType = long>
-    static inline IndexType Fourier1DAddress(int x, int y, int z, int3 dims) {
-        return Momentum1DAddress<IndexType>(x, y, z, dims);
-    }
 
     /**
      * @brief Calculate pitch (stride) for this layout
@@ -140,7 +114,7 @@ class AddressCalculator {
      * @return Pitch in elements
      */
     static inline size_t GetPitch(int3 dims) {
-        return Layout::CalculatePitch(dims);
+        return Layout_t::CalculatePitch(dims);
     }
 
     /**
@@ -150,7 +124,7 @@ class AddressCalculator {
      * @return Total elements needed (including any padding)
      */
     static inline size_t GetMemorySize(int3 dims) {
-        return Layout::CalculateMemorySize(dims);
+        return Layout_t::CalculateMemorySize(dims);
     }
 };
 
@@ -166,7 +140,7 @@ class AddressCalculator {
  */
 template <>
 template <typename IndexType>
-inline IndexType AddressCalculator<DenseLayout>::Position1DAddress(int x, int y, int z, int3 dims) {
+inline IndexType AddressCalculator<DenseLayout>::PositionSpaceAddress(int x, int y, int z, int3 dims) {
     // Dense layout: pitch == dims.x (no padding)
     if constexpr ( std::is_same_v<IndexType, long> ) {
         return long(dims.x) * long(dims.y) * long(z) + long(dims.x) * long(y) + long(x);
@@ -185,7 +159,7 @@ inline IndexType AddressCalculator<DenseLayout>::Position1DAddress(int x, int y,
  */
 template <>
 template <typename IndexType>
-inline IndexType AddressCalculator<FFTWPaddedLayout>::Position1DAddress(int x, int y, int z, int3 dims) {
+inline IndexType AddressCalculator<FFTWPaddedLayout>::PositionSpaceAddress(int x, int y, int z, int3 dims) {
     // FFTW padding: pitch = dims.x + (2 if even, 1 if odd)
     if constexpr ( std::is_same_v<IndexType, long> ) {
         long pitch = long(dims.x) + ((dims.x % 2 == 0) ? 2 : 1);

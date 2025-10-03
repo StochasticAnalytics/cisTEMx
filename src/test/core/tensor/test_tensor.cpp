@@ -62,7 +62,7 @@ TEST_CASE("Tensor: Element access with DenseLayout", "[Tensor]") {
     Tensor<float, DenseLayout> tensor;
 
     tensor.AttachToBuffer(buffer.data, buffer.dims);
-    tensor.SetSpace(Tensor<float>::Space::Position);
+    tensor.SetSpace(Tensor<float>::Space_t::Position);
 
     SECTION("Write and read elements") {
         // Fill with pattern
@@ -103,7 +103,7 @@ TEST_CASE("Tensor: Element access with FFTWPaddedLayout", "[Tensor]") {
 
     Tensor<float, FFTWPaddedLayout> tensor;
     tensor.AttachToBuffer(buffer.data, buffer.dims);
-    tensor.SetSpace(Tensor<float, FFTWPaddedLayout>::Space::Position);
+    tensor.SetSpace(Tensor<float, FFTWPaddedLayout>::Space_t::Position);
 
     SECTION("Pitch calculation") {
         size_t pitch = tensor.GetPitch( );
@@ -148,24 +148,24 @@ TEST_CASE("Tensor: Space management", "[Tensor]") {
     tensor.AttachToBuffer(buffer.data, buffer.dims);
 
     SECTION("Default space is Position") {
-        REQUIRE(tensor.GetSpace( ) == Tensor<float>::Space::Position);
+        REQUIRE(tensor.GetSpace( ) == Tensor<float>::Space_t::Position);
         REQUIRE(tensor.IsInPositionSpace( ));
         REQUIRE_FALSE(tensor.IsInMomentumSpace( ));
     }
 
     SECTION("Change to Momentum space") {
-        tensor.SetSpace(Tensor<float>::Space::Momentum);
+        tensor.SetSpace(Tensor<float>::Space_t::Momentum);
 
-        REQUIRE(tensor.GetSpace( ) == Tensor<float>::Space::Momentum);
+        REQUIRE(tensor.GetSpace( ) == Tensor<float>::Space_t::Momentum);
         REQUIRE_FALSE(tensor.IsInPositionSpace( ));
         REQUIRE(tensor.IsInMomentumSpace( ));
     }
 
     SECTION("Toggle space") {
-        tensor.SetSpace(Tensor<float>::Space::Momentum);
+        tensor.SetSpace(Tensor<float>::Space_t::Momentum);
         REQUIRE(tensor.IsInMomentumSpace( ));
 
-        tensor.SetSpace(Tensor<float>::Space::Position);
+        tensor.SetSpace(Tensor<float>::Space_t::Position);
         REQUIRE(tensor.IsInPositionSpace( ));
     }
 
@@ -210,7 +210,7 @@ TEST_CASE("Tensor: Copy semantics (shallow copy)", "[Tensor]") {
 
     tensor1.AttachToBuffer(buffer.data, buffer.dims);
     tensor1(0, 0, 0) = 42.0f;
-    tensor1.SetSpace(Tensor<float>::Space::Momentum);
+    tensor1.SetSpace(Tensor<float>::Space_t::Momentum);
 
     SECTION("Copy constructor creates another view") {
         Tensor<float, DenseLayout> tensor2(tensor1);
@@ -255,9 +255,9 @@ TEST_CASE("Tensor: Multiple views of same buffer", "[Tensor]") {
     }
 
     SECTION("Views can have independent metadata") {
-        view1.SetSpace(Tensor<float>::Space::Position);
-        view2.SetSpace(Tensor<float>::Space::Momentum);
-        view3.SetSpace(Tensor<float>::Space::Position);
+        view1.SetSpace(Tensor<float>::Space_t::Position);
+        view2.SetSpace(Tensor<float>::Space_t::Momentum);
+        view3.SetSpace(Tensor<float>::Space_t::Position);
 
         REQUIRE(view1.IsInPositionSpace( ));
         REQUIRE(view2.IsInMomentumSpace( ));
@@ -273,7 +273,7 @@ TEST_CASE("Tensor: 3D tensor operations", "[Tensor]") {
     Tensor<float, DenseLayout> tensor;
 
     tensor.AttachToBuffer(buffer.data, buffer.dims);
-    tensor.SetSpace(Tensor<float>::Space::Position);
+    tensor.SetSpace(Tensor<float>::Space_t::Position);
 
     SECTION("Access 3D elements") {
         tensor(5, 7, 9) = 42.0f;

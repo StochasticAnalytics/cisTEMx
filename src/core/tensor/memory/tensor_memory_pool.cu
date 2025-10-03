@@ -17,19 +17,19 @@ namespace tensor {
 // Template instantiations for Phase 1
 // ============================================================================
 
-template class TensorMemoryPool<float>;
+template class TensorMemoryPool<float, fftwf_plan>;
 
 // ============================================================================
 // Constructor / Destructor
 // ============================================================================
 
-template <typename Scalar_t, typename EnableIf_t>
-TensorMemoryPool<Scalar_t, EnableIf_t>::TensorMemoryPool( ) {
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::TensorMemoryPool( ) {
     // Empty constructor - no allocations yet
 }
 
-template <typename Scalar_t, typename EnableIf_t>
-TensorMemoryPool<Scalar_t, EnableIf_t>::~TensorMemoryPool( ) {
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::~TensorMemoryPool( ) {
     if ( ! active_buffers_.empty( ) ) {
         std::fprintf(stderr, "WARNING: TensorMemoryPool destroyed with %zu active buffer(s)!\n",
                      active_buffers_.size( ));
@@ -41,8 +41,10 @@ TensorMemoryPool<Scalar_t, EnableIf_t>::~TensorMemoryPool( ) {
                             active_buffers_.size( ));
 
         // Clean up leaked buffers to avoid actual memory leaks
-        for ( Buffer* buf_ptr : active_buffers_ ) {
-            DeallocateBuffer(*buf_ptr);
+        // Note: We can't call DeallocateBuffer here because we only have the data pointer
+        // Just free the memory and warn - this is a leak scenario anyway
+        for ( Scalar_t* data_ptr : active_buffers_ ) {
+            fftwf_free(data_ptr);
         }
         active_buffers_.clear( );
     }
@@ -52,18 +54,19 @@ TensorMemoryPool<Scalar_t, EnableIf_t>::~TensorMemoryPool( ) {
 // Move semantics
 // ============================================================================
 
-template <typename Scalar_t, typename EnableIf_t>
-TensorMemoryPool<Scalar_t, EnableIf_t>::TensorMemoryPool(TensorMemoryPool&& other) noexcept
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::TensorMemoryPool(TensorMemoryPool&& other) noexcept
     : active_buffers_(std::move(other.active_buffers_)) {
     // Other pool is now empty
 }
 
-template <typename Scalar_t, typename EnableIf_t>
-TensorMemoryPool<Scalar_t, EnableIf_t>& TensorMemoryPool<Scalar_t, EnableIf_t>::operator=(TensorMemoryPool&& other) noexcept {
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>& TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::operator=(TensorMemoryPool&& other) noexcept {
     if ( this != &other ) {
         // Clean up our existing buffers
-        for ( Buffer* buf_ptr : active_buffers_ ) {
-            DeallocateBuffer(*buf_ptr);
+        // Note: We only have data pointers, so just free the memory
+        for ( Scalar_t* data_ptr : active_buffers_ ) {
+            fftwf_free(data_ptr);
         }
 
         // Take ownership of other's buffers
@@ -76,9 +79,9 @@ TensorMemoryPool<Scalar_t, EnableIf_t>& TensorMemoryPool<Scalar_t, EnableIf_t>::
 // Buffer allocation
 // ============================================================================
 
-template <typename Scalar_t, typename EnableIf_t>
-typename TensorMemoryPool<Scalar_t, EnableIf_t>::Buffer
-TensorMemoryPool<Scalar_t, EnableIf_t>::AllocateBuffer(int3 dims, bool create_fft_plans, size_t layout_size) {
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+typename TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::Buffer
+TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::AllocateBuffer(int3 dims, bool create_fft_plans, size_t layout_size) {
     TENSOR_DEBUG_ASSERT(dims.x > 0 && dims.y > 0 && dims.z > 0,
                         "Invalid dimensions for buffer allocation: %d x %d x %d",
                         dims.x, dims.y, dims.z);
@@ -97,7 +100,7 @@ TensorMemoryPool<Scalar_t, EnableIf_t>::AllocateBuffer(int3 dims, bool create_ff
     buffer.data = reinterpret_cast<Scalar_t*>(
             fftwf_malloc(sizeof(Scalar_t) * buffer.size));
 
-    if ( buffer.data == NULL ) {
+    if ( buffer.data == nullptr ) {
         throw std::bad_alloc( );
     }
 
@@ -112,10 +115,8 @@ TensorMemoryPool<Scalar_t, EnableIf_t>::AllocateBuffer(int3 dims, bool create_ff
         }
     }
 
-    // Track this allocation
-    // Store a copy of the buffer in the vector (we need persistent pointer)
-    Buffer* buf_copy = new Buffer(buffer);
-    active_buffers_.push_back(buf_copy);
+    // Track this allocation for leak detection
+    active_buffers_.push_back(buffer.data);
 
     return buffer;
 }
@@ -124,15 +125,15 @@ TensorMemoryPool<Scalar_t, EnableIf_t>::AllocateBuffer(int3 dims, bool create_ff
 // Buffer deallocation
 // ============================================================================
 
-template <typename Scalar_t, typename EnableIf_t>
-void TensorMemoryPool<Scalar_t, EnableIf_t>::DeallocateBuffer(Buffer& buffer) {
-    if ( buffer.data == NULL ) {
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+void TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::DeallocateBuffer(Buffer& buffer) {
+    if ( buffer.data == nullptr ) {
         // Already deallocated or never allocated
         return;
     }
 
     // Destroy FFT plans if they exist
-    if ( buffer.fft_plan_forward != NULL || buffer.fft_plan_backward != NULL ) {
+    if ( buffer.fft_plan_forward != nullptr || buffer.fft_plan_backward != nullptr ) {
         DestroyFFTPlans(buffer);
     }
 
@@ -140,28 +141,26 @@ void TensorMemoryPool<Scalar_t, EnableIf_t>::DeallocateBuffer(Buffer& buffer) {
     fftwf_free(buffer.data);
 
     // Remove from tracking
-    auto it = std::find_if(active_buffers_.begin( ), active_buffers_.end( ),
-                           [&buffer](const Buffer* b) { return b->data == buffer.data; });
+    auto it = std::find(active_buffers_.begin( ), active_buffers_.end( ), buffer.data);
 
     if ( it != active_buffers_.end( ) ) {
-        delete *it; // Delete the tracked copy
         active_buffers_.erase(it);
     }
 
-    // Reset buffer handle to NULL values
-    buffer.data              = NULL;
+    // Reset buffer handle to nullptr values
+    buffer.data              = nullptr;
     buffer.dims              = {0, 0, 0};
     buffer.size              = 0;
-    buffer.fft_plan_forward  = NULL;
-    buffer.fft_plan_backward = NULL;
+    buffer.fft_plan_forward  = nullptr;
+    buffer.fft_plan_backward = nullptr;
 }
 
 // ============================================================================
 // FFT plan management
 // ============================================================================
 
-template <typename Scalar_t, typename EnableIf_t>
-void TensorMemoryPool<Scalar_t, EnableIf_t>::CreateFFTPlans(Buffer& buffer) {
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+void TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::CreateFFTPlans(Buffer& buffer) {
     // FFTW planning requires thread safety
     static std::mutex           fftw_mutex;
     std::lock_guard<std::mutex> lock(fftw_mutex);
@@ -198,35 +197,35 @@ void TensorMemoryPool<Scalar_t, EnableIf_t>::CreateFFTPlans(Buffer& buffer) {
     }
 
     // Check that plans were created successfully
-    if ( buffer.fft_plan_forward == NULL || buffer.fft_plan_backward == NULL ) {
+    if ( buffer.fft_plan_forward == nullptr || buffer.fft_plan_backward == nullptr ) {
         // Clean up any partial allocation
-        if ( buffer.fft_plan_forward != NULL ) {
-            fftwf_destroy_plan(static_cast<fftwf_plan>(buffer.fft_plan_forward));
-            buffer.fft_plan_forward = NULL;
+        if ( buffer.fft_plan_forward != nullptr ) {
+            fftwf_destroy_plan(buffer.fft_plan_forward);
+            buffer.fft_plan_forward = nullptr;
         }
-        if ( buffer.fft_plan_backward != NULL ) {
-            fftwf_destroy_plan(static_cast<fftwf_plan>(buffer.fft_plan_backward));
-            buffer.fft_plan_backward = NULL;
+        if ( buffer.fft_plan_backward != nullptr ) {
+            fftwf_destroy_plan(buffer.fft_plan_backward);
+            buffer.fft_plan_backward = nullptr;
         }
 
         throw std::runtime_error("Failed to create FFTW plans");
     }
 }
 
-template <typename Scalar_t, typename EnableIf_t>
-void TensorMemoryPool<Scalar_t, EnableIf_t>::DestroyFFTPlans(Buffer& buffer) {
+template <typename Scalar_t, typename FFTPlan_t, typename EnableIf_t>
+void TensorMemoryPool<Scalar_t, FFTPlan_t, EnableIf_t>::DestroyFFTPlans(Buffer& buffer) {
     // FFTW plan destruction requires thread safety
     static std::mutex           fftw_mutex;
     std::lock_guard<std::mutex> lock(fftw_mutex);
 
-    if ( buffer.fft_plan_forward != NULL ) {
-        fftwf_destroy_plan(static_cast<fftwf_plan>(buffer.fft_plan_forward));
-        buffer.fft_plan_forward = NULL;
+    if ( buffer.fft_plan_forward != nullptr ) {
+        fftwf_destroy_plan(buffer.fft_plan_forward);
+        buffer.fft_plan_forward = nullptr;
     }
 
-    if ( buffer.fft_plan_backward != NULL ) {
-        fftwf_destroy_plan(static_cast<fftwf_plan>(buffer.fft_plan_backward));
-        buffer.fft_plan_backward = NULL;
+    if ( buffer.fft_plan_backward != nullptr ) {
+        fftwf_destroy_plan(buffer.fft_plan_backward);
+        buffer.fft_plan_backward = nullptr;
     }
 }
 

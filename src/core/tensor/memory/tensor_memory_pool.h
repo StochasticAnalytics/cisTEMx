@@ -43,10 +43,12 @@ namespace tensor {
  * pool.DeallocateBuffer(buffer);  // Frees memory and plans
  * @endcode
  *
- * @tparam ScalarType Scalar data type (float in Phase 1)
+ * @tparam Scalar_t Scalar data type (float in Phase 1)
+ * @tparam FFTPlan_t FFT plan type (fftwf_plan in Phase 1, will support cufftHandle, etc. in Phase 5)
  */
-template <typename ScalarType,
-          typename = cistem::EnableIf<is_phase1_supported_v<ScalarType>>>
+template <typename Scalar_t,
+          typename FFTPlan_t = fftwf_plan,
+          typename           = cistem::EnableIf<is_phase1_supported_v<Scalar_t>>>
 class TensorMemoryPool {
   public:
     /**
@@ -54,16 +56,31 @@ class TensorMemoryPool {
      *
      * Returned by AllocateBuffer(). User must keep this handle to deallocate.
      * FFT plans are optional and only created if requested during allocation.
+     *
+     * Buffer is non-copyable to prevent double-free bugs (two handles pointing
+     * to same memory). It is movable to allow efficient transfer of ownership.
+     *
+     * Rationale: While we could use smart pointers, the non-owning handle pattern
+     * matches the Tensor design (lightweight view) and has zero overhead. Making
+     * it non-copyable provides safety without runtime cost.
      */
     struct Buffer {
-        ScalarType* data; ///< Pointer to allocated memory
-        int3        dims; ///< Logical dimensions (x, y, z)
-        size_t      size; ///< Total number of elements allocated
-        void*       fft_plan_forward; ///< Forward FFT plan (fftwf_plan), NULL if not created
-        void*       fft_plan_backward; ///< Backward FFT plan (fftwf_plan), NULL if not created
+        Scalar_t* data; ///< Pointer to allocated memory
+        int3      dims; ///< Logical dimensions (x, y, z)
+        size_t    size; ///< Total number of elements allocated
+        FFTPlan_t fft_plan_forward; ///< Forward FFT plan (typed, e.g., fftwf_plan or cufftHandle)
+        FFTPlan_t fft_plan_backward; ///< Backward FFT plan (typed, e.g., fftwf_plan or cufftHandle)
 
-        Buffer( ) : data(NULL), dims({0, 0, 0}), size(0),
-                    fft_plan_forward(NULL), fft_plan_backward(NULL) {}
+        Buffer( ) : data(nullptr), dims({0, 0, 0}), size(0),
+                    fft_plan_forward(nullptr), fft_plan_backward(nullptr) {}
+
+        // Delete copy operations to prevent double-free
+        Buffer(const Buffer&)            = delete;
+        Buffer& operator=(const Buffer&) = delete;
+
+        // Allow move operations for efficient ownership transfer
+        Buffer(Buffer&&)            = default;
+        Buffer& operator=(Buffer&&) = default;
     };
 
     /**
@@ -106,7 +123,7 @@ class TensorMemoryPool {
     /**
      * @brief Deallocate a buffer and destroy its FFT plans
      *
-     * After deallocation, the buffer handle is reset to NULL values.
+     * After deallocation, the buffer handle is reset to nullptr values.
      * Safe to call multiple times (idempotent).
      *
      * @param buffer Buffer handle to deallocate
@@ -130,8 +147,8 @@ class TensorMemoryPool {
     bool HasActiveBuffers( ) const { return ! active_buffers_.empty( ); }
 
   private:
-    /// Tracks all currently allocated buffers for leak detection
-    std::vector<Buffer*> active_buffers_;
+    /// Tracks all currently allocated data pointers for leak detection
+    std::vector<Scalar_t*> active_buffers_;
 
     /**
      * @brief Create FFTW plans for a buffer

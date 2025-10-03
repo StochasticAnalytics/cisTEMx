@@ -1366,7 +1366,9 @@ if WANT_CISTEM_GPU_AM
     unit_test_runner_SOURCES += test/gpu/test_gpu.cpp \
                                 test/core/tensor/test_tensor_memory_pool.cpp \
                                 test/core/tensor/test_tensor.cpp \
-                                test/core/tensor/test_memory_layout.cpp
+                                test/core/tensor/test_memory_layout.cpp \
+                                test/core/tensor/test_tensor_arithmetic.cpp \
+                                test/core/tensor/test_tensor_statistics.cpp
 
     unit_test_runner_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     unit_test_runner_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)

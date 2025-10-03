@@ -23,6 +23,7 @@
 #include "../type_traits.h"
 #include "../memory/memory_layout.h"
 #include "../debug_utils.h"
+#include "../iterators/tensor_iterator.h"
 #include "../../../constants/constants.h"
 
 namespace cistem {
@@ -482,6 +483,107 @@ class Tensor {
      * @param centered New FFT centering state
      */
     void SetFFTCentered(bool centered) { is_fft_centered_in_box_ = centered; }
+
+    // ========================================================================
+    // Iterators (Phase 2.5) - Enable range-based for and STL algorithms
+    // ========================================================================
+
+    /**
+     * @brief Begin iterator (layout-aware)
+     *
+     * Returns appropriate iterator based on Layout_t:
+     * - DenseLayout: Simple pointer-based iterator
+     * - FFTWPaddedLayout: Padding-aware iterator
+     *
+     * Usage: for (auto& val : tensor) { val += 1.0f; }
+     */
+    auto begin( ) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        if constexpr ( std::is_same_v<Layout_t, DenseLayout> ) {
+            return TensorIterator_Dense<Scalar_t>(data_);
+        }
+        else if constexpr ( std::is_same_v<Layout_t, FFTWPaddedLayout> ) {
+            int  padding_jump = (dims_p_.x % 2 == 0) ? 2 : 1;
+            int3 logical_dims = make_int3(dims_p_.x, dims_p_.y, dims_p_.z);
+            return TensorIterator_FFTWPadded<Scalar_t>(data_, logical_dims, dims_p_.w, padding_jump);
+        }
+        else {
+            static_assert(std::is_same_v<Layout_t, DenseLayout> || std::is_same_v<Layout_t, FFTWPaddedLayout>,
+                          "Unsupported layout type");
+        }
+    }
+
+    /**
+     * @brief End iterator (layout-aware)
+     */
+    auto end( ) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        if constexpr ( std::is_same_v<Layout_t, DenseLayout> ) {
+            long num_elements = long(dims_p_.x) * long(dims_p_.y) * long(dims_p_.z);
+            return TensorIterator_Dense<Scalar_t>(data_ + num_elements);
+        }
+        else if constexpr ( std::is_same_v<Layout_t, FFTWPaddedLayout> ) {
+            int padding_jump = (dims_p_.x % 2 == 0) ? 2 : 1;
+            // End iterator points past the last element
+            long final_address = long(dims_p_.w) * long(dims_p_.y) * long(dims_p_.z);
+            int3 logical_dims  = make_int3(dims_p_.x, dims_p_.y, dims_p_.z);
+            return TensorIterator_FFTWPadded<Scalar_t>(data_ + final_address, logical_dims, dims_p_.w, padding_jump, 0, 0, dims_p_.z);
+        }
+        else {
+            static_assert(std::is_same_v<Layout_t, DenseLayout> || std::is_same_v<Layout_t, FFTWPaddedLayout>,
+                          "Unsupported layout type");
+        }
+    }
+
+    /**
+     * @brief Const begin iterator
+     */
+    auto begin( ) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        if constexpr ( std::is_same_v<Layout_t, DenseLayout> ) {
+            return ConstTensorIterator_Dense<Scalar_t>(data_);
+        }
+        else if constexpr ( std::is_same_v<Layout_t, FFTWPaddedLayout> ) {
+            int  padding_jump = (dims_p_.x % 2 == 0) ? 2 : 1;
+            int3 logical_dims = make_int3(dims_p_.x, dims_p_.y, dims_p_.z);
+            return ConstTensorIterator_FFTWPadded<Scalar_t>(data_, logical_dims, dims_p_.w, padding_jump);
+        }
+        else {
+            static_assert(std::is_same_v<Layout_t, DenseLayout> || std::is_same_v<Layout_t, FFTWPaddedLayout>,
+                          "Unsupported layout type");
+        }
+    }
+
+    /**
+     * @brief Const end iterator
+     */
+    auto end( ) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        if constexpr ( std::is_same_v<Layout_t, DenseLayout> ) {
+            long num_elements = long(dims_p_.x) * long(dims_p_.y) * long(dims_p_.z);
+            return ConstTensorIterator_Dense<Scalar_t>(data_ + num_elements);
+        }
+        else if constexpr ( std::is_same_v<Layout_t, FFTWPaddedLayout> ) {
+            int  padding_jump  = (dims_p_.x % 2 == 0) ? 2 : 1;
+            long final_address = long(dims_p_.w) * long(dims_p_.y) * long(dims_p_.z);
+            int3 logical_dims  = make_int3(dims_p_.x, dims_p_.y, dims_p_.z);
+            return ConstTensorIterator_FFTWPadded<Scalar_t>(data_ + final_address, logical_dims, dims_p_.w, padding_jump, 0, 0, dims_p_.z);
+        }
+        else {
+            static_assert(std::is_same_v<Layout_t, DenseLayout> || std::is_same_v<Layout_t, FFTWPaddedLayout>,
+                          "Unsupported layout type");
+        }
+    }
+
+    /**
+     * @brief Const begin iterator (explicit cbegin)
+     */
+    auto cbegin( ) const { return begin( ); }
+
+    /**
+     * @brief Const end iterator (explicit cend)
+     */
+    auto cend( ) const { return end( ); }
 
   private:
     Scalar_t* data_; ///< Non-owning pointer to data

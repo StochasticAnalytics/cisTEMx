@@ -59,6 +59,20 @@ struct DenseLayout {
         return size_t(dims.x) * size_t(dims.y) * size_t(dims.z);
     }
 
+    /**
+     * @brief Calculate complex array pitch for momentum space
+     *
+     * After R2C transform, memory is reinterpreted as complex array
+     * with Hermitian symmetry (only half + 1 in X dimension)
+     *
+     * @param dims Logical dimensions in position space
+     * @return Number of complex elements per row in momentum space
+     */
+    static inline constexpr size_t CalculateComplexPitch(int3 dims) {
+        // Hermitian symmetry: only store half + 1 in X dimension
+        return size_t(dims.x / 2 + 1);
+    }
+
     static constexpr const char* Name( ) { return "DenseLayout"; }
 };
 

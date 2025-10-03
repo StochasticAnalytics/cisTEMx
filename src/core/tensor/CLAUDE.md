@@ -33,16 +33,16 @@ The Tensor system is a complete refactoring of the legacy `Image` class, designe
 2. ✅ Type traits with Phase 1 constraints (`is_phase1_supported_v`)
 3. ✅ `TensorMemoryPool<float>` with FFT plan ownership
 4. ✅ `Tensor<float, DenseLayout>` and `Tensor<float, FFTWPaddedLayout>`
-5. ✅ Inline address calculation (`AddressCalculator`)
-6. ✅ Template-based debug utilities (`TENSOR_DEBUG_ASSERT`)
-7. ✅ Comprehensive unit tests (334 assertions, 27 test cases, 100% pass)
-8. ✅ Build system integration (libgpucore with `-DENABLEGPU`)
+5. ✅ Space-specific element access (`GetValue_p/m`, `GetPointer_p/m`)
+6. ✅ Pre-computed pitch storage (int4 dims_p_, dims_m_)
+7. ✅ Template-based debug utilities (`TENSOR_DEBUG_ASSERT`)
+8. ✅ Comprehensive unit tests (294 assertions, 16 test cases, 100% pass)
+9. ✅ Build system integration (libgpucore with `-DENABLEGPU`)
 
 **Test Results**:
 - TensorMemoryPool: 52 assertions in 8 test cases ✅
 - Tensor class: 242 assertions in 8 test cases ✅
 - Memory layouts: 19 assertions in 6 test cases ✅
-- AddressCalculator: 21 assertions in 5 test cases ✅
 
 **Key Features**:
 - STL containers (std::vector, std::mutex) instead of wxWidgets
@@ -200,36 +200,27 @@ private:
 
 **Critical**: Tensor does NOT allocate or deallocate. It's a view, like std::span.
 
-### Addressing System
+### Element Access
 
-#### AddressCalculator (addressing/address_calculator.h)
-
-**Header-only, templated on Layout** for zero-overhead addressing:
+Element access uses space-specific methods with pre-computed pitch for maximum performance:
 
 ```cpp
-template<typename Layout>
-class AddressCalculator {
-public:
-    static inline long Real1DAddress(int x, int y, int z, int3 dims) {
-        long pitch = Layout::CalculatePitch(dims.x);
-        return (pitch * dims.y) * long(z) + pitch * long(y) + long(x);
-    }
+// Position space access (uses dims_p_.w for pitch)
+tensor.GetValue_p(x, y, z);  // 3D
+tensor.GetValue_p(x, y);     // 2D (optimized, no z multiplication)
+tensor.GetValue_p(x);        // 1D (direct indexing)
 
-    static inline long Fourier1DAddress(int x, int y, int z, int3 physical_bounds) {
-        // Similar for Fourier/complex addressing
-    }
-};
+// Momentum space access (uses dims_m_.w for complex pitch)
+tensor.GetValue_m(x, y, z);  // 3D
+tensor.GetValue_m(x, y);     // 2D
+tensor.GetValue_m(x);        // 1D
+
+// Pointer access
+tensor.GetPointer_p(x, y, z);
+tensor.GetPointer_m(x, y, z);
 ```
 
-**Performance Critical**: This will be called millions of times. MUST be inlined. Verify with:
-```bash
-g++ -S -O3 -flto file.cpp
-# Check assembly for inlining
-```
-
-#### CoordinateMapper (addressing/index_mapper.h)
-
-Handles Physical ↔ Logical coordinate conversions, Hermitian symmetry, centering metadata.
+**Performance**: Zero overhead - pitch pre-computed in `AttachToBuffer()`, direct inline addressing calculation.
 
 ### FFT System
 
@@ -304,7 +295,8 @@ TEST_CASE("Tensor FFT performance") {
 
 ### Optimization Checklist
 
-- [ ] All address calculations inlined (verify assembly)
+- [x] Address calculations inlined with pre-computed pitch
+- [x] Space-specific accessors eliminate runtime branching
 - [ ] No unnecessary copies (use move semantics)
 - [ ] Link-Time Optimization enabled for release (`-flto`)
 - [ ] Profile hot paths with `perf` or VTune
@@ -382,44 +374,6 @@ struct is_real_scalar { /* ... */ };
 - ✅ `complex_types.h` is self-contained
 - ✅ Minimal duplication (just trait definition)
 - ✅ Follows proven production pattern
-
-### Template Performance Patterns
-
-#### GPU-Optimized Integer Types
-
-GPUs perform significantly better with 32-bit integer arithmetic than 64-bit. Use templated return types with sensible defaults:
-
-```cpp
-template<typename Layout>
-class AddressCalculator {
-public:
-    // Default to long (safe for large images), allow int for GPU performance
-    template<typename IndexType = long>
-    static inline IndexType Real1DAddress(int x, int y, int z, int3 dims) {
-        size_t pitch = Layout::CalculatePitch(dims);
-        if constexpr (std::is_same_v<IndexType, long>) {
-            // 64-bit path (safe default)
-            return long(pitch * dims.y) * long(z) + long(pitch) * long(y) + long(x);
-        } else {
-            // 32-bit path (GPU optimization)
-            return pitch * dims.y * z + pitch * y + x;
-        }
-    }
-};
-```
-
-**Usage**:
-```cpp
-// CPU code - safe default
-auto addr = AddressCalculator<DenseLayout>::Real1DAddress(x, y, z, dims);
-
-// GPU kernel - explicit int for performance
-__global__ void kernel() {
-    auto addr = AddressCalculator<DenseLayout>::Real1DAddress<int>(x, y, z, dims);
-}
-```
-
-**Rationale**: User must explicitly opt-in to `int` (via `Real1DAddress<int>()`), so overflow risk is their responsibility. Default `long` ensures safety.
 
 ### Future Patterns (Not Yet Implemented)
 

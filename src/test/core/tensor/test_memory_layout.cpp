@@ -6,7 +6,6 @@
  */
 
 #include "../../../core/tensor/memory/memory_layout.h"
-#include "../../../core/tensor/addressing/address_calculator.h"
 #include "../../../../include/catch2/catch.hpp"
 
 using namespace cistem::tensor;
@@ -134,121 +133,5 @@ TEST_CASE("FFTWPaddedLayout: Complex pitch calculation", "[MemoryLayout]") {
         int3   dims          = {63, 64, 1};
         size_t complex_pitch = FFTWPaddedLayout::CalculateComplexPitch(dims);
         REQUIRE(complex_pitch == 32); // 63/2 + 1 = 31 + 1 = 32
-    }
-}
-
-TEST_CASE("AddressCalculator: DenseLayout real space addressing", "[AddressCalculator]") {
-    int3 dims = {8, 8, 1};
-
-    SECTION("First element") {
-        long addr = AddressCalculator<DenseLayout>::PositionSpaceAddress(0, 0, 0, dims);
-        REQUIRE(addr == 0);
-    }
-
-    SECTION("First row elements") {
-        long addr1 = AddressCalculator<DenseLayout>::PositionSpaceAddress(1, 0, 0, dims);
-        long addr2 = AddressCalculator<DenseLayout>::PositionSpaceAddress(2, 0, 0, dims);
-        long addr3 = AddressCalculator<DenseLayout>::PositionSpaceAddress(7, 0, 0, dims);
-
-        REQUIRE(addr1 == 1);
-        REQUIRE(addr2 == 2);
-        REQUIRE(addr3 == 7);
-    }
-
-    SECTION("Second row elements") {
-        long addr = AddressCalculator<DenseLayout>::PositionSpaceAddress(0, 1, 0, dims);
-        REQUIRE(addr == 8); // Start of second row
-    }
-
-    SECTION("Random element") {
-        long addr = AddressCalculator<DenseLayout>::PositionSpaceAddress(3, 5, 0, dims);
-        REQUIRE(addr == 5 * 8 + 3); // y * pitch + x
-    }
-}
-
-TEST_CASE("AddressCalculator: DenseLayout 3D addressing", "[AddressCalculator]") {
-    int3 dims = {10, 10, 10};
-
-    SECTION("First slice") {
-        long addr = AddressCalculator<DenseLayout>::PositionSpaceAddress(5, 5, 0, dims);
-        REQUIRE(addr == 5 * 10 + 5); // y * pitch + x
-    }
-
-    SECTION("Second slice") {
-        long addr = AddressCalculator<DenseLayout>::PositionSpaceAddress(5, 5, 1, dims);
-        REQUIRE(addr == 1 * 100 + 5 * 10 + 5); // z * slice_size + y * pitch + x
-    }
-
-    SECTION("Last element") {
-        long addr = AddressCalculator<DenseLayout>::PositionSpaceAddress(9, 9, 9, dims);
-        REQUIRE(addr == 9 * 100 + 9 * 10 + 9);
-        REQUIRE(addr == 999); // 10*10*10 - 1
-    }
-}
-
-TEST_CASE("AddressCalculator: FFTWPaddedLayout real space addressing", "[AddressCalculator]") {
-    int3 dims = {64, 64, 1};
-
-    SECTION("First element") {
-        long addr = AddressCalculator<FFTWPaddedLayout>::PositionSpaceAddress(0, 0, 0, dims);
-        REQUIRE(addr == 0);
-    }
-
-    SECTION("First row") {
-        long addr1 = AddressCalculator<FFTWPaddedLayout>::PositionSpaceAddress(63, 0, 0, dims);
-        REQUIRE(addr1 == 63); // Last logical element in first row
-    }
-
-    SECTION("Second row starts at pitch offset") {
-        long addr = AddressCalculator<FFTWPaddedLayout>::PositionSpaceAddress(0, 1, 0, dims);
-        REQUIRE(addr == 66); // Pitch = 64 + 2
-    }
-
-    SECTION("Element in second row") {
-        long addr = AddressCalculator<FFTWPaddedLayout>::PositionSpaceAddress(10, 1, 0, dims);
-        REQUIRE(addr == 66 + 10); // pitch + x
-    }
-}
-
-TEST_CASE("AddressCalculator: Fourier space addressing", "[AddressCalculator]") {
-    int3 dims = {64, 64, 1};
-
-    SECTION("DC component") {
-        long addr = AddressCalculator<DenseLayout>::MomentumSpaceAddress(0, 0, 0, dims);
-        REQUIRE(addr == 0);
-    }
-
-    SECTION("Hermitian symmetry - reduced X dimension") {
-        // In Fourier space, complex pitch is dims.x/2 + 1 = 33
-        long addr1 = AddressCalculator<DenseLayout>::MomentumSpaceAddress(32, 0, 0, dims);
-        REQUIRE(addr1 == 32); // Last element in first row
-
-        long addr2 = AddressCalculator<DenseLayout>::MomentumSpaceAddress(0, 1, 0, dims);
-        REQUIRE(addr2 == 33); // First element in second row
-    }
-
-    SECTION("Element in Fourier space") {
-        long addr     = AddressCalculator<DenseLayout>::MomentumSpaceAddress(10, 5, 0, dims);
-        long expected = 5 * 33 + 10; // y * complex_pitch + x
-        REQUIRE(addr == expected);
-    }
-}
-
-TEST_CASE("AddressCalculator: Consistency between layouts", "[AddressCalculator]") {
-    int3 dims = {64, 64, 1};
-
-    SECTION("Dense and FFTW addressing match within logical bounds") {
-        // For elements within logical dimensions, addressing should be predictable
-
-        long dense_addr0 = AddressCalculator<DenseLayout>::PositionSpaceAddress(10, 10, 0, dims);
-        long fftw_addr0  = AddressCalculator<FFTWPaddedLayout>::PositionSpaceAddress(10, 10, 0, dims);
-
-        // Dense: 10 * 64 + 10 = 650
-        // FFTW:  10 * 66 + 10 = 670
-        REQUIRE(dense_addr0 == 650);
-        REQUIRE(fftw_addr0 == 670);
-
-        // Different because of padding, but both valid for their layouts
-        REQUIRE(dense_addr0 != fftw_addr0);
     }
 }

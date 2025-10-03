@@ -69,7 +69,7 @@ TEST_CASE("Tensor: Element access with DenseLayout", "[Tensor]") {
         for ( int z = 0; z < 1; z++ ) {
             for ( int y = 0; y < 8; y++ ) {
                 for ( int x = 0; x < 8; x++ ) {
-                    tensor(x, y, z) = float(x + y * 8 + z * 64);
+                    tensor.GetValue_p(x, y, z) = float(x + y * 8 + z * 64);
                 }
             }
         }
@@ -78,17 +78,17 @@ TEST_CASE("Tensor: Element access with DenseLayout", "[Tensor]") {
         for ( int z = 0; z < 1; z++ ) {
             for ( int y = 0; y < 8; y++ ) {
                 for ( int x = 0; x < 8; x++ ) {
-                    REQUIRE(tensor(x, y, z) == float(x + y * 8 + z * 64));
+                    REQUIRE(tensor.GetValue_p(x, y, z) == float(x + y * 8 + z * 64));
                 }
             }
         }
     }
 
     SECTION("Const element access") {
-        tensor(3, 4, 0) = 42.0f;
+        tensor.GetValue_p(3, 4, 0) = 42.0f;
 
         const auto& const_tensor = tensor;
-        REQUIRE(const_tensor(3, 4, 0) == 42.0f);
+        REQUIRE(const_tensor.GetValue_p(3, 4, 0) == 42.0f);
     }
 
     pool.DeallocateBuffer(buffer);
@@ -118,22 +118,22 @@ TEST_CASE("Tensor: Element access with FFTWPaddedLayout", "[Tensor]") {
     SECTION("Write and read with padding") {
         // Fill first row
         for ( int x = 0; x < 64; x++ ) {
-            tensor(x, 0, 0) = float(x);
+            tensor.GetValue_p(x, 0, 0) = float(x);
         }
 
         // Verify first row
         for ( int x = 0; x < 64; x++ ) {
-            REQUIRE(tensor(x, 0, 0) == float(x));
+            REQUIRE(tensor.GetValue_p(x, 0, 0) == float(x));
         }
 
         // Fill second row (accounting for padding in layout)
         for ( int x = 0; x < 64; x++ ) {
-            tensor(x, 1, 0) = float(x + 100);
+            tensor.GetValue_p(x, 1, 0) = float(x + 100);
         }
 
         // Verify second row
         for ( int x = 0; x < 64; x++ ) {
-            REQUIRE(tensor(x, 1, 0) == float(x + 100));
+            REQUIRE(tensor.GetValue_p(x, 1, 0) == float(x + 100));
         }
     }
 
@@ -209,8 +209,8 @@ TEST_CASE("Tensor: Copy semantics (shallow copy)", "[Tensor]") {
     Tensor<float, DenseLayout> tensor1;
 
     tensor1.AttachToBuffer(buffer.data, buffer.dims);
-    tensor1(0, 0, 0) = 42.0f;
     tensor1.SetSpace(Tensor<float>::Space_t::Momentum);
+    tensor1.GetValue_m(0, 0, 0) = 42.0f;
 
     SECTION("Copy constructor creates another view") {
         Tensor<float, DenseLayout> tensor2(tensor1);
@@ -221,10 +221,10 @@ TEST_CASE("Tensor: Copy semantics (shallow copy)", "[Tensor]") {
         REQUIRE(tensor2.GetSpace( ) == tensor1.GetSpace( ));
 
         // Both views see same data
-        REQUIRE(tensor2(0, 0, 0) == 42.0f);
+        REQUIRE(tensor2.GetValue_m(0, 0, 0) == 42.0f);
 
-        tensor1(0, 0, 0) = 99.0f;
-        REQUIRE(tensor2(0, 0, 0) == 99.0f);
+        tensor1.GetValue_m(0, 0, 0) = 99.0f;
+        REQUIRE(tensor2.GetValue_m(0, 0, 0) == 99.0f);
     }
 
     SECTION("Assignment operator creates another view") {
@@ -232,7 +232,7 @@ TEST_CASE("Tensor: Copy semantics (shallow copy)", "[Tensor]") {
         tensor2 = tensor1;
 
         REQUIRE(tensor2.Data( ) == tensor1.Data( ));
-        REQUIRE(tensor2(0, 0, 0) == 42.0f);
+        REQUIRE(tensor2.GetValue_m(0, 0, 0) == 42.0f);
     }
 
     pool.DeallocateBuffer(buffer);
@@ -248,10 +248,13 @@ TEST_CASE("Tensor: Multiple views of same buffer", "[Tensor]") {
     view3.AttachToBuffer(buffer.data, buffer.dims);
 
     SECTION("All views see same data") {
-        view1(10, 20, 0) = 123.0f;
+        view1.SetSpace(Tensor<float>::Space_t::Position);
+        view1.GetValue_p(10, 20, 0) = 123.0f;
 
-        REQUIRE(view2(10, 20, 0) == 123.0f);
-        REQUIRE(view3(10, 20, 0) == 123.0f);
+        view2.SetSpace(Tensor<float>::Space_t::Position);
+        view3.SetSpace(Tensor<float>::Space_t::Position);
+        REQUIRE(view2.GetValue_p(10, 20, 0) == 123.0f);
+        REQUIRE(view3.GetValue_p(10, 20, 0) == 123.0f);
     }
 
     SECTION("Views can have independent metadata") {
@@ -276,17 +279,17 @@ TEST_CASE("Tensor: 3D tensor operations", "[Tensor]") {
     tensor.SetSpace(Tensor<float>::Space_t::Position);
 
     SECTION("Access 3D elements") {
-        tensor(5, 7, 9) = 42.0f;
-        REQUIRE(tensor(5, 7, 9) == 42.0f);
+        tensor.GetValue_p(5, 7, 9) = 42.0f;
+        REQUIRE(tensor.GetValue_p(5, 7, 9) == 42.0f);
 
         // Verify different slices are independent
-        tensor(5, 7, 0) = 1.0f;
-        tensor(5, 7, 1) = 2.0f;
-        tensor(5, 7, 2) = 3.0f;
+        tensor.GetValue_p(5, 7, 0) = 1.0f;
+        tensor.GetValue_p(5, 7, 1) = 2.0f;
+        tensor.GetValue_p(5, 7, 2) = 3.0f;
 
-        REQUIRE(tensor(5, 7, 0) == 1.0f);
-        REQUIRE(tensor(5, 7, 1) == 2.0f);
-        REQUIRE(tensor(5, 7, 2) == 3.0f);
+        REQUIRE(tensor.GetValue_p(5, 7, 0) == 1.0f);
+        REQUIRE(tensor.GetValue_p(5, 7, 1) == 2.0f);
+        REQUIRE(tensor.GetValue_p(5, 7, 2) == 3.0f);
     }
 
     SECTION("3D size calculation") {

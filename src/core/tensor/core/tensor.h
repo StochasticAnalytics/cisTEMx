@@ -22,7 +22,6 @@
 #include <cuda_runtime.h>
 #include "../type_traits.h"
 #include "../memory/memory_layout.h"
-#include "../addressing/address_calculator.h"
 #include "../debug_utils.h"
 #include "../../../constants/constants.h"
 
@@ -163,7 +162,7 @@ class Tensor {
      *
      * @return Dimensions as int3
      */
-    int3 GetDims( ) const { return dims_; }
+    int3 GetDims( ) const { return {dims_p_.x, dims_p_.y, dims_p_.z}; }
 
     /**
      * @brief Get total number of logical elements
@@ -171,16 +170,34 @@ class Tensor {
      * @return dims.x * dims.y * dims.z
      */
     long GetLogicalSize( ) const {
-        return long(dims_.x) * long(dims_.y) * long(dims_.z);
+        return long(dims_p_.x) * long(dims_p_.y) * long(dims_p_.z);
     }
 
     /**
-     * @brief Get memory pitch (stride) for this layout
+     * @brief Get position space pitch (stride) in elements
+     *
+     * @return Position space pitch
+     */
+    int GetPitch_p( ) const {
+        return dims_p_.w;
+    }
+
+    /**
+     * @brief Get momentum space pitch (stride) in elements
+     *
+     * @return Momentum space pitch (complex elements per row)
+     */
+    int GetPitch_m( ) const {
+        return dims_m_.w;
+    }
+
+    /**
+     * @brief Get memory pitch (stride) for current space
      *
      * @return Pitch in elements
      */
     size_t GetPitch( ) const {
-        return AddressCalculator<Layout_t>::GetPitch(dims_);
+        return (space_ == Space_t::Position) ? size_t(dims_p_.w) : size_t(dims_m_.w);
     }
 
     /**
@@ -189,43 +206,227 @@ class Tensor {
      * @return Total elements allocated
      */
     size_t GetPhysicalSize( ) const {
-        return AddressCalculator<Layout_t>::GetMemorySize(dims_);
+        return size_t(dims_p_.w) * size_t(dims_p_.y) * size_t(dims_p_.z);
     }
 
     // ========================================================================
-    // Element access
+    // Element access - Position space
     // ========================================================================
 
     /**
-     * @brief Access element at physical coordinates (mutable)
+     * @brief Access position space element (3D)
      *
-     * Coordinates must be within physical bounds:
-     * - Position space: x ∈ [0, dims.x), y ∈ [0, dims.y), z ∈ [0, dims.z)
-     * - Momentum space: x ∈ [0, dims.x/2+1), y ∈ [0, dims.y), z ∈ [0, dims.z)
-     *
-     * @param x Physical X coordinate
-     * @param y Physical Y coordinate
-     * @param z Physical Z coordinate
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @param z Z coordinate
      * @return Reference to element
      */
-    inline Scalar_t& operator( )(int x, int y, int z) {
+    inline Scalar_t& GetValue_p(int x, int y, int z) {
         TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
-        long addr = (space_ == Space_t::Position) ? AddressCalculator<Layout_t>::PositionSpaceAddress(x, y, z, dims_) : AddressCalculator<Layout_t>::MomentumSpaceAddress(x, y, z, dims_);
-        return data_[addr];
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return data_[dims_p_.w * dims_p_.y * z + dims_p_.w * y + x];
+    }
+
+    inline const Scalar_t& GetValue_p(int x, int y, int z) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return data_[dims_p_.w * dims_p_.y * z + dims_p_.w * y + x];
     }
 
     /**
-     * @brief Access element at physical coordinates (const)
+     * @brief Access position space element (2D, z=0)
      *
-     * @param x Physical X coordinate
-     * @param y Physical Y coordinate
-     * @param z Physical Z coordinate
-     * @return Const reference to element
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return Reference to element
      */
-    inline const Scalar_t& operator( )(int x, int y, int z) const {
+    inline Scalar_t& GetValue_p(int x, int y) {
         TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
-        long addr = (space_ == Space_t::Position) ? AddressCalculator<Layout_t>::PositionSpaceAddress(x, y, z, dims_) : AddressCalculator<Layout_t>::MomentumSpaceAddress(x, y, z, dims_);
-        return data_[addr];
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return data_[dims_p_.w * y + x];
+    }
+
+    inline const Scalar_t& GetValue_p(int x, int y) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return data_[dims_p_.w * y + x];
+    }
+
+    /**
+     * @brief Access position space element (1D, y=0, z=0)
+     *
+     * @param x X coordinate
+     * @return Reference to element
+     */
+    inline Scalar_t& GetValue_p(int x) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return data_[x];
+    }
+
+    inline const Scalar_t& GetValue_p(int x) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return data_[x];
+    }
+
+    // ========================================================================
+    // Element access - Momentum space
+    // ========================================================================
+
+    /**
+     * @brief Access momentum space element (3D)
+     *
+     * @param x X coordinate (0 to dims.x/2)
+     * @param y Y coordinate
+     * @param z Z coordinate
+     * @return Reference to element
+     */
+    inline Scalar_t& GetValue_m(int x, int y, int z) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return data_[dims_m_.w * dims_m_.y * z + dims_m_.w * y + x];
+    }
+
+    inline const Scalar_t& GetValue_m(int x, int y, int z) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return data_[dims_m_.w * dims_m_.y * z + dims_m_.w * y + x];
+    }
+
+    /**
+     * @brief Access momentum space element (2D, z=0)
+     *
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return Reference to element
+     */
+    inline Scalar_t& GetValue_m(int x, int y) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return data_[dims_m_.w * y + x];
+    }
+
+    inline const Scalar_t& GetValue_m(int x, int y) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return data_[dims_m_.w * y + x];
+    }
+
+    /**
+     * @brief Access momentum space element (1D, y=0, z=0)
+     *
+     * @param x X coordinate
+     * @return Reference to element
+     */
+    inline Scalar_t& GetValue_m(int x) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return data_[x];
+    }
+
+    inline const Scalar_t& GetValue_m(int x) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return data_[x];
+    }
+
+    // ========================================================================
+    // Pointer access - Position space
+    // ========================================================================
+
+    /**
+     * @brief Get pointer to position space element (3D)
+     */
+    inline Scalar_t* GetPointer_p(int x, int y, int z) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return &data_[dims_p_.w * dims_p_.y * z + dims_p_.w * y + x];
+    }
+
+    inline const Scalar_t* GetPointer_p(int x, int y, int z) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return &data_[dims_p_.w * dims_p_.y * z + dims_p_.w * y + x];
+    }
+
+    /**
+     * @brief Get pointer to position space element (2D, z=0)
+     */
+    inline Scalar_t* GetPointer_p(int x, int y) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return &data_[dims_p_.w * y + x];
+    }
+
+    inline const Scalar_t* GetPointer_p(int x, int y) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return &data_[dims_p_.w * y + x];
+    }
+
+    /**
+     * @brief Get pointer to position space element (1D, y=0, z=0)
+     */
+    inline Scalar_t* GetPointer_p(int x) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return &data_[x];
+    }
+
+    inline const Scalar_t* GetPointer_p(int x) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Position, "Tensor not in Position space");
+        return &data_[x];
+    }
+
+    // ========================================================================
+    // Pointer access - Momentum space
+    // ========================================================================
+
+    /**
+     * @brief Get pointer to momentum space element (3D)
+     */
+    inline Scalar_t* GetPointer_m(int x, int y, int z) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return &data_[dims_m_.w * dims_m_.y * z + dims_m_.w * y + x];
+    }
+
+    inline const Scalar_t* GetPointer_m(int x, int y, int z) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return &data_[dims_m_.w * dims_m_.y * z + dims_m_.w * y + x];
+    }
+
+    /**
+     * @brief Get pointer to momentum space element (2D, z=0)
+     */
+    inline Scalar_t* GetPointer_m(int x, int y) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return &data_[dims_m_.w * y + x];
+    }
+
+    inline const Scalar_t* GetPointer_m(int x, int y) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return &data_[dims_m_.w * y + x];
+    }
+
+    /**
+     * @brief Get pointer to momentum space element (1D, y=0, z=0)
+     */
+    inline Scalar_t* GetPointer_m(int x) {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return &data_[x];
+    }
+
+    inline const Scalar_t* GetPointer_m(int x) const {
+        TENSOR_DEBUG_ASSERT(IsAttached( ), "Tensor not attached to memory");
+        TENSOR_DEBUG_ASSERT(space_ == Space_t::Momentum, "Tensor not in Momentum space");
+        return &data_[x];
     }
 
     /**
@@ -284,7 +485,8 @@ class Tensor {
 
   private:
     Scalar_t* data_; ///< Non-owning pointer to data
-    int3      dims_; ///< Logical dimensions (x, y, z)
+    int4      dims_p_; ///< Position space dimensions {x, y, z, pitch}
+    int4      dims_m_; ///< Momentum space dimensions {x, y, z, complex_pitch}
     Space_t   space_; ///< Current transform space
     bool      object_is_centered_in_box_; ///< Object centering (position space)
     bool      is_fft_centered_in_box_; ///< FFT centering (momentum space)
@@ -297,7 +499,8 @@ class Tensor {
 template <typename Scalar_t, typename Layout_t, typename EnableIf_t>
 Tensor<Scalar_t, Layout_t, EnableIf_t>::Tensor( )
     : data_(nullptr),
-      dims_({0, 0, 0}),
+      dims_p_({0, 0, 0, 0}),
+      dims_m_({0, 0, 0, 0}),
       space_(Space_t::Position),
       object_is_centered_in_box_(false),
       is_fft_centered_in_box_(false) {
@@ -310,7 +513,19 @@ void Tensor<Scalar_t, Layout_t, EnableIf_t>::AttachToBuffer(Scalar_t* data, int3
                         "Invalid dimensions: %d x %d x %d", dims.x, dims.y, dims.z);
 
     data_ = data;
-    dims_ = dims;
+
+    // Pre-compute position space dimensions and pitch
+    dims_p_.x = dims.x;
+    dims_p_.y = dims.y;
+    dims_p_.z = dims.z;
+    dims_p_.w = int(Layout_t::CalculatePitch(dims));
+
+    // Pre-compute momentum space dimensions and complex pitch
+    dims_m_.x = dims.x;
+    dims_m_.y = dims.y;
+    dims_m_.z = dims.z;
+    dims_m_.w = int(Layout_t::CalculateComplexPitch(dims));
+
     // Don't change space_ - let caller set it explicitly
     // Reset metadata
     object_is_centered_in_box_ = false;
@@ -319,8 +534,9 @@ void Tensor<Scalar_t, Layout_t, EnableIf_t>::AttachToBuffer(Scalar_t* data, int3
 
 template <typename Scalar_t, typename Layout_t, typename EnableIf_t>
 void Tensor<Scalar_t, Layout_t, EnableIf_t>::Detach( ) {
-    data_ = nullptr;
-    dims_ = {0, 0, 0};
+    data_   = nullptr;
+    dims_p_ = {0, 0, 0, 0};
+    dims_m_ = {0, 0, 0, 0};
     // Reset metadata but keep space_ for potential debugging
 }
 

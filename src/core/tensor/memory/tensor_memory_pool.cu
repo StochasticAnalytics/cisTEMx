@@ -26,7 +26,8 @@ namespace tensor {
 //   3. EnableIf_t (defaults to void when is_phase1_supported_v<Scalar_t> is true)
 //
 // Incorrect:  template class TensorMemoryPool<float, fftwf_plan>;
-// Correct:    template class TensorMemoryPool<float, fftwf_plan, void>;
+// Better:     template class TensorMemoryPool<float, fftwf_plan, void>;
+// Best (for Clang): template class TensorMemoryPool<float, struct fftwf_plan_s*, void>;
 //
 // Without the third parameter, the linker sees different mangled names:
 //   - Source requests: TensorMemoryPool<float, fftwf_plan_s*, void>
@@ -35,7 +36,9 @@ namespace tensor {
 // This causes "undefined reference" errors with clang (and potentially other compilers)
 // even though the symbols compile successfully with nvcc.
 //
-template class TensorMemoryPool<float, fftwf_plan, void>;
+// Use the actual type that fftwf_plan typedefs to for Clang compatibility
+// fftwf_plan is typedef'd to struct fftwf_plan_s*
+template class TensorMemoryPool<float, struct fftwf_plan_s*, void>;
 
 // ============================================================================
 // Constructor / Destructor

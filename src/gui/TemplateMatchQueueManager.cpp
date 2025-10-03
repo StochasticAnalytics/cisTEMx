@@ -1,6 +1,7 @@
 #include "../core/gui_core_headers.h"
 #include "TemplateMatchQueueManager.h"
 #include "MatchTemplatePanel.h"
+#include "TemplateMatchQueueItemEditor.h"
 #include <algorithm>
 
 #ifdef cisTEM_QM_LOGGING
@@ -42,13 +43,13 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
 
     // Create execution queue section (top)
-    wxStaticText* execution_queue_label = new wxStaticText(this, wxID_ANY, "Execution Queue (searches will run in order - drag to reorder):");
-    wxFont        execution_label_font  = execution_queue_label->GetFont( );
+    execution_queue_label       = new wxStaticText(this, wxID_ANY, "Execution Queue (searches will run in order - drag to reorder):");
+    wxFont execution_label_font = execution_queue_label->GetFont( );
     execution_label_font.MakeBold( );
     execution_queue_label->SetFont(execution_label_font);
 
     execution_queue_ctrl = new wxListCtrl(this, wxID_ANY,
-                                          wxDefaultPosition, wxSize(700, 200),
+                                          wxDefaultPosition, wxSize(500, 200),
                                           wxLC_REPORT);
 
     // Execution queue is reordered by drag-and-drop, not column sorting
@@ -61,74 +62,62 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Add columns to execution queue (no sort indicators - uses drag-and-drop for reordering)
     execution_queue_ctrl->AppendColumn("Queue ID", wxLIST_FORMAT_LEFT, calc_width("Queue ID"));
     execution_queue_ctrl->AppendColumn("Search ID", wxLIST_FORMAT_LEFT, calc_width("Search ID"));
-    execution_queue_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 180);
+    execution_queue_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 120);
     execution_queue_ctrl->AppendColumn("Status", wxLIST_FORMAT_LEFT, calc_width("Status"));
     execution_queue_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, calc_width("Progress"));
-    execution_queue_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 120);
+    execution_queue_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 80);
 
     // wxListCtrl doesn't use EnableDragSource/EnableDropTarget - we'll implement manual drag and drop
 
     // Legacy compatibility - point to execution queue
     queue_list_ctrl = execution_queue_ctrl;
 
-    // Create combined controls panel with Run Queue on left and monitoring controls on right
-    wxPanel*    controls_panel = new wxPanel(this, wxID_ANY);
+    // Create controls panel with Run Queue button and right-side controls
+    controls_panel             = new wxPanel(this, wxID_ANY);
     wxBoxSizer* controls_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    // Run Queue button on the left
+    // Run Queue button (left side)
     run_selected_button = new wxButton(controls_panel, wxID_ANY, "Run Queue");
-
-    // Monitoring controls on the right - vertical stack
-    wxBoxSizer* monitoring_sizer = new wxBoxSizer(wxVERTICAL);
-
-    // Panel Display Toggle (top row)
-    wxBoxSizer*   panel_display_sizer = new wxBoxSizer(wxHORIZONTAL);
-    wxStaticText* display_label       = new wxStaticText(controls_panel, wxID_ANY, "Panel Display:");
-    panel_display_toggle              = new wxToggleButton(controls_panel, wxID_ANY, "Show Progress Panel",
-                                                           wxDefaultPosition, wxSize(150, -1));
-    panel_display_toggle->SetValue(false); // Start with input panel visible
-    panel_display_toggle->SetToolTip("Toggle between Input and Progress panels");
-
-    QM_LOG_UI("Created toggle button, initial value=%s, label='%s'",
-              panel_display_toggle->GetValue( ) ? "true" : "false",
-              panel_display_toggle->GetLabel( ).mb_str( ).data( ));
-
-    panel_display_sizer->Add(display_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
-    panel_display_sizer->Add(panel_display_toggle, 0, wxALIGN_CENTER_VERTICAL, 0);
-    monitoring_sizer->Add(panel_display_sizer, 0, wxBOTTOM, 5);
-
-#ifdef cisTEM_QM_LOGGING
-    // Debug Logging (second row)
-    wxBoxSizer*   logging_sizer = new wxBoxSizer(wxHORIZONTAL);
-    wxStaticText* logging_label = new wxStaticText(controls_panel, wxID_ANY, "Debug Logging:");
-    logging_toggle              = new wxToggleButton(controls_panel, wxID_ANY, "Enable Logging",
-                                                     wxDefaultPosition, wxSize(150, -1));
-    logging_toggle->SetValue(false); // Off by default
-    log_file_text = new wxStaticText(controls_panel, wxID_ANY, "", wxDefaultPosition, wxSize(200, -1));
-
-    logging_sizer->Add(logging_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
-    logging_sizer->Add(logging_toggle, 0, wxALIGN_CENTER_VERTICAL, 0);
-    monitoring_sizer->Add(logging_sizer, 0, wxBOTTOM, 2);
-    monitoring_sizer->Add(log_file_text, 0, 0, 0);
-#endif
-
     controls_sizer->Add(run_selected_button, 0, wxALL, 5);
     controls_sizer->AddStretchSpacer( );
-    controls_sizer->Add(monitoring_sizer, 0, wxALL, 5);
 
+    // Right-side button stack (Update Selected above Enable Logging)
+    wxBoxSizer* right_buttons_sizer = new wxBoxSizer(wxVERTICAL);
+
+    // Update Selected button - right-aligned at top
+    update_selected_button = new wxButton(controls_panel, wxID_ANY, "Update Selected", wxDefaultPosition, wxSize(130, -1));
+    update_selected_button->Enable(false); // Disabled until pending item selected
+    right_buttons_sizer->Add(update_selected_button, 0, wxALIGN_RIGHT | wxBOTTOM, 5);
+
+#ifdef cisTEM_QM_LOGGING
+    // Logging row: [Log file: <text>] [Enable Logging button] - logging button right-aligned with Update Selected
+    wxBoxSizer* logging_row_sizer = new wxBoxSizer(wxHORIZONTAL);
+    logging_label                 = new wxStaticText(controls_panel, wxID_ANY, "Log file:");
+    log_file_text                 = new wxStaticText(controls_panel, wxID_ANY, "", wxDefaultPosition, wxSize(150, -1));
+    logging_toggle                = new wxToggleButton(controls_panel, wxID_ANY, "Enable Logging",
+                                                       wxDefaultPosition, wxSize(130, -1));
+    logging_toggle->SetValue(false); // Off by default
+
+    logging_row_sizer->Add(logging_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    logging_row_sizer->Add(log_file_text, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    logging_row_sizer->Add(logging_toggle, 0, wxALIGN_CENTER_VERTICAL, 0);
+    right_buttons_sizer->Add(logging_row_sizer, 0, wxALIGN_RIGHT, 0);
+#endif
+
+    controls_sizer->Add(right_buttons_sizer, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
     controls_panel->SetSizer(controls_sizer);
 
     // Create available searches section header (hide completed moved to CLI args section)
-    wxStaticText* available_searches_label = new wxStaticText(this, wxID_ANY, "Available Searches (not queued for execution):");
-    wxFont        available_label_font     = available_searches_label->GetFont( );
+    available_searches_label    = new wxStaticText(this, wxID_ANY, "Available Searches (not queued for execution):");
+    wxFont available_label_font = available_searches_label->GetFont( );
     available_label_font.MakeBold( );
     available_searches_label->SetFont(available_label_font);
     available_searches_ctrl = new wxListCtrl(this, wxID_ANY,
-                                             wxDefaultPosition, wxSize(700, 150),
+                                             wxDefaultPosition, wxSize(500, 150),
                                              wxLC_REPORT);
 
     // Set minimum size to ensure visibility
-    available_searches_ctrl->SetMinSize(wxSize(700, 150));
+    available_searches_ctrl->SetMinSize(wxSize(500, 150));
     QM_LOG_UI("Created available_searches_ctrl: %p with min size 700x150", available_searches_ctrl);
 
     // Unicode sortable indicator (U+21C5) - only for sortable columns
@@ -144,20 +133,18 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Add columns to available searches (only Queue ID, Search ID, Status are sortable)
     available_searches_ctrl->AppendColumn(wxString::FromUTF8("Queue ID") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Queue ID", true));
     available_searches_ctrl->AppendColumn(wxString::FromUTF8("Search ID") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Search ID", true));
-    available_searches_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 180);
+    available_searches_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 120);
     available_searches_ctrl->AppendColumn(wxString::FromUTF8("Status") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Status", true));
     available_searches_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, calc_width_avail("Progress", false));
-    available_searches_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 120);
+    available_searches_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 80);
 
-    // Create CLI args section with Update Selected button and Hide Completed checkbox
-    wxPanel*    cli_args_panel = new wxPanel(this, wxID_ANY);
+    // Create CLI args section with Hide Completed checkbox
+    cli_args_panel             = new wxPanel(this, wxID_ANY);
     wxBoxSizer* cli_args_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    wxStaticText* cli_args_label = new wxStaticText(cli_args_panel, wxID_ANY, "Custom CLI Arguments:");
-    custom_cli_args_text         = new wxTextCtrl(cli_args_panel, wxID_ANY, wxEmptyString,
-                                                  wxDefaultPosition, wxSize(400, -1));
-    update_selected_button       = new wxButton(cli_args_panel, wxID_ANY, "Update Selected");
-    update_selected_button->Enable(false); // Disabled until pending item selected
+    cli_args_label       = new wxStaticText(cli_args_panel, wxID_ANY, "Custom CLI Arguments:");
+    custom_cli_args_text = new wxTextCtrl(cli_args_panel, wxID_ANY, wxEmptyString,
+                                          wxDefaultPosition, wxSize(200, -1));
 
     // Hide completed checkbox (moved from available searches header)
     hide_completed_checkbox = new wxCheckBox(cli_args_panel, wxID_ANY, "Hide completed searches");
@@ -165,14 +152,13 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
     cli_args_sizer->Add(cli_args_label, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
     cli_args_sizer->Add(custom_cli_args_text, 1, wxEXPAND | wxALL, 5);
-    cli_args_sizer->Add(update_selected_button, 0, wxALL, 5);
     cli_args_sizer->AddStretchSpacer( );
     cli_args_sizer->Add(hide_completed_checkbox, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
     cli_args_panel->SetSizer(cli_args_sizer);
 
     // Create bottom controls panel with left and right button groups
-    wxPanel*    bottom_controls = new wxPanel(this, wxID_ANY);
-    wxBoxSizer* bottom_sizer    = new wxBoxSizer(wxHORIZONTAL);
+    bottom_controls          = new wxPanel(this, wxID_ANY);
+    wxBoxSizer* bottom_sizer = new wxBoxSizer(wxHORIZONTAL);
 
     // Left side - stacked Add/Remove from Queue buttons
     wxBoxSizer* left_button_sizer = new wxBoxSizer(wxVERTICAL);
@@ -216,7 +202,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     remove_selected_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnRemoveSelectedClick, this);
     clear_queue_button->Bind(wxEVT_BUTTON, &TemplateMatchQueueManager::OnClearQueueClick, this);
     hide_completed_checkbox->Bind(wxEVT_CHECKBOX, &TemplateMatchQueueManager::OnHideCompletedToggle, this);
-    panel_display_toggle->Bind(wxEVT_TOGGLEBUTTON, &TemplateMatchQueueManager::OnPanelDisplayToggle, this);
 
     // Bind selection events for available searches table
     available_searches_ctrl->Bind(wxEVT_LIST_ITEM_SELECTED, &TemplateMatchQueueManager::OnAvailableSearchesSelectionChanged, this);
@@ -235,33 +220,13 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     // Don't load from database in constructor - it may be called during workflow switch
     // when main_frame is in an inconsistent state
 
-    // No longer need active instance tracking with unified architecture
+    // Create editor panel (hidden initially)
+    editor_panel = new TemplateMatchQueueItemEditor(this, match_template_panel_ptr, this);
+    editor_panel->Show(false);
+    editing_queue_id = -1;
 
-    // Sync toggle button state with actual panel visibility if match_template_panel_ptr exists
-    if ( match_template_panel_ptr ) {
-        bool input_visible    = match_template_panel_ptr->InputPanel->IsShown( );
-        bool progress_visible = match_template_panel_ptr->ProgressPanel->IsShown( );
-
-        QM_LOG_UI("Constructor: InputPanel visible=%s, ProgressPanel visible=%s",
-                  input_visible ? "true" : "false",
-                  progress_visible ? "true" : "false");
-
-        // Set toggle state to match actual panel visibility
-        // If progress panel is showing, toggle should be checked (true)
-        panel_display_toggle->SetValue(progress_visible);
-
-        // Update label to match state
-        if ( progress_visible ) {
-            panel_display_toggle->SetLabel("Show Input Panel");
-        }
-        else {
-            panel_display_toggle->SetLabel("Show Progress Panel");
-        }
-
-        QM_LOG_UI("Set toggle button value=%s, label='%s'",
-                  panel_display_toggle->GetValue( ) ? "true" : "false",
-                  panel_display_toggle->GetLabel( ).mb_str( ).data( ));
-    }
+    // Add editor panel to main sizer (will be shown/hidden as needed)
+    main_sizer->Add(editor_panel, 1, wxEXPAND | wxALL, 5);
 
     // Display any existing queue items
     UpdateQueueDisplay( );
@@ -1339,132 +1304,77 @@ void TemplateMatchQueueManager::UpdateButtonState( ) {
 
 void TemplateMatchQueueManager::OnUpdateSelectedClick(wxCommandEvent& event) {
     QM_LOG_METHOD_ENTRY("OnUpdateSelectedClick");
-    QM_LOG_UI("Attempting to update queue item with database_queue_id=%ld", last_populated_queue_id);
 
-    // Find the original queue item
-    TemplateMatchQueueItem* original_item = nullptr;
-    for ( auto& queue_item : execution_queue ) {
-        if ( queue_item.database_queue_id == last_populated_queue_id ) {
-            original_item = &queue_item;
+    // Enforce single selection from either queue
+    long                    selected_count    = 0;
+    long                    selected_queue_id = -1;
+    TemplateMatchQueueItem* item_to_edit      = nullptr;
+
+    // Check execution queue for selections
+    long item = queue_list_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    while ( item != -1 ) {
+        selected_count++;
+        selected_queue_id = queue_list_ctrl->GetItemData(item);
+        item              = queue_list_ctrl->GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    }
+
+    // Check available queue for selections
+    item = available_searches_ctrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    while ( item != -1 ) {
+        selected_count++;
+        selected_queue_id = available_searches_ctrl->GetItemData(item);
+        item              = available_searches_ctrl->GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    }
+
+    // Validate selection count
+    if ( selected_count == 0 ) {
+        wxMessageBox("Please select a queue item to edit", "No Selection",
+                     wxOK | wxICON_INFORMATION);
+        return;
+    }
+    if ( selected_count > 1 ) {
+        wxMessageBox("Please select only one queue item to edit", "Multiple Selection",
+                     wxOK | wxICON_INFORMATION);
+        return;
+    }
+
+    // Find the selected item
+    for ( auto& qi : execution_queue ) {
+        if ( qi.database_queue_id == selected_queue_id ) {
+            item_to_edit = &qi;
             break;
         }
     }
-    if ( ! original_item ) {
-        for ( auto& queue_item : available_queue ) {
-            if ( queue_item.database_queue_id == last_populated_queue_id ) {
-                original_item = &queue_item;
+    if ( ! item_to_edit ) {
+        for ( auto& qi : available_queue ) {
+            if ( qi.database_queue_id == selected_queue_id ) {
+                item_to_edit = &qi;
                 break;
             }
         }
     }
 
-    if ( ! original_item ) {
-        wxMessageBox("Could not find the original queue item", "Error", wxOK | wxICON_ERROR);
+    if ( ! item_to_edit ) {
+        wxMessageBox("Could not find selected queue item", "Error", wxOK | wxICON_ERROR);
         return;
     }
 
-    // Verify it's still pending
-    if ( original_item->queue_status != "pending" ) {
-        wxMessageBox("Can only update pending items", "Error", wxOK | wxICON_ERROR);
+    // Check if item is editable (no results written yet)
+    if ( item_to_edit->search_id > 0 ) {
+        wxMessageBox("Cannot edit queue items that have started execution (have results)",
+                     "Cannot Edit", wxOK | wxICON_WARNING);
         return;
     }
 
-    // Collect current parameters from GUI
-    TemplateMatchQueueItem updated_item = match_template_panel_ptr->CollectJobParametersFromGui( );
+    // Store editing state and switch to editor view
+    editing_queue_id = item_to_edit->database_queue_id;
 
-    // Get custom CLI args from the text control
-    if ( custom_cli_args_text ) {
-        updated_item.custom_cli_args = custom_cli_args_text->GetValue( );
-    }
+    // CRITICAL: Fill combo boxes BEFORE populating from item
+    // Otherwise combo boxes are empty and SetSelection causes segfault
+    editor_panel->FillComboBoxes( );
 
-    // Preserve database ID and queue position
-    updated_item.database_queue_id = original_item->database_queue_id;
-    updated_item.queue_order       = original_item->queue_order;
-    updated_item.search_id         = original_item->search_id;
-    updated_item.queue_status      = original_item->queue_status;
-
-    // Validate the updated item
-    wxString validation_error;
-    if ( ! ValidateQueueItem(updated_item, validation_error) ) {
-        wxMessageBox(validation_error, "Invalid Parameters", wxOK | wxICON_ERROR);
-        return;
-    }
-
-    // Build comparison dialog
-    wxString changes;
-    bool     has_changes = false;
-
-    // Compare key fields and list changes
-    if ( original_item->search_name != updated_item.search_name ) {
-        changes += wxString::Format("Search Name: %s -> %s\n",
-                                    original_item->search_name, updated_item.search_name);
-        has_changes = true;
-    }
-    if ( original_item->image_group_id != updated_item.image_group_id ) {
-        changes += wxString::Format("Image Group ID: %d -> %d\n",
-                                    original_item->image_group_id, updated_item.image_group_id);
-        has_changes = true;
-    }
-    if ( original_item->reference_volume_asset_id != updated_item.reference_volume_asset_id ) {
-        changes += wxString::Format("Reference Volume ID: %d -> %d\n",
-                                    original_item->reference_volume_asset_id, updated_item.reference_volume_asset_id);
-        has_changes = true;
-    }
-    if ( original_item->run_profile_id != updated_item.run_profile_id ) {
-        changes += wxString::Format("Run Profile ID: %d -> %d\n",
-                                    original_item->run_profile_id, updated_item.run_profile_id);
-        has_changes = true;
-    }
-    if ( original_item->high_resolution_limit != updated_item.high_resolution_limit ) {
-        changes += wxString::Format("High Resolution: %.2f -> %.2f\n",
-                                    original_item->high_resolution_limit, updated_item.high_resolution_limit);
-        has_changes = true;
-    }
-    if ( original_item->out_of_plane_angular_step != updated_item.out_of_plane_angular_step ) {
-        changes += wxString::Format("Out-of-Plane Step: %.2f -> %.2f\n",
-                                    original_item->out_of_plane_angular_step, updated_item.out_of_plane_angular_step);
-        has_changes = true;
-    }
-    if ( original_item->in_plane_angular_step != updated_item.in_plane_angular_step ) {
-        changes += wxString::Format("In-Plane Step: %.2f -> %.2f\n",
-                                    original_item->in_plane_angular_step, updated_item.in_plane_angular_step);
-        has_changes = true;
-    }
-    if ( original_item->custom_cli_args != updated_item.custom_cli_args ) {
-        changes += wxString::Format("Custom CLI Args: '%s' -> '%s'\n",
-                                    original_item->custom_cli_args, updated_item.custom_cli_args);
-        has_changes = true;
-    }
-    // Add more comparisons as needed...
-
-    if ( ! has_changes ) {
-        wxMessageBox("No changes detected", "Update Queue Item", wxOK | wxICON_INFORMATION);
-        return;
-    }
-
-    // Show confirmation dialog
-    wxString        message = wxString::Format("Confirm the following changes to queue item %ld:\n\n%s",
-                                               original_item->database_queue_id, changes);
-    wxMessageDialog dialog(this, message, "Confirm Update", wxYES_NO | wxICON_QUESTION);
-
-    if ( dialog.ShowModal( ) != wxID_YES ) {
-        return;
-    }
-
-    // Update the item in memory
-    *original_item = updated_item;
-
-    // Update in database
-    if ( ! UpdateQueueItemInDatabase(updated_item) ) {
-        wxMessageBox("Failed to update queue item in database", "Update Failed", wxOK | wxICON_ERROR);
-        return;
-    }
-
-    // Refresh displays
-    UpdateQueueDisplay( );
-    UpdateAvailableSearchesDisplay( );
-
-    // Success - no dialog needed, the update is reflected in the UI immediately
+    editor_panel->PopulateFromQueueItem(*item_to_edit);
+    SwitchToEditorView( );
 }
 
 void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
@@ -2808,94 +2718,161 @@ void TemplateMatchQueueManager::PopulateAvailableSearchesNotInQueueFromDatabase(
     UpdateAvailableSearchesDisplay( );
 }
 
-void TemplateMatchQueueManager::OnPanelDisplayToggle(wxCommandEvent& event) {
-    if ( ! match_template_panel_ptr ) {
-        QM_LOG_ERROR("OnPanelDisplayToggle: match_template_panel_ptr is null");
+void TemplateMatchQueueManager::SwitchToEditorView( ) {
+    QM_LOG_UI("Switching to editor view for queue ID %ld", editing_queue_id);
+
+    // Hide queue labels
+    execution_queue_label->Show(false);
+    available_searches_label->Show(false);
+    cli_args_label->Show(false);
+#ifdef cisTEM_QM_LOGGING
+    logging_label->Show(false);
+#endif
+
+    // Hide queue controls
+    execution_queue_ctrl->Show(false);
+    available_searches_ctrl->Show(false);
+
+    // Hide container panels
+    controls_panel->Show(false);
+    cli_args_panel->Show(false);
+    bottom_controls->Show(false);
+
+    // Hide individual queue buttons (for extra safety, though panels should hide them)
+    run_selected_button->Show(false);
+    update_selected_button->Show(false);
+    add_to_queue_button->Show(false);
+    remove_from_queue_button->Show(false);
+    remove_selected_button->Show(false);
+    clear_queue_button->Show(false);
+    hide_completed_checkbox->Show(false);
+    custom_cli_args_text->Show(false);
+
+    // Show editor panel
+    editor_panel->Show(true);
+
+    // Explicitly show InputPanel and ExpertPanel (child panels that may be hidden)
+    editor_panel->ShowEditorPanels( );
+
+    // Force layout update on editor panel to ensure all child controls are visible
+    editor_panel->Layout( );
+
+    // Force layout update on parent dialog
+    Layout( );
+}
+
+void TemplateMatchQueueManager::SwitchToQueueView( ) {
+    QM_LOG_UI("Switching back to queue view");
+
+    editing_queue_id = -1;
+
+    // Hide editor panel
+    editor_panel->Show(false);
+
+    // Show queue labels
+    execution_queue_label->Show(true);
+    available_searches_label->Show(true);
+    cli_args_label->Show(true);
+#ifdef cisTEM_QM_LOGGING
+    logging_label->Show(true);
+#endif
+
+    // Show queue controls
+    execution_queue_ctrl->Show(true);
+    available_searches_ctrl->Show(true);
+
+    // Show container panels
+    controls_panel->Show(true);
+    cli_args_panel->Show(true);
+    bottom_controls->Show(true);
+
+    // Show individual queue buttons (for extra safety, though panels should show them)
+    run_selected_button->Show(true);
+    update_selected_button->Show(true);
+    add_to_queue_button->Show(true);
+    remove_from_queue_button->Show(true);
+    remove_selected_button->Show(true);
+    clear_queue_button->Show(true);
+    hide_completed_checkbox->Show(true);
+    custom_cli_args_text->Show(true);
+
+    // Refresh display with any changes
+    UpdateQueueDisplay( );
+
+    Layout( );
+}
+
+void TemplateMatchQueueManager::OnEditorSaveClick( ) {
+    QM_LOG_METHOD_ENTRY("OnEditorSaveClick");
+
+    MyDebugAssertTrue(editing_queue_id > 0, "OnEditorSaveClick called with invalid editing_queue_id");
+
+    // Validate inputs
+    wxString error_message;
+    if ( ! editor_panel->ValidateInputs(error_message) ) {
+        wxMessageBox(error_message, "Validation Error", wxOK | wxICON_ERROR);
+        return; // Stay in edit mode
+    }
+
+    // Extract edited values
+    TemplateMatchQueueItem updated_item;
+    if ( ! editor_panel->ExtractToQueueItem(updated_item) ) {
+        wxMessageBox("Failed to extract values from editor", "Error", wxOK | wxICON_ERROR);
         return;
     }
 
-    bool show_progress = event.IsChecked( );
-    bool actual_state  = panel_display_toggle->GetValue( );
-
-    QM_LOG_UI("OnPanelDisplayToggle: event.IsChecked()=%s, GetValue()=%s, show_progress=%s",
-              event.IsChecked( ) ? "true" : "false",
-              actual_state ? "true" : "false",
-              show_progress ? "true" : "false");
-
-    // Update button label to indicate what clicking will do next
-    if ( show_progress ) {
-        panel_display_toggle->SetLabel("Show Input Panel");
-    }
-    else {
-        panel_display_toggle->SetLabel("Show Progress Panel");
-    }
-
-    // Toggle the panels in MatchTemplatePanel
-    if ( show_progress ) {
-        // Show progress/running panels
-        match_template_panel_ptr->StartPanel->Show(false);
-        match_template_panel_ptr->ProgressPanel->Show(true);
-        match_template_panel_ptr->InputPanel->Show(false);
-        match_template_panel_ptr->ExpertPanel->Show(false);
-        match_template_panel_ptr->InfoPanel->Show(false);
-        match_template_panel_ptr->OutputTextPanel->Show(true);
-        match_template_panel_ptr->ResultsPanel->Show(true);
-        // Keep cancel button visible if job is running
-        if ( match_template_panel_ptr->IsJobRunning( ) ) {
-            match_template_panel_ptr->CancelAlignmentButton->Show(true);
-            match_template_panel_ptr->FinishButton->Show(false);
+    // Find original item
+    TemplateMatchQueueItem* original_item = nullptr;
+    for ( auto& qi : execution_queue ) {
+        if ( qi.database_queue_id == editing_queue_id ) {
+            original_item = &qi;
+            break;
         }
     }
-    else {
-        // Show input panels
-        match_template_panel_ptr->ProgressPanel->Show(false);
-        match_template_panel_ptr->StartPanel->Show(true);
-        match_template_panel_ptr->OutputTextPanel->Show(false);
-        match_template_panel_ptr->ResultsPanel->Show(false);
-        match_template_panel_ptr->InfoPanel->Show(true);
-        match_template_panel_ptr->InputPanel->Show(true);
-        match_template_panel_ptr->ExpertPanel->Show(true);
-    }
-
-    // Force layout refresh
-    match_template_panel_ptr->Layout( );
-    match_template_panel_ptr->Update( );
-
-    // When switching to input panel, ensure combo boxes are enabled if appropriate
-    if ( ! show_progress && last_populated_queue_id > 0 ) {
-        // Find the last populated item to check if it's editable
-        TemplateMatchQueueItem* item = nullptr;
-        for ( auto& queue_item : execution_queue ) {
-            if ( queue_item.database_queue_id == last_populated_queue_id ) {
-                item = &queue_item;
+    if ( ! original_item ) {
+        for ( auto& qi : available_queue ) {
+            if ( qi.database_queue_id == editing_queue_id ) {
+                original_item = &qi;
                 break;
             }
         }
-        if ( ! item ) {
-            for ( auto& queue_item : available_queue ) {
-                if ( queue_item.database_queue_id == last_populated_queue_id ) {
-                    item = &queue_item;
-                    break;
-                }
-            }
-        }
-
-        // Re-enable combo boxes if the item is editable
-        if ( item && (item->queue_status == "pending" ||
-                      item->queue_status == "failed" ||
-                      item->queue_status == "partial") ) {
-            if ( match_template_panel_ptr->GroupComboBox ) {
-                match_template_panel_ptr->GroupComboBox->Enable(true);
-            }
-            if ( match_template_panel_ptr->ReferenceSelectPanel ) {
-                match_template_panel_ptr->ReferenceSelectPanel->Enable(true);
-            }
-            if ( match_template_panel_ptr->RunProfileComboBox ) {
-                match_template_panel_ptr->RunProfileComboBox->Enable(true);
-            }
-        }
     }
+
+    if ( ! original_item ) {
+        wxMessageBox("Could not find original queue item", "Error", wxOK | wxICON_ERROR);
+        SwitchToQueueView( );
+        return;
+    }
+
+    // Preserve metadata fields
+    updated_item.database_queue_id = original_item->database_queue_id;
+    updated_item.search_id         = original_item->search_id;
+    updated_item.queue_status      = original_item->queue_status;
+    updated_item.queue_order       = original_item->queue_order;
+
+    // Update in memory
+    *original_item = updated_item;
+
+    // Update database
+    if ( ! UpdateQueueItemInDatabase(updated_item) ) {
+        wxMessageBox("Failed to update queue item in database", "Database Error",
+                     wxOK | wxICON_ERROR);
+        return;
+    }
+
+    QM_LOG_DB("Successfully updated queue item %ld", editing_queue_id);
+
+    // Switch back to queue view
+    SwitchToQueueView( );
 }
+
+void TemplateMatchQueueManager::OnEditorCancelClick( ) {
+    QM_LOG_METHOD_ENTRY("OnEditorCancelClick");
+
+    // Just switch back - discard any changes
+    SwitchToQueueView( );
+}
+
 #ifdef cisTEM_QM_LOGGING
 void TemplateMatchQueueManager::OnLoggingToggle(wxCommandEvent& event) {
     bool enable_logging = logging_toggle->GetValue( );

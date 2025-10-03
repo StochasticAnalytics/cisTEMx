@@ -852,7 +852,7 @@ void MatchTemplatePanel::OnOpenQueueClick(wxCommandEvent& event) {
 
     // Open queue manager dialog without adding new items
     wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                          wxDefaultPosition, wxSize(900, 700),
+                                          wxDefaultPosition, wxSize(540, 700),
                                           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
     // Create queue manager for this dialog
@@ -1172,7 +1172,7 @@ long MatchTemplatePanel::AddJobToQueue(const TemplateMatchQueueItem& job, bool s
         if ( ! queue_manager ) {
             // Create a new dialog if none exists or the existing one wasn't found
             wxDialog* queue_dialog = new wxDialog(this, wxID_ANY, "Template Match Queue Manager",
-                                                  wxDefaultPosition, wxSize(900, 700),
+                                                  wxDefaultPosition, wxSize(720, 700),
                                                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
 
             // Create queue manager for this dialog

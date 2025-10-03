@@ -126,19 +126,27 @@ template <typename T>
 using scalar_value_type_t = typename scalar_value_type<T>::type;
 
 /**
- * @brief Check if type supports default arithmetic operators
+ * @brief Check if type supports default C++ arithmetic operators
  *
- * Used internally for operator overload selection
+ * Note: This trait is DEFINED in complex_types.h (inlined to avoid circular dependency).
+ * Re-exported here for convenience. See CLAUDE.md "Compile-Time Design Patterns" for rationale.
+ *
+ * What it does:
+ * - For float/double: Returns true - can use a.x * b.x directly
+ * - For GPU types (__half, __nv_bfloat16): Returns false - need CUDA intrinsics
+ *
+ * Why it's needed:
+ * Used for SFINAE-based overload selection in complex arithmetic operators.
+ * Allows different implementations based on underlying scalar type capabilities.
+ *
+ * Phase 1: Only float and double supported
+ * Phase 5: Will add specialized implementations for GPU types using CUDA intrinsics
  */
 template <typename T>
-struct supports_default_ops : std::bool_constant<
-                                      std::is_same_v<T, float> ||
-                                      std::is_same_v<T, double>
-                                      // Phase 5: Add GPU types as needed
-                                      > {};
+using supports_default_ops = detail::supports_default_ops<T>;
 
 template <typename T>
-inline constexpr bool supports_default_ops_v = supports_default_ops<T>::value;
+inline constexpr bool supports_default_ops_v = detail::supports_default_ops_v<T>;
 
 } // namespace tensor
 } // namespace cistem

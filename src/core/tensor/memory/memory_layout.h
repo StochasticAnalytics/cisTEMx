@@ -70,13 +70,18 @@ struct DenseLayout {
  * @brief FFTW-compatible padded layout for in-place real-to-complex FFTs
  *
  * Use for:
- * - In-place FFTW real-to-complex transforms
+ * - In-place FFTW real-to-complex transforms (saves memory)
+ * - When you don't need to preserve original real-space data
  * - Legacy Image class compatibility
  *
  * Memory organization:
  * - Real space: dims.x + padding_jump_value elements per row
  * - Complex space: (dims.x/2 + 1) complex elements per row
  * - Padding allows in-place transformation without extra allocation
+ *
+ * Advantages:
+ * - Memory efficient: Single buffer for both real and complex representations
+ * - No temporary allocation overhead during FFT
  *
  * Padding formula (FFTW convention):
  * - Even X dimension: padding_jump_value = 2

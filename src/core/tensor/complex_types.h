@@ -20,6 +20,7 @@
 
 #include <type_traits>
 #include <cmath>
+#include "../../constants/constants.h"
 
 #ifdef ENABLE_GPU
 #include <cuda_fp16.h>
@@ -153,43 +154,57 @@ struct alignas(2 * sizeof(T)) complex : complex_base<T> {
     complex& operator=(complex&&)      = default;
 };
 
-// Type trait to determine which types can use default operators
+/**
+ * @brief Check if type supports default C++ arithmetic operators
+ *
+ * Returns true for types where standard C++ arithmetic operators (+, -, *, /)
+ * can be used directly without special intrinsics.
+ *
+ * Inlined here to avoid circular dependency with type_traits.h.
+ * See CLAUDE.md "Compile-Time Design Patterns" for rationale.
+ *
+ * Phase 1: Only float and double supported
+ * Phase 5: Will add specialized implementations for GPU types using CUDA intrinsics
+ */
 template <typename T>
-struct use_default_operator {
-    static constexpr bool value = std::is_same_v<T, float> ||
-                                  std::is_same_v<T, double>;
-    // GPU types will be added in Phase 5
-};
+struct supports_default_ops : std::bool_constant<
+                                      std::is_same_v<T, float> ||
+                                      std::is_same_v<T, double>
+                                      // Phase 5: Add GPU types as needed
+                                      > {};
+
+template <typename T>
+inline constexpr bool supports_default_ops_v = supports_default_ops<T>::value;
 
 // Binary operators for types with default operators
-template <typename T, typename = typename std::enable_if_t<use_default_operator<T>::value>>
+template <typename T, typename = cistem::EnableIf<supports_default_ops_v<T>>>
 cisTEM_DEVICE_HOST inline complex<T> operator*(const complex<T>& a, const complex<T>& b) {
     return {a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x};
 }
 
-template <typename T, typename = typename std::enable_if_t<use_default_operator<T>::value>>
+template <typename T, typename = cistem::EnableIf<supports_default_ops_v<T>>>
 cisTEM_DEVICE_HOST inline complex<T> operator+(const complex<T>& a, const complex<T>& b) {
     return {a.x + b.x, a.y + b.y};
 }
 
-template <typename T, typename = typename std::enable_if_t<use_default_operator<T>::value>>
+template <typename T, typename = cistem::EnableIf<supports_default_ops_v<T>>>
 cisTEM_DEVICE_HOST inline complex<T> operator-(const complex<T>& a, const complex<T>& b) {
     return {a.x - b.x, a.y - b.y};
 }
 
-template <typename T, typename = typename std::enable_if_t<use_default_operator<T>::value>>
+template <typename T, typename = cistem::EnableIf<supports_default_ops_v<T>>>
 cisTEM_DEVICE_HOST inline complex<T> operator/(const complex<T>& a, const complex<T>& b) {
     T denom = b.x * b.x + b.y * b.y;
     return {(a.x * b.x + a.y * b.y) / denom,
             (a.y * b.x - a.x * b.y) / denom};
 }
 
-template <typename T, typename = typename std::enable_if_t<use_default_operator<T>::value>>
+template <typename T, typename = cistem::EnableIf<supports_default_ops_v<T>>>
 cisTEM_DEVICE_HOST inline bool operator==(const complex<T>& a, const complex<T>& b) {
     return (a.x == b.x) && (a.y == b.y);
 }
 
-template <typename T, typename = typename std::enable_if_t<use_default_operator<T>::value>>
+template <typename T, typename = cistem::EnableIf<supports_default_ops_v<T>>>
 cisTEM_DEVICE_HOST inline bool operator!=(const complex<T>& a, const complex<T>& b) {
     return ! (a == b);
 }

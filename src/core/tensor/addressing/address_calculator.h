@@ -8,13 +8,21 @@
  * Header-only, template-based address calculation for zero-overhead indexing.
  * Templated on Layout policy to enable compile-time selection of addressing mode.
  *
+ * Uses Position/Momentum nomenclature to match Tensor::Space enum and avoid
+ * confusion between "real space" (position) and "real type" (float).
+ *
  * PERFORMANCE CRITICAL: This code will be called millions of times.
  * All functions must be inline and suitable for compiler optimization.
  *
  * Usage:
  * @code
- * long addr = AddressCalculator<FFTWPaddedLayout>::Real1DAddress(x, y, z, dims);
+ * // Position space addressing
+ * long addr = AddressCalculator<FFTWPaddedLayout>::Position1DAddress(x, y, z, dims);
  * ScalarType& value = data[addr];
+ *
+ * // Momentum space addressing (after FFT)
+ * long addr_fft = AddressCalculator<FFTWPaddedLayout>::Momentum1DAddress(x, y, z, dims);
+ * complex<float>& fft_value = reinterpret_cast<complex<float>*>(data)[addr_fft];
  * @endcode
  */
 
@@ -30,47 +38,99 @@ namespace tensor {
  * Templated on Layout policy for compile-time address calculation selection.
  * All methods are inline and constexpr where possible for maximum performance.
  *
+ * Uses Position/Momentum nomenclature to match Tensor::Space enum.
+ * This avoids confusion between "real space" (position) and "real type" (float).
+ *
  * @tparam Layout Memory layout policy (DenseLayout, FFTWPaddedLayout, etc.)
  */
 template <typename Layout>
 class AddressCalculator {
   public:
     /**
-     * @brief Calculate 1D address from physical 3D coordinates in real space
+     * @brief Calculate 1D address from physical 3D coordinates in position space
      *
      * Physical coordinates are the actual array indices:
      * - x: [0, dims.x)
      * - y: [0, dims.y)
      * - z: [0, dims.z)
      *
+     * @tparam IndexType Return type (long by default for safety, int for GPU performance when dims are small)
      * @param x Physical X coordinate
      * @param y Physical Y coordinate
      * @param z Physical Z coordinate
      * @param dims Logical dimensions
      * @return 1D array index
+     *
+     * @note For GPU kernels with known small dimensions, use Position1DAddress<int>() for faster 32-bit arithmetic
      */
-    static inline long Real1DAddress(int x, int y, int z, int3 dims) {
+    template <typename IndexType = long>
+    static inline IndexType Position1DAddress(int x, int y, int z, int3 dims) {
         size_t pitch = Layout::CalculatePitch(dims);
-        return long(pitch * dims.y) * long(z) + long(pitch) * long(y) + long(x);
+        if constexpr ( std::is_same_v<IndexType, long> ) {
+            return long(pitch * dims.y) * long(z) + long(pitch) * long(y) + long(x);
+        }
+        else {
+            return pitch * dims.y * z + pitch * y + x;
+        }
     }
 
     /**
-     * @brief Calculate 1D address from physical 3D coordinates in Fourier space
+     * @brief Calculate 1D address from physical 3D coordinates in momentum space
      *
-     * Fourier space has different dimensions due to Hermitian symmetry:
+     * Momentum space has different dimensions due to Hermitian symmetry:
      * - X dimension: [0, dims.x/2 + 1) for real-to-complex transforms
-     * - Y, Z dimensions: same as real space
+     * - Y, Z dimensions: same as position space
      *
-     * @param x Physical X coordinate (Fourier)
-     * @param y Physical Y coordinate (Fourier)
-     * @param z Physical Z coordinate (Fourier)
-     * @param dims Logical dimensions (real space)
+     * @tparam IndexType Return type (long by default for safety, int for GPU performance when dims are small)
+     * @param x Physical X coordinate (momentum)
+     * @param y Physical Y coordinate (momentum)
+     * @param z Physical Z coordinate (momentum)
+     * @param dims Logical dimensions (position space)
      * @return 1D array index (complex-valued element)
+     *
+     * @note For GPU kernels with known small dimensions, use Momentum1DAddress<int>() for faster 32-bit arithmetic
      */
-    static inline long Fourier1DAddress(int x, int y, int z, int3 dims) {
+    template <typename IndexType = long>
+    static inline IndexType Momentum1DAddress(int x, int y, int z, int3 dims) {
         // Complex pitch: Hermitian symmetry means we only store half + 1 in X
-        long complex_pitch = dims.x / 2 + 1;
-        return complex_pitch * dims.y * long(z) + complex_pitch * long(y) + long(x);
+        if constexpr ( std::is_same_v<IndexType, long> ) {
+            long complex_pitch = dims.x / 2 + 1;
+            return complex_pitch * dims.y * long(z) + complex_pitch * long(y) + long(x);
+        }
+        else {
+            int complex_pitch = dims.x / 2 + 1;
+            return complex_pitch * dims.y * z + complex_pitch * y + x;
+        }
+    }
+
+    // ========================================================================
+    // Legacy aliases for compatibility with Image class terminology
+    // ========================================================================
+
+    /**
+     * @brief Legacy alias for Position1DAddress
+     * @deprecated Use Position1DAddress instead. "Real" is ambiguous (real space vs real type).
+     *
+     * Note: In legacy Image class, "real space" meant position space (not Fourier).
+     * This is distinct from "real type" (float vs complex). The Tensor system uses
+     * Position/Momentum to avoid this confusion.
+     */
+    template <typename IndexType = long>
+    static inline IndexType Real1DAddress(int x, int y, int z, int3 dims) {
+        return Position1DAddress<IndexType>(x, y, z, dims);
+    }
+
+    /**
+     * @brief Legacy alias for Momentum1DAddress
+     * @deprecated Use Momentum1DAddress instead for clarity.
+     *
+     * Note: In legacy Image class, "Fourier space" meant momentum space.
+     * The Tensor system uses Momentum to match physics nomenclature and avoid
+     * confusion with Fourier transform functions.
+     */
+    template <typename IndexType = long>
+    static inline IndexType Fourier1DAddress(int x, int y, int z, int3 dims) {
+        return Momentum1DAddress<IndexType>(x, y, z, dims);
     }
 
     /**
@@ -99,29 +159,42 @@ class AddressCalculator {
 // ============================================================================
 
 /**
- * @brief Fast path for dense layout addressing (no padding)
+ * @brief Fast path for dense layout addressing (no padding) - Position space
  *
  * Explicitly specialized for DenseLayout to enable maximum compiler optimization.
  * Compilers can better optimize when they know there's no padding calculation.
  */
 template <>
-inline long AddressCalculator<DenseLayout>::Real1DAddress(int x, int y, int z, int3 dims) {
+template <typename IndexType>
+inline IndexType AddressCalculator<DenseLayout>::Position1DAddress(int x, int y, int z, int3 dims) {
     // Dense layout: pitch == dims.x (no padding)
-    return long(dims.x) * long(dims.y) * long(z) + long(dims.x) * long(y) + long(x);
+    if constexpr ( std::is_same_v<IndexType, long> ) {
+        return long(dims.x) * long(dims.y) * long(z) + long(dims.x) * long(y) + long(x);
+    }
+    else {
+        return dims.x * dims.y * z + dims.x * y + x;
+    }
 }
 
 /**
- * @brief Fast path for FFTW padded layout addressing
+ * @brief Fast path for FFTW padded layout addressing - Position space
  *
  * Explicitly calculates padding to enable compiler optimization.
  * Modern compilers can often eliminate the modulo check at compile time
  * when dimensions are known constants.
  */
 template <>
-inline long AddressCalculator<FFTWPaddedLayout>::Real1DAddress(int x, int y, int z, int3 dims) {
+template <typename IndexType>
+inline IndexType AddressCalculator<FFTWPaddedLayout>::Position1DAddress(int x, int y, int z, int3 dims) {
     // FFTW padding: pitch = dims.x + (2 if even, 1 if odd)
-    long pitch = long(dims.x) + ((dims.x % 2 == 0) ? 2 : 1);
-    return pitch * long(dims.y) * long(z) + pitch * long(y) + long(x);
+    if constexpr ( std::is_same_v<IndexType, long> ) {
+        long pitch = long(dims.x) + ((dims.x % 2 == 0) ? 2 : 1);
+        return pitch * long(dims.y) * long(z) + pitch * long(y) + long(x);
+    }
+    else {
+        int pitch = dims.x + ((dims.x % 2 == 0) ? 2 : 1);
+        return pitch * dims.y * z + pitch * y + x;
+    }
 }
 
 // ============================================================================
@@ -129,7 +202,7 @@ inline long AddressCalculator<FFTWPaddedLayout>::Real1DAddress(int x, int y, int
 // ============================================================================
 
 /**
- * @brief Check if coordinates are within physical bounds (real space)
+ * @brief Check if coordinates are within physical bounds (position space)
  *
  * @param x X coordinate
  * @param y Y coordinate
@@ -137,27 +210,47 @@ inline long AddressCalculator<FFTWPaddedLayout>::Real1DAddress(int x, int y, int
  * @param dims Dimensions
  * @return true if coordinates are valid
  */
-inline bool IsWithinBounds(int x, int y, int z, int3 dims) {
+inline bool IsWithinPositionBounds(int x, int y, int z, int3 dims) {
     return (x >= 0 && x < dims.x &&
             y >= 0 && y < dims.y &&
             z >= 0 && z < dims.z);
 }
 
 /**
- * @brief Check if coordinates are within Fourier space physical bounds
+ * @brief Check if coordinates are within momentum space physical bounds
  *
- * Fourier space only stores half the X dimension due to Hermitian symmetry
+ * Momentum space only stores half the X dimension due to Hermitian symmetry
  *
- * @param x X coordinate (Fourier)
- * @param y Y coordinate (Fourier)
- * @param z Z coordinate (Fourier)
- * @param dims Logical dimensions (real space)
- * @return true if coordinates are valid in Fourier space
+ * @param x X coordinate (momentum)
+ * @param y Y coordinate (momentum)
+ * @param z Z coordinate (momentum)
+ * @param dims Logical dimensions (position space)
+ * @return true if coordinates are valid in momentum space
  */
-inline bool IsWithinFourierBounds(int x, int y, int z, int3 dims) {
+inline bool IsWithinMomentumBounds(int x, int y, int z, int3 dims) {
     return (x >= 0 && x <= dims.x / 2 &&
             y >= 0 && y < dims.y &&
             z >= 0 && z < dims.z);
+}
+
+// ============================================================================
+// Legacy aliases for Image class compatibility
+// ============================================================================
+
+/**
+ * @brief Legacy alias for IsWithinPositionBounds
+ * @deprecated Use IsWithinPositionBounds instead
+ */
+inline bool IsWithinBounds(int x, int y, int z, int3 dims) {
+    return IsWithinPositionBounds(x, y, z, dims);
+}
+
+/**
+ * @brief Legacy alias for IsWithinMomentumBounds
+ * @deprecated Use IsWithinMomentumBounds instead
+ */
+inline bool IsWithinFourierBounds(int x, int y, int z, int3 dims) {
+    return IsWithinMomentumBounds(x, y, z, dims);
 }
 
 } // namespace tensor

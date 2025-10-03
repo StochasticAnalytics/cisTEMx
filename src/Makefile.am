@@ -550,6 +550,7 @@ libgpucore_a_SOURCES  =      gpu/core_extensions/stop_watch_gpu.cu \
                              gpu/DeviceManager.cu \
                              gpu/TensorManager.cu \
                              gpu/GpuImage.cu \
+                             core/tensor/memory/tensor_memory_pool.cu \
                              programs/refine3d/batched_search.cu \
                              test/gpu/test_gpu_kernels.cu \
                              programs/quick_test/quick_test_gpu.cu
@@ -557,20 +558,13 @@ if ENABLE_LOCAL_BUILD_OF_FASTFFT_AM
     libgpucore_a_SOURCES += ../include/FastFFT/src/fastfft/FastFFT.cu
 endif
 
-# C++ files for GPU library (compiled with -DENABLEGPU but not device-linked)
-libgpucore_CPP_SOURCES = core/tensor/memory/tensor_memory_pool.cpp
-libgpucore_CPP_OBJECTS = $(libgpucore_CPP_SOURCES:.cpp=.o)
-
-# Add C++ sources to the library sources so automake compiles them
-libgpucore_a_SOURCES += $(libgpucore_CPP_SOURCES)
-
 # Extract .cu sources only for device linking
 libgpucore_CU_SOURCES = $(filter %.cu, $(libgpucore_a_SOURCES))
 libgpucore_OBJECTS = $(libgpucore_CU_SOURCES:.cu=.o)
 
 libgpucore_a_CFLAGS = -DENABLEGPU $(CUDA_CPPFLAGS) $(WX_CPPFLAGS_BASE)
 libgpucore_a_CXXFLAGS = -DENABLEGPU $(CUDA_CXXFLAGS) $(WX_CXXFLAGS_BASE)
-libgpucore_a_LIBADD = $(libFastFFT_OBJECTS) gpu/gpudevicecode.o $(libgpucore_CPP_OBJECTS)
+libgpucore_a_LIBADD = $(libFastFFT_OBJECTS) gpu/gpudevicecode.o
 Ylibgpucore_a_AR = $(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) -lib -o
 
 # Add SUFFIXES for CUDA compilation

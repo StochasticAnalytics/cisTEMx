@@ -311,6 +311,155 @@ TEST_CASE("Tensor FFT performance") {
 - [ ] Compare cache behavior (use `perf stat -e cache-misses`)
 - [ ] Benchmark every operation against legacy Image
 
+## Compile-Time Design Patterns
+
+The Tensor system uses advanced C++ template metaprogramming patterns inspired by NVIDIA's mathdx library. These patterns enable zero-cost abstractions while maintaining type safety and clean architecture.
+
+**Detailed Research**: See `.claude/cache/nvidia_mathdx_patterns.md` for comprehensive analysis of NVIDIA's compile-time patterns and how they apply to cisTEM.
+
+### Avoiding Circular Dependencies
+
+**The Problem**: Template-heavy code can easily create circular include dependencies:
+```
+complex_types.h → type_traits.h → complex_types.h  // ERROR
+```
+
+**NVIDIA's Solution**: **Inline critical traits** directly in the header that needs them.
+
+#### When to Inline Traits
+
+**Inline a trait if**:
+- It's needed by operators/methods in the SAME header
+- It's small (< 20 lines)
+- The duplication cost is lower than dependency complexity
+
+**Keep trait in type_traits.h if**:
+- It's used by multiple unrelated headers
+- It defines complex metaprogramming logic
+- It's about relationships between multiple types
+
+#### Example: supports_default_ops
+
+```cpp
+// complex_types.h - Inline the critical trait
+namespace detail {
+    template<typename T>
+    struct supports_default_ops : std::bool_constant<
+        std::is_same_v<T, float> ||
+        std::is_same_v<T, double>
+    > {};
+
+    template<typename T>
+    inline constexpr bool supports_default_ops_v = supports_default_ops<T>::value;
+
+    // Operators use inline trait - no external dependency
+    template <typename T, typename = cistem::EnableIf<supports_default_ops_v<T>>>
+    cisTEM_DEVICE_HOST inline complex<T> operator*(
+        const complex<T>& a, const complex<T>& b) {
+        return {a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x};
+    }
+}
+```
+
+```cpp
+// type_traits.h - Can include complex_types.h safely
+#include "complex_types.h"
+
+// Optionally re-export for convenience
+template<typename T>
+using supports_default_ops = detail::supports_default_ops<T>;
+
+template<typename T>
+inline constexpr bool supports_default_ops_v = detail::supports_default_ops_v<T>;
+
+// Define OTHER traits here (not needed by complex operators)
+template<typename T>
+struct is_real_scalar { /* ... */ };
+```
+
+**Benefits**:
+- ✅ No circular dependency
+- ✅ `complex_types.h` is self-contained
+- ✅ Minimal duplication (just trait definition)
+- ✅ Follows proven production pattern
+
+### Template Performance Patterns
+
+#### GPU-Optimized Integer Types
+
+GPUs perform significantly better with 32-bit integer arithmetic than 64-bit. Use templated return types with sensible defaults:
+
+```cpp
+template<typename Layout>
+class AddressCalculator {
+public:
+    // Default to long (safe for large images), allow int for GPU performance
+    template<typename IndexType = long>
+    static inline IndexType Real1DAddress(int x, int y, int z, int3 dims) {
+        size_t pitch = Layout::CalculatePitch(dims);
+        if constexpr (std::is_same_v<IndexType, long>) {
+            // 64-bit path (safe default)
+            return long(pitch * dims.y) * long(z) + long(pitch) * long(y) + long(x);
+        } else {
+            // 32-bit path (GPU optimization)
+            return pitch * dims.y * z + pitch * y + x;
+        }
+    }
+};
+```
+
+**Usage**:
+```cpp
+// CPU code - safe default
+auto addr = AddressCalculator<DenseLayout>::Real1DAddress(x, y, z, dims);
+
+// GPU kernel - explicit int for performance
+__global__ void kernel() {
+    auto addr = AddressCalculator<DenseLayout>::Real1DAddress<int>(x, y, z, dims);
+}
+```
+
+**Rationale**: User must explicitly opt-in to `int` (via `Real1DAddress<int>()`), so overflow risk is their responsibility. Default `long` ensures safety.
+
+### Future Patterns (Not Yet Implemented)
+
+#### Expression Hierarchies
+
+For future descriptor systems (e.g., TensorDescriptor), consider NVIDIA's expression hierarchy pattern:
+
+```cpp
+// Base expression types (defines "kind" of descriptor)
+struct descriptor_expression {};
+struct layout_descriptor : descriptor_expression {};
+struct space_descriptor : descriptor_expression {};
+
+// Concrete descriptors
+template<typename Layout>
+struct LayoutPolicy : layout_descriptor {
+    using type = Layout;
+};
+
+// Compile-time descriptor assembly
+template<typename... Descriptors>
+class TensorDescriptor {
+    // Extract specific descriptor with defaults
+    using layout = get_or_default_t<layout_descriptor, Descriptors..., DefaultLayout>;
+    using space = get_or_default_t<space_descriptor, Descriptors..., PositionSpace>;
+};
+```
+
+This enables flexible, compile-time configuration: `Tensor<ScalarType, LayoutPolicy<Dense>, PositionSpace>`.
+
+**When to use**: Phase 3+, when we need flexible compile-time Tensor configuration.
+
+### Key Takeaways
+
+1. **Don't over-factor** - Small inline duplication beats complex dependencies
+2. **Template for GPU performance** - int vs long matters on GPUs
+3. **Default to safety** - Use `long` default, allow `int` opt-in
+4. **Learn from production code** - NVIDIA's patterns are battle-tested
+5. **Document decisions** - Explain WHY a trait is inlined vs separated
+
 ## Code Style
 
 Follow cisTEM conventions from root CLAUDE.md, with Tensor-specific additions:

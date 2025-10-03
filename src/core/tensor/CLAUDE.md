@@ -579,6 +579,42 @@ REQUIRE(view2(0, 0, 0) == 42.0f);
 - Test numerical accuracy against Image results
 - Keep temporal debugging changes marked with `// revert -`
 
+## Common Pitfalls and Gotchas
+
+### Template Instantiation with SFINAE Parameters
+
+**Problem:** When explicitly instantiating templates with SFINAE (Substitution Failure Is Not An Error) parameters, you **must** include ALL template parameters, including defaulted ones.
+
+**Example from TensorMemoryPool:**
+
+The template declaration has 3 parameters:
+```cpp
+template <typename Scalar_t,
+          typename FFTPlan_t = fftwf_plan,
+          typename           = cistem::EnableIf<is_phase1_supported_v<Scalar_t>>>
+class TensorMemoryPool {
+```
+
+**Incorrect explicit instantiation:**
+```cpp
+template class TensorMemoryPool<float, fftwf_plan>;  // WRONG!
+```
+
+**Correct explicit instantiation:**
+```cpp
+template class TensorMemoryPool<float, fftwf_plan, void>;  // Correct
+```
+
+**Why this matters:**
+- The unnamed third parameter defaults to `void` when the SFINAE condition is satisfied
+- Without explicitly specifying it, different compilers may mangle the symbol names differently
+- This causes "undefined reference" linker errors, especially with clang
+- The error manifests as: `undefined reference to TensorMemoryPool<float, fftwf_plan_s*, void>`
+
+**Lesson:** Always specify defaulted template parameters in explicit instantiations, especially with SFINAE constraints.
+
+**Reference:** See `src/core/tensor/memory/tensor_memory_pool.cu:38` for detailed comment and correct instantiation.
+
 ## Future Phases (Not Yet Implemented)
 
 **Phase 2**: Core operations (arithmetic, statistics, FFT operations)

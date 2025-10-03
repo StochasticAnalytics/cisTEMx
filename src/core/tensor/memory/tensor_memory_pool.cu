@@ -16,8 +16,26 @@ namespace tensor {
 // ============================================================================
 // Template instantiations for Phase 1
 // ============================================================================
-
-template class TensorMemoryPool<float, fftwf_plan>;
+//
+// IMPORTANT: When explicitly instantiating templates with SFINAE parameters,
+// you MUST include ALL template parameters, including defaulted ones.
+//
+// The TensorMemoryPool template has 3 parameters:
+//   1. Scalar_t (e.g., float)
+//   2. FFTPlan_t (e.g., fftwf_plan, which is typedef for fftwf_plan_s*)
+//   3. EnableIf_t (defaults to void when is_phase1_supported_v<Scalar_t> is true)
+//
+// Incorrect:  template class TensorMemoryPool<float, fftwf_plan>;
+// Correct:    template class TensorMemoryPool<float, fftwf_plan, void>;
+//
+// Without the third parameter, the linker sees different mangled names:
+//   - Source requests: TensorMemoryPool<float, fftwf_plan_s*, void>
+//   - Library provides: TensorMemoryPool<float, fftwf_plan_s*, [default]>
+//
+// This causes "undefined reference" errors with clang (and potentially other compilers)
+// even though the symbols compile successfully with nvcc.
+//
+template class TensorMemoryPool<float, fftwf_plan, void>;
 
 // ============================================================================
 // Constructor / Destructor

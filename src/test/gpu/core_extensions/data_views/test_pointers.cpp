@@ -2,7 +2,7 @@
 #include "../../../../gpu/core_extensions/data_views/pointers.h"
 #include "../../../../../include/catch2/catch.hpp"
 
-TEST_CASE("Pointers constructions ", "[Pointers]") {
+TEST_CASE("Pointers constructions ", "[Pointers][RequiresGPU]") {
     DevicePointerArray<float2> testPtr2;
 
     testPtr2.resize(4);

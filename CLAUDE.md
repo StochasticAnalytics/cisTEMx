@@ -114,11 +114,37 @@ Refer to `.github/workflows/` for CI test configurations.
 - **Include Guards:** Use the full path from project root in uppercase with underscores for header file include guards (e.g., `_SRC_GUI_MYHEADER_H_` for `src/gui/MyHeader.h`, not `__MyHeader__`)
 - **Temporary Files:** All temporary files (scripts, plans, documentation drafts) should be created in `.claude/cache/` directory. Create this directory if it doesn't exist. This keeps the project root clean and makes it easy to identify Claude-generated temporary content
 
+## Static Analysis and Linting
+
+cisTEM employs comprehensive static analysis to catch bugs, performance issues, and style inconsistencies early.
+
+**Primary Tools:**
+- **C++/CUDA:** clang-tidy with multi-tier check system (see `scripts/linting/cpp_cuda/CLAUDE.md`)
+- **Shell Scripts:** shellcheck (planned - see `scripts/linting/shell/CLAUDE.md`)
+- **Python:** pylint, flake8, black (planned - see `scripts/linting/python/CLAUDE.md`)
+- **Build Systems:** Autotools/CMake validation (planned - see `scripts/linting/build_systems/CLAUDE.md`)
+
+**Quick Start:**
+```bash
+# Pre-commit: Run critical checks (< 30 seconds)
+./scripts/linting/cpp_cuda/analyze_blocker.sh
+
+# Pre-PR: Run standard tier checks
+./scripts/linting/cpp_cuda/analyze_standard.sh
+
+# Or use VS Code tasks:
+# "clang-tidy: Phase 1 (Fast - Pre-commit)"
+# "clang-tidy: Phase 2 (Standard - CI)"
+```
+
+For comprehensive documentation, see `scripts/linting/CLAUDE.md`.
+
 ## Commit Best Practices
 
 - **Compilation Requirement:** Every commit must compile successfully without errors. This is essential for maintaining a clean git history that supports effective debugging with `git bisect`
 - **Frequent Commits:** Commit work frequently, especially when completing discrete tasks or todo items. Small, focused commits are easier to review and debug
 - **Clean Up Before Committing:** Remove all temporary debugging code marked with `// revert` comments before committing
+- **Lint Before Committing:** Run at least blocker-level static analysis on changed code
 - **Descriptive Messages:** Write clear, concise commit messages that explain what was changed and why
 - **Test Before Commit:** Verify that changes work as expected before committing
 

@@ -14,7 +14,7 @@ configure
 missing
 config.guess
 depcomp
-build
+build/
 config.log
 RemoteSystemsTempFiles
 .metadata/
@@ -23,7 +23,6 @@ RemoteSystemsTempFiles
 .cproject
 /debug_build/
 /release_build/
-**/build*
 **/.DS_Store
 .vscode
 /.devcontainer.json
@@ -41,3 +40,5 @@ include/Eigen
 
 .claude/cache/
 worktrees/
+
+compile_commands.json

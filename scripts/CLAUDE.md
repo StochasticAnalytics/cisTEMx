@@ -91,6 +91,27 @@ Located in `scripts/build/`:
 - Compiler setup scripts
 - Dependency verification
 
+### Static Analysis and Linting Scripts
+Located in `scripts/linting/`:
+- **C++/CUDA linting** (`cpp_cuda/`) - clang-tidy multi-tier analysis
+- **Shell script linting** (`shell/`) - shellcheck validation (planned)
+- **Python linting** (`python/`) - pylint, flake8, black (planned)
+- **Build system validation** (`build_systems/`) - Autotools/CMake checks (planned)
+
+**Quick commands:**
+```bash
+# Pre-commit: Fast critical checks
+./scripts/linting/cpp_cuda/analyze_blocker.sh
+
+# Pre-PR: Standard tier checks
+./scripts/linting/cpp_cuda/analyze_standard.sh
+
+# Deep analysis: All checks
+./scripts/linting/cpp_cuda/analyze_deep.sh
+```
+
+See `scripts/linting/CLAUDE.md` for comprehensive documentation.
+
 ## Adding New Source Files
 
 ### Updating Makefile.am

@@ -8,6 +8,7 @@
 
 // Forward declarations
 class MyMainFrame;
+class TemplateMatchQueueItemEditor;
 
 /**
  * @brief Tracks completion progress for template matching searches to display n/N progress counters
@@ -47,6 +48,27 @@ struct SearchCompletionInfo {
      */
     double GetCompletionPercentage( ) const {
         return total_count > 0 ? (double)completed_count / total_count * 100.0 : 0.0;
+    }
+};
+
+/**
+ * @brief Tracks timing information for completed template matching searches
+ *
+ * This struct encapsulates timing data from TEMPLATE_MATCH_LIST table to display
+ * elapsed time metrics in the available queue. Only populated for searches with
+ * completed results (search_id > 0).
+ */
+struct SearchTimingInfo {
+    double   total_elapsed_seconds; ///< Sum of ELAPSED_TIME_SECONDS for all completed jobs
+    double   avg_elapsed_seconds; ///< Average ELAPSED_TIME_SECONDS per completed job
+    wxString latest_datetime; ///< DATETIME_OF_RUN for most recently completed job
+    int      completed_count; ///< Number of completed jobs with timing data
+
+    SearchTimingInfo( ) {
+        total_elapsed_seconds = 0.0;
+        avg_elapsed_seconds   = 0.0;
+        latest_datetime       = "";
+        completed_count       = 0;
     }
 };
 
@@ -181,6 +203,19 @@ class TemplateMatchQueueManager : public wxPanel {
     // UI Controls - Legacy support pointer for compatibility with existing code
     wxListCtrl* queue_list_ctrl;
 
+    // UI Controls - Static text labels for queue sections
+    wxStaticText* execution_queue_label; ///< Label for execution queue section
+    wxStaticText* available_searches_label; ///< Label for available searches section
+    wxStaticText* cli_args_label; ///< Label for CLI arguments section
+#ifdef cisTEM_QM_LOGGING
+    wxStaticText* logging_label; ///< Label for debug logging controls
+#endif
+
+    // UI Controls - Container panels that need show/hide during editor view switch
+    wxPanel* controls_panel; ///< Panel containing Run Queue button and logging controls
+    wxPanel* cli_args_panel; ///< Panel containing CLI arguments and hide completed checkbox
+    wxPanel* bottom_controls; ///< Panel containing bottom management buttons
+
     // UI Controls - Execution queue management buttons
     wxButton* run_selected_button; ///< Execute highest priority search
     wxButton* update_selected_button; ///< Update selected pending item with GUI values
@@ -197,12 +232,8 @@ class TemplateMatchQueueManager : public wxPanel {
     // UI Controls - Custom CLI arguments
     wxTextCtrl* custom_cli_args_text; ///< Editable field for custom CLI arguments
 
-    // UI Controls - Panel display toggle
-    wxToggleButton* panel_display_toggle; ///< Toggle switch between Input and Progress panels
-
 #ifdef cisTEM_QM_LOGGING
-    // UI Controls - Logging controls (only visible when cisTEM_QM_LOGGING is defined)
-    wxPanel*        logging_panel; ///< Container panel for logging controls
+    // UI Controls - Logging controls (in controls_panel, only visible when cisTEM_QM_LOGGING is defined)
     wxToggleButton* logging_toggle; ///< Toggle to enable/disable logging
     wxStaticText*   log_file_text; ///< Display current log file path
 #endif
@@ -218,6 +249,12 @@ class TemplateMatchQueueManager : public wxPanel {
     bool hide_completed_searches; ///< True if completed searches should be hidden from available queue
     bool gui_update_frozen; ///< True while SetupJobFromQueueItem is executing to prevent GUI interference
     bool search_is_finalizing; ///< True when search is in final processing (writing results, cleanup)
+    int  available_queue_sort_column; ///< Current sort column for available queue (0-5)
+    bool available_queue_sort_ascending; ///< Sort direction for available queue (true=ascending)
+
+    // Editor Panel - In-place queue item editing
+    TemplateMatchQueueItemEditor* editor_panel; ///< Panel for editing queue item parameters in-place
+    long                          editing_queue_id; ///< Database ID of item being edited, -1 when not editing
 
     // Panel Integration - Reference for search execution and database access
     MatchTemplatePanel* match_template_panel_ptr; ///< Panel for delegating search execution
@@ -239,6 +276,8 @@ class TemplateMatchQueueManager : public wxPanel {
     void     PopulateListControl(wxListCtrl*                                 ctrl, ///< Shared method to populate list controls
                                  const std::vector<TemplateMatchQueueItem*>& items,
                                  bool                                        is_execution_queue);
+    void     SortAvailableItems(std::vector<TemplateMatchQueueItem*>& items); ///< Sorts available queue items by current sort column/direction
+    void     UpdateSortIndicators(int previous_column); ///< Updates column headers with ASCII sort indicators (^ or v)
     int      GetSelectedRow( ); ///< Gets currently selected row index
     void     DeselectSearchInUI(long database_queue_id); ///< Removes UI selection for specified search
 
@@ -359,6 +398,20 @@ class TemplateMatchQueueManager : public wxPanel {
     SearchCompletionInfo GetSearchCompletionInfo(long queue_id);
 
     /**
+     * @brief Retrieves timing information for a specific search
+     * @param search_id Database SEARCH_ID from TEMPLATE_MATCH_LIST.SEARCH_ID
+     * @return SearchTimingInfo with timing data (empty if search_id <= 0 or no results)
+     */
+    SearchTimingInfo GetSearchTimingInfo(long search_id);
+
+    /**
+     * @brief Formats elapsed time in seconds to Day:hr:min:sec format
+     * @param seconds Total elapsed seconds to format
+     * @return Formatted time string (e.g., "2:14:23:45" or "14:23:45" if < 1 day)
+     */
+    wxString FormatElapsedTime(double seconds);
+
+    /**
      * @brief Updates all progress displays with latest database completion counts
      */
     void RefreshSearchCompletionInfo( );
@@ -446,12 +499,18 @@ class TemplateMatchQueueManager : public wxPanel {
     void OnRemoveSelectedClick(wxCommandEvent& event); ///< Removes selected searches from current table
     void OnSelectionChanged(wxListEvent& event); ///< Updates UI state based on execution queue selection
     void OnAvailableSearchesSelectionChanged(wxListEvent& event); ///< Updates UI state based on available queue selection
+    void OnAvailableQueueColumnClick(wxListEvent& event); ///< Handles column header clicks for sorting available queue
     void OnHideCompletedToggle(wxCommandEvent& event); ///< Toggles display of completed searches
-    void OnPanelDisplayToggle(wxCommandEvent& event); ///< Toggles between Input and Progress panel display
     void OnUpdateSelectedClick(wxCommandEvent& event); ///< Updates selected pending item with current GUI values
     void UpdateButtonState( ); ///< Updates update button state based on selection
     void OnAddToQueueClick(wxCommandEvent& event); ///< Moves selected searches from available to execution queue
     void OnRemoveFromQueueClick(wxCommandEvent& event); ///< Moves selected searches from execution to available queue
+
+    // Editor panel management
+    void OnEditorSaveClick( ); ///< Handles save action from editor panel - validates, updates database, switches back to queue view
+    void OnEditorCancelClick( ); ///< Handles cancel action from editor panel - discards changes, switches back to queue view
+    void SwitchToQueueView( ); ///< Switches from editor view back to queue list view
+    void SwitchToEditorView( ); ///< Switches from queue view to editor view
 
     // Manual drag-and-drop implementation for priority reordering
     void OnBeginDrag(wxListEvent& event); ///< Initiates drag operation for priority reordering

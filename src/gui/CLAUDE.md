@@ -18,18 +18,40 @@ wxPrintf("%d", id);         // SEGFAULT: %d with long
 wxPrintf("%ld", int(id));   // SEGFAULT: %ld with int
 ```
 
-### Unicode Character Restrictions
-**Never use Unicode characters in wxPrintf format strings - they cause segfaults.**
+### Unicode Character Usage Guidelines
+**Unicode characters have context-specific safety rules in wxWidgets.**
 
+#### ❌ NEVER in wxPrintf Format Strings (causes segfaults)
 ```cpp
-// FATAL: Unicode causes segmentation fault
+// FATAL: Unicode in printf format strings causes segmentation fault
 wxPrintf("Resolution: 3.5Å");      // SEGFAULT: Å is Unicode
 wxPrintf("Angle: 45°");            // SEGFAULT: ° is Unicode
 
-// CORRECT: Use ASCII equivalents
+// CORRECT: Use ASCII equivalents in printf
 wxPrintf("Resolution: 3.5A");      // Use 'A' not 'Å'
 wxPrintf("Angle: 45 deg");         // Use 'deg' not '°'
 ```
+
+#### ✓ SAFE in GUI Controls (when requested by user)
+Unicode characters work correctly in wxWidgets GUI controls using `wxString::FromUTF8()`:
+
+```cpp
+// SAFE: Unicode in wxListCtrl column headers (TemplateMatchQueueManager example)
+wxString sort_indicator = wxString::FromUTF8(" ⇅");  // U+21C5 up/down arrow
+list_ctrl->AppendColumn(wxString::FromUTF8("Queue ID") + sort_indicator, ...);
+
+// SAFE: Unicode in wxButton labels
+wxButton* button = new wxButton(panel, wxID_ANY, wxString::FromUTF8("Run ▶"));
+
+// SAFE: Unicode in wxStaticText
+wxStaticText* label = new wxStaticText(panel, wxID_ANY, wxString::FromUTF8("Progress: ⚡"));
+```
+
+**Important Notes:**
+- Only use Unicode in GUI when explicitly requested by user - prefer ASCII for simplicity
+- Console output (`wxPrintf`, `std::cout`) may display Unicode as "?" depending on terminal encoding
+- GUI rendering (wxListCtrl, wxButton, wxStaticText) displays Unicode correctly with `wxString::FromUTF8()`
+- Test appearance in actual GUI - terminal output is not representative of GUI rendering
 
 ## Memory Management Patterns
 

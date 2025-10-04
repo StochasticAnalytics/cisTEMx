@@ -130,12 +130,15 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
         return text_width + 20; // Add padding for margins
     };
 
-    // Add columns to available searches (only Queue ID, Search ID, Status are sortable)
+    // Add columns to available searches (Queue ID, Search ID, Status, and timing columns are sortable)
     available_searches_ctrl->AppendColumn(wxString::FromUTF8("Queue ID") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Queue ID", true));
     available_searches_ctrl->AppendColumn(wxString::FromUTF8("Search ID") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Search ID", true));
     available_searches_ctrl->AppendColumn("Search Name", wxLIST_FORMAT_LEFT, 120);
     available_searches_ctrl->AppendColumn(wxString::FromUTF8("Status") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Status", true));
     available_searches_ctrl->AppendColumn("Progress", wxLIST_FORMAT_LEFT, calc_width_avail("Progress", false));
+    available_searches_ctrl->AppendColumn(wxString::FromUTF8("Total Time") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Total Time", true));
+    available_searches_ctrl->AppendColumn(wxString::FromUTF8("Avg Time/Job") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Avg Time/Job", true));
+    available_searches_ctrl->AppendColumn(wxString::FromUTF8("Latest") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Latest", true));
     available_searches_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 80);
 
     // Create CLI args section with Hide Completed checkbox
@@ -594,8 +597,37 @@ void TemplateMatchQueueManager::PopulateListControl(wxListCtrl*                 
         // Progress is column 4
         SearchCompletionInfo completion = GetSearchCompletionInfo(item->database_queue_id);
         ctrl->SetItem(row, 4, completion.GetCompletionString( ));
-        // Custom args is column 5
-        ctrl->SetItem(row, 5, item->custom_cli_args);
+
+        // Timing columns (5-7) are only for available searches with completed results
+        if ( ! is_execution_queue && item->search_id > 0 ) {
+            SearchTimingInfo timing = GetSearchTimingInfo(item->search_id);
+
+            // Only display if we have actual completed jobs with timing data
+            if ( timing.completed_count > 0 ) {
+                // Total Time is column 5
+                ctrl->SetItem(row, 5, FormatElapsedTime(timing.total_elapsed_seconds));
+                // Avg Time/Job is column 6
+                ctrl->SetItem(row, 6, FormatElapsedTime(timing.avg_elapsed_seconds));
+                // Latest completion datetime is column 7
+                ctrl->SetItem(row, 7, timing.latest_datetime);
+            }
+            else {
+                // No completed jobs yet - leave empty
+                ctrl->SetItem(row, 5, "");
+                ctrl->SetItem(row, 6, "");
+                ctrl->SetItem(row, 7, "");
+            }
+        }
+        else if ( ! is_execution_queue ) {
+            // No search_id or is execution queue - leave empty
+            ctrl->SetItem(row, 5, "");
+            ctrl->SetItem(row, 6, "");
+            ctrl->SetItem(row, 7, "");
+        }
+
+        // Custom args - column 5 for execution queue, column 8 for available searches
+        int cli_args_column = is_execution_queue ? 5 : 8;
+        ctrl->SetItem(row, cli_args_column, item->custom_cli_args);
     }
 }
 
@@ -1009,22 +1041,26 @@ void TemplateMatchQueueManager::OnHideCompletedToggle(wxCommandEvent& event) {
 }
 
 void TemplateMatchQueueManager::UpdateSortIndicators(int previous_column) {
-    // Column headers with sort indicator for sortable columns (0, 1, 3)
-    // Non-sortable columns (2, 4, 5) don't get the indicator
+    // Column headers with sort indicator for sortable columns (0, 1, 3, 5, 6, 7)
+    // Non-sortable columns (2, 4, 8) don't get the indicator
     wxString       sortable_indicator = wxString::FromUTF8(" ⇅");
-    const wxString column_headers[6]  = {
+    const wxString column_headers[9]  = {
              wxString::FromUTF8("Queue ID") + sortable_indicator, // 0 - sortable
              wxString::FromUTF8("Search ID") + sortable_indicator, // 1 - sortable
              "Search Name", // 2 - not sortable
              wxString::FromUTF8("Status") + sortable_indicator, // 3 - sortable
              "Progress", // 4 - not sortable
-             "CLI Args" // 5 - not sortable
+             wxString::FromUTF8("Total Time") + sortable_indicator, // 5 - sortable
+             wxString::FromUTF8("Avg Time/Job") + sortable_indicator, // 6 - sortable
+             wxString::FromUTF8("Latest") + sortable_indicator, // 7 - sortable
+             "CLI Args" // 8 - not sortable
     };
 
     // Reset previous column to base header (if different from current and was sortable)
-    if ( previous_column != available_queue_sort_column && previous_column >= 0 && previous_column < 6 ) {
-        // Only update if it was a sortable column (0, 1, 3)
-        if ( previous_column == 0 || previous_column == 1 || previous_column == 3 ) {
+    if ( previous_column != available_queue_sort_column && previous_column >= 0 && previous_column < 9 ) {
+        // Only update if it was a sortable column (0, 1, 3, 5, 6, 7)
+        if ( previous_column == 0 || previous_column == 1 || previous_column == 3 ||
+             previous_column == 5 || previous_column == 6 || previous_column == 7 ) {
             wxListItem col_info;
             col_info.SetMask(wxLIST_MASK_TEXT);
             col_info.SetText(column_headers[previous_column]);
@@ -1033,8 +1069,8 @@ void TemplateMatchQueueManager::UpdateSortIndicators(int previous_column) {
     }
 
     // Add direction indicator to current column (⇅ plus ^ or v)
-    // Only sortable columns (0, 1, 3) should reach here due to OnAvailableQueueColumnClick validation
-    if ( available_queue_sort_column >= 0 && available_queue_sort_column < 6 ) {
+    // Only sortable columns (0, 1, 3, 5, 6, 7) should reach here due to OnAvailableQueueColumnClick validation
+    if ( available_queue_sort_column >= 0 && available_queue_sort_column < 9 ) {
         wxString header = column_headers[available_queue_sort_column];
         header += available_queue_sort_ascending ? " ^" : " v";
 
@@ -1132,9 +1168,9 @@ void TemplateMatchQueueManager::OnAvailableQueueColumnClick(wxListEvent& event) 
 
     int clicked_column = event.GetColumn( );
 
-    // Only columns 0 (Queue ID), 1 (Search ID), and 3 (Status) are sortable
-    // Ignore clicks on 2 (Search Name), 4 (Progress), 5 (CLI Args)
-    if ( clicked_column == 2 || clicked_column == 4 || clicked_column == 5 ) {
+    // Only columns 0 (Queue ID), 1 (Search ID), 3 (Status), 5 (Total Time), 6 (Avg Time/Job), 7 (Latest) are sortable
+    // Ignore clicks on 2 (Search Name), 4 (Progress), 8 (CLI Args)
+    if ( clicked_column == 2 || clicked_column == 4 || clicked_column == 8 ) {
         QM_LOG_UI("Ignoring click on non-sortable column %d", clicked_column);
         return;
     }
@@ -1240,7 +1276,75 @@ void TemplateMatchQueueManager::SortAvailableItems(std::vector<TemplateMatchQueu
                           break;
                       }
 
-                      case 5: // CLI Args (string comparison)
+                      case 5: // Total Time (numeric comparison, empty values sort to end)
+                      {
+                          SearchTimingInfo a_timing = GetSearchTimingInfo(a->search_id);
+                          SearchTimingInfo b_timing = GetSearchTimingInfo(b->search_id);
+
+                          bool a_has_timing = (a_timing.completed_count > 0);
+                          bool b_has_timing = (b_timing.completed_count > 0);
+
+                          if ( ! a_has_timing && ! b_has_timing ) {
+                              result = 0; // Both empty
+                          }
+                          else if ( ! a_has_timing || ! b_has_timing ) {
+                              // Empty always sorts to end
+                              result = a_has_timing ? (ascending ? -1 : 1) : (ascending ? 1 : -1);
+                          }
+                          else {
+                              // Both have timing - compare values
+                              result = (a_timing.total_elapsed_seconds < b_timing.total_elapsed_seconds) ? -1 : (a_timing.total_elapsed_seconds > b_timing.total_elapsed_seconds) ? 1
+                                                                                                                                                                                  : 0;
+                          }
+                          break;
+                      }
+
+                      case 6: // Avg Time/Job (numeric comparison, empty values sort to end)
+                      {
+                          SearchTimingInfo a_timing = GetSearchTimingInfo(a->search_id);
+                          SearchTimingInfo b_timing = GetSearchTimingInfo(b->search_id);
+
+                          bool a_has_timing = (a_timing.completed_count > 0);
+                          bool b_has_timing = (b_timing.completed_count > 0);
+
+                          if ( ! a_has_timing && ! b_has_timing ) {
+                              result = 0; // Both empty
+                          }
+                          else if ( ! a_has_timing || ! b_has_timing ) {
+                              // Empty always sorts to end
+                              result = a_has_timing ? (ascending ? -1 : 1) : (ascending ? 1 : -1);
+                          }
+                          else {
+                              // Both have timing - compare values
+                              result = (a_timing.avg_elapsed_seconds < b_timing.avg_elapsed_seconds) ? -1 : (a_timing.avg_elapsed_seconds > b_timing.avg_elapsed_seconds) ? 1
+                                                                                                                                                                          : 0;
+                          }
+                          break;
+                      }
+
+                      case 7: // Latest completion datetime (string comparison, empty values sort to end)
+                      {
+                          SearchTimingInfo a_timing = GetSearchTimingInfo(a->search_id);
+                          SearchTimingInfo b_timing = GetSearchTimingInfo(b->search_id);
+
+                          bool a_has_datetime = ! a_timing.latest_datetime.IsEmpty( );
+                          bool b_has_datetime = ! b_timing.latest_datetime.IsEmpty( );
+
+                          if ( ! a_has_datetime && ! b_has_datetime ) {
+                              result = 0; // Both empty
+                          }
+                          else if ( ! a_has_datetime || ! b_has_datetime ) {
+                              // Empty always sorts to end
+                              result = a_has_datetime ? (ascending ? -1 : 1) : (ascending ? 1 : -1);
+                          }
+                          else {
+                              // Both have datetime - lexicographic comparison (YYYY-MM-DD HH:MM format sorts correctly)
+                              result = a_timing.latest_datetime.Cmp(b_timing.latest_datetime);
+                          }
+                          break;
+                      }
+
+                      case 8: // CLI Args (string comparison)
                           result = a->custom_cli_args.Cmp(b->custom_cli_args);
                           break;
 
@@ -1417,7 +1521,7 @@ void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
             message = wxString::Format("Remove queue item %ld from execution queue?", selected_database_ids[0]);
         }
         else {
-            message = wxString::Format("Remove %zu selected queue items from execution queue?", selected_database_ids.size( ));
+            message = wxString::Format("Remove %d selected queue items from execution queue?", int(selected_database_ids.size( )));
         }
 
         QM_LOG_UI("Showing confirmation dialog: %s", message.mb_str( ).data( ));
@@ -1481,7 +1585,7 @@ void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
             message = wxString::Format("Permanently delete queue item %ld?", selected_database_ids[0]);
         }
         else {
-            message = wxString::Format("Permanently delete %zu selected queue items?", selected_database_ids.size( ));
+            message = wxString::Format("Permanently delete %d selected queue items?", int(selected_database_ids.size( )));
         }
 
         QM_LOG_UI("Showing confirmation dialog: %s", message.mb_str( ).data( ));
@@ -1817,9 +1921,9 @@ void TemplateMatchQueueManager::OnRemoveFromQueueClick(wxCommandEvent& event) {
     }
 
     wxMessageDialog dialog(this,
-                           wxString::Format("Remove %zu selected search(es) from execution queue?\n\n"
+                           wxString::Format("Remove %d selected search(es) from execution queue?\n\n"
                                             "They will be moved to Available Searches.",
-                                            selected_database_ids.size( )),
+                                            int(selected_database_ids.size( ))),
                            "Confirm Remove from Queue", wxYES_NO | wxICON_QUESTION);
 
     if ( dialog.ShowModal( ) == wxID_YES ) {
@@ -2599,6 +2703,79 @@ SearchCompletionInfo TemplateMatchQueueManager::GetSearchCompletionInfo(long que
     QM_LOG_DB_VALUES("GetSearchCompletionInfo: Queue ID %ld, SEARCH_ID %ld, ImageGroup %d -> %d/%d",
                      queue_id, search_id, image_group_id,
                      info.completed_count, info.total_count);
+
+    return info;
+}
+
+wxString TemplateMatchQueueManager::FormatElapsedTime(double seconds) {
+    // Handle invalid/zero values
+    if ( seconds <= 0.0 ) {
+        return "";
+    }
+
+    // Convert to days, hours, minutes, seconds
+    int days    = int(seconds / 86400.0);
+    int hours   = int((seconds - days * 86400.0) / 3600.0);
+    int minutes = int((seconds - days * 86400.0 - hours * 3600.0) / 60.0);
+    int secs    = int(seconds - days * 86400.0 - hours * 3600.0 - minutes * 60.0);
+
+    // Format with days if >= 1 day
+    if ( days > 0 ) {
+        return wxString::Format("%d:%02d:%02d:%02d", days, hours, minutes, secs);
+    }
+    // Format without days if < 1 day
+    return wxString::Format("%02d:%02d:%02d", hours, minutes, secs);
+}
+
+SearchTimingInfo TemplateMatchQueueManager::GetSearchTimingInfo(long search_id) {
+    SearchTimingInfo info;
+
+    // Return empty info if search_id is invalid or database not available
+    if ( search_id <= 0 || ! main_frame || ! main_frame->current_project.is_open ) {
+        return info;
+    }
+
+    // Query TEMPLATE_MATCH_LIST for timing data
+    // Use COALESCE to handle NULL aggregates (when no rows match)
+    wxString sql = wxString::Format(
+            "SELECT "
+            "COALESCE(SUM(ELAPSED_TIME_SECONDS), 0.0), "
+            "COALESCE(AVG(ELAPSED_TIME_SECONDS), 0.0), "
+            "MAX(DATETIME_OF_RUN), "
+            "COUNT(*) "
+            "FROM TEMPLATE_MATCH_LIST "
+            "WHERE SEARCH_ID = %ld",
+            search_id);
+
+    bool more_data = main_frame->current_project.database.BeginBatchSelect(sql.ToUTF8( ).data( ));
+
+    if ( more_data ) {
+        long datetime_timestamp = 0;
+        main_frame->current_project.database.GetFromBatchSelect("rrll",
+                                                                &info.total_elapsed_seconds,
+                                                                &info.avg_elapsed_seconds,
+                                                                &datetime_timestamp,
+                                                                &info.completed_count);
+        main_frame->current_project.database.EndBatchSelect( );
+
+        // Convert datetime timestamp to formatted string if available
+        if ( datetime_timestamp > 0 ) {
+            wxDateTime dt;
+            dt.Set(time_t(datetime_timestamp));
+            info.latest_datetime = dt.Format("%Y-%m-%d %H:%M");
+        }
+
+        // If no completed jobs, reset all timing fields
+        if ( info.completed_count == 0 ) {
+            info.total_elapsed_seconds = 0.0;
+            info.avg_elapsed_seconds   = 0.0;
+            info.latest_datetime       = "";
+        }
+
+        QM_LOG_DB_VALUES("GetSearchTimingInfo: SEARCH_ID %ld -> total=%.2fs, avg=%.2fs, latest=%s, count=%d",
+                         search_id, info.total_elapsed_seconds, info.avg_elapsed_seconds,
+                         info.latest_datetime.mb_str( ).data( ), info.completed_count);
+    }
 
     return info;
 }

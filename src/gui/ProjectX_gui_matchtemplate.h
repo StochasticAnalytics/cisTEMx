@@ -297,6 +297,81 @@ class MatchTemplatePanelParent : public JobPanel
 };
 
 ///////////////////////////////////////////////////////////////////////////////
+/// Class TemplateMatchingQueueManagerInputParent
+///////////////////////////////////////////////////////////////////////////////
+class TemplateMatchingQueueManagerInputParent : public JobPanel
+{
+	private:
+
+	protected:
+		wxStaticLine* m_staticline149;
+		wxPanel* InputPanel;
+		wxStaticText* m_staticText262;
+		wxStaticText* m_staticText478;
+		VolumeAssetPickerComboPanel* ReferenceSelectPanel;
+		wxStaticText* PleaseEstimateCTFStaticText;
+		wxStaticLine* m_staticline151;
+		wxScrolledWindow* ExpertPanel;
+		wxBoxSizer* InputSizer;
+		wxStaticText* m_staticText201;
+		wxButton* ResetAllDefaultsButton;
+		wxStaticText* m_staticText189;
+		NumericTextCtrl* OutofPlaneStepNumericCtrl;
+		wxStaticText* m_staticText190;
+		NumericTextCtrl* InPlaneStepNumericCtrl;
+		wxStaticText* m_staticText190211;
+		NumericTextCtrl* HighResolutionLimitNumericCtrl;
+		wxStaticText* m_staticText19021;
+		wxStaticText* m_staticText698;
+		wxRadioButton* DefocusSearchYesRadio;
+		wxRadioButton* DefocusSearchNoRadio;
+		wxStaticText* DefocusRangeStaticText;
+		NumericTextCtrl* DefocusSearchRangeNumericCtrl;
+		wxStaticText* DefocusStepStaticText;
+		NumericTextCtrl* DefocusSearchStepNumericCtrl;
+		wxStaticText* m_staticText699;
+		wxRadioButton* PixelSizeSearchYesRadio;
+		wxRadioButton* PixelSizeSearchNoRadio;
+		wxStaticText* PixelSizeRangeStaticText;
+		NumericTextCtrl* PixelSizeSearchRangeNumericCtrl;
+		wxStaticText* PixelSizeStepStaticText;
+		NumericTextCtrl* PixelSizeSearchStepNumericCtrl;
+		wxStaticText* m_staticText857;
+		wxStaticText* m_staticText849;
+		NumericTextCtrl* MinPeakRadiusNumericCtrl;
+		wxStaticText* m_staticText8571;
+		wxStaticText* m_staticText6991;
+		wxRadioButton* UseGPURadioYes;
+		wxRadioButton* UseGPURadioNo;
+		wxStaticText* m_staticText69911;
+		wxRadioButton* UseFastFFTRadioYes;
+		wxRadioButton* UseFastFFTRadioNo;
+		wxStaticLine* m_staticline11;
+		wxPanel* StartPanel;
+		wxStaticText* RunProfileText;
+		MemoryComboBox* RunProfileComboBox;
+		wxPanel* StartPanel1;
+		wxButton* UpdateQueueItem1;
+		wxButton* CancelUpdateQueueItem1;
+
+		// Virtual event handlers, override them in your derived class
+		virtual void OnUpdateUI( wxUpdateUIEvent& event ) { event.Skip(); }
+		virtual void ResetAllDefaultsClick( wxCommandEvent& event ) { event.Skip(); }
+		virtual void OnUpdateQueueItemClick( wxCommandEvent& event ) { event.Skip(); }
+		virtual void OnCancelUpdateQueueItemClick( wxCommandEvent& event ) { event.Skip(); }
+
+
+	public:
+		ImageGroupPickerComboPanel* GroupComboBox;
+		wxComboBox* SymmetryComboBox;
+
+		TemplateMatchingQueueManagerInputParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 470,974 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
+
+		~TemplateMatchingQueueManagerInputParent();
+
+};
+
+///////////////////////////////////////////////////////////////////////////////
 /// Class RefineTemplatePanelParent
 ///////////////////////////////////////////////////////////////////////////////
 class RefineTemplatePanelParent : public JobPanel

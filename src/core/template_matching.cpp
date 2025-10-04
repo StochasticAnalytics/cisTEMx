@@ -9,6 +9,7 @@ TemplateMatchJobResults::TemplateMatchJobResults( ) {
     job_type                   = -1;
     input_job_id               = -1;
     job_id                     = -1;
+    template_match_id          = -1;
     datetime_of_run            = 0;
     image_asset_id             = -1;
     ref_volume_asset_id        = -1;
@@ -35,7 +36,7 @@ TemplateMatchJobResults::TemplateMatchJobResults( ) {
     exclude_above_xy_threshold = false;
 
     output_filename_base = "";
-    elapsed_time_seconds = 0.0f;
+    elapsed_time_seconds = 0.0;
 
     refinement_threshold            = 0.0f;
     used_threshold                  = 0.0f;

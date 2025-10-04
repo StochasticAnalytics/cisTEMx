@@ -1041,8 +1041,14 @@ void RefineTemplatePanel::WriteResultToDataBase( ) {
     int template_match_job_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
     main_frame->current_project.database.Begin( );
 
+    // Capture elapsed time from job start
+    double elapsed_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToDouble( );
+
     for ( int counter = 0; counter < cached_results.GetCount( ); counter++ ) {
-        cached_results[counter].job_id = template_match_job_id;
+        cached_results[counter].job_id               = template_match_job_id;
+        cached_results[counter].template_match_id    = template_match_id;
+        cached_results[counter].elapsed_time_seconds = elapsed_seconds;
+
         main_frame->current_project.database.AddTemplateMatchingResult(template_match_id, cached_results[counter]);
         template_match_id++;
     }

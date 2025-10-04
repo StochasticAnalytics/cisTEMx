@@ -25,9 +25,10 @@ class TemplateMatchJobResults {
     wxString job_name;
     int      job_type;
     long     input_job_id;
-    long     job_id;
+    long     job_id; // This is the search_id in the database
+    long     template_match_id; // The TEMPLATE_MATCH_ID for this specific result
     long     datetime_of_run;
-    float    elapsed_time_seconds; // Time elapsed from start to completion
+    double   elapsed_time_seconds; // Time elapsed from start to completion
     long     image_asset_id;
     long     ref_volume_asset_id;
     wxString symmetry;
@@ -58,27 +59,50 @@ class TemplateMatchJobResults {
     wxString output_filename_base;
 
     // Helper methods to generate individual output filenames from base
-    wxString GetMipFilename( ) const { return output_filename_base + "_mip.mrc"; }
+    // Format: <base>_<type>_<template_match_id>_<search_id>.mrc
+    wxString GetMipFilename( ) const {
+        return output_filename_base + wxString::Format("_mip_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetScaledMipFilename( ) const { return output_filename_base + "_scaled_mip.mrc"; }
+    wxString GetScaledMipFilename( ) const {
+        return output_filename_base + wxString::Format("_scaled_mip_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetAvgFilename( ) const { return output_filename_base + "_avg.mrc"; }
+    wxString GetAvgFilename( ) const {
+        return output_filename_base + wxString::Format("_avg_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetStdFilename( ) const { return output_filename_base + "_std.mrc"; }
+    wxString GetStdFilename( ) const {
+        return output_filename_base + wxString::Format("_std_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetPsiFilename( ) const { return output_filename_base + "_psi.mrc"; }
+    wxString GetPsiFilename( ) const {
+        return output_filename_base + wxString::Format("_psi_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetThetaFilename( ) const { return output_filename_base + "_theta.mrc"; }
+    wxString GetThetaFilename( ) const {
+        return output_filename_base + wxString::Format("_theta_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetPhiFilename( ) const { return output_filename_base + "_phi.mrc"; }
+    wxString GetPhiFilename( ) const {
+        return output_filename_base + wxString::Format("_phi_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetDefocusFilename( ) const { return output_filename_base + "_defocus.mrc"; }
+    wxString GetDefocusFilename( ) const {
+        return output_filename_base + wxString::Format("_defocus_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetPixelSizeFilename( ) const { return output_filename_base + "_pixel_size.mrc"; }
+    wxString GetPixelSizeFilename( ) const {
+        return output_filename_base + wxString::Format("_pixel_size_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
-    wxString GetHistogramFilename( ) const { return output_filename_base + "_histogram.txt"; }
+    wxString GetHistogramFilename( ) const {
+        return output_filename_base + wxString::Format("_histogram_%ld_%ld.txt", template_match_id, job_id);
+    }
 
-    wxString GetProjectionResultFilename( ) const { return output_filename_base + "_projection_result.mrc"; }
+    wxString GetProjectionResultFilename( ) const {
+        return output_filename_base + wxString::Format("_projection_result_%ld_%ld.mrc", template_match_id, job_id);
+    }
 
     float refinement_threshold;
     float used_threshold;

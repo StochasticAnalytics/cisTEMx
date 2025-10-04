@@ -103,11 +103,13 @@ Refer to `.github/workflows/` for CI test configurations.
 
 ## Code Style and Standards
 
+- **Code Location References:** Always use `filename:linenumber` format when describing code locations in conversations, commit messages, and documentation (e.g., `TemplateMatchQueueManager.cpp:1446` not "the OnSelectionChanged function"). This enables quick navigation and precise communication.
 - **Formatting:** Project uses `.clang-format` in the root directory for consistent code formatting
 - **Type Casting:** Always use modern C++ functional cast style (`int(variable)`, `long(variable)`, `float(variable)`) instead of C-style casts (`(int)variable`, `(long)variable`, `(float)variable`)
 - **wxWidgets Printf Formatting:**
   - Always match format specifiers exactly to variable types (e.g., `%ld` for `long`, `%d` for `int`, `%f` for `float`) - mismatches cause segfaults in wxFormatConverterBase
-  - Never use Unicode characters (Å, °, etc.) in format strings as they cause segmentation faults - use ASCII equivalents instead (A, deg, etc.)
+  - Never use Unicode characters (Å, °, etc.) in wxPrintf format strings as they cause segmentation faults - use ASCII equivalents instead (A, deg, etc.)
+  - Unicode characters ARE safe in GUI controls (wxListCtrl, wxButton, wxStaticText) using `wxString::FromUTF8()` - see `src/gui/CLAUDE.md` for examples and guidelines
 - **Temporary Debugging Changes:** All temporary debugging code (debug prints, commented-out code, test modifications) must be marked with `// revert - <description of change and reason>` to ensure cleanup before commits. Search for "revert" to find all temporary changes.
 - **Philosophy:** Incremental modernization - update and unify style as code is modified rather than wholesale changes
 - **Legacy Compatibility:** Many legacy features exist; maintain compatibility while gradually improving

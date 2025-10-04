@@ -6,7 +6,10 @@
       "Bash(git show-branch:*)",
       "Bash(git merge-base:*)",
       "Bash(git ls-tree:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(/workspaces/cisTEM/worktrees/template_matching_queue/.claude/commands/build-cistem.sh)",
+      "Bash(bash:*)",
+      "Read(//scratch/salina/**)"
     ],
     "deny": [],
     "ask": []

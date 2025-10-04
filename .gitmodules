@@ -1,0 +1,4 @@
+[submodule "docs"]
+	path = docs
+	url = git@github.com:cistem-org/developmental-docs.git
+	branch = migration/new-doc-system-20251004

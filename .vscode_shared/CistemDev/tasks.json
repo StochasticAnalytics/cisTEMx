@@ -145,6 +145,101 @@
             "label": "BUILD clang, gpu",
             "type": "shell",
             "command": "cd ${build_dir}/clang-gpu && make -j${input:compile_cores}"
+        },
+        {
+            "label": "Configure for Static Analysis (Clang + Bear)",
+            "type": "shell",
+            "command": "mkdir -p ${build_dir}/clang-tidy-debug && cd ${build_dir}/clang-tidy-debug && CC=clang CXX=clang++ ../../configure --enable-debugmode ${input:additional_compiler_flags} --with-cuda=${cuda_dir} --with-wx-config=/opt/WX/clang-static/bin/wx-config ${experimental_algo_flags} ${common_optional_programs} ${common_flags}",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build with Bear (Generate compile_commands.json)",
+            "type": "shell",
+            "command": "cd ${build_dir}/clang-tidy-debug && bear -- make -j${input:compile_cores}",
+            "group": "build",
+            "dependsOn": ["Configure for Static Analysis (Clang + Bear)"],
+            "problemMatcher": {
+                "owner": "clang",
+                "fileLocation": "autoDetect",
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        },
+        {
+            "label": "Clean Build with Bear (Full Database)",
+            "type": "shell",
+            "command": "cd ${build_dir}/clang-tidy-debug && make clean && bear -- make -j${input:compile_cores}",
+            "group": "build",
+            "problemMatcher": {
+                "owner": "clang",
+                "fileLocation": "autoDetect",
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        },
+        {
+            "label": "Link compile_commands.json to Root",
+            "type": "shell",
+            "command": "ln -sf ${build_dir}/clang-tidy-debug/compile_commands.json ${workspaceFolder}/compile_commands.json",
+            "problemMatcher": []
+        },
+        {
+            "label": "Analyze Tensor Code (clang-tidy)",
+            "type": "shell",
+            "command": "find ${workspaceFolder}/src/core/tensor -name '*.cpp' -o -name '*.cu' | xargs run-clang-tidy-14 -p ${build_dir}/clang-tidy-debug -quiet",
+            "group": "test",
+            "problemMatcher": {
+                "owner": "clang-tidy",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)\\s+\\[(.*)\\]$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5,
+                    "code": 6
+                }
+            }
+        },
+        {
+            "label": "Analyze Changed Files (clang-tidy-diff)",
+            "type": "shell",
+            "command": "git diff -U0 ${input:base_branch} | clang-tidy-diff-14.py -p1 -path ${build_dir}/clang-tidy-debug -quiet",
+            "group": "test",
+            "problemMatcher": {
+                "owner": "clang-tidy",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)\\s+(.*)\\]$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5,
+                    "code": 6
+                }
+            }
+        },
+        {
+            "label": "Deep Analysis (scan-build)",
+            "type": "shell",
+            "command": "cd ${build_dir}/clang-tidy-debug && scan-build-14 -o ${workspaceFolder}/.claude/cache/scan-results make -j${input:compile_cores}",
+            "group": "test",
+            "problemMatcher": []
         }
     ],
     "inputs": [
@@ -159,6 +254,12 @@
             "id": "additional_compiler_flags",
             "description": "additional_compiler_flags",
             "default": ""
+        },
+        {
+            "type": "promptString",
+            "id": "base_branch",
+            "description": "Base branch to compare against for clang-tidy-diff",
+            "default": "master"
         }
     ]
 }

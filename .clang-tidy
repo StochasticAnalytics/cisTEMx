@@ -1,0 +1,238 @@
+---
+# cisTEM C++/CUDA Static Analysis Configuration
+# Comprehensive multi-tier check system for clang-tidy
+#
+# Philosophy: All checks are enabled by default (Tier 3 - full analysis)
+# Use --checks= flag to selectively run subsets for faster feedback
+#
+# Tier 0 (Blocker):     Critical bugs, must fix (< 30s)
+# Tier 1 (Critical):    Important correctness/performance (< 1 min)
+# Tier 2 (Important):   Quality improvements, CI standard (< 2 min)
+# Tier 3 (Aspirational): Deep analysis, style, refactoring (< 10 min)
+
+Checks: >
+  -*,
+
+  # ============================================================================
+  # TIER 0: BLOCKER CHECKS - Must fix before commit
+  # ============================================================================
+  # Run with: --checks='bugprone-use-after-move,bugprone-dangling-handle,
+  #                     bugprone-undelegated-constructor,performance-move-const-arg,
+  #                     cert-err52-cpp'
+
+  bugprone-use-after-move,
+  bugprone-dangling-handle,
+  bugprone-undelegated-constructor,
+  performance-move-const-arg,
+  cert-err52-cpp,
+
+  # ============================================================================
+  # TIER 1: CRITICAL CHECKS - Important issues
+  # ============================================================================
+  # Run with: --checks='bugprone-*,performance-unnecessary-copy-initialization,
+  #                     performance-for-range-copy,modernize-use-nullptr,...'
+
+  # Memory safety and correctness
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+
+  # Performance critical
+  performance-unnecessary-copy-initialization,
+  performance-for-range-copy,
+  performance-noexcept-move-constructor,
+  performance-inefficient-vector-operation,
+  performance-move-constructor-init,
+
+  # Essential modernization
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-emplace,
+  modernize-use-default-member-init,
+
+  # Special member functions (Rule of 5/0)
+  cppcoreguidelines-special-member-functions,
+
+  # ============================================================================
+  # TIER 2: IMPORTANT CHECKS - CI standard level
+  # ============================================================================
+  # Run with: --checks='bugprone-*,performance-*,modernize-*,...'
+
+  # All performance checks
+  performance-*,
+
+  # Modernization (most of them)
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -modernize-avoid-c-arrays,
+  -modernize-concat-nested-namespaces,
+
+  # Certificate security
+  cert-err*,
+  cert-flp30-c,
+  cert-msc*,
+  cert-oop*,
+
+  # Concurrency safety
+  concurrency-mt-unsafe,
+
+  # Memory management
+  misc-unconventional-assign-operator,
+  misc-new-delete-overloads,
+  misc-misplaced-const,
+  cppcoreguidelines-owning-memory,
+  cppcoreguidelines-no-malloc,
+
+  # ============================================================================
+  # TIER 3: ASPIRATIONAL CHECKS - Deep analysis, style
+  # ============================================================================
+  # Run with: clang-tidy (no --checks= override, uses full config)
+
+  # Readability (comprehensive but verbose)
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -readability-uppercase-literal-suffix,
+
+  # C++ Core Guidelines (strict)
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-macro-usage,
+
+  # Clang static analyzer (deep checks)
+  clang-analyzer-*,
+  -clang-analyzer-optin.performance.Padding,
+
+  # All cert checks
+  cert-*,
+
+  # Miscellaneous
+  misc-*,
+  -misc-non-private-member-variables-in-classes,
+  -misc-no-recursion
+
+# Don't treat warnings as errors (just warn for now)
+WarningsAsErrors: ''
+
+# Initially focus on Tensor code, expand later
+HeaderFilterRegex: 'src/core/tensor/.*'
+
+# ============================================================================
+# Check-Specific Options
+# ============================================================================
+
+CheckOptions:
+  # Naming conventions (cisTEM style - CamelCase for classes/functions)
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.FunctionCase
+    value: CamelCase
+  - key: readability-identifier-naming.MethodCase
+    value: CamelCase
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.ConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.ConstantMemberCase
+    value: lower_case
+
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: lower_case
+
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+
+  # Template parameters can be short (T, U, etc.)
+  - key: readability-identifier-naming.TemplateParameterCase
+    value: CamelCase
+  - key: readability-identifier-naming.TemplateParameterIgnoredRegexp
+    value: '^[A-Z]$'
+
+  # Performance tuning
+  - key: performance-unnecessary-copy-initialization.AllowedTypes
+    value: 'wxString;wxFileName;wxArrayString'
+
+  # Complexity thresholds (higher for scientific computing)
+  - key: readability-function-cognitive-complexity.Threshold
+    value: '50'
+  - key: readability-function-size.LineThreshold
+    value: '200'
+  - key: readability-function-size.StatementThreshold
+    value: '150'
+  - key: readability-function-size.BranchThreshold
+    value: '30'
+  - key: readability-function-size.ParameterThreshold
+    value: '10'
+
+  # Allow mathematical expressions without extra parentheses
+  - key: readability-math-missing-parentheses.AllowedOperators
+    value: '+-*/'
+
+  # Special member functions
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 'true'
+  - key: cppcoreguidelines-special-member-functions.AllowMissingMoveFunctions
+    value: 'false'
+
+  # Macro naming
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: 'UPPER_CASE'
+  - key: readability-identifier-naming.MacroDefinitionPrefix
+    value: 'cisTEM_'
+  - key: readability-identifier-naming.MacroDefinitionIgnoredRegexp
+    value: '^[A-Z][A-Z0-9_]*_H_$'
+
+  # Allow some implicit conversions in numerical code
+  - key: readability-implicit-bool-conversion.AllowPointerConditions
+    value: 'true'
+  - key: readability-implicit-bool-conversion.AllowIntegerConditions
+    value: 'false'
+
+  # Avoid redundant declarations
+  - key: readability-redundant-declaration.IgnoreMacros
+    value: 'true'
+
+# ============================================================================
+# Usage Examples
+# ============================================================================
+#
+# Tier 0 (Blocker - pre-commit):
+#   clang-tidy-14 -p build/clang-debug --checks='bugprone-use-after-move,...'
+#
+# Tier 1 (Critical - development):
+#   clang-tidy-14 -p build/clang-debug --checks='bugprone-*,performance-*,...'
+#
+# Tier 2 (Standard - CI):
+#   clang-tidy-14 -p build/clang-debug --checks='bugprone-*,performance-*,modernize-*,...'
+#
+# Tier 3 (Deep - weekly):
+#   clang-tidy-14 -p build/clang-debug src/core/tensor/
+#
+# Or use helper scripts:
+#   ./scripts/linting/cpp_cuda/analyze_blocker.sh
+#   ./scripts/linting/cpp_cuda/analyze_critical.sh
+#   ./scripts/linting/cpp_cuda/analyze_standard.sh
+#   ./scripts/linting/cpp_cuda/analyze_deep.sh
+#
+# ============================================================================

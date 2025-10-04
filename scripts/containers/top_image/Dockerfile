@@ -43,8 +43,8 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Verify
 RUN python --version && pip --version
 
-# Install wxWidgets
-COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_llm_optimization_tools.sh /tmp/
+# Install wxWidgets and Bear
+COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_bear.sh install_llm_optimization_tools.sh /tmp/
 
 
 # If we do not do this, we want to link the static or dynamic libs from /opt/WX to /usr/bin so we don't need to set it on configure lines and also so that wxformbuilder can find them
@@ -52,6 +52,11 @@ RUN echo "checking for wxWidgets 3.1.5" && if [[ "x${build_wx_version}" == "xdev
 
 # Install Python packages from requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
+
+# Install Bear for compilation database generation (needed for clang-tidy)
+# Note: shellcheck is already available in base image
+# TODO: Move Bear installation to base container in future update
+RUN /tmp/install_bear.sh
 
 # Get reference images for testing and debugging
 RUN mkdir -p /opt && cd /opt && gdown --fuzzy https://drive.google.com/file/d/1QqeDbv9dUrl6FertvKbDukJ6wjG2PsDi/view?usp=sharing && unzip FastFFT.zip && rm FastFFT.zip

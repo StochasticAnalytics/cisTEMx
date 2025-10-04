@@ -12,16 +12,14 @@ fi
 original_format_hash=440fdc47889766cbf5c6036feb8c4934
 post_format_hash=88ad6d70d449ba758ea127b2074256f5
 
-# Requires clang-format-14 
-clang_format_verision=14
+# Requires clang-format-14
+clang_format_version=14
 clang_binary=""
 # Check version of clang-format, first looking for the generic name, override by specific name (or use if generic not available.)
 found_clang_version=0
-for this_binary in clang-format clang-format-${clang_format_verision} ; do
-    # First check that the binary is there.
-    type $this_binary >/dev/null 2>&1 && check=$($this_binary --version | grep -e "clang-format version ${clang_format_verision}.")
-    # If it is, check that it is the right version.
-    if [[ $? -eq 0 ]]; then
+for this_binary in clang-format clang-format-${clang_format_version} ; do
+    # First check that the binary is there and has the right version.
+    if type "$this_binary" >/dev/null 2>&1 && "$this_binary" --version | grep -q -e "clang-format version ${clang_format_version}."; then
         found_clang_version=1
         clang_binary=$this_binary
         break
@@ -30,7 +28,7 @@ done
 
 
 if [[ $found_clang_version -eq 0 ]]; then
-    echo "clang-format version ${clang_format_verision} not found"
+    echo "clang-format version ${clang_format_version} not found"
     exit 1
 fi
 # first argumetn is either:

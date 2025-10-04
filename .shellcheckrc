@@ -1,0 +1,16 @@
+# shellcheck configuration for cisTEM
+# See https://github.com/koalaman/shellcheck/wiki/Directive
+
+# Disable specific checks that conflict with cisTEM patterns
+
+# SC2086: Allow word splitting for build flags (intentional in configure scripts)
+disable=SC2086
+
+# SC2046: Allow word splitting in command substitution (common in build scripts)
+disable=SC2046
+
+# Shell dialect
+shell=bash
+
+# External sources (for when scripts source other scripts)
+source-path=SCRIPTDIR

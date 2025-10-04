@@ -112,7 +112,7 @@ while [[ $# -gt 0 ]]; do
         build_compiler="$2"
         # Check that the compiler is valid: icpc or g++
         if [[ $build_compiler != "icpc" && $build_compiler != "g++" ]] ; then
-            echo "Invalid compiler: ($build-compiler) - must be icpc or g++"
+            echo "Invalid compiler: ($build_compiler) - must be icpc or g++"
             exit 1
         fi
         if [[ $build_compiler == "g++" ]] ; then

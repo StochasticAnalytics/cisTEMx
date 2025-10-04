@@ -88,7 +88,8 @@ void MatchTemplateResultsPanel::OnUpdateUI(wxUpdateUIEvent& event) {
 }
 
 void MatchTemplateResultsPanel::OnAllImagesSelect(wxCommandEvent& event) {
-    FillBasedOnSelectCommand("SELECT DISTINCT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST");
+    // Order by TEMPLATE_MATCH_ID DESC to show most recent results first (better UX and prevents crashes with stale dynamic tables)
+    FillBasedOnSelectCommand("SELECT DISTINCT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST ORDER BY TEMPLATE_MATCH_ID DESC");
 }
 
 void MatchTemplateResultsPanel::OnByFilterSelect(wxCommandEvent& event) {

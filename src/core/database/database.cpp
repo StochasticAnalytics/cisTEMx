@@ -1964,8 +1964,8 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
 
     // For v3 schema: Per-image data (including CTF params) goes in TEMPLATE_MATCH_LIST
     // Search parameters (resolution limits, angular steps, etc.) are in TEMPLATE_MATCH_QUEUE
-    // Type string matches database_schema.h: "plrliiliitrrrrrrrrrr" (20 columns)
-    InsertOrReplace("TEMPLATE_MATCH_LIST", "plrliiliitrrrrrrrrrr",
+    // Type string matches database_schema.h: "pllliiliitrrrrrrrrrr" (20 columns)
+    InsertOrReplace("TEMPLATE_MATCH_LIST", "pllliiliitrrrrrrrrrr",
                     "TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", "ELAPSED_TIME_SECONDS", "SEARCH_ID",
                     "SEARCH_TYPE_CODE", "PARENT_SEARCH_ID", "IMAGE_ASSET_ID", "REFERENCE_VOLUME_ASSET_ID",
                     "IS_ACTIVE", "OUTPUT_FILENAME_BASE",
@@ -2047,9 +2047,10 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
 
     // Read from joined query (columns 0-32)
     template_match_id                = sqlite3_column_int64(list_statement, 0);
+    temp_result.template_match_id    = template_match_id; // Store in result for filename generation
     temp_result.job_name             = sqlite3_column_text(list_statement, 1);
     temp_result.datetime_of_run      = sqlite3_column_int64(list_statement, 2);
-    temp_result.elapsed_time_seconds = sqlite3_column_double(list_statement, 3);
+    temp_result.elapsed_time_seconds = sqlite3_column_int64(list_statement, 3);
     temp_result.job_id               = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
     temp_result.job_type             = sqlite3_column_int(list_statement, 5);
     temp_result.input_job_id         = sqlite3_column_int64(list_statement, 6); // PARENT_SEARCH_ID

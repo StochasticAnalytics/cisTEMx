@@ -1042,7 +1042,8 @@ void RefineTemplatePanel::WriteResultToDataBase( ) {
     main_frame->current_project.database.Begin( );
 
     // Capture elapsed time from job start
-    double elapsed_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToDouble( );
+    // Use .ToLong() instead of .ToDouble() to avoid wxLongLong conversion bug
+    long elapsed_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
 
     for ( int counter = 0; counter < cached_results.GetCount( ); counter++ ) {
         cached_results[counter].job_id               = template_match_job_id;

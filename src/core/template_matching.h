@@ -28,7 +28,7 @@ class TemplateMatchJobResults {
     long     job_id; // This is the search_id in the database
     long     template_match_id; // The TEMPLATE_MATCH_ID for this specific result
     long     datetime_of_run;
-    double   elapsed_time_seconds; // Time elapsed from start to completion
+    long     elapsed_time_seconds; // Time elapsed from start to completion (in seconds)
     long     image_asset_id;
     long     ref_volume_asset_id;
     wxString symmetry;

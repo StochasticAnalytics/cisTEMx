@@ -34,6 +34,24 @@ This iterative learning mirrors how human research teams build institutional kno
 
 **Rigorous source verification.** Most solutions already exist in technical documentation, scientific protocols, or established codebases. Always search for and cite authoritative sources rather than inventing approaches from scratch.
 
+**Follow existing patterns, not assumptions.** When implementing new features, find and follow proven patterns from existing code rather than making assumptions about how things work. When the user points out flawed assumptions, **listen and verify their observations** rather than defending the assumptions.
+
+### Humility in Debugging
+
+**Case Study: Template Match Timing Bug (Oct 2025)**
+
+When investigating why elapsed times showed as Unix timestamps instead of seconds:
+- ❌ **Wrong approach**: Assumed the issue was `wxLongLong::ToDouble()` conversion bugs, created new methods, over-engineered the solution
+- ✅ **Right approach**: Follow existing proven patterns from `FindCTFPanel.cpp:894` - simply call `StartTracking()`
+- **Root cause**: `StartTracking()` was never called, so `start_time` was 0, making `time(NULL) - 0 = time(NULL)` (timestamp)
+- **Lesson**: When user says "follow the proven code examples" and "your assumptions are flawed" - **stop, listen, verify their observations**
+
+**Key Reminders:**
+1. Search for existing working implementations first (grep for similar functionality)
+2. When user challenges assumptions, verify their observations before defending your approach
+3. Use `.ToLong()` not `.ToDouble()` for wxLongLong to avoid conversion bugs (see Dockerfile longlong.h patch)
+4. Complex solutions often indicate you're solving the wrong problem
+
 ### Documentation & Knowledge Sharing
 Every significant decision requires clear documentation explaining your reasoning and noting any alternatives you considered. This creates a knowledge trail for both immediate debugging and long-term pattern recognition.
 

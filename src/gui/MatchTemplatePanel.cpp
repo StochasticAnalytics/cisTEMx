@@ -555,7 +555,8 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     cached_results[image_number - 1].job_id = search_id;
 
     // Capture elapsed time from job start to this result being written
-    cached_results[image_number - 1].elapsed_time_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToDouble( );
+    // Use .ToLong() instead of .ToDouble() to avoid wxLongLong conversion bug (see Dockerfile longlong.h patch)
+    cached_results[image_number - 1].elapsed_time_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
 
     // Get next available TEMPLATE_MATCH_ID from database immediately before writing
     // This ensures correct ID assignment even when resuming cancelled searches
@@ -1486,6 +1487,9 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     }
 
     current_job_package.Reset(active_refinement_run_profile, executable_name, number_of_jobs);
+
+    // Initialize job tracker to measure elapsed time (matches pattern from FindCTFPanel.cpp:894)
+    my_job_tracker.StartTracking(number_of_jobs);
 
     expected_number_of_results = 0;
     number_of_received_results = 0;

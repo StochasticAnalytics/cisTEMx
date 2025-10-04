@@ -36,7 +36,7 @@ TemplateMatchJobResults::TemplateMatchJobResults( ) {
     exclude_above_xy_threshold = false;
 
     output_filename_base = "";
-    elapsed_time_seconds = 0.0;
+    elapsed_time_seconds = 0;
 
     refinement_threshold            = 0.0f;
     used_threshold                  = 0.0f;

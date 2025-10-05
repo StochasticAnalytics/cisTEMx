@@ -46,6 +46,11 @@
 #include <wx/odcombo.h>
 #include <wx/wupdlock.h>
 
+// Compatibility for wxFormBuilder 4.2.1 with wxWidgets 3.0.x
+#ifndef wxASCII_STR
+#define wxASCII_STR(s) (s)
+#endif
+
 #include "../core/core_headers.h"
 
 #include "../gui/gui_globals.h"

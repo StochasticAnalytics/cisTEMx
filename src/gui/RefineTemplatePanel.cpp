@@ -1002,8 +1002,10 @@ void RefineTemplatePanel::ProcessResult(JobResult* result_to_process) // this wi
 	}
 */
 
-    //	my_job_tracker.MarkJobFinished();
-    //	if (my_job_tracker.ShouldUpdate() == true) UpdateProgressBar();
+    // Mark job as finished in tracker (matches FindCTFPanel.cpp:1016 pattern)
+    my_job_tracker.MarkJobFinished( );
+    if ( my_job_tracker.ShouldUpdate( ) == true )
+        UpdateProgressBar( );
 
     // store the results..
     //buffered_results[result_to_process->job_number] = result_to_process;

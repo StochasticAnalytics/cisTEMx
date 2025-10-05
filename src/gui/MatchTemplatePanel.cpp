@@ -554,7 +554,8 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     // SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
     cached_results[image_number - 1].job_id = search_id;
 
-    // Capture elapsed time from job start to this result being written
+    // Capture datetime and elapsed time when result arrives
+    cached_results[image_number - 1].datetime_of_run = time(NULL); // Unix timestamp
     // Use .ToLong() instead of .ToDouble() to avoid wxLongLong conversion bug (see Dockerfile longlong.h patch)
     cached_results[image_number - 1].elapsed_time_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
 
@@ -595,6 +596,11 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
                           highest_queue_search_id, highest_results_search_id);
     }
 #endif
+
+    // Mark job as finished in tracker (matches FindCTFPanel.cpp:1016 pattern)
+    my_job_tracker.MarkJobFinished( );
+    if ( my_job_tracker.ShouldUpdate( ) == true )
+        UpdateProgressBar( );
 }
 
 void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {
@@ -1488,8 +1494,9 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
 
     current_job_package.Reset(active_refinement_run_profile, executable_name, number_of_jobs);
 
-    // Initialize job tracker to measure elapsed time (matches pattern from FindCTFPanel.cpp:894)
-    my_job_tracker.StartTracking(number_of_jobs);
+    // Initialize job tracker to measure elapsed time
+    // Track by number of IMAGES (one result per image), not number of sub-jobs
+    my_job_tracker.StartTracking(active_group.number_of_members);
 
     expected_number_of_results = 0;
     number_of_received_results = 0;
@@ -1504,6 +1511,36 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     temp_result.min_peak_radius            = min_peak_radius;
     temp_result.exclude_above_xy_threshold = false;
     temp_result.xy_change_threshold        = 0.0f;
+
+    // Determine search_id BEFORE calculating predicted_search_id for filenames
+    if ( pending_queue_id > 0 ) {
+        int existing_search_id = main_frame->current_project.database.GetSearchIdForQueueItem(pending_queue_id);
+        if ( existing_search_id > 0 ) {
+            search_id = existing_search_id;
+            QM_LOG_DB("Queue item %ld resuming with existing search_id %d", pending_queue_id, search_id);
+            int result_count = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(
+                    wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %d", search_id));
+            MyDebugAssertTrue(result_count > 0,
+                              "Queue item has search_id %d but no results in TEMPLATE_MATCH_LIST", search_id);
+        }
+        else {
+            search_id = -1;
+            QM_LOG_DB("Queue item %ld starting fresh - search_id will be assigned when first result is written", pending_queue_id);
+        }
+    }
+    else {
+        search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
+        QM_LOG_DB("Non-queue job - assigning search_id %d immediately", search_id);
+    }
+
+    // Calculate predicted_search_id for filenames (now that search_id is correctly set)
+    int predicted_search_id;
+    if ( search_id == -1 ) {
+        predicted_search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
+    }
+    else {
+        predicted_search_id = search_id;
+    }
 
     // Loop over all images to set up jobs
     for ( int image_counter = 0; image_counter < active_group.number_of_members; image_counter++ ) {
@@ -1540,19 +1577,9 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         if ( orientations_per_process < 1 )
             orientations_per_process = 1;
 
-        // Predict what the template_match_id and search_id WILL BE when this completes
+        // Predict what the template_match_id WILL BE when this image completes
+        // Each image gets unique template_match_id, but all images in batch share predicted_search_id (calculated above)
         int predicted_template_match_id = main_frame->current_project.database.ReturnHighestTemplateMatchID( ) + image_counter + 1;
-
-        // Handle both new and resumed searches
-        int predicted_search_id;
-        if ( search_id == -1 ) {
-            // New search - predict what ID will be assigned when first result is written
-            predicted_search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
-        }
-        else {
-            // Resuming - use the existing search_id
-            predicted_search_id = search_id;
-        }
 
         main_frame->current_project.database.GetCTFParameters(current_image->ctf_estimation_id, voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, phase_shift, iciness);
 
@@ -1590,11 +1617,10 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
 
         float low_resolution_limit = 300.0f; // FIXME set this somewhere that is not buried in the code!
 
-        temp_result.image_asset_id                  = current_image->asset_id;
-        temp_result.job_name                        = wxString::Format("Template: %s", current_volume->filename.GetName( ));
-        temp_result.ref_volume_asset_id             = current_volume->asset_id;
-        wxDateTime now                              = wxDateTime::Now( );
-        temp_result.datetime_of_run                 = (long int)now.GetAsDOS( );
+        temp_result.image_asset_id      = current_image->asset_id;
+        temp_result.job_name            = wxString::Format("Template: %s", current_volume->filename.GetName( ));
+        temp_result.ref_volume_asset_id = current_volume->asset_id;
+        // datetime_of_run will be set when result actually arrives in HandleSocketTemplateMatchResultReady
         temp_result.symmetry                        = wanted_symmetry;
         temp_result.pixel_size                      = pixel_size;
         temp_result.voltage                         = voltage_kV;
@@ -1690,47 +1716,6 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     }
 
     my_progress_dialog->Destroy( );
-
-    // CRITICAL SEARCH_ID LOGIC - READ CAREFULLY:
-    // ============================================
-    // A queue item's search_id follows these IMMUTABLE rules:
-    // 1. When a queue item is first created, search_id = -1 (no results written yet)
-    // 2. The search_id is ONLY assigned when the FIRST result is written to TEMPLATE_MATCH_LIST
-    // 3. Once assigned, a search_id is PERMANENT for that queue item
-    // 4. If a queue item is resumed (already has results in DB), it uses its existing search_id
-    //
-    // IMPORTANT: search_id = -1 means 0/N completion (NO results written)
-    //           search_id > 0 means n/N completion (AT LEAST one result written)
-
-    if ( pending_queue_id > 0 ) {
-        // Check if this queue item already has a search_id from previous execution
-        int existing_search_id = main_frame->current_project.database.GetSearchIdForQueueItem(pending_queue_id);
-
-        if ( existing_search_id > 0 ) {
-            // This queue item has been run before and has results in TEMPLATE_MATCH_LIST
-            // The search_id is FIXED - we MUST reuse it
-            search_id = existing_search_id;
-            QM_LOG_DB("Queue item %ld resuming with existing search_id %d", pending_queue_id, search_id);
-
-            // Verify that results exist for this search_id (sanity check)
-            // NOTE: SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
-            int result_count = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(
-                    wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %d", search_id));
-            MyDebugAssertTrue(result_count > 0,
-                              "Queue item has search_id %d but no results in TEMPLATE_MATCH_LIST", search_id);
-        }
-        else {
-            // This queue item has NEVER had results written
-            // DO NOT assign a search_id now - it will be assigned when first result is written
-            search_id = -1;
-            QM_LOG_DB("Queue item %ld starting fresh - search_id will be assigned when first result is written", pending_queue_id);
-        }
-    }
-    else {
-        // Non-queue job - assign ID immediately since it's not tracked in queue
-        search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
-        QM_LOG_DB("Non-queue job - assigning search_id %d immediately", search_id);
-    }
 
     // Unfreeze GUI updates in queue manager now that setup is complete
     if ( queue_completion_callback ) {

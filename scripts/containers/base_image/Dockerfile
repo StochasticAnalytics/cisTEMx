@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 # /groups/himesb/.config/Code\ -\ Insiders/User/globalStorage/ms-vscode-remote.remote-containers/cli-bin/code-insiders build --image-name bhimesbhimes/cistem_build_env:latest ./.devcontainer_build
 
@@ -21,10 +21,10 @@ RUN apt-get update &&\
 
 ENV LANG en_US.utf8
 
-# Install useful ubuntu packages libwxgtk3.0-gtk3-dev libwxbase3.0-dev
+# Install useful ubuntu packages (wxWidgets built from source below - NO system wx packages)
 RUN apt-get --allow-releaseinfo-change update && apt-get install -y \
     apt-utils ca-certificates \
-    libgtk2.0-dev libgtk-3-dev libwxbase3.0-dev \
+    libgtk2.0-dev libgtk-3-dev \
     libtool autoconf autotools-dev nano gedit meld cmake \
     libfftw3-dev libtiff-dev software-properties-common libffi-dev \
     libbz2-dev libsqlite3-dev zlib1g-dev libjpeg-dev libtiff-dev \
@@ -44,13 +44,10 @@ RUN type -p wget >/dev/null || (apt update && apt-get install wget -y) &&\
     sudo apt install -y gh &&\ 
     rm -rf /var/lib/apt/lists/*
 
-# Install clang format 14 - these goa t the end of /etc/apt/sources.list
-RUN echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main" | tee -a /etc/apt/sources.list &&\
-    echo "deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main" | tee -a /etc/apt/sources.list &&\
-    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add - &&\
-    apt-get update && apt-get install -y clang-format-14 clang-14 clang-tidy-14 &&\
-    cd /usr/bin && ln -s clang-format-14 clang-format && ln -s clang-14 clang && ln -s clang-tidy-14 clang-tidy && ln -s clang++-14 clang++ \
-    && rm -rf /var/lib/apt/lists/*
+# Install clang format 14 - available natively in Ubuntu 22.04
+RUN apt-get update && apt-get install -y clang-format-14 clang-14 clang-tidy-14 &&\
+    cd /usr/bin && ln -s clang-format-14 clang-format && ln -s clang-14 clang && ln -s clang-tidy-14 clang-tidy && ln -s clang++-14 clang++ &&\
+    rm -rf /var/lib/apt/lists/*
 
 
 
@@ -58,8 +55,8 @@ RUN echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main" | tee -a 
 # The second to last line is to ensure clang++ is used and not the one bundled with the intel compiler.
 RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null &&\
     echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | tee /etc/apt/sources.list.d/oneAPI.list &&\
-    apt-get update && apt-get install -y intel-oneapi-compiler-dpcpp-cpp-and-cpp-classic-2021.4.0 intel-oneapi-mkl-2021.4.0 intel-oneapi-mkl-devel-2021.4.0 &&\
-    cd /opt/intel/oneapi/ && rm -rf debugger/ conda_channel/ mkl/latest/lib/intel64/*_sycl* compiler/2021.4.0/linux/lib/oclfpga &&\
+    apt-get update && apt-get install -y intel-oneapi-compiler-dpcpp-cpp-and-cpp-classic intel-oneapi-mkl intel-oneapi-mkl-devel &&\
+    cd /opt/intel/oneapi/ && rm -rf debugger/ conda_channel/ mkl/latest/lib/intel64/*_sycl* compiler/*/linux/lib/oclfpga &&\
     mkdir -p /opt/intel && echo 'int mkl_serv_intel_cpu_true() {return 1;}' > /opt/intel/fakeIntel.c &&\
     gcc -shared -fPIC -o /opt/intel/libfakeIntel.so /opt/intel/fakeIntel.c &&\
     rm -rf /var/lib/apt/lists/* 
@@ -68,53 +65,7 @@ RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRO
 # This is only needed for dynamic builds. Note the lib is build in the next step.
 ENV LD_PRELOAD=/opt/intel/libfakeIntel.so
 
-# Grab the source for wxWidgets 3.0.5, the stable version and build it against gtk-2 for both dyamic and staic linking
-# Installation is deferred until the final layer so only the correct version is installed to prevent difficult to track down conflicts.
-# Neither will be used for the dev version 3.1.5 or 3.2 which will be linked against gtk-3
-# NOTE: for now, only building with the intel-compiler. If people still are pushing gnu compiler, we can add those here.
-RUN wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWidgets-3.0.5.tar.bz2 -O /tmp/wxwidgets.tar.bz2 &&\
-    echo 'Building wxWidgets but deferring install' &&\
-    mkdir -p /opt/WX/icc-static /opt/WX/gcc-static /opt/WX/clang-static &&\
-    tar -xjf /tmp/wxwidgets.tar.bz2 -C /opt/WX/icc-static &&\
-    tar -xjf /tmp/wxwidgets.tar.bz2 -C /opt/WX/gcc-static &&\
-    tar -xjf /tmp/wxwidgets.tar.bz2 -C /opt/WX/clang-static &&\
-    rm -rf /tmp/wxwidgets.tar.bz2 
-
-# Here for the record if you want to build and link static binaries to avoid the cointainerized distribution
-# CXXFLAGS=-fPIC CFLAGS=-fPIC were specified for the static configure line, but I'm not sure that makes any sense?
-RUN . /opt/intel/oneapi/setvars.sh &&\
-    cd /opt/WX && wget https://github.com/wxFormBuilder/wxFormBuilder/releases/download/v3.10.0/wxformbuilder_3.10.0_ubuntu-20.04_amd64.deb &&\
-    cd /opt/WX/icc-static/wxWidgets-3.0.5 &&\
-    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpc CC=icc ./configure --disable-precomp-headers --prefix=/opt/WX/icc-static --with-libnotify=no --disable-shared \
-    --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
-    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  &&\
-    make -j$n_threads && make install && make clean && make distclean && rm -rf /opt/WX/icc-static/wxWidgets-3.0.5 &&\
-    cd /opt/WX/gcc-static/wxWidgets-3.0.5 &&\
-    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=g++ CC=gcc ./configure --disable-precomp-headers --prefix=/opt/WX/gcc-static --with-libnotify=no --disable-shared \
-    --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
-    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  &&\
-    make -j$n_threads && make install && make clean && make distclean && rm -rf /opt/WX/gcc-static/wxWidgets-3.0.5 &&\
-    cd /opt/WX/clang-static/wxWidgets-3.0.5 &&\
-    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=clang++ CC=clang ./configure --disable-precomp-headers --prefix=/opt/WX/clang-static --with-libnotify=no --disable-shared \
-    --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin \
-    --disable-compat28 --without-liblzma --without-libjbig --with-gtk=2 --disable-sys-libs  &&\
-    make -j$n_threads && make install && make clean && make distclean && rm -rf /opt/WX/clang-static/wxWidgets-3.0.5 &&\
-    tf=`tempfile` && cp /opt/WX/icc-static/include/wx-3.0/wx/longlong.h /opt/WX/icc-static/include/wx-3.0/wx/longlong.h.orig &&\
-    awk '{if(/#include "wx\/defs.h"/){ print $0 ;print "#include <wx/txtstrm.h>"} else print $0}' /opt/WX/icc-static/include/wx-3.0/wx/longlong.h.orig > $tf &&\
-    mv $tf /opt/WX/icc-static/include/wx-3.0/wx/longlong.h &&\
-    chmod a+r /opt/WX/icc-static/include/wx-3.0/wx/longlong.h &&\
-    tf=`tempfile` && cp /opt/WX/gcc-static/include/wx-3.0/wx/longlong.h /opt/WX/gcc-static/include/wx-3.0/wx/longlong.h.orig &&\
-    awk '{if(/#include "wx\/defs.h"/){ print $0 ;print "#include <wx/txtstrm.h>"} else print $0}' /opt/WX/gcc-static/include/wx-3.0/wx/longlong.h.orig > $tf &&\
-    mv $tf /opt/WX/gcc-static/include/wx-3.0/wx/longlong.h &&\
-    chmod a+r /opt/WX/gcc-static/include/wx-3.0/wx/longlong.h &&\
-    tf=`tempfile` && cp /opt/WX/clang-static/include/wx-3.0/wx/longlong.h /opt/WX/clang-static/include/wx-3.0/wx/longlong.h.orig &&\
-    awk '{if(/#include "wx\/defs.h"/){ print $0 ;print "#include <wx/txtstrm.h>"} else print $0}' /opt/WX/clang-static/include/wx-3.0/wx/longlong.h.orig > $tf &&\
-    mv $tf /opt/WX/clang-static/include/wx-3.0/wx/longlong.h &&\
-    chmod a+r /opt/WX/clang-static/include/wx-3.0/wx/longlong.h
-
-
-
-# First noticed outside container with g++9, several errors in longlong.h seem to be fixed by this extra include  /usr/include/wx-3.1-unofficial
+# wxWidgets builds moved to end of Dockerfile (after CUDA) to minimize layer invalidation during development
 
 
 # Install pytorch - now optional in the top layer container
@@ -137,10 +88,120 @@ RUN echo 'alias lt="ls -lrth"' >> /home/cisTEMdev/.bashrc &&\
     echo 'alias dU="du -ch --max-depth=1 | sort -h"' >> /home/cisTEMdev/.bashrc &&\
     echo 'source /opt/intel/oneapi/setvars.sh' >> /home/cisTEMdev/.bashrc &&\
     echo 'bind "set bell-style none"' >> /home/cisTEMdev/.bashrc &&\
-    echo 'export PATH=/usr/bin:/usr/local/cuda/bin:$PATH' >> /home/cisTEMdev/.bashrc 
-    
+    echo 'export PATH=/usr/bin:/usr/local/cuda/bin:$PATH' >> /home/cisTEMdev/.bashrc
 
+# =============================================================================
+# wxWidgets Multi-Version, Multi-Compiler Build Matrix
+# =============================================================================
+# Build wxWidgets with all compiler variants for version migration testing
+# Each installation is isolated to allow coexistence without conflicts
+#
+# Directory naming: /opt/WX/wx{version}-{compiler}-static-gtk{version}/
+#
+# Matrix:
+#   - wxWidgets 3.0.5 (stable) with gtk2: icc, icpx, gcc, clang
+#   - wxWidgets 3.2.8.1 (stable) with gtk3: icc, icpx, gcc, clang
+#
+# IMPORTANT: Do NOT create /usr/bin/wx-config symlinks - use explicit paths
+#            in configure: --with-wx-config=/opt/WX/wx{ver}-{compiler}-static-gtk{ver}/bin/wx-config
+# =============================================================================
 
+# Download wxWidgets source tarballs
+RUN wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWidgets-3.0.5.tar.bz2 -O /tmp/wx305.tar.bz2 &&\
+    wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.8.1/wxWidgets-3.2.8.1.tar.bz2 -O /tmp/wx328.tar.bz2
+
+# Build wxWidgets 3.0.5 with all 4 compilers (gtk2)
+RUN . /opt/intel/oneapi/setvars.sh &&\
+    echo "=== Building wxWidgets 3.0.5 with 4 compilers (gtk2) ===" &&\
+    # Intel Classic Compiler (icpc) - deprecated but stable
+    mkdir -p /opt/WX/wx305-icc-static-gtk2 && tar -xjf /tmp/wx305.tar.bz2 -C /opt/WX/wx305-icc-static-gtk2 &&\
+    cd /opt/WX/wx305-icc-static-gtk2/wxWidgets-3.0.5 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpc CC=icc ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx305-icc-static-gtk2 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=2 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx305-icc-static-gtk2/wxWidgets-3.0.5 &&\
+    # Intel LLVM Compiler (icpx) - modern replacement for icpc
+    mkdir -p /opt/WX/wx305-icpx-static-gtk2 && tar -xjf /tmp/wx305.tar.bz2 -C /opt/WX/wx305-icpx-static-gtk2 &&\
+    cd /opt/WX/wx305-icpx-static-gtk2/wxWidgets-3.0.5 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpx CC=icx ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx305-icpx-static-gtk2 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=2 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx305-icpx-static-gtk2/wxWidgets-3.0.5 &&\
+    # GCC Compiler
+    mkdir -p /opt/WX/wx305-gcc-static-gtk2 && tar -xjf /tmp/wx305.tar.bz2 -C /opt/WX/wx305-gcc-static-gtk2 &&\
+    cd /opt/WX/wx305-gcc-static-gtk2/wxWidgets-3.0.5 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=g++ CC=gcc ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx305-gcc-static-gtk2 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=2 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx305-gcc-static-gtk2/wxWidgets-3.0.5 &&\
+    # Clang Compiler
+    mkdir -p /opt/WX/wx305-clang-static-gtk2 && tar -xjf /tmp/wx305.tar.bz2 -C /opt/WX/wx305-clang-static-gtk2 &&\
+    cd /opt/WX/wx305-clang-static-gtk2/wxWidgets-3.0.5 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=clang++ CC=clang ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx305-clang-static-gtk2 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=2 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx305-clang-static-gtk2/wxWidgets-3.0.5 &&\
+    rm -f /tmp/wx305.tar.bz2
+
+# Build wxWidgets 3.2.8.1 with all 4 compilers (gtk3)
+RUN . /opt/intel/oneapi/setvars.sh &&\
+    echo "=== Building wxWidgets 3.2.8.1 with 4 compilers (gtk3) ===" &&\
+    # Intel Classic Compiler (icpc)
+    mkdir -p /opt/WX/wx328-icc-static-gtk3 && tar -xjf /tmp/wx328.tar.bz2 -C /opt/WX/wx328-icc-static-gtk3 &&\
+    cd /opt/WX/wx328-icc-static-gtk3/wxWidgets-3.2.8.1 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpc CC=icc ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx328-icc-static-gtk3 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=3 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx328-icc-static-gtk3/wxWidgets-3.2.8.1 &&\
+    # Intel LLVM Compiler (icpx)
+    mkdir -p /opt/WX/wx328-icpx-static-gtk3 && tar -xjf /tmp/wx328.tar.bz2 -C /opt/WX/wx328-icpx-static-gtk3 &&\
+    cd /opt/WX/wx328-icpx-static-gtk3/wxWidgets-3.2.8.1 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpx CC=icx ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx328-icpx-static-gtk3 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=3 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx328-icpx-static-gtk3/wxWidgets-3.2.8.1 &&\
+    # GCC Compiler
+    mkdir -p /opt/WX/wx328-gcc-static-gtk3 && tar -xjf /tmp/wx328.tar.bz2 -C /opt/WX/wx328-gcc-static-gtk3 &&\
+    cd /opt/WX/wx328-gcc-static-gtk3/wxWidgets-3.2.8.1 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=g++ CC=gcc ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx328-gcc-static-gtk3 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=3 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx328-gcc-static-gtk3/wxWidgets-3.2.8.1 &&\
+    # Clang Compiler
+    mkdir -p /opt/WX/wx328-clang-static-gtk3 && tar -xjf /tmp/wx328.tar.bz2 -C /opt/WX/wx328-clang-static-gtk3 &&\
+    cd /opt/WX/wx328-clang-static-gtk3/wxWidgets-3.2.8.1 &&\
+    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=clang++ CC=clang ./configure --disable-precomp-headers \
+        --prefix=/opt/WX/wx328-clang-static-gtk3 --with-libnotify=no --disable-shared \
+        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
+        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
+        --without-libjbig --with-gtk=3 --disable-sys-libs &&\
+    make -j$n_threads && make install && cd /opt/WX && rm -rf wx328-clang-static-gtk3/wxWidgets-3.2.8.1 &&\
+    rm -f /tmp/wx328.tar.bz2
+
+# Apply longlong.h patch to all wxWidgets 3.0.5 installations
+# This fixes compilation errors with newer compilers
+RUN for wxdir in /opt/WX/wx305-*/; do \
+        tf=$(tempfile) && \
+        cp ${wxdir}include/wx-3.0/wx/longlong.h ${wxdir}include/wx-3.0/wx/longlong.h.orig && \
+        awk '{if(/#include "wx\/defs.h"/){ print $0 ;print "#include <wx/txtstrm.h>"} else print $0}' \
+            ${wxdir}include/wx-3.0/wx/longlong.h.orig > $tf && \
+        mv $tf ${wxdir}include/wx-3.0/wx/longlong.h && \
+        chmod a+r ${wxdir}include/wx-3.0/wx/longlong.h; \
+    done
 
 
 

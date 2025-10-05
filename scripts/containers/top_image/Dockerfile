@@ -31,10 +31,13 @@ SHELL ["/bin/bash", "-c"]
 # some rebuild comment
 ENV CISTEM_REF_IMAGES=/cisTEMdev/cistem_reference_images
 
-# We need a more recent python so we'll put that in a virtual environment at /opt/venv
-# Copy the script into the image
-COPY install_python_310_venv.sh /tmp/
-RUN bash /tmp/install_python_310_venv.sh && rm -f /tmp/install_python_310_venv.sh
+# Python 3.10 is native to Ubuntu 22.04, set up virtual environment at /opt/venv
+RUN apt-get update && \
+    apt-get install -y python3.10 python3.10-venv python3.10-dev && \
+    python3.10 -m venv /opt/venv && \
+    /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
+    chmod -R a+rX /opt/venv && \
+    rm -rf /var/lib/apt/lists/*
 
 # Default shell uses the venv Python for subsequent RUN steps
 ENV VIRTUAL_ENV=/opt/venv
@@ -47,8 +50,15 @@ RUN python --version && pip --version
 COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_bear.sh install_llm_optimization_tools.sh /tmp/
 
 
-# If we do not do this, we want to link the static or dynamic libs from /opt/WX to /usr/bin so we don't need to set it on configure lines and also so that wxformbuilder can find them
-RUN echo "checking for wxWidgets 3.1.5" && if [[ "x${build_wx_version}" == "xdev" ]]; then /tmp/install_wx_3.1.5.sh  ; else echo "linking the (${build_type}) wx-config system wide"  && ln -sf /opt/WX/icc-${build_type}/bin/wx-config /usr/bin/wx-config ; fi
+# wxWidgets installations - multiple versions/compilers available in base container
+# DO NOT create /usr/bin/wx-config symlink - use explicit --with-wx-config paths
+# Available installations:
+#   wx305-{icc,icpx,gcc,clang}-static-gtk2 (3.0.5 stable with gtk2)
+#   wx328-{icc,icpx,gcc,clang}-static-gtk3 (3.2.8.1 stable with gtk3)
+# OBSOLETE: install_wx_3.1.5.sh installs system wx packages - DO NOT USE (set build_wx_version != "dev")
+# wxWidgets 3.0.5 and 3.2.8.1 are now built from source in base container
+RUN echo "wxWidgets multi-version/multi-compiler matrix available in /opt/WX/" && \
+    if [[ "x${build_wx_version}" == "xdev" ]]; then echo "ERROR: build_wx_version=dev is obsolete and installs system wx packages!" && exit 1; fi
 
 # Install Python packages from requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
@@ -63,12 +73,11 @@ RUN mkdir -p /opt && cd /opt && gdown --fuzzy https://drive.google.com/file/d/1Q
 RUN if [[ "x${build_ref_images}" == "xtrue" ]]; then mkdir -p /cisTEMdev && cd /cisTEMdev && gdown --fuzzy https://drive.google.com/file/d/197sE_pO4FWmjCo0zlqRJXAxN2BLbmHS_/view?usp=sharing && tar -xjvf cistem_reference_images_fp32.tar.bz2 && rm cistem_reference_images_fp32.tar.bz2 ;fi
 
 
-# Will this work with wx 3.0.5?
-
-# Install wxFormbuilder
-# Note, this will ignore the stable dynamic wx at /opt/WX/intel-dynamic and install libwxbase3.0-0v5 and libwxgtk3.0-gtk3-0v5 and libwxgtk-media3.0-gtk3-0v5
-RUN cd /opt/WX && \
-    apt-get update && apt install -y ./wxformbuilder_3.10.0_ubuntu-20.04_amd64.deb && rm wxformbuilder_3.10.0_ubuntu-20.04_amd64.deb  && \
+# Install wxFormBuilder v4.2.1 from SourceForge pre-built .deb for Ubuntu 22.04
+RUN wget -q https://sourceforge.net/projects/wxformbuilder.mirror/files/v4.2.1/wxformbuilder_4.2.1_ubuntu-22.04_amd64.deb/download -O /tmp/wxformbuilder.deb && \
+    apt-get update && \
+    apt-get install -y /tmp/wxformbuilder.deb || apt-get install -f -y && \
+    rm -f /tmp/wxformbuilder.deb && \
     rm -rf /var/lib/apt/lists/*
 
 #  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM

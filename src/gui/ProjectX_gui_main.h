@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version 3.10.0-4761b0c)
+// C++ code generated with wxFormBuilder (version 4.2.1-0-g80c4cb6)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO *NOT* EDIT THIS FILE!
@@ -255,7 +255,7 @@ class DatabaseUpdateDialogParent : public wxDialog
 		enum
 		{
 			wxID_UPDATE_ONLY = 1000,
-			wxID_BACKUP_AND_UPDATE
+			wxID_BACKUP_AND_UPDATE,
 		};
 
 		wxStaticText* UpdateText;

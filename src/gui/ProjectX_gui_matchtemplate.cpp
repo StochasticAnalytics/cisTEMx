@@ -26,6 +26,7 @@ ShowTemplateMatchResultsPanelParent::ShowTemplateMatchResultsPanelParent( wxWind
 	m_splitter16 = new wxSplitterWindow( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_3D );
 	m_splitter16->SetSashGravity( 0.5 );
 	m_splitter16->Connect( wxEVT_IDLE, wxIdleEventHandler( ShowTemplateMatchResultsPanelParent::m_splitter16OnIdle ), NULL, this );
+	m_splitter16->SetMinimumPaneSize( 300 );
 
 	m_panel87 = new wxPanel( m_splitter16, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer301;

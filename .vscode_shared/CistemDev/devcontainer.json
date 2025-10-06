@@ -1,5 +1,7 @@
 {
-    "name": "cisTEMdev-wxSTABLE-static12",
+    "name": "cisTEM-${localEnv:USER}-${localWorkspaceFolderBasename}",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/cisTEM,type=bind,consistency=cached",
+    "workspaceFolder": "/workspaces/cisTEM",
     "image": "cistemdashorg/cistem_build_env:v2.2.2",
     "remoteUser": "cisTEMdev",
     "hostRequirements": {
@@ -38,13 +40,9 @@
             ]
         }
     }
-    // ,
-    // "mounts": [
-    //     "source=${localEnv:CISTEM_DEV_SCRATCH_DIR},target=/mnt,type=bind,consistency=cached"
-    // ]
-    ,
-    "mounts": [
-        "source=/scratch,target=/scratch,type=bind,consistency=cached",
-        "source=/sa_shared,target=/sa_shared,type=bind,consistency=cached"
-    ]
+    // For custom mounts, use devcontainer CLI with --mount flag instead of hardcoding here.
+    // Example bash aliases (add to ~/.bashrc):
+    //   alias cistem-devcontainer='devcontainer up --mount type=bind,source=/scratch,target=/scratch --mount type=bind,source=/sa_shared,target=/sa_shared && devcontainer open'
+    //   alias cistem-devcontainer-rebuild='devcontainer up --remove-existing-container --build-no-cache --mount type=bind,source=/scratch,target=/scratch --mount type=bind,source=/sa_shared,target=/sa_shared && devcontainer open'
+    // Usage: Run from workspace directory: cistem-devcontainer (or cistem-devcontainer-rebuild to force rebuild)
 }

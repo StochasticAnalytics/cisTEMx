@@ -80,8 +80,7 @@ add_library(cisTEM_gui STATIC
 )
 
 if (BUILD_EXPERIMENTAL_FEATURES)
-	add_library(cisTEM_gui_experimental STATIC 
-        RefineTemplateDevPanel.cpp
+	add_library(cisTEM_gui_experimental STATIC
 		MyExperimentalPanel.cpp
 	)
 endif(BUILD_EXPERIMENTAL_FEATURES)

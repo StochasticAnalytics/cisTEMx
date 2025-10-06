@@ -550,9 +550,9 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 
     main_frame->current_project.database.Begin( );
 
-    // NOTE: job_id field in structure maps to SEARCH_ID column in database
+    // NOTE: search_id field in structure maps to SEARCH_ID column in database
     // SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
-    cached_results[image_number - 1].job_id = search_id;
+    cached_results[image_number - 1].search_id = search_id;
 
     // Capture datetime and elapsed time when result arrives
     cached_results[image_number - 1].datetime_of_run = time(NULL); // Unix timestamp
@@ -1592,7 +1592,7 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         TemplateMatchJobResults temp_filename_helper;
         temp_filename_helper.output_filename_base = output_filename_base;
         temp_filename_helper.template_match_id    = predicted_template_match_id;
-        temp_filename_helper.job_id               = predicted_search_id;
+        temp_filename_helper.search_id            = predicted_search_id;
 
         // Generate output filenames using helper methods
         wxString mip_output_file             = temp_filename_helper.GetMipFilename( );
@@ -1642,7 +1642,7 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         // Store just the base filename in database - we have all info to reconstruct full names
         temp_result.output_filename_base = output_filename_base;
         temp_result.template_match_id    = predicted_template_match_id;
-        temp_result.job_id               = predicted_search_id; // This is the search_id in database
+        temp_result.search_id            = predicted_search_id; // This is the search_id in database
 
         cached_results.Add(temp_result);
 

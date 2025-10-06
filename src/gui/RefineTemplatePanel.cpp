@@ -1048,7 +1048,7 @@ void RefineTemplatePanel::WriteResultToDataBase( ) {
     long elapsed_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
 
     for ( int counter = 0; counter < cached_results.GetCount( ); counter++ ) {
-        cached_results[counter].job_id               = template_match_job_id;
+        cached_results[counter].search_id            = template_match_job_id;
         cached_results[counter].template_match_id    = template_match_id;
         cached_results[counter].elapsed_time_seconds = elapsed_seconds;
 

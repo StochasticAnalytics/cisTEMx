@@ -9,8 +9,6 @@ MyExperimentalPanel::MyExperimentalPanel(wxWindow* parent, wxWindowID id, const 
 // TODO: destructor
 
 void MyExperimentalPanel::OnExperimentalBookPageChanged(wxBookCtrlEvent& event) {
-    extern RefineTemplateDevPanel* refine_template_dev_panel;
-
 #ifdef __WXOSX__
     // Necessary for MacOS to refresh the panels
     if ( event.GetSelection( ) == 0 ) {

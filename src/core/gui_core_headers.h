@@ -134,7 +134,6 @@
 
 #ifdef EXPERIMENTAL
 #include "../gui/MyExperimentalPanel.h"
-#include "../gui/RefineTemplateDevPanel.h"
 #endif
 
 #include "../gui/AtomicCoordinatesAssetPanel.h"

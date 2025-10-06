@@ -8,7 +8,7 @@ TemplateMatchJobResults::TemplateMatchJobResults( ) {
     job_name                   = "";
     job_type                   = -1;
     input_job_id               = -1;
-    job_id                     = -1;
+    search_id                  = -1;
     template_match_id          = -1;
     datetime_of_run            = 0;
     image_asset_id             = -1;

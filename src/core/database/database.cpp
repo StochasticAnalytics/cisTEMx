@@ -1973,7 +1973,7 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
                     "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT",
                     "FUTURE_FLOAT_1", "FUTURE_FLOAT_2",
                     wanted_template_match_id,
-                    job_details.datetime_of_run, job_details.elapsed_time_seconds, job_details.job_id,
+                    job_details.datetime_of_run, job_details.elapsed_time_seconds, job_details.search_id,
                     job_details.job_type, job_details.input_job_id, job_details.image_asset_id,
                     job_details.ref_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
                     job_details.output_filename_base.ToUTF8( ).data( ),
@@ -2051,7 +2051,7 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     temp_result.job_name             = sqlite3_column_text(list_statement, 1);
     temp_result.datetime_of_run      = sqlite3_column_int64(list_statement, 2);
     temp_result.elapsed_time_seconds = sqlite3_column_int64(list_statement, 3);
-    temp_result.job_id               = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
+    temp_result.search_id            = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
     temp_result.job_type             = sqlite3_column_int(list_statement, 5);
     temp_result.input_job_id         = sqlite3_column_int64(list_statement, 6); // PARENT_SEARCH_ID
     temp_result.image_asset_id       = sqlite3_column_int64(list_statement, 7);

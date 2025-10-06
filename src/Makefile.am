@@ -768,7 +768,7 @@ cisTEM_SOURCES = programs/projectx/projectx.cpp \
                 gui/ResampleDialog.cpp
 
 if EXPERIMENTAL_AM
-cisTEM_SOURCES +=  gui/RefineTemplateDevPanel.cpp gui/MyExperimentalPanel.cpp 
+cisTEM_SOURCES +=  gui/MyExperimentalPanel.cpp
 endif
 
 if ENABLE_WEBVIEW_AM

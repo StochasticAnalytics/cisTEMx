@@ -35,8 +35,7 @@ MatchTemplateResultsPanel* match_template_results_panel = nullptr;
 RefineTemplatePanel*       refine_template_panel        = nullptr;
 
 #ifdef EXPERIMENTAL
-ExperimentalPanel*      experimental_panel        = nullptr;
-RefineTemplateDevPanel* refine_template_dev_panel = nullptr;
+ExperimentalPanel* experimental_panel = nullptr;
 #endif
 
 MyMovieAssetPanel*                movie_asset_panel                    = nullptr;
@@ -148,10 +147,6 @@ bool MyGuiApp::OnInit( ) {
     match_template_results_panel = new MatchTemplateResultsPanel(results_panel->ResultsBook);
 
     // See src/gui/workflows/TmWorkflow.h for instantiation of Template Matching workflow panels.
-
-#ifdef EXPERIMENTAL
-    refine_template_dev_panel = new RefineTemplateDevPanel(experimental_panel->ExperimentalBook);
-#endif
 
     // Setup list books
     MenuBookIconImages     = new wxImageList( );
@@ -265,10 +260,6 @@ bool MyGuiApp::OnInit( ) {
     results_panel->ResultsBook->AddPage(match_template_results_panel, "TM Results", false, 2); // re-using icon FIXME
 
     settings_panel->SettingsBook->AddPage(run_profiles_panel, "Run Profiles", true, 0);
-
-#ifdef EXPERIMENTAL
-    experimental_panel->ExperimentalBook->AddPage(refine_template_dev_panel, "Refine Templates", true, 0);
-#endif
 
     // Setup Movie Panel
 

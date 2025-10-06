@@ -43,8 +43,7 @@ extern MatchTemplateResultsPanel* match_template_results_panel;
 extern RefineTemplatePanel*       refine_template_panel;
 
 #ifdef EXPERIMENTAL
-extern MyExperimentalPanel*    experimental_panel;
-extern RefineTemplateDevPanel* refine_template_dev_panel;
+extern MyExperimentalPanel* experimental_panel;
 #endif
 
 extern MyOverviewPanel* overview_panel;

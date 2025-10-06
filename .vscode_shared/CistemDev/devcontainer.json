@@ -2,7 +2,7 @@
     "name": "cisTEM-${localEnv:USER}-${localWorkspaceFolderBasename}",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/cisTEM,type=bind,consistency=cached",
     "workspaceFolder": "/workspaces/cisTEM",
-    "image": "cistemdashorg/cistem_build_env:v2.2.2",
+    "image": "ghcr.io/cistem-org/cistem_build_env:v3.0.0",
     "remoteUser": "cisTEMdev",
     "hostRequirements": {
         "gpu": "optional"

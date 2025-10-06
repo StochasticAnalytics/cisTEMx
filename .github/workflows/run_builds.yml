@@ -46,8 +46,8 @@ jobs:
     strategy:
       fail-fast: true
     runs-on: ${{ inputs.runs_on_os }}
-    container: 
-      image: cistemdashorg/cistem_build_env:v2.2.3
+    container:
+      image: ghcr.io/cistem-org/cistem_build_env:v3.0.0
       options: --user root --rm
       # options: --user root --rm --gpus all
     outputs:

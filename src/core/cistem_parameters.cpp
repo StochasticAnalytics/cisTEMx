@@ -2158,8 +2158,9 @@ int cisTEMParameters::ReturnMaxPositionInStack(bool exclude_negative_film_number
 
 static int wxCMPFUNC_CONV SortByReference3DFilenameCompareFunction(cisTEMParameterLine** a, cisTEMParameterLine** b) // function for sorting the classum selections by parent_image_id - this makes cutting them out more efficient
 {
-    // NOTE: this may actually be a GTK_VERSION = 3 need, however, wx > 3.0.5 is assumed to be build on gtk3 not gtk2
-#ifdef WXWIDGETS_3_DEV
+    // wxWidgets 3.2+ and 3.1.x changed wxStringSortAscending to take values instead of pointers
+    // (wx 3.0.5 uses pointers)
+#if defined(WXWIDGETS_3_DEV) || defined(WXWIDGETS_3_2_PLUS)
     return wxStringSortAscending((*a)->reference_3d_filename, (*b)->reference_3d_filename);
 #else
     return wxStringSortAscending(&(*a)->reference_3d_filename, &(*b)->reference_3d_filename);

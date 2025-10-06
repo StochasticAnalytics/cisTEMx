@@ -417,36 +417,71 @@ AC_DEFUN([WXTEST],
 # Call WXTEST func
 WXTEST
 
-# Verify minimus requires
-vers=`echo $wxversion | $AWK 'BEGIN { FS = "."; } { printf "% d", ($1  1000 + $2)  1000 + $3;}'`
-if test -n "$vers" && test "$vers" -ge 310001004; then
+# Parse wxWidgets version into components
+wx_major=`echo $wxversion | $AWK 'BEGIN { FS = "."; } { print $1 }'`
+wx_minor=`echo $wxversion | $AWK 'BEGIN { FS = "."; } { print $2 }'`
+wx_patch=`echo $wxversion | $AWK 'BEGIN { FS = "."; } { print $3 }'`
+
+# Optional flag to skip version check (builder's risk)
+skip_wx_version_check="no"
+AC_ARG_ENABLE(wx-version-check, AS_HELP_STRING([--disable-wx-version-check],[Skip wxWidgets version validation (use at your own risk) [default=no]]),[
+  if test "$enableval" = no; then
+    skip_wx_version_check="yes"
+    AC_MSG_WARN([wxWidgets version check disabled - build may fail or produce incorrect results])
+  fi
+])
+
+# Verify wxWidgets version - we support specific tested versions
+version_ok="no"
+version_type=""
+
+if test "$wx_major" = "3" && test "$wx_minor" = "0" && test "$wx_patch" = "5"; then
+    version_ok="yes"
+    version_type="3.0.5"
+    AC_DEFINE([WXWIDGETS_3_0_5], [], [wxWidgets 3.0.5 stable])
+elif test "$wx_major" = "3" && test "$wx_minor" = "2" && test "$wx_patch" -ge "8"; then
+    version_ok="yes"
+    version_type="3.2.8+"
+    AC_DEFINE([WXWIDGETS_3_2_PLUS], [], [wxWidgets 3.2.8 or later])
+    # Also define this for backward compatibility with code expecting 3.1.x+ features
+    AC_DEFINE([WXWIDGETS_3_DEV], [], [wxWidgets 3.1.x or later])
+elif test "$skip_wx_version_check" = "yes"; then
+    version_ok="yes"
+    version_type="unchecked (warning)"
+    AC_MSG_WARN([Building with unsupported wxWidgets version $wxversion])
+    # Try to guess which defines to set based on version
+    if test "$wx_major" = "3" && test "$wx_minor" = "0"; then
+        AC_DEFINE([WXWIDGETS_3_0_5], [], [wxWidgets 3.0.x (unchecked)])
+    else
+        AC_DEFINE([WXWIDGETS_3_DEV], [], [wxWidgets 3.1.x or later (unchecked)])
+        if test "$wx_minor" -ge "2"; then
+            AC_DEFINE([WXWIDGETS_3_2_PLUS], [], [wxWidgets 3.2.x+ (unchecked)])
+        fi
+    fi
+fi
+
+if test "$version_ok" = "yes"; then
+    AC_MSG_NOTICE([Using wxWidgets version $wxversion (type: $version_type)])
 
     # TODO: Get all define symbols from WX into cistem_config.h
-    # wx_cxx_defines="`$($WXCONFIG $WXCONFIGFLAGS --cxxflags) | $AWK 'BEGIN{output_string=""}{ for (i = 1; i <= NF; i++) if($i ~ /^-D/) output_string=output_string" "$i}END{print output_string}'`"   
+    # wx_cxx_defines="`$($WXCONFIG $WXCONFIGFLAGS --cxxflags) | $AWK 'BEGIN{output_string=""}{ for (i = 1; i <= NF; i++) if($i ~ /^-D/) output_string=output_string" "$i}END{print output_string}'`"
 
-        WX_CPPFLAGS="`$WXCONFIG $WXCONFIGFLAGS --cppflags`"
-        WX_CXXFLAGS="`$WXCONFIG $WXCONFIGFLAGS --cxxflags | sed -e 's/-fno-exceptions//'`"
-        WX_LIBS="`$WXCONFIG $WXCONFIGFLAGS --libs richtext,std,aui`"
+    WX_CPPFLAGS="`$WXCONFIG $WXCONFIGFLAGS --cppflags`"
+    WX_CXXFLAGS="`$WXCONFIG $WXCONFIGFLAGS --cxxflags | sed -e 's/-fno-exceptions//'`"
+    WX_LIBS="`$WXCONFIG $WXCONFIGFLAGS --libs richtext,std,aui`"
 
-        if test "$build_mac" =  "yes"; then
-          WX_CPPFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cppflags`"
-          WX_CXXFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cxxflags | sed -e 's/-fno-exceptions//'`"
-          WX_LIBS_BASE="`$WXCONFIG $WXCONFIGFLAGS --libs richtext,std,aui,xml`"
-        else
-          WX_CPPFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cppflags base`"
-          WX_CXXFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cxxflags base | sed -e 's/-fno-exceptions//'`"
-          WX_LIBS_BASE="`$WXCONFIG $WXCONFIGFLAGS --libs base,net,xml`"
-        fi
-        AC_MSG_NOTICE([wxWidgets libsbase $WX_LIBS])       
-        AC_MSG_NOTICE([wxWidgets libsbase $WX_LIBS_BASE])
-        wx_is_available=1
-
-    # Record whether we are on the stable (3.0.4/5) or development (3.1.5) branch
-    if test -n "$vers" && test "$vers" -gt 310001005; then
-        AC_DEFINE([WXWIDGETS_3_DEV], [], [Define to 1 if wxWidgets version is 3.1.5 or greater])
+    if test "$build_mac" =  "yes"; then
+      WX_CPPFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cppflags`"
+      WX_CXXFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cxxflags | sed -e 's/-fno-exceptions//'`"
+      WX_LIBS_BASE="`$WXCONFIG $WXCONFIGFLAGS --libs richtext,std,aui,xml`"
     else
-        AC_DEFINE([WXWIDGETS_3_0_5], [], [Define to 1 if wxWidgets version is 3.0.4 or greater])
+      WX_CPPFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cppflags base`"
+      WX_CXXFLAGS_BASE="`$WXCONFIG $WXCONFIGFLAGS --cxxflags base | sed -e 's/-fno-exceptions//'`"
+      WX_LIBS_BASE="`$WXCONFIG $WXCONFIGFLAGS --libs base,net,xml`"
     fi
+    AC_MSG_NOTICE([wxWidgets libs $WX_LIBS])
+    AC_MSG_NOTICE([wxWidgets libsbase $WX_LIBS_BASE])
+    wx_is_available=1
 
     # Record which gtk version we are using
     GTK_CONFIG=`$WXCONFIG --selected-config | $AWK 'BEGIN{FS="-"}{if($1=="gtk2") print 2; else print 3}'`
@@ -456,8 +491,21 @@ if test -n "$vers" && test "$vers" -ge 310001004; then
     AC_DEFINE_UNQUOTED([GTK_VERSION], $GTK_CONFIG, [Define to 2 if gtk2, 3 if gtk3])
 
 else
-        AC_MSG_ERROR("Only wxWidgets version 3.0.4+ is currently supported.")
-        wx_is_available=0
+    AC_MSG_ERROR([
+**************************************************************************
+wxWidgets version $wxversion is not supported by cisTEM.
+
+Supported versions:
+  - wxWidgets 3.0.5 (stable, with GTK2)
+  - wxWidgets 3.2.8 or later (with GTK3)
+
+Other versions may work but have not been tested. If you wish to proceed
+anyway, use --disable-wx-version-check at your own risk.
+
+Current wx-config: $WXCONFIG
+**************************************************************************
+])
+    wx_is_available=0
 fi
 
 

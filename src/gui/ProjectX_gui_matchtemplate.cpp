@@ -33,8 +33,9 @@ ShowTemplateMatchResultsPanelParent::ShowTemplateMatchResultsPanelParent( wxWind
 	bSizer301 = new wxBoxSizer( wxVERTICAL );
 
 	m_splitter15 = new wxSplitterWindow( m_panel87, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_3D );
-	m_splitter15->SetSashGravity( 0.5 );
+	m_splitter15->SetSashGravity( 0.6 );
 	m_splitter15->Connect( wxEVT_IDLE, wxIdleEventHandler( ShowTemplateMatchResultsPanelParent::m_splitter15OnIdle ), NULL, this );
+	m_splitter15->SetMinimumPaneSize( 100 );
 
 	m_panel89 = new wxPanel( m_splitter15, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer303;

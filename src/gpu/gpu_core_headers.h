@@ -26,22 +26,78 @@ const int MAX_GPU_COUNT = 32;
 
 // clang-format off
 
-#ifndef ENABLE_GPU_DEBUG
-#define cudaErr(err, ...) { err; }
-#define nppErr(err, ...) { err; }
-#define cuTensorErr(err, ...) { err; }
-#define cufftErr(err, ...) { err; }
-#define postcheck 
-#define precheck 
-#else
-// The static path to the error code definitions is brittle, but better than the internet. At least you can click in VSCODE to get there.
-// cudaErrorNOteReady is not really an error (600 or hexadecimal 0x258) but it is returned by cudaStreamSynchronize
-#define nppErr(npp_stat)  {if (npp_stat != NPP_SUCCESS) { std::cerr << "NPP_CHECK_NPP NPP_SUCCESS = (" << NPP_SUCCESS << ") - npp_stat = " << npp_stat ; wxPrintf(" at %s:(%d)\nFind error codes at /usr/local/cuda-11.7/targets/x86_64-linux/include/nppdefs.h:(170)\n\n",__FILE__,__LINE__); DEBUG_ABORT} ;};
-#define cudaErr(error) { auto status = static_cast<cudaError_t>(error); if (status != cudaSuccess || status == cudaErrorNotReady) { std::cerr << cudaGetErrorString(status) << " :-> "; MyPrintWithDetails(""); DEBUG_ABORT} }
-#define cufftErr(error) { auto status = static_cast<cufftResult>(error); if (status != CUFFT_SUCCESS) { std::cerr << cistem::gpu::cufft_error_types[status] << " :-> "; MyPrintWithDetails(""); DEBUG_ABORT} }
-#define cuTensorErr(error) { auto status = static_cast<cutensorStatus_t>(error); if (status != CUTENSOR_STATUS_SUCCESS) { std::cerr << cutensorGetErrorString(status) << " :-> "; MyPrintWithDetails(""); DEBUG_ABORT} }
+#if !defined(ENABLE_GPU_DEBUG) || ENABLE_GPU_DEBUG == 0
+// Level 0: No GPU error checking (release mode)
+#define cudaErr(err) { err; }
+#define nppErr(err) { err; }
+#define cuTensorErr(err) { err; }
+#define cufftErr(err) { err; }
+#define postcheck
+#define precheck
+#define postcheck_withstream(stream)
+
+#elif ENABLE_GPU_DEBUG == 1
+// Level 1: Error checking without expensive synchronization
+// This catches API errors immediately but doesn't sync streams, so asynchronous kernel errors may be delayed
+#define cudaErr(error) { auto status = static_cast<cudaError_t>(error); \
+    if (status != cudaSuccess) { \
+        std::cerr << cudaGetErrorString(status) << " at " << __FILE__ << ":" << __LINE__ \
+                  << "\n**For detailed kernel tracing with stream synchronization, rebuild with --with-gpu-debug=2**\n"; \
+        DEBUG_ABORT} }
+
+#define nppErr(npp_stat) { if (npp_stat != NPP_SUCCESS) { \
+        std::cerr << "NPP error (code " << npp_stat << ") at " << __FILE__ << ":" << __LINE__ \
+                  << "\n**For detailed tracing, rebuild with --with-gpu-debug=2**\n" \
+                  << "Find NPP error codes at /usr/local/cuda/targets/x86_64-linux/include/nppdefs.h\n"; \
+        DEBUG_ABORT} }
+
+#define cufftErr(error) { auto status = static_cast<cufftResult>(error); \
+    if (status != CUFFT_SUCCESS) { \
+        std::cerr << cistem::gpu::cufft_error_types[status] << " at " << __FILE__ << ":" << __LINE__ \
+                  << "\n**For detailed tracing, rebuild with --with-gpu-debug=2**\n"; \
+        DEBUG_ABORT} }
+
+#define cuTensorErr(error) { auto status = static_cast<cutensorStatus_t>(error); \
+    if (status != CUTENSOR_STATUS_SUCCESS) { \
+        std::cerr << cutensorGetErrorString(status) << " at " << __FILE__ << ":" << __LINE__ \
+                  << "\n**For detailed tracing, rebuild with --with-gpu-debug=2**\n"; \
+        DEBUG_ABORT} }
+
+#define postcheck  // No-op at level 1 (no stream synchronization)
+#define precheck   // No-op at level 1
+#define postcheck_withstream(stream)  // No-op at level 1
+
+#else  // ENABLE_GPU_DEBUG >= 2
+// Level 2: Full error checking with stream synchronization
+// This provides maximum debugging detail but is slow - syncs after every kernel launch
+#define cudaErr(error) { auto status = static_cast<cudaError_t>(error); \
+    if (status != cudaSuccess && status != cudaErrorNotReady) { \
+        std::cerr << cudaGetErrorString(status) << " :-> "; \
+        MyPrintWithDetails(""); \
+        DEBUG_ABORT} }
+
+#define nppErr(npp_stat) { if (npp_stat != NPP_SUCCESS) { \
+        std::cerr << "NPP_CHECK_NPP NPP_SUCCESS = (" << NPP_SUCCESS << ") - npp_stat = " << npp_stat; \
+        wxPrintf(" at %s:(%d)\nFind error codes at /usr/local/cuda/targets/x86_64-linux/include/nppdefs.h:(170)\n\n", \
+                 __FILE__, __LINE__); \
+        DEBUG_ABORT} }
+
+#define cufftErr(error) { auto status = static_cast<cufftResult>(error); \
+    if (status != CUFFT_SUCCESS) { \
+        std::cerr << cistem::gpu::cufft_error_types[status] << " :-> "; \
+        MyPrintWithDetails(""); \
+        DEBUG_ABORT} }
+
+#define cuTensorErr(error) { auto status = static_cast<cutensorStatus_t>(error); \
+    if (status != CUTENSOR_STATUS_SUCCESS) { \
+        std::cerr << cutensorGetErrorString(status) << " :-> "; \
+        MyPrintWithDetails(""); \
+        DEBUG_ABORT} }
+
 #define postcheck { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaStreamSynchronize(cudaStreamPerThread); cudaErr(error); }
 #define precheck { cudaErr(cudaGetLastError()) }
+#define postcheck_withstream(stream) { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaStreamSynchronize(stream); cudaErr(error); }
+
 #endif
 
 // //s

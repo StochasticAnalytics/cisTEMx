@@ -207,6 +207,7 @@ void MatchTemplateApp::ProgramSpecificInit( ) {
 
 // Optional command-line stuff
 void MatchTemplateApp::AddCommandLineOptions( ) {
+    command_line_parser.AddOption("j", "", "Override number of threads (DEVELOPER OPTION - not for production use)", wxCMD_LINE_VAL_NUMBER);
     command_line_parser.AddLongSwitch("disable-gpu-prj", "Disable projection using the gpu. Default false");
     command_line_parser.AddLongSwitch("disable-flat-fielding", "Disable flat fielding. Default false");
     command_line_parser.AddOption("", "n-expected-false-positives", "average number of false positives per image, (defaults to 1)", wxCMD_LINE_VAL_DOUBLE);
@@ -545,10 +546,23 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool     use_gpu                         = my_current_job.arguments[40].ReturnBoolArgument( );
     bool     use_fast_fft                    = my_current_job.arguments[41].ReturnBoolArgument( );
 
-    int max_threads = my_current_job.arguments[42].ReturnIntegerArgument( );
+    int max_threads;
 
-    if ( is_running_locally == false )
-        max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
+    // Check for -j thread override option (developer option only)
+    if ( command_line_parser.Found("j", &temp_long) ) {
+        SendInfo("WARNING: Using -j thread override (DEVELOPER OPTION - not for production use)\n");
+        max_threads = int(temp_long);
+        if ( max_threads < 1 ) {
+            max_threads = 1;
+        }
+        SendInfo(wxString::Format("Thread count overridden to: %d\n", max_threads));
+    }
+    else {
+        max_threads = my_current_job.arguments[42].ReturnIntegerArgument( );
+
+        if ( is_running_locally == false )
+            max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
+    }
 
     // This condition applies to GUI and CLI - it is just a recommendation to the user.
     if ( use_gpu && max_threads <= 1 ) {

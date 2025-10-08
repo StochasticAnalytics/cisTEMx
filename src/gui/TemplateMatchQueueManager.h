@@ -206,15 +206,18 @@ class TemplateMatchQueueManager : public wxPanel {
     // UI Controls - Static text labels for queue sections
     wxStaticText* execution_queue_label; ///< Label for execution queue section
     wxStaticText* available_searches_label; ///< Label for available searches section
-    wxStaticText* cli_args_label; ///< Label for CLI arguments section
+    wxStaticText* cli_args_label; ///< Label for custom CLI arguments
 #ifdef cisTEM_QM_LOGGING
     wxStaticText* logging_label; ///< Label for debug logging controls
 #endif
 
     // UI Controls - Container panels that need show/hide during editor view switch
     wxPanel* controls_panel; ///< Panel containing Run Queue button and logging controls
-    wxPanel* cli_args_panel; ///< Panel containing CLI arguments and hide completed checkbox
-    wxPanel* bottom_controls; ///< Panel containing bottom management buttons
+    wxPanel* cli_args_panel; ///< Panel containing CLI arguments controls
+
+    // UI Controls - Custom CLI arguments
+    wxTextCtrl* custom_cli_args_text; ///< Text control for custom command-line arguments
+    wxPanel*    bottom_controls; ///< Panel containing bottom management buttons
 
     // UI Controls - Execution queue management buttons
     wxButton* run_selected_button; ///< Execute highest priority search
@@ -228,9 +231,6 @@ class TemplateMatchQueueManager : public wxPanel {
     wxButton*   remove_selected_button; ///< Delete selected searches entirely
     wxButton*   clear_queue_button; ///< Clear entire execution queue
     wxCheckBox* hide_completed_checkbox; ///< Toggle visibility of completed searches
-
-    // UI Controls - Custom CLI arguments
-    wxTextCtrl* custom_cli_args_text; ///< Editable field for custom CLI arguments
 
 #ifdef cisTEM_QM_LOGGING
     // UI Controls - Logging controls (in controls_panel, only visible when cisTEM_QM_LOGGING is defined)

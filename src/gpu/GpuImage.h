@@ -324,6 +324,21 @@ class GpuImage {
     bool Init(Image& cpu_image, bool pin_host_memory = true, bool allocate_real_values = true);
     void SetupInitialValues( );
     void UpdateBoolsToDefault( );
+
+    /**
+     * @brief Configure FFT plan with specified stream association
+     *
+     * Associates the cuFFT plans with a CUDA stream for asynchronous execution.
+     *
+     * @param plan_type Type of FFT plan to create
+     * @param input_buffer Input buffer pointer
+     * @param output_buffer Output buffer pointer
+     * @param stream CUDA stream to associate with the plan (default: cudaStreamPerThread)
+     *
+     * @note IMPORTANT: The caller must ensure that custom streams outlive this GpuImage object.
+     *       The GpuImage does not own the stream and will not destroy it. If a custom stream
+     *       is destroyed before this GpuImage, FFT operations will fail with undefined behavior.
+     */
     void SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer, void* output_buffer, cudaStream_t stream = cudaStreamPerThread);
 
     cistem::fft_type::Enum set_plan_type;

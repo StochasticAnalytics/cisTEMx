@@ -331,7 +331,8 @@ void GpuImage::SetupInitialValues( ) {
     cudaErr(cudaDeviceGetAttribute(&number_of_streaming_multiprocessors, cudaDevAttrMultiProcessorCount, device_idx));
     limit_SMs_by_threads = 1;
 
-    set_batch_size = 1;
+    set_batch_size       = 1;
+    set_stream_for_cufft = cudaStreamPerThread;
     AllocateTmpVarsAndEvents( );
     UpdateBoolsToDefault( );
 }
@@ -3996,6 +3997,26 @@ void GpuImage::Deallocate( ) {
         is_in_memory_managed_tmp_vals = false;
     }
 
+    // Check if any events are still pending before destroying them
+    bool has_pending_events = false;
+    if ( is_npp_calc_event_initialized && cudaEventQuery(npp_calc_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+    if ( is_block_host_event_initialized && cudaEventQuery(block_host_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+    if ( is_return_sum_of_squares_event_initialized && cudaEventQuery(return_sum_of_squares_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+    if ( is_return_sum_of_reals_event_initialized && cudaEventQuery(return_sum_of_reals_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+
+    if ( has_pending_events ) {
+        wxPrintf("WARNING: GpuImage::Deallocate() called with pending GPU events - synchronizing cudaStreamPerThread before cleanup\n");
+        cudaStreamSynchronize(cudaStreamPerThread);
+    }
+
     if ( is_npp_calc_event_initialized ) {
         cudaErr(cudaEventDestroy(npp_calc_event));
         is_npp_calc_event_initialized = false;
@@ -4819,10 +4840,11 @@ void GpuImage::Consume(GpuImage* other_image) {
     complex_values   = other_image->complex_values;
     is_in_memory_gpu = other_image->is_in_memory_gpu;
 
-    cuda_plan_forward = other_image->cuda_plan_forward;
-    cuda_plan_inverse = other_image->cuda_plan_inverse;
-    set_plan_type     = other_image->set_plan_type;
-    cufft_batch_size  = other_image->cufft_batch_size;
+    cuda_plan_forward    = other_image->cuda_plan_forward;
+    cuda_plan_inverse    = other_image->cuda_plan_inverse;
+    set_plan_type        = other_image->set_plan_type;
+    cufft_batch_size     = other_image->cufft_batch_size;
+    set_stream_for_cufft = other_image->set_stream_for_cufft;
 
     // We neeed to override the other image pointers so that it doesn't deallocate the memory.
     other_image->real_values      = NULL;

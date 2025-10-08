@@ -21,6 +21,12 @@
 
 #include "template_matching_data_sizer.h"
 
+// #define CISTEM_TESTING_PROCESS_CAPTURE
+// Enable per-process output redirection for debugging: compile with -DCISTEM_TESTING_PROCESS_CAPTURE
+#ifdef CISTEM_TESTING_PROCESS_CAPTURE
+#include "../../core/debug_utils.h"
+#endif
+
 // The profiling for development is under conrtol of --enable-profiling.
 #ifdef CISTEM_PROFILING
 using namespace cistem_timer;
@@ -58,6 +64,7 @@ class AggregatedTemplateResult {
     int   number_of_received_results;
     float total_number_of_angles_searched;
     bool  disable_flat_fielding;
+    long  start_time; // Unix timestamp when first worker started processing this image
 
     float* collated_data_array;
     float* collated_mip_data;
@@ -423,7 +430,8 @@ bool MatchTemplateApp::DoCalculation( ) {
     using namespace cistem::match_template;
     StopWatch profile_timing;
 
-    wxDateTime start_time = wxDateTime::Now( );
+    wxDateTime start_time          = wxDateTime::Now( );
+    long       job_start_timestamp = time(NULL); // Unix timestamp for elapsed time calculation
 
     double temp_double;
     long   temp_long;
@@ -582,6 +590,11 @@ bool MatchTemplateApp::DoCalculation( ) {
     if ( use_gpu && ! use_gpu_prj && use_lerp_not_fourier_resampling ) {
         SendError("LERP resampling is only supported on the GPU implementation\n");
     }
+
+#ifdef CISTEM_TESTING_PROCESS_CAPTURE
+    // Redirect process output to temp files for debugging multi-process scenarios
+    ProcessOutputRedirector process_redirect("match_template");
+#endif
 
     profile_timing.start("Init");
     ParameterMap parameter_map; // needed for euler search init
@@ -1008,6 +1021,17 @@ bool MatchTemplateApp::DoCalculation( ) {
         profile_timing.start("Init GPU");
         GPU = new TemplateMatchingCore[max_threads];
         gpuDev.Init(nGPUs, this);
+
+        // Verify DeviceManager initialized correctly
+        MyDebugAssertTrue(gpuDev.is_manager_initialized, "DeviceManager failed to initialize");
+        MyDebugAssertTrue(gpuDev.gpuIDX == 0, "DeviceManager gpuIDX should be 0 when only 1 GPU visible");
+        MyDebugAssertTrue(gpuDev.nGPUs == 1, "DeviceManager nGPUs should be 1");
+
+        // Verify CUDA agrees on current device
+        int actual_device = -1;
+        cudaErr(cudaGetDevice(&actual_device));
+        MyDebugAssertTrue(actual_device >= 0, "cudaGetDevice returned invalid device");
+
         profile_timing.lap("Init GPU");
         //    wxPrintf("Host: %s is running\nnThreads: %d\nnGPUs: %d\n:nSearchPos %d \n",hostNameBuffer,nThreads, nGPUs, maxPos);
 
@@ -1074,7 +1098,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                                                    actual_number_of_angles_searched, defocus_step) firstprivate(template_reconstruction_gpu, L2_persistance_fraction, current_correlation_position)
             {
                 int tIDX = ReturnThreadNumberOfCurrentThread( );
-                // gpuDev.SetGpu( );
+                // gpuDev.SetGpu( ); // Redundant when only 1 GPU visible, but doesn't hurt
 
                 // Initialize TemplateMatchingCore for this thread on its first loop iteration
                 if ( first_gpu_loop.at(tIDX) ) {
@@ -1600,6 +1624,7 @@ bool MatchTemplateApp::DoCalculation( ) {
             result[cm_t::number_of_valid_search_pixels]                     = float(data_sizer.GetNumberOfValidSearchPixels( )); // if apply_result_rescaling is false, this will = image_size_x * image_size_y as they are cropped to the ROI
             result[cm_t::disable_flat_fielding]                             = float(disable_flat_fielding);
             result[cm_t::number_of_expected_false_positives]                = float(n_expected_false_positives);
+            result[cm_t::start_time]                                        = float(job_start_timestamp);
 
             if ( ! apply_result_rescaling ) {
                 MyDebugAssertTrue(data_sizer.GetNumberOfValidSearchPixels( ) == (max_intensity_projection.logical_x_dimension * max_intensity_projection.logical_y_dimension),
@@ -1714,11 +1739,18 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
     // constexpr values for histogram values.
     using namespace cistem::match_template;
 
+    // Extract start_time from result header
+    long result_start_time = long(result_array[Enum::start_time]);
+
     wxPrintf("Master Handling result for image %i..", result_number);
 
     // Check if an AggregatedTemplateResult already exists for this image
     for ( int result_counter = 0; result_counter < aggregated_results.GetCount( ); result_counter++ ) {
         if ( aggregated_results[result_counter].image_number == result_number ) {
+            // Track the earliest start time from all partial results for this image
+            if ( result_start_time < aggregated_results[result_counter].start_time ) {
+                aggregated_results[result_counter].start_time = result_start_time;
+            }
             aggregated_results[result_counter].AddResult(result_array, array_size, result_number, number_of_expected_results);
             need_a_new_result = false;
             array_location    = result_counter;
@@ -1733,6 +1765,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // So I guess this Add, then index into size - 1 is like push_back kinda?
         aggregated_results.Add(result_to_add);
         aggregated_results[aggregated_results.GetCount( ) - 1].image_number = result_number;
+        aggregated_results[aggregated_results.GetCount( ) - 1].start_time   = result_start_time;
         aggregated_results[aggregated_results.GetCount( ) - 1].AddResult(result_array, array_size, result_number, number_of_expected_results);
         array_location = aggregated_results.GetCount( ) - 1;
         wxPrintf("Adding new result to array for image %i, at %i\n", result_number, array_location);
@@ -1741,6 +1774,9 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
     // Check if all expected results for this image have been received
     if ( aggregated_results[array_location].number_of_received_results == number_of_expected_results ) {
         // All parts of the result for this image are now collected. Proceed to finalize.
+        // Calculate elapsed time immediately (before I/O overhead of finalization)
+        long elapsed_time_seconds = time(NULL) - aggregated_results[array_location].start_time;
+
         // TODO send the result back to the GUI, for now hack mode to save the files to the directory..
 
         wxString directory_for_writing_results = current_job_package.jobs[0].arguments[37].ReturnStringArgument( );
@@ -2141,7 +2177,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // tell the gui that this result is available...
 
         ArrayOfTemplateMatchFoundPeakInfos blank_changes;
-        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, expected_threshold, all_peak_infos, blank_changes);
+        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, expected_threshold, all_peak_infos, blank_changes, elapsed_time_seconds);
 
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it
@@ -2161,6 +2197,7 @@ AggregatedTemplateResult::AggregatedTemplateResult( ) {
     number_of_received_results      = 0;
     total_number_of_angles_searched = 0.0f;
     disable_flat_fielding           = false;
+    start_time                      = std::numeric_limits<long>::max( ); // Initialize to max value so first result sets it
 
     collated_data_array        = NULL;
     collated_mip_data          = NULL;

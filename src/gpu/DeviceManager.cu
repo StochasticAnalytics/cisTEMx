@@ -23,9 +23,14 @@ void DeviceManager::Init(int wanted_number_of_gpus, MyApp* parent_ptr) {
     else if ( gpu_check > 1 ) {
         parent_ptr->SendErrorAndCrash("More than one CUDA-capable device found. Please select by setting CUDA_VISIBLE_DEVICES=ID, where ID=0,1...2 etc. Terminating...");
     }
+
+    // Single GPU case - initialize DeviceManager
+    this->gpuIDX           = 0; // When CUDA_VISIBLE_DEVICES limits to 1 GPU, it's always device 0
+    this->nGPUs            = 1;
+    is_manager_initialized = true;
     return;
 
-    // No longer using this code.
+    // No longer using this code below - old multi-GPU selection logic.
 
     wxPrintf("CUDA-capable device count: %d\n", gpu_check);
 

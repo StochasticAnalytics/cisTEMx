@@ -791,7 +791,7 @@ static int wxCMPFUNC_CONV SortByNewPeakNumber(TemplateMatchFoundPeakInfo** a, Te
         return 0;
 };
 
-void RefineTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes, long& elapsed_time_seconds) {
+void RefineTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
     // result is available for an image..
 
     cached_results[image_number - 1].found_peaks.Clear( );

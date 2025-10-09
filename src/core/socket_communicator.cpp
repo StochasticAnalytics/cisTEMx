@@ -1,8 +1,5 @@
 #include "../core/core_headers.h"
 
-// Uncomment to enable detailed socket disconnect diagnostics
-//#define cisTEM_SOCKET_DIAGNOSTIC
-
 wxThread::ExitCode SocketServerThread::Entry( ) {
 
     wxIPV4address my_address;
@@ -170,12 +167,6 @@ SocketCommunicator::SocketCommunicator( ) {
 }
 
 SocketCommunicator::~SocketCommunicator( ) {
-    // NOTE: Thread cleanup should be done in derived class destructors (e.g. JobPanel::~JobPanel)
-    // BEFORE this base destructor runs, using ShutDownSocketMonitor() and ShutDownServer().
-    // Those methods use proper mutex-based waiting that requires the object to be fully constructed.
-    //
-    // This destructor is intentionally minimal - attempting to clean up DETACHED threads here
-    // would require using mutexes that may be in an invalid state during destruction.
 }
 
 bool SocketCommunicator::SetupServer( ) {
@@ -549,26 +540,12 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     // send my job code..
 
                                     if ( WriteToSocket(monitored_sockets[socket_counter], socket_sending_identification, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING) == false ) {
-#ifdef cisTEM_SOCKET_DIAGNOSTIC
-                                        wxIPV4address peer_address;
-                                        bool          has_peer = monitored_sockets[socket_counter]->GetPeer(peer_address);
-                                        MyDebugPrint("Socket disconnect: Write failed during identification handshake - %s %s\n",
-                                                     ReturnSocketErrorText(monitored_sockets[socket_counter]).c_str( ),
-                                                     has_peer ? wxString::Format("(peer: %s:%d)", peer_address.IPAddress( ), peer_address.Service( )).c_str( ) : "(no peer info)");
-#endif
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
                                     else if ( WriteToSocket(monitored_sockets[socket_counter], parent_pointer->current_job_code, SOCKET_CODE_SIZE, true, "SendJobCodeIdentifier", FUNCTION_DETAILS_AS_WXSTRING) == false ) {
-#ifdef cisTEM_SOCKET_DIAGNOSTIC
-                                        wxIPV4address peer_address;
-                                        bool          has_peer = monitored_sockets[socket_counter]->GetPeer(peer_address);
-                                        MyDebugPrint("Socket disconnect: Write failed sending job code identifier - %s %s\n",
-                                                     ReturnSocketErrorText(monitored_sockets[socket_counter]).c_str( ),
-                                                     has_peer ? wxString::Format("(peer: %s:%d)", peer_address.IPAddress( ), peer_address.Service( )).c_str( ) : "(no peer info)");
-#endif
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
                                         monitored_sockets.RemoveAt(socket_counter);
@@ -586,13 +563,6 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         socket_counter--;
                                     }
                                     else {
-#ifdef cisTEM_SOCKET_DIAGNOSTIC
-                                        wxIPV4address peer_address;
-                                        bool          has_peer = monitored_sockets[socket_counter]->GetPeer(peer_address);
-                                        MyDebugPrint("Socket disconnect: Read failed receiving job code identifier - %s %s\n",
-                                                     ReturnSocketErrorText(monitored_sockets[socket_counter]).c_str( ),
-                                                     has_peer ? wxString::Format("(peer: %s:%d)", peer_address.IPAddress( ), peer_address.Service( )).c_str( ) : "(no peer info)");
-#endif
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
                                         monitored_sockets.RemoveAt(socket_counter);
@@ -899,10 +869,9 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     float                              threshold_used;
                                     ArrayOfTemplateMatchFoundPeakInfos peak_infos;
                                     ArrayOfTemplateMatchFoundPeakInfos peak_changes;
-                                    long                               elapsed_time_seconds;
 
-                                    if ( ReceiveTemplateMatchingResultFromSocket(monitored_sockets[socket_counter], image_number, threshold_used, peak_infos, peak_changes, elapsed_time_seconds) == true ) {
-                                        parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketTemplateMatchResultReady, parent_pointer, monitored_sockets[socket_counter], image_number, threshold_used, peak_infos, peak_changes, elapsed_time_seconds));
+                                    if ( ReceiveTemplateMatchingResultFromSocket(monitored_sockets[socket_counter], image_number, threshold_used, peak_infos, peak_changes) == true ) {
+                                        parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketTemplateMatchResultReady, parent_pointer, monitored_sockets[socket_counter], image_number, threshold_used, peak_infos, peak_changes));
                                     }
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
@@ -914,13 +883,6 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                             }
                             else // socket is likely dead
                             {
-#ifdef cisTEM_SOCKET_DIAGNOSTIC
-                                wxIPV4address peer_address;
-                                bool          has_peer = monitored_sockets[socket_counter]->GetPeer(peer_address);
-                                MyDebugPrint("Socket disconnect: ReadFromSocket failed (socket likely dead) - %s %s\n",
-                                             ReturnSocketErrorText(monitored_sockets[socket_counter]).c_str( ),
-                                             has_peer ? wxString::Format("(peer: %s:%d)", peer_address.IPAddress( ), peer_address.Service( )).c_str( ) : "(no peer info)");
-#endif
                                 parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
                                 monitored_sockets.RemoveAt(socket_counter);
                                 socket_counter--;
@@ -928,15 +890,6 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                         }
                     }
                     else {
-#ifdef cisTEM_SOCKET_DIAGNOSTIC
-                        wxIPV4address peer_address;
-                        bool          has_peer = monitored_sockets[socket_counter]->GetPeer(peer_address);
-                        MyDebugPrint("Socket disconnect: Health check failed - IsOk=%d IsConnected=%d - %s %s\n",
-                                     monitored_sockets[socket_counter]->IsOk( ),
-                                     monitored_sockets[socket_counter]->IsConnected( ),
-                                     ReturnSocketErrorText(monitored_sockets[socket_counter]).c_str( ),
-                                     has_peer ? wxString::Format("(peer: %s:%d)", peer_address.IPAddress( ), peer_address.Service( )).c_str( ) : "(no peer info)");
-#endif
                         // socket is not ok.. pass on a message to the handler and remove it..
 
                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));

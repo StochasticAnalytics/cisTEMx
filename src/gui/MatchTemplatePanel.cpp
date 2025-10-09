@@ -499,7 +499,7 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     }
 }
 
-void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes, long& elapsed_time_seconds) {
+void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
     // result is available for an image..
 
     // Validate image_number is within bounds
@@ -554,9 +554,10 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     // SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
     cached_results[image_number - 1].search_id = search_id;
 
-    // Capture datetime and elapsed time from worker
-    cached_results[image_number - 1].datetime_of_run      = time(NULL); // Unix timestamp when result arrived at GUI
-    cached_results[image_number - 1].elapsed_time_seconds = elapsed_time_seconds; // Per-image processing time from worker
+    // Capture datetime and elapsed time when result arrives
+    cached_results[image_number - 1].datetime_of_run = time(NULL); // Unix timestamp
+    // Use .ToLong() instead of .ToDouble() to avoid wxLongLong conversion bug (see Dockerfile longlong.h patch)
+    cached_results[image_number - 1].elapsed_time_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
 
     // Get next available TEMPLATE_MATCH_ID from database immediately before writing
     // This ensures correct ID assignment even when resuming cancelled searches
@@ -750,47 +751,22 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     cached_results.Clear( );
 
-    // Kill the job (in case it isn't already dead)
+    // Kill the job - sends socket_time_to_die to controller/master
+    // HandleSocketDisconnect will be called when the socket actually disconnects
     main_frame->job_controller.KillJob(my_job_id);
 
     // Reset job state to allow next job to start - MUST happen before callback
     my_job_id               = -1;
     current_custom_cli_args = ""; // Clear custom CLI args after job completion
 
-    // Update queue status if this was a queue job
+    // For queue jobs: DO NOT auto-advance here!
+    // Wait for HandleSocketDisconnect to fire when master socket actually dies
+    // Then HandleSocketDisconnect will trigger queue progression
     if ( running_queue_id > 0 ) {
-        QM_LOG_SEARCH("Search with queue ID %ld completed - scheduling completion callback", running_queue_id);
-
-        // CRITICAL: Defer queue auto-advance until master process fully exits
-        // The master process has two delays before exit:
-        //   1. wxSleep(1) in SendAllJobsFinished (myapp.cpp:282)
-        //   2. wxSleep(5) in HandleSocketSendThreadTiming (myapp.cpp:1057)
-        //   Total: 6 seconds
-        // If we trigger auto-advance now, the new job's workers will connect to the OLD master
-        // This causes stale aggregated_results reuse and protocol deadlocks
-        //
-        // Solution: Wait 8 seconds (master's 6 second total sleep + 2 second safety margin)
-        // then trigger OnSearchCompleted to advance the queue
-        //
-        // Note: HandleSocketDisconnect is unreliable and may not fire consistently,
-        // so we use a timer-based approach instead
-        long completed_queue_id = running_queue_id;
-        running_queue_id        = -1; // Clear now since we're done with this search
-
-        wxTimer* completion_timer = new wxTimer( );
-        completion_timer->Bind(wxEVT_TIMER, [this, completion_timer, completed_queue_id](wxTimerEvent&) {
-            if ( queue_completion_callback ) {
-                QM_LOG_SEARCH("Completion timer fired - triggering OnSearchCompleted for queue ID %ld", completed_queue_id);
-                queue_completion_callback->OnSearchCompleted(completed_queue_id, true);
-            }
-            delete completion_timer;
-        });
-        completion_timer->StartOnce(8000); // 8 second delay (6s master sleep + 2s safety)
-        QM_LOG_SEARCH("Started 8-second completion timer for queue ID %ld", completed_queue_id);
+        QM_LOG_SEARCH("Search with queue ID %ld completed - waiting for socket disconnect before auto-advance", running_queue_id);
+        // running_queue_id stays set - HandleSocketDisconnect needs it to know this was a queue job
     }
     else {
-        // Non-queue job (direct execution from Start Estimation button)
-        // No auto-advance needed - user will manually click Finish button
         QM_LOG_SEARCH("Non-queue job completed - no auto-advance needed");
     }
 
@@ -1844,9 +1820,20 @@ void MatchTemplatePanel::HandleSocketDisconnect(wxSocketBase* connected_socket) 
     QM_LOG_METHOD_ENTRY("HandleSocketDisconnect");
     QM_LOG_STATE("    Socket disconnect detected (my_job_id=%ld, running_queue_id=%ld)", my_job_id, running_queue_id);
 
-    // Note: We no longer rely on HandleSocketDisconnect for queue progression
-    // Queue advancement is now handled by a timer in ProcessAllJobsFinished
-    // This method is kept for potential future use and debugging
+    // If this was a queue job, auto-advance to the next item
+    // The master socket has now disconnected cleanly after we sent socket_time_to_die
+    if ( running_queue_id > 0 && queue_completion_callback ) {
+        long completed_queue_id = running_queue_id;
+        running_queue_id        = -1; // Clear before triggering callback
+
+        QM_LOG_SEARCH("Master socket disconnected - triggering OnSearchCompleted for queue ID %ld", completed_queue_id);
+        queue_completion_callback->OnSearchCompleted(completed_queue_id, true);
+    }
+    else if ( running_queue_id > 0 ) {
+        // Queue job but no callback - shouldn't happen
+        QM_LOG_ERROR("Queue job completed but no queue_completion_callback registered!");
+        running_queue_id = -1;
+    }
 
     QM_LOG_METHOD_EXIT("HandleSocketDisconnect");
 }

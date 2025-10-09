@@ -6,10 +6,6 @@ JobPanel::JobPanel(wxWindow* parent, wxWindowID id, const wxPoint& pos, const wx
 }
 
 JobPanel::~JobPanel( ) {
-    // NOTE: Cannot safely shut down detached threads in destructor
-    // ShutDownSocketMonitor() and ShutDownServer() use mutexes that are invalid during destruction
-    // Detached threads will clean themselves up when they check TestDestroy()
-    // The "Debug: N threads were not terminated" wxWidgets warning is harmless
 }
 
 void JobPanel::HandleSocketSendJobDetails(wxSocketBase* connected_socket) {

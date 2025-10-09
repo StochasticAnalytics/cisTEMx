@@ -1632,7 +1632,6 @@ bool MatchTemplateApp::DoCalculation( ) {
             result[cm_t::number_of_valid_search_pixels]                     = float(data_sizer.GetNumberOfValidSearchPixels( )); // if apply_result_rescaling is false, this will = image_size_x * image_size_y as they are cropped to the ROI
             result[cm_t::disable_flat_fielding]                             = float(disable_flat_fielding);
             result[cm_t::number_of_expected_false_positives]                = float(n_expected_false_positives);
-            result[cm_t::start_time]                                        = float(job_start_timestamp);
 
             if ( ! apply_result_rescaling ) {
                 MyDebugAssertTrue(data_sizer.GetNumberOfValidSearchPixels( ) == (max_intensity_projection.logical_x_dimension * max_intensity_projection.logical_y_dimension),
@@ -1747,18 +1746,12 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
     // constexpr values for histogram values.
     using namespace cistem::match_template;
 
-    // Extract start_time from result header
-    long result_start_time = long(result_array[Enum::start_time]);
-
     wxPrintf("Master Handling result for image %i..", result_number);
 
     // Check if an AggregatedTemplateResult already exists for this image
     for ( int result_counter = 0; result_counter < aggregated_results.GetCount( ); result_counter++ ) {
         if ( aggregated_results[result_counter].image_number == result_number ) {
-            // Track the earliest start time from all partial results for this image
-            if ( result_start_time < aggregated_results[result_counter].start_time ) {
-                aggregated_results[result_counter].start_time = result_start_time;
-            }
+
             aggregated_results[result_counter].AddResult(result_array, array_size, result_number, number_of_expected_results);
             need_a_new_result = false;
             array_location    = result_counter;
@@ -1773,7 +1766,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // So I guess this Add, then index into size - 1 is like push_back kinda?
         aggregated_results.Add(result_to_add);
         aggregated_results[aggregated_results.GetCount( ) - 1].image_number = result_number;
-        aggregated_results[aggregated_results.GetCount( ) - 1].start_time   = result_start_time;
         aggregated_results[aggregated_results.GetCount( ) - 1].AddResult(result_array, array_size, result_number, number_of_expected_results);
         array_location = aggregated_results.GetCount( ) - 1;
         wxPrintf("Adding new result to array for image %i, at %i\n", result_number, array_location);
@@ -2185,7 +2177,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // tell the gui that this result is available...
 
         ArrayOfTemplateMatchFoundPeakInfos blank_changes;
-        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, expected_threshold, all_peak_infos, blank_changes, elapsed_time_seconds);
+        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, expected_threshold, all_peak_infos, blank_changes);
 
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it

@@ -292,12 +292,9 @@ inline __device__ void sum_squares_and_check_max(const float val,
 
     // for Welfords
     // For Kahan summation
+    float mean_val = sum / sum_counter_val;
 
-    // float mean_val = sum / sum_counter_val;  // reverts
-
-    // FIXME: //revert disabeling to use all values for debugging.
-    bool accumulate_this = true; // sum_counter_val < min_counter_val || fabsf((val - mean_val) * rsqrtf(sum_sq / sum_counter_val - mean_val * mean_val)) < threshold_val
-    if ( accumulate_this ) {
+    if ( sum_counter_val < min_counter_val || fabsf((val - mean_val) * rsqrtf(sum_sq / sum_counter_val - mean_val * mean_val)) < threshold_val ) {
         sum_counter_val += 1.0f;
 
         // Kahan summation
@@ -566,7 +563,6 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution(int n_im
             min_counter_val_,
             threshold_val_);
     postcheck_withstream(calc_stream_[0]);
-    ;
 
     // Switch the active index
     // This allows the CPU to prepare the next batch of CCF data and angles in the inactive buffers

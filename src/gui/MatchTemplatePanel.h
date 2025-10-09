@@ -82,7 +82,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     void SetNumberConnectedText(wxString wanted_text);
     void SetTimeRemainingText(wxString wanted_text);
     void OnSocketAllJobsFinished( );
-    void HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes, long& elapsed_time_seconds);
+    void HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes);
     void HandleSocketDisconnect(wxSocketBase* connected_socket) override; // Detect master process exit for queue auto-advance
     bool CheckGroupHasDefocusValues( );
 

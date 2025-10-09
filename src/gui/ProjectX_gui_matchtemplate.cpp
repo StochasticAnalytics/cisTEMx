@@ -35,7 +35,7 @@ ShowTemplateMatchResultsPanelParent::ShowTemplateMatchResultsPanelParent( wxWind
 	m_splitter15 = new wxSplitterWindow( m_panel87, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_3D );
 	m_splitter15->SetSashGravity( 0.6 );
 	m_splitter15->Connect( wxEVT_IDLE, wxIdleEventHandler( ShowTemplateMatchResultsPanelParent::m_splitter15OnIdle ), NULL, this );
-	m_splitter15->SetMinimumPaneSize( 100 );
+	m_splitter15->SetMinimumPaneSize( 300 );
 
 	m_panel89 = new wxPanel( m_splitter15, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer303;
@@ -152,7 +152,7 @@ ShowTemplateMatchResultsPanelParent::ShowTemplateMatchResultsPanelParent( wxWind
 	m_panel86->SetSizer( bSizer304 );
 	m_panel86->Layout();
 	bSizer304->Fit( m_panel86 );
-	m_splitter16->SplitVertically( m_panel87, m_panel86, 700 );
+	m_splitter16->SplitVertically( m_panel87, m_panel86, 0 );
 	bSizer92->Add( m_splitter16, 1, wxEXPAND, 5 );
 
 
@@ -1282,7 +1282,7 @@ TemplateMatchingQueueManagerInputParent::TemplateMatchingQueueManagerInputParent
 	wxBoxSizer* bSizer58;
 	bSizer58 = new wxBoxSizer( wxHORIZONTAL );
 
-	RunProfileText = new wxStaticText( StartPanel, wxID_ANY, wxT("Run Profile :"), wxDefaultPosition, wxDefaultSize, 0 );
+	RunProfileText = new wxStaticText( StartPanel, wxID_ANY, wxT("Run Profile :                 "), wxDefaultPosition, wxDefaultSize, 0 );
 	RunProfileText->Wrap( -1 );
 	bSizer58->Add( RunProfileText, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
@@ -1294,6 +1294,25 @@ TemplateMatchingQueueManagerInputParent::TemplateMatchingQueueManagerInputParent
 	StartPanel->Layout();
 	bSizer58->Fit( StartPanel );
 	bSizer43->Add( StartPanel, 0, wxEXPAND | wxALL, 5 );
+
+	wxBoxSizer* bSizer481;
+	bSizer481 = new wxBoxSizer( wxHORIZONTAL );
+
+	wxBoxSizer* bSizer701;
+	bSizer701 = new wxBoxSizer( wxHORIZONTAL );
+
+	m_staticText1902111 = new wxStaticText( this, wxID_ANY, wxT("Custom CLI Arguments:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText1902111->Wrap( -1 );
+	bSizer701->Add( m_staticText1902111, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+
+	custom_cli_args_text = new wxTextCtrl( this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxHSCROLL|wxTE_WORDWRAP );
+	bSizer701->Add( custom_cli_args_text, 1, wxALL|wxEXPAND, 5 );
+
+
+	bSizer481->Add( bSizer701, 1, 0, 5 );
+
+
+	bSizer43->Add( bSizer481, 0, wxEXPAND, 5 );
 
 	wxBoxSizer* bSizer48;
 	bSizer48 = new wxBoxSizer( wxHORIZONTAL );

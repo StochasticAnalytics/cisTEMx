@@ -88,7 +88,7 @@ class ShowTemplateMatchResultsPanelParent : public wxPanel
 
 		void m_splitter16OnIdle( wxIdleEvent& )
 		{
-			m_splitter16->SetSashPosition( 700 );
+			m_splitter16->SetSashPosition( 0 );
 			m_splitter16->Disconnect( wxEVT_IDLE, wxIdleEventHandler( ShowTemplateMatchResultsPanelParent::m_splitter16OnIdle ), NULL, this );
 		}
 
@@ -350,6 +350,8 @@ class TemplateMatchingQueueManagerInputParent : public JobPanel
 		wxPanel* StartPanel;
 		wxStaticText* RunProfileText;
 		MemoryComboBox* RunProfileComboBox;
+		wxStaticText* m_staticText1902111;
+		wxTextCtrl* custom_cli_args_text;
 		wxPanel* StartPanel1;
 		wxButton* UpdateQueueItem1;
 		wxButton* CancelUpdateQueueItem1;

@@ -73,6 +73,7 @@ enum Enum : int {
     number_of_valid_search_pixels,
     disable_flat_fielding,
     number_of_expected_false_positives,
+    start_time,
     COUNT
 };
 } // namespace match_template

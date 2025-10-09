@@ -4,9 +4,6 @@
 // #define PRINT_FOR_SLOW_DEBUG
 // #define SKIP_TM_TABLE_CHECK
 
-// revert - Temporary debug tool to detect and clean up duplicate TEMPLATE_MATCH_LIST entries during development
-#define cisTEM_debug_duplicate_TM_list
-
 Database::Database( ) {
     last_return_code = -1;
     is_open          = false;

@@ -22,7 +22,7 @@
 
 // #define DEBUG_IMG_PREPROCESS_OUTPUT "/tmp"
 // #define DEBUG_IMG_POSTPROCESS_OUTPUT "/tmp"
-#define DEBUG_TM_SIZER_PRINT
+// #define DEBUG_TM_SIZER_PRINT
 
 TemplateMatchingDataSizer::TemplateMatchingDataSizer(MyApp* wanted_parent_ptr,
                                                      Image& input_image,
@@ -724,6 +724,16 @@ void TemplateMatchingDataSizer::ResizeImage_postSearch(Image&     max_intensity_
         }
         else {
             // remove any padding regions and there is no need to then calculate the valid area mask or any of the subsequent steps.
+            // Verify all images are in real space before resizing (Resize operates on real space)
+            MyDebugAssertTrue(max_intensity_projection.is_in_real_space, "max_intensity_projection must be in real space for Resize");
+            MyDebugAssertTrue(best_psi.is_in_real_space, "best_psi must be in real space for Resize");
+            MyDebugAssertTrue(best_theta.is_in_real_space, "best_theta must be in real space for Resize");
+            MyDebugAssertTrue(best_phi.is_in_real_space, "best_phi must be in real space for Resize");
+            MyDebugAssertTrue(best_defocus.is_in_real_space, "best_defocus must be in real space for Resize");
+            MyDebugAssertTrue(best_pixel_size.is_in_real_space, "best_pixel_size must be in real space for Resize");
+            MyDebugAssertTrue(correlation_pixel_sum_image.is_in_real_space, "correlation_pixel_sum_image must be in real space for Resize");
+            MyDebugAssertTrue(correlation_pixel_sum_of_squares_image.is_in_real_space, "correlation_pixel_sum_of_squares_image must be in real space for Resize");
+
             max_intensity_projection.Resize(roi.x, roi.y, 1, 0.f);
             best_psi.Resize(roi.x, roi.y, 1, 0.f);
             best_theta.Resize(roi.x, roi.y, 1, 0.f);

@@ -9,7 +9,8 @@
       "Bash(grep:*)",
       "Bash(/workspaces/cisTEM/worktrees/template_matching_queue/.claude/commands/build-cistem.sh)",
       "Bash(bash:*)",
-      "Read(//scratch/salina/**)"
+      "Read(//scratch/salina/**)",
+      "Read(//scratch/siracusa/get_scaling_images/New_Project/**)"
     ],
     "deny": [],
     "ask": []

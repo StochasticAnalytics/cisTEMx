@@ -33,6 +33,7 @@ TemplateMatchQueueItemEditor::TemplateMatchQueueItemEditor(wxWindow*            
     controls.use_gpu_no              = UseGPURadioNo;
     controls.use_fast_fft_yes        = UseFastFFTRadioYes;
     controls.use_fast_fft_no         = UseFastFFTRadioNo;
+    controls.custom_cli_args_text    = custom_cli_args_text;
 
     // Create helper with control references
     controls_helper = new TemplateMatchControlsHelper(controls);

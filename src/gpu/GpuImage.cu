@@ -1130,7 +1130,7 @@ void GpuImage::NormalizeRealSpaceSumToUnity(cudaStream_t wanted_stream) {
     NormalizeRealSpaceSumToUnityKernel<<<gridDims, threadsPerBlock, 0, wanted_stream>>>(real_values,
                                                                                         &tmpValComplex[tmp_val_idx::ReturnSumOfRealValues],
                                                                                         dims);
-    postcheck;
+    postcheck_withstream(wanted_stream);
 }
 
 __global__ void NormalizeRealSpaceStdDeviationKernel(float* input_reals, double* __restrict__ sqrt_sum_of_squares, const float additional_scalar, const float average_sq, const float average_on_edge, const int4 dims) {
@@ -1201,7 +1201,7 @@ void GpuImage::NormalizeRealSpaceStdDeviationAndCastToFp16(float additional_scal
     additional_scalar *= float(number_of_real_space_pixels);
     NormalizeRealSpaceStdDeviationAndCastToFp16Kernel<<<gridDims, threadsPerBlock, 0, wanted_stream>>>(
             real_values, real_values_fp16, (double*)&tmpValComplex[tmp_val_idx::L2Norm], additional_scalar, (pre_calculated_avg * pre_calculated_avg), average_on_edge, dims);
-    postcheck;
+    postcheck_withstream(wanted_stream);
 }
 
 float GpuImage::ReturnSumSquareModulusComplexValues( ) {
@@ -1291,7 +1291,7 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
     // FIXME: streamWaitEvent
     cudaErr(cudaStreamSynchronize(nppStream.hStream));
-    postcheck;
+    postcheck_withstream(nppStream.hStream);
     return float(tmpValComplex[tmp_val_idx::ReturnSumSquareModulusComplexValues] * tmpValComplex[tmp_val_idx::ReturnSumSquareModulusComplexValues]);
 }
 
@@ -2329,7 +2329,7 @@ void GpuImage::MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image) 
                                     (Npp32fc*)output_image.complex_values, pitch,
                                     npp_ROI, nppStream));
     }
-    postcheck;
+    postcheck_withstream(nppStream.hStream);
 }
 
 void GpuImage::DividePixelWise(GpuImage& other_image) {
@@ -3199,6 +3199,7 @@ void GpuImage::BackwardFFTBatched(int wanted_batch_size, cudaStream_t wanted_str
     npp_ROI = npp_ROI_real_space;
 }
 
+// FIXME: In general, swapping out the stream may produce undefined results for a given fftplan as the workspace could overlap.
 void GpuImage::BackwardFFT(cudaStream_t wanted_stream) {
 
     MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
@@ -3813,6 +3814,8 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
         // We are good to go, except maybe the stream.
         if ( wanted_stream != set_stream_for_cufft ) {
             // TODO: I'm not sure how this would behave if the stream was toggled back and forth without care by the caller.
+            // NOTE: After reading more, it looks like a plan can be used on multiple streams, but that can lead to conflicts in the workspace.
+            // And since we are associating our memory address with the plan, I have to assume that is also a problem.
             cufftErr(cufftSetStream(cuda_plan_forward, wanted_stream));
             cufftErr(cufftSetStream(cuda_plan_inverse, wanted_stream));
             set_stream_for_cufft = wanted_stream;
@@ -5426,7 +5429,7 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
                                                                                            mask_ptr,
                                                                                            one_over_two_sigma_squared);
 
-        postcheck;
+        postcheck_withstream(stream);
     }
     else {
         precheck;
@@ -5449,7 +5452,8 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
                                                                                            mask_ptr,
                                                                                            one_over_two_sigma_squared);
 
-        postcheck;
+        postcheck_withstream(stream);
+        ;
     }
 
     if ( swap_quadrants )

@@ -134,6 +134,7 @@ class
 
     ArrayOfAggregatedTemplateResults aggregated_results;
 
+    // TODO: Fix printf format bugs in myapp.cpp:639-640 - %f.2 should be %.2f (prints "360.0000.2" instead of "360.00")
     float GetMaxJobWaitTimeInSeconds( ) { return 360.0f; }
 
   private:
@@ -1440,6 +1441,10 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     // Resize output images (MIP, angles, etc.) and statistical maps back to original dimensions if search was on resized images.
     // Even if we apply_result_rescaling, we still want to remove any padding.
+    int use_threads = max_threads;
+    MyDebugAssertTrue(max_intensity_projection.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_image.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_of_squares_image.IsFinite( ), "Nan detected");
     data_sizer.ResizeImage_postSearch(max_intensity_projection,
                                       best_psi,
                                       best_phi,
@@ -1449,7 +1454,10 @@ bool MatchTemplateApp::DoCalculation( ) {
                                       correlation_pixel_sum_image,
                                       correlation_pixel_sum_of_squares_image,
                                       apply_result_rescaling,
-                                      max_threads);
+                                      use_threads);
+    MyDebugAssertTrue(max_intensity_projection.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_image.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_of_squares_image.IsFinite( ), "Nan detected");
 
     float output_pixel_size = apply_result_rescaling ? data_sizer.GetPixelSize( ) : data_sizer.GetSearchPixelSize( );
 
@@ -2373,8 +2381,14 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
     const double total_number_of_ccs = double(n_angles_in_search) * double(counted_values);
     std::cerr << "Counted Values: " << counted_values << " out of " << N << " fractions: " << float(counted_values) / float(N) << std::endl;
 
-    global_ccc_mean    = global_sum / total_number_of_ccs;
-    global_ccc_std_dev = sqrt(global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean));
+    MyDebugAssertTrue(counted_values > 0, "No valid pixels counted - all correlation_pixel_sum_of_squares below epsilon");
+
+    global_ccc_mean = global_sum / total_number_of_ccs;
+
+    double variance_arg = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
+    MyDebugAssertTrue(variance_arg >= 0.0, "Variance calculation produced negative value - numerical precision issue");
+
+    global_ccc_std_dev = sqrt(variance_arg);
 
     return;
 }
@@ -2457,6 +2471,7 @@ void MatchTemplateApp::RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(Image
                                                                            long*       histogram,
                                                                            const float n_angles_in_search,
                                                                            const bool  disable_flat_fielding) {
+    MyDebugAssertTrue(n_angles_in_search > 0, "n_angles_in_search must be > = zero");
 
     double global_ccc_mean    = 0.0;
     double global_ccc_std_dev = 0.0;

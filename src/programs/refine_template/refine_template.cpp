@@ -1018,7 +1018,8 @@ bool RefineTemplateApp::DoCalculation( ) {
 
         // tell the gui that this result is available...
 
-        SendTemplateMatchingResultToSocket(controller_socket, image_number_for_gui, threshold_for_result_plotting, all_peak_infos, all_peak_changes);
+        long elapsed_time_seconds = 0; // refine_template doesn't track timing
+        SendTemplateMatchingResultToSocket(controller_socket, image_number_for_gui, threshold_for_result_plotting, all_peak_infos, all_peak_changes, elapsed_time_seconds);
         result_image.QuickAndDirtyWriteSlice(filename_for_gui_result_image.ToStdString( ), 1, true);
     }
 

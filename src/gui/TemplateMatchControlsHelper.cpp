@@ -28,7 +28,8 @@ TemplateMatchControls::TemplateMatchControls( )
       use_gpu_yes(nullptr),
       use_gpu_no(nullptr),
       use_fast_fft_yes(nullptr),
-      use_fast_fft_no(nullptr) {
+      use_fast_fft_no(nullptr),
+      custom_cli_args_text(nullptr) {
 }
 
 // TemplateMatchControlsHelper implementation
@@ -177,6 +178,11 @@ void TemplateMatchControlsHelper::PopulateFromQueueItem(const TemplateMatchQueue
         controls.use_fast_fft_yes->SetValue(item.use_fast_fft);
         controls.use_fast_fft_no->SetValue(! item.use_fast_fft);
     }
+
+    // Set custom CLI arguments
+    if ( controls.custom_cli_args_text ) {
+        controls.custom_cli_args_text->SetValue(item.custom_cli_args);
+    }
 }
 
 bool TemplateMatchControlsHelper::ExtractToQueueItem(TemplateMatchQueueItem& item) {
@@ -262,6 +268,11 @@ bool TemplateMatchControlsHelper::ExtractToQueueItem(TemplateMatchQueueItem& ite
 
     if ( controls.use_fast_fft_yes ) {
         item.use_fast_fft = controls.use_fast_fft_yes->GetValue( );
+    }
+
+    // Extract custom CLI arguments
+    if ( controls.custom_cli_args_text ) {
+        item.custom_cli_args = controls.custom_cli_args_text->GetValue( );
     }
 
     // Get volume parameters for search name and mask radius

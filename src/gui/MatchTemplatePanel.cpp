@@ -499,7 +499,7 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     }
 }
 
-void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes, long& elapsed_time_seconds) {
     // result is available for an image..
 
     // Validate image_number is within bounds
@@ -554,10 +554,9 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     // SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
     cached_results[image_number - 1].search_id = search_id;
 
-    // Capture datetime and elapsed time when result arrives
-    cached_results[image_number - 1].datetime_of_run = time(NULL); // Unix timestamp
-    // Use .ToLong() instead of .ToDouble() to avoid wxLongLong conversion bug (see Dockerfile longlong.h patch)
-    cached_results[image_number - 1].elapsed_time_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
+    // Capture datetime and elapsed time from worker
+    cached_results[image_number - 1].datetime_of_run      = time(NULL); // Unix timestamp when result arrived at GUI
+    cached_results[image_number - 1].elapsed_time_seconds = elapsed_time_seconds; // Per-image processing time from worker
 
     // Get next available TEMPLATE_MATCH_ID from database immediately before writing
     // This ensures correct ID assignment even when resuming cancelled searches
@@ -760,18 +759,39 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     // Update queue status if this was a queue job
     if ( running_queue_id > 0 ) {
-        QM_LOG_SEARCH("Search with queue ID %ld completed - updating status", running_queue_id);
+        QM_LOG_SEARCH("Search with queue ID %ld completed - scheduling completion callback", running_queue_id);
 
-        // Note: Queue status is now computed from completion data, no database update needed
+        // CRITICAL: Defer queue auto-advance until master process fully exits
+        // The master process has two delays before exit:
+        //   1. wxSleep(1) in SendAllJobsFinished (myapp.cpp:282)
+        //   2. wxSleep(5) in HandleSocketSendThreadTiming (myapp.cpp:1057)
+        //   Total: 6 seconds
+        // If we trigger auto-advance now, the new job's workers will connect to the OLD master
+        // This causes stale aggregated_results reuse and protocol deadlocks
+        //
+        // Solution: Wait 8 seconds (master's 6 second total sleep + 2 second safety margin)
+        // then trigger OnSearchCompleted to advance the queue
+        //
+        // Note: HandleSocketDisconnect is unreliable and may not fire consistently,
+        // so we use a timer-based approach instead
+        long completed_queue_id = running_queue_id;
+        running_queue_id        = -1; // Clear now since we're done with this search
 
-        // Notify queue manager if callback is registered - called AFTER clearing job state
-        if ( queue_completion_callback ) {
-            QM_LOG_SEARCH("Notifying queue manager of job completion");
-            queue_completion_callback->OnSearchCompleted(running_queue_id, true);
-        }
-
-        // Clear the queue job ID
-        running_queue_id = -1;
+        wxTimer* completion_timer = new wxTimer( );
+        completion_timer->Bind(wxEVT_TIMER, [this, completion_timer, completed_queue_id](wxTimerEvent&) {
+            if ( queue_completion_callback ) {
+                QM_LOG_SEARCH("Completion timer fired - triggering OnSearchCompleted for queue ID %ld", completed_queue_id);
+                queue_completion_callback->OnSearchCompleted(completed_queue_id, true);
+            }
+            delete completion_timer;
+        });
+        completion_timer->StartOnce(8000); // 8 second delay (6s master sleep + 2s safety)
+        QM_LOG_SEARCH("Started 8-second completion timer for queue ID %ld", completed_queue_id);
+    }
+    else {
+        // Non-queue job (direct execution from Start Estimation button)
+        // No auto-advance needed - user will manually click Finish button
+        QM_LOG_SEARCH("Non-queue job completed - no auto-advance needed");
     }
 
     WriteInfoText("All Jobs have finished.");
@@ -1299,7 +1319,7 @@ void MatchTemplatePanel::CheckForUnfinishedWork(std::vector<long>& images_to_res
     if ( image_group_id == -1 ) {
         main_frame->current_project.database.FillVectorFromSelectCommand(
                 wxString::Format("select IMAGE_ASSETS.IMAGE_ASSET_ID, COMP.IMAGE_ASSET_ID as CID FROM IMAGE_ASSETS "
-                                 "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %i ) COMP "
+                                 "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld ) COMP "
                                  "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID "
                                  "WHERE CID IS NULL",
                                  search_id),
@@ -1309,7 +1329,7 @@ void MatchTemplatePanel::CheckForUnfinishedWork(std::vector<long>& images_to_res
     else {
         main_frame->current_project.database.FillVectorFromSelectCommand(
                 wxString::Format("select IMAGE_ASSETS.IMAGE_ASSET_ID, COMP.IMAGE_ASSET_ID as CID FROM IMAGE_GROUP_%i AS IMAGE_ASSETS "
-                                 "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %i ) COMP "
+                                 "LEFT JOIN (SELECT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %ld ) COMP "
                                  "ON IMAGE_ASSETS.IMAGE_ASSET_ID = COMP.IMAGE_ASSET_ID "
                                  "WHERE CID IS NULL",
                                  image_group_id, search_id),
@@ -1568,9 +1588,9 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         else
             number_of_pixel_size_positions = 1;
 
-        wxPrintf("For Image %li\nThere are %i search positions\nThere are %i jobs per image\n",
-                 active_group.members[image_counter], current_image_euler_search->number_of_search_positions, number_of_jobs_per_image_in_gui);
-        wxPrintf("Calculating %i correlation maps\n", current_image_euler_search->number_of_search_positions * number_of_rotations * number_of_defocus_positions * number_of_pixel_size_positions);
+        // wxPrintf("For Image %ld\nThere are %i search positions\nThere are %i jobs per image\n",
+        //          active_group.members[image_counter], current_image_euler_search->number_of_search_positions, number_of_jobs_per_image_in_gui);
+        // wxPrintf("Calculating %i correlation maps\n", current_image_euler_search->number_of_search_positions * number_of_rotations * number_of_defocus_positions * number_of_pixel_size_positions);
 
         expected_number_of_results += current_image_euler_search->number_of_search_positions * number_of_rotations * number_of_defocus_positions * number_of_pixel_size_positions;
         orientations_per_process = float(current_image_euler_search->number_of_search_positions) / float(number_of_jobs_per_image_in_gui);
@@ -1653,7 +1673,7 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
             bool  ctf_refinement          = false;
             float mask_radius_search      = 0.0f;
 
-            wxPrintf("\n\tFor image %i, current_orientation_counter is %f\n", image_number_for_gui, current_orientation_counter);
+            //  wxPrintf("\n\tFor image %i, current_orientation_counter is %f\n", image_number_for_gui, current_orientation_counter);
             if ( current_orientation_counter >= current_image_euler_search->number_of_search_positions )
                 current_orientation_counter = current_image_euler_search->number_of_search_positions - 1;
             int first_search_position = myroundint(current_orientation_counter);
@@ -1806,7 +1826,7 @@ bool MatchTemplatePanel::ExecuteSearch(const TemplateMatchQueueItem* queue_item)
         return false;
     }
 
-    // Execute the job (launches job controller and commits state on success)
+    // Execute the job (launches job controller and commits state fauon success)
     return ExecuteCurrentSearch(pending_queue_id);
 }
 
@@ -1818,4 +1838,15 @@ void MatchTemplatePanel::SetQueueCompletionCallback(TemplateMatchQueueManager* q
 void MatchTemplatePanel::ClearQueueCompletionCallback( ) {
     QM_LOG_STATE("Queue completion callback cleared");
     queue_completion_callback = nullptr;
+}
+
+void MatchTemplatePanel::HandleSocketDisconnect(wxSocketBase* connected_socket) {
+    QM_LOG_METHOD_ENTRY("HandleSocketDisconnect");
+    QM_LOG_STATE("    Socket disconnect detected (my_job_id=%ld, running_queue_id=%ld)", my_job_id, running_queue_id);
+
+    // Note: We no longer rely on HandleSocketDisconnect for queue progression
+    // Queue advancement is now handled by a timer in ProcessAllJobsFinished
+    // This method is kept for potential future use and debugging
+
+    QM_LOG_METHOD_EXIT("HandleSocketDisconnect");
 }

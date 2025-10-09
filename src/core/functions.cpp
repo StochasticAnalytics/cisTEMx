@@ -157,22 +157,25 @@ bool SendwxStringToSocket(wxString* string_to_send, wxSocketBase* socket) {
     return true;
 }
 
-bool SendTemplateMatchingResultToSocket(wxSocketBase* socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+bool SendTemplateMatchingResultToSocket(wxSocketBase* socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes, long& elapsed_time_seconds) {
     // send the image number and all the peak details...
 
     int number_of_peaks   = peak_infos.GetCount( );
     int number_of_changes = peak_changes.GetCount( );
 
-    int number_of_bytes = sizeof(int) + sizeof(float) + sizeof(int) + sizeof(int) + (number_of_peaks * sizeof(float) * 8) + (number_of_changes * sizeof(float) * 10); // THIS WILL NEED TO BE CHANGED IF EXTRA THINGS ARE ADDED
+    int number_of_bytes = sizeof(int) + sizeof(float) + sizeof(long) + sizeof(int) + sizeof(int) + (number_of_peaks * sizeof(float) * 8) + (number_of_changes * sizeof(float) * 10); // THIS WILL NEED TO BE CHANGED IF EXTRA THINGS ARE ADDED
 
     unsigned char* data_buffer = new unsigned char[number_of_bytes];
-
+    // FIXME: this encoding is a shitshow
     int* pointer_to_first_byte = reinterpret_cast<int*>(data_buffer);
     pointer_to_first_byte[0]   = image_number;
     pointer_to_first_byte[1]   = number_of_peaks;
     pointer_to_first_byte[2]   = number_of_changes;
 
-    float* pointer_to_float_data = reinterpret_cast<float*>(data_buffer + (sizeof(int) * 3));
+    long* pointer_to_elapsed_time = reinterpret_cast<long*>(data_buffer + (sizeof(int) * 3));
+    *pointer_to_elapsed_time      = elapsed_time_seconds;
+
+    float* pointer_to_float_data = reinterpret_cast<float*>(data_buffer + (sizeof(int) * 3) + sizeof(long));
 
     int float_position                    = 0;
     pointer_to_float_data[float_position] = threshold_used;
@@ -234,7 +237,7 @@ bool SendTemplateMatchingResultToSocket(wxSocketBase* socket, int& image_number,
     return true;
 }
 
-bool ReceiveTemplateMatchingResultFromSocket(wxSocketBase* socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+bool ReceiveTemplateMatchingResultFromSocket(wxSocketBase* socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes, long& elapsed_time_seconds) {
     int number_of_bytes;
     int number_of_peaks;
     int number_of_changes;
@@ -256,7 +259,10 @@ bool ReceiveTemplateMatchingResultFromSocket(wxSocketBase* socket, int& image_nu
     number_of_peaks            = pointer_to_first_byte[1];
     number_of_changes          = pointer_to_first_byte[2];
 
-    float* pointer_to_float_data = reinterpret_cast<float*>(data_buffer + (sizeof(int) * 3));
+    long* pointer_to_elapsed_time = reinterpret_cast<long*>(data_buffer + (sizeof(int) * 3));
+    elapsed_time_seconds          = *pointer_to_elapsed_time;
+
+    float* pointer_to_float_data = reinterpret_cast<float*>(data_buffer + (sizeof(int) * 3) + sizeof(long));
     int    float_position        = 0;
 
     threshold_used = pointer_to_float_data[float_position];

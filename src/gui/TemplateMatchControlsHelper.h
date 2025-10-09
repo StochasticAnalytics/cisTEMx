@@ -41,6 +41,9 @@ struct TemplateMatchControls {
     wxRadioButton* use_fast_fft_yes;
     wxRadioButton* use_fast_fft_no;
 
+    // Custom CLI arguments
+    wxTextCtrl* custom_cli_args_text;
+
     // Default constructor - initialize all pointers to nullptr
     TemplateMatchControls( );
 };

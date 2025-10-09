@@ -4986,6 +4986,30 @@ bool Image::IsBinary( ) {
     return true;
 }
 
+bool Image::IsFinite( ) {
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    if ( is_in_real_space == true ) {
+        long pixel_counter = 0;
+        for ( int k = 0; k < logical_z_dimension; k++ ) {
+            for ( int j = 0; j < logical_y_dimension; j++ ) {
+                for ( int i = 0; i < logical_x_dimension; i++ ) {
+                    if ( std::isfinite(real_values[pixel_counter]) )
+                        return true;
+                    pixel_counter++;
+                }
+                pixel_counter += padding_jump_value;
+            }
+        }
+    }
+    else {
+        for ( long pixel_counter = 0; pixel_counter < real_memory_allocated / 2; pixel_counter++ ) {
+            if ( std::isfinite(std::abs(complex_values[pixel_counter])) )
+                return true;
+        }
+    }
+    return false;
+}
+
 bool Image::HasNan( ) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     if ( is_in_real_space == true ) {

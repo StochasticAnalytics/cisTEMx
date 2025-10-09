@@ -173,6 +173,52 @@ After making GUI changes, always prompt the user to build the project to verify 
 - Ask: "Would you like me to build the project to verify these changes?"
 - This ensures immediate feedback on any compilation issues
 
+## wxFormBuilder Layout Communication
+
+When debugging layout issues, use tree diagrams to represent sizer hierarchies clearly.
+
+### Taking Screenshots for Layout Analysis
+
+Use flameshot (available in devcontainer) to capture wxFormBuilder previews:
+
+```bash
+flameshot gui --path /workspaces/cisTEM/.claude/cache
+```
+
+This opens an interactive screenshot tool and saves directly to Claude's cache directory.
+
+### Communicating Sizer Structure with Tree Diagrams
+
+**Problem**: wxFormBuilder's nested XML structure is hard to visualize and discuss.
+
+**Solution**: Use tree diagrams to represent the sizer hierarchy clearly.
+
+**Example Tree Diagram**:
+
+```text
+Vertical Sizer (main panel sizer)
+  └─ sizeritem (proportion=0, flag=wxEXPAND|wxALL)
+      └─ Horizontal Sizer
+          ├─ sizeritem (proportion=0, flag=wxALIGN_CENTER_VERTICAL|wxALL)
+          │   └─ wxStaticText (label)
+          └─ sizeritem (proportion=1, flag=wxEXPAND|wxALL)
+              └─ wxTextCtrl (control name)
+```
+
+**Key Elements to Include**:
+
+- Sizer type and orientation (Vertical/Horizontal)
+- Sizeritem properties: `proportion`, `flag`
+- Control type and name
+- Nesting levels (use tree indentation)
+
+**Benefits**:
+
+- Easy to follow in wxFormBuilder's tree view
+- Quickly identify which sizeritem to select
+- Clear communication between developer and Claude
+- Documents intended structure for future reference
+
 ## Event Handling Best Practices
 
 ### Toggle Button State Management

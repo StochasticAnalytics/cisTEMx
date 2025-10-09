@@ -2,6 +2,7 @@
 #define _SRC_CORE_DATABASE_TYPESAFE_DATABASE_SCHEMA_H_
 
 #include <string>
+#include <wx/string.h>
 #include "typesafe_database_helpers.h"
 
 // Schema type that carries column names as a constexpr array
@@ -27,26 +28,26 @@ struct TableSchema {
 struct template_match_list {
     static constexpr const char* table_name = "TEMPLATE_MATCH_LIST";
 
-    int         template_match_id; // p - PRIMARY KEY
-    long        datetime_of_run; // l
-    long        elapsed_time_seconds; // l
-    long        search_id; // l
-    int         search_type_code; // i
-    int         parent_search_id; // i
-    long        image_asset_id; // l
-    int         reference_volume_asset_id; // i
-    int         is_active; // i
-    std::string output_filename_base; // t - TEXT
-    double      pixel_size; // r - REAL
-    double      voltage; // r
-    double      spherical_aberration; // r
-    double      amplitude_contrast; // r
-    double      defocus1; // r
-    double      defocus2; // r
-    double      defocus_angle; // r
-    double      phase_shift; // r
-    double      future_float_1; // r
-    double      future_float_2; // r
+    long     template_match_id; // p - PRIMARY KEY
+    long     datetime_of_run; // l
+    long     elapsed_time_seconds; // l
+    long     search_id; // l
+    int      search_type_code; // i
+    long     parent_search_id; // i
+    long     image_asset_id; // l
+    long     reference_volume_asset_id; // i
+    int      is_active; // i
+    wxString output_filename_base; // t - TEXT
+    float    pixel_size; // r - REAL
+    float    voltage; // r
+    float    spherical_aberration; // r
+    float    amplitude_contrast; // r
+    float    defocus1; // r
+    float    defocus2; // r
+    float    defocus_angle; // r
+    float    phase_shift; // r
+    float    future_float_1; // r
+    float    future_float_2; // r
 };
 
 // Create the schema for template_match_list

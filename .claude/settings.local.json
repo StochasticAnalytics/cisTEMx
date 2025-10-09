@@ -10,7 +10,11 @@
       "Bash(/workspaces/cisTEM/worktrees/template_matching_queue/.claude/commands/build-cistem.sh)",
       "Bash(bash:*)",
       "Read(//scratch/salina/**)",
-      "Read(//scratch/siracusa/get_scaling_images/New_Project/**)"
+      "Read(//scratch/siracusa/get_scaling_images/New_Project/**)",
+      "Bash(echo \"Exit status: $?\")",
+      "Bash(make:*)",
+      "Bash(tee:*)",
+      "Read(//tmp/**)"
     ],
     "deny": [],
     "ask": []

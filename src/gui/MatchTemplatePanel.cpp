@@ -552,12 +552,12 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 
     // NOTE: search_id field in structure maps to SEARCH_ID column in database
     // SEARCH_NAME now stored in TEMPLATE_MATCH_QUEUE table only (normalized schema)
-    cached_results[image_number - 1].search_id = search_id;
+    cached_results[image_number - 1].db.search_id = search_id;
 
     // Capture datetime and elapsed time when result arrives
-    cached_results[image_number - 1].datetime_of_run = time(NULL); // Unix timestamp
+    cached_results[image_number - 1].db.datetime_of_run = time(NULL); // Unix timestamp
     // Use .ToLong() instead of .ToDouble() to avoid wxLongLong conversion bug (see Dockerfile longlong.h patch)
-    cached_results[image_number - 1].elapsed_time_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
+    cached_results[image_number - 1].db.elapsed_time_seconds = my_job_tracker.ReturnTimeSinceStart( ).GetSeconds( ).ToLong( );
 
     // Get next available TEMPLATE_MATCH_ID from database immediately before writing
     // This ensures correct ID assignment even when resuming cancelled searches
@@ -565,16 +565,16 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 
     // Fix OUTPUT_FILENAME_BASE to be just path + image filename (without IDs or suffixes)
     // The helper functions will append _<type>_<template_match_id>_<search_id>.mrc
-    ImageAsset* current_image                             = image_asset_panel->ReturnAssetPointer(image_asset_panel->ReturnArrayPositionFromAssetID(cached_results[image_number - 1].image_asset_id));
-    cached_results[image_number - 1].output_filename_base = main_frame->current_project.template_matching_asset_directory.GetFullPath( ) +
-                                                            "/" + current_image->filename.GetName( );
+    ImageAsset* current_image                                = image_asset_panel->ReturnAssetPointer(image_asset_panel->ReturnArrayPositionFromAssetID(cached_results[image_number - 1].db.image_asset_id));
+    cached_results[image_number - 1].db.output_filename_base = main_frame->current_project.template_matching_asset_directory.GetFullPath( ) +
+                                                               "/" + current_image->filename.GetName( );
 
     // Store the template_match_id so helper functions can use it
-    cached_results[image_number - 1].template_match_id = next_template_match_id;
+    cached_results[image_number - 1].db.template_match_id = next_template_match_id;
 
     main_frame->current_project.database.AddTemplateMatchingResult(next_template_match_id, cached_results[image_number - 1]);
 
-    main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[image_number - 1].image_asset_id, search_id);
+    main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[image_number - 1].db.image_asset_id, search_id);
     main_frame->current_project.database.Commit( );
     match_template_results_panel->is_dirty = true;
 
@@ -941,18 +941,26 @@ void MatchTemplatePanel::PopulateGuiFromQueueItem(const TemplateMatchQueueItem& 
         }
     }
 
-    if ( ReferenceSelectPanel && item.reference_volume_asset_id >= 0 ) {
-        ReferenceSelectPanel->SetSelection(item.reference_volume_asset_id);
+    if ( ReferenceSelectPanel && item.reference_volume_asset_id >= 0 && volume_asset_panel ) {
+        int array_position = volume_asset_panel->ReturnArrayPositionFromAssetID(item.reference_volume_asset_id);
+        if ( array_position >= 0 ) {
+            ReferenceSelectPanel->SetSelection(array_position);
+        }
         // Enable reference panel if we're editing
         if ( for_editing && ! IsJobRunning( ) ) {
             ReferenceSelectPanel->Enable(true);
         }
     }
 
-    // Set run profile
-    if ( RunProfileComboBox && item.run_profile_id >= 0 ) {
-        RunProfileComboBox->SetSelection(item.run_profile_id);
-        QM_LOG_UI("Set RunProfileComboBox to selection %d from queue item", item.run_profile_id);
+    // Set run profile by finding matching profile id
+    if ( RunProfileComboBox && item.run_profile_id >= 0 && run_profiles_panel ) {
+        for ( int profile_index = 0; profile_index < run_profiles_panel->run_profile_manager.number_of_run_profiles; profile_index++ ) {
+            if ( run_profiles_panel->run_profile_manager.run_profiles[profile_index].id == item.run_profile_id ) {
+                RunProfileComboBox->SetSelection(profile_index);
+                QM_LOG_UI("Set RunProfileComboBox to selection %d (profile id=%d) from queue item", profile_index, item.run_profile_id);
+                break;
+            }
+        }
         // Enable combo box if we're editing
         if ( for_editing && ! IsJobRunning( ) ) {
             RunProfileComboBox->Enable(true);
@@ -1065,25 +1073,21 @@ bool MatchTemplatePanel::RunQueuedTemplateMatch(TemplateMatchQueueItem& job) {
 TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui( ) {
     TemplateMatchQueueItem new_job;
 
-    // Set initial queue status and custom args
-    new_job.queue_status    = "pending";
-    new_job.custom_cli_args = "";
-    // Also clear the member variable when collecting from GUI (not from queue)
+    // Clear the member variable when collecting from GUI (not from queue)
+    // (queue_status, custom_cli_args, database_queue_id all initialized by constructor)
     current_custom_cli_args = "";
 
     // Collect actual parameters from GUI controls
-    new_job.database_queue_id = -1; // Will be assigned when stored to database
-    // Use the group's database ID directly from the groups array
-    // groups[0].id = -1 ("All Images" virtual group)
-    // groups[N].id = database GROUP_ID for real groups
+    // Use database IDs (not combo box indices) for all assets
+    // groups[0].id = -1 ("All Images" virtual group), groups[N].id = database GROUP_ID
     new_job.image_group_id            = image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )].id;
-    new_job.reference_volume_asset_id = ReferenceSelectPanel->GetSelection( );
-    new_job.run_profile_id            = RunProfileComboBox->GetSelection( );
+    new_job.reference_volume_asset_id = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection( ))->asset_id;
+    new_job.run_profile_id            = run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection( )].id;
 
     // Get symmetry and resolution parameters
     new_job.symmetry              = SymmetryComboBox->GetValue( ).Upper( );
     new_job.high_resolution_limit = HighResolutionLimitNumericCtrl->ReturnValue( );
-    new_job.low_resolution_limit  = 300.0f; // Currently hardcoded in template matching
+    new_job.low_resolution_limit  = 300.0f; // Currently hardcoded in template matching FIXME: -> constants
 
     // Angular search parameters
     new_job.out_of_plane_angular_step = OutofPlaneStepNumericCtrl->ReturnValue( );
@@ -1111,11 +1115,6 @@ TemplateMatchQueueItem MatchTemplatePanel::CollectJobParametersFromGui( ) {
 
     // Peak detection parameters
     new_job.min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue( );
-
-    // Get CTF parameters from the first image in the selected group
-    // Note: CTF parameters (pixel_size, voltage, etc.) are now per-image in TEMPLATE_MATCH_LIST
-    // They are no longer stored at the queue level, so we don't need to populate them here
-    // Each image's CTF parameters will be retrieved from the database when the job runs
 
     // Get volume parameters and generate search name
     VolumeAsset* current_volume = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection( ));
@@ -1501,8 +1500,8 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     OneSecondProgressDialog* my_progress_dialog = new OneSecondProgressDialog("Preparing Job", "Preparing Job...", active_group.number_of_members, this, wxPD_REMAINING_TIME | wxPD_AUTO_HIDE | wxPD_APP_MODAL);
 
     TemplateMatchJobResults temp_result;
-    temp_result.input_job_id               = -1;
-    temp_result.job_type                   = cistem::job_type::template_match_full_search;
+    temp_result.db.parent_search_id        = -1;
+    temp_result.db.search_type_code        = cistem::job_type::template_match_full_search;
     temp_result.mask_radius                = 0.0f;
     temp_result.min_peak_radius            = min_peak_radius;
     temp_result.exclude_above_xy_threshold = false;
@@ -1586,9 +1585,9 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
 
         // Create temp result object with predicted IDs for generating correct filenames
         TemplateMatchJobResults temp_filename_helper;
-        temp_filename_helper.output_filename_base = output_filename_base;
-        temp_filename_helper.template_match_id    = predicted_template_match_id;
-        temp_filename_helper.search_id            = predicted_search_id;
+        temp_filename_helper.db.output_filename_base = output_filename_base;
+        temp_filename_helper.db.template_match_id    = predicted_template_match_id;
+        temp_filename_helper.db.search_id            = predicted_search_id;
 
         // Generate output filenames using helper methods
         wxString mip_output_file             = temp_filename_helper.GetMipFilename( );
@@ -1613,19 +1612,19 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
 
         float low_resolution_limit = 300.0f; // FIXME set this somewhere that is not buried in the code!
 
-        temp_result.image_asset_id      = current_image->asset_id;
-        temp_result.job_name            = wxString::Format("Template: %s", current_volume->filename.GetName( ));
-        temp_result.ref_volume_asset_id = current_volume->asset_id;
+        temp_result.db.image_asset_id            = current_image->asset_id;
+        temp_result.job_name                     = wxString::Format("Template: %s", current_volume->filename.GetName( ));
+        temp_result.db.reference_volume_asset_id = current_volume->asset_id;
         // datetime_of_run will be set when result actually arrives in HandleSocketTemplateMatchResultReady
         temp_result.symmetry                        = wanted_symmetry;
-        temp_result.pixel_size                      = pixel_size;
-        temp_result.voltage                         = voltage_kV;
-        temp_result.spherical_aberration            = spherical_aberration_mm;
-        temp_result.amplitude_contrast              = amplitude_contrast;
-        temp_result.defocus1                        = defocus1;
-        temp_result.defocus2                        = defocus2;
-        temp_result.defocus_angle                   = defocus_angle;
-        temp_result.phase_shift                     = phase_shift;
+        temp_result.db.pixel_size                   = pixel_size;
+        temp_result.db.voltage                      = voltage_kV;
+        temp_result.db.spherical_aberration         = spherical_aberration_mm;
+        temp_result.db.amplitude_contrast           = amplitude_contrast;
+        temp_result.db.defocus1                     = defocus1;
+        temp_result.db.defocus2                     = defocus2;
+        temp_result.db.defocus_angle                = defocus_angle;
+        temp_result.db.phase_shift                  = phase_shift;
         temp_result.low_res_limit                   = low_resolution_limit;
         temp_result.high_res_limit                  = high_resolution_limit;
         temp_result.out_of_plane_step               = wanted_out_of_plane_angular_step;
@@ -1636,9 +1635,9 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         temp_result.pixel_size_step                 = pixel_size_step;
         temp_result.reference_box_size_in_angstroms = ref_box_size_in_pixels * pixel_size;
         // Store just the base filename in database - we have all info to reconstruct full names
-        temp_result.output_filename_base = output_filename_base;
-        temp_result.template_match_id    = predicted_template_match_id;
-        temp_result.search_id            = predicted_search_id; // This is the search_id in database
+        temp_result.db.output_filename_base = output_filename_base;
+        temp_result.db.template_match_id    = predicted_template_match_id;
+        temp_result.db.search_id            = predicted_search_id; // This is the search_id in database
 
         cached_results.Add(temp_result);
 

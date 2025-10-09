@@ -326,26 +326,26 @@ void MatchTemplateResultsPanel::FillResultsPanelAndDetails(int row, int column) 
 
     ResultPanel->SetActiveResult(current_result);
 
-    if ( current_result.job_type == cistem::job_type::template_match_full_search )
+    if ( current_result.db.search_type_code == cistem::job_type::template_match_full_search )
         JobTitleStaticText->SetLabel(current_result.job_name);
     else
-        JobTitleStaticText->SetLabel(wxString::Format("%s, Refinement of job #%li", current_result.job_name, current_result.input_job_id));
+        JobTitleStaticText->SetLabel(wxString::Format("%s, Refinement of job #%li", current_result.job_name, current_result.db.parent_search_id));
 
     JobIDStaticText->SetLabel(wxString::Format("%li", template_match_id));
     wxDateTime wxdatetime_of_run;
-    wxdatetime_of_run.SetFromDOS((unsigned long)current_result.datetime_of_run);
+    wxdatetime_of_run.SetFromDOS((unsigned long)current_result.db.datetime_of_run);
     DateOfRunStaticText->SetLabel(wxdatetime_of_run.FormatISODate( ));
     TimeOfRunStaticText->SetLabel(wxdatetime_of_run.FormatISOTime( ));
-    RefVolumeIDStaticText->SetLabel(wxString::Format("%li", current_result.ref_volume_asset_id));
+    RefVolumeIDStaticText->SetLabel(wxString::Format("%li", current_result.db.reference_volume_asset_id));
     SymmetryStaticText->SetLabel(current_result.symmetry);
-    PixelSizeStaticText->SetLabel(wxString::Format(wxT("%.4f Å"), current_result.pixel_size));
-    VoltageStaticText->SetLabel(wxString::Format(wxT("%.2f kV"), current_result.voltage));
-    CsStaticText->SetLabel(wxString::Format(wxT("%.2f mm"), current_result.spherical_aberration));
-    AmplitudeContrastStaticText->SetLabel(wxString::Format(wxT("%.2f"), current_result.amplitude_contrast));
-    Defocus1StaticText->SetLabel(wxString::Format(wxT("%.2f Å"), current_result.defocus1));
-    Defocus2StaticText->SetLabel(wxString::Format(wxT("%.2f Å"), current_result.defocus2));
-    DefocusAngleStaticText->SetLabel(wxString::Format(wxT("%.2f °"), current_result.defocus_angle));
-    PhaseShiftStaticText->SetLabel(wxString::Format(wxT("%.2f °"), current_result.phase_shift));
+    PixelSizeStaticText->SetLabel(wxString::Format(wxT("%.4f Å"), current_result.db.pixel_size));
+    VoltageStaticText->SetLabel(wxString::Format(wxT("%.2f kV"), current_result.db.voltage));
+    CsStaticText->SetLabel(wxString::Format(wxT("%.2f mm"), current_result.db.spherical_aberration));
+    AmplitudeContrastStaticText->SetLabel(wxString::Format(wxT("%.2f"), current_result.db.amplitude_contrast));
+    Defocus1StaticText->SetLabel(wxString::Format(wxT("%.2f Å"), current_result.db.defocus1));
+    Defocus2StaticText->SetLabel(wxString::Format(wxT("%.2f Å"), current_result.db.defocus2));
+    DefocusAngleStaticText->SetLabel(wxString::Format(wxT("%.2f °"), current_result.db.defocus_angle));
+    PhaseShiftStaticText->SetLabel(wxString::Format(wxT("%.2f °"), current_result.db.phase_shift));
     LowResLimitStaticText->SetLabel(wxString::Format(wxT("%.2f Å"), current_result.low_res_limit));
     HighResLimitStaticText->SetLabel(wxString::Format(wxT("%.2f Å"), current_result.high_res_limit));
     OOPAngluarStepStaticText->SetLabel(wxString::Format(wxT("%.2f °"), current_result.out_of_plane_step));

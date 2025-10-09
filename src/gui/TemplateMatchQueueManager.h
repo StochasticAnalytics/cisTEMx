@@ -142,6 +142,7 @@ class TemplateMatchQueueItem {
         min_peak_radius            = 0.0f;
         xy_change_threshold        = 0.0f;
         exclude_above_xy_threshold = false;
+        custom_cli_args            = "";
     }
 
     /**

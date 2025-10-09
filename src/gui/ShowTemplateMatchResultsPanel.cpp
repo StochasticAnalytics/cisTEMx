@@ -45,11 +45,11 @@ void ShowTemplateMatchResultsPanel::OnSavePeaksClick(wxCommandEvent& event) {
 
         NumericTextFile coordinate_file(saveFileDialog->ReturnProperPath( ), OPEN_TO_WRITE, 8);
         wxDateTime      wxdatetime_of_run;
-        wxdatetime_of_run.SetFromDOS((unsigned long)current_result.datetime_of_run);
+        wxdatetime_of_run.SetFromDOS((unsigned long)current_result.db.datetime_of_run);
 
-        coordinate_file.WriteCommentLine(wxString::Format("Template Match Result #%li (%s - %s, %s)", current_result.search_id, current_result.job_name, wxdatetime_of_run.FormatISODate( ), wxdatetime_of_run.FormatISOTime( )).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Searched Image               : %s", image_asset_panel->ReturnAssetLongFilename(image_asset_panel->ReturnArrayPositionFromAssetID(current_result.image_asset_id))).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Reference Volume File        : %s", volume_asset_panel->ReturnAssetLongFilename(volume_asset_panel->ReturnArrayPositionFromAssetID(current_result.ref_volume_asset_id))).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Template Match Result #%li (%s - %s, %s)", current_result.db.search_id, current_result.job_name, wxdatetime_of_run.FormatISODate( ), wxdatetime_of_run.FormatISOTime( )).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Searched Image               : %s", image_asset_panel->ReturnAssetLongFilename(image_asset_panel->ReturnArrayPositionFromAssetID(current_result.db.image_asset_id))).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Reference Volume File        : %s", volume_asset_panel->ReturnAssetLongFilename(volume_asset_panel->ReturnArrayPositionFromAssetID(current_result.db.reference_volume_asset_id))).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Result Threshold        : %.2f", current_result.used_threshold).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("MIP File                     : %s", current_result.GetMipFilename( )).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Scaled MIP File              : %s", current_result.GetScaledMipFilename( )).ToUTF8( ).data( ));
@@ -61,13 +61,13 @@ void ShowTemplateMatchResultsPanel::OnSavePeaksClick(wxCommandEvent& event) {
         coordinate_file.WriteCommentLine(wxString::Format("Histogram File               : %s", current_result.GetHistogramFilename( )).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("2D Projected result File     : %s", current_result.GetProjectionResultFilename( )).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Symmetry                : %s", current_result.symmetry).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Used Pixel Size              : %.4f", current_result.pixel_size).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Used Spherical Aberration    : %.2f", current_result.spherical_aberration).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Used Amplitude Contrast      : %.2f", current_result.amplitude_contrast).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Used Defocus 1               : %.2f", current_result.defocus1).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Used Defocus 2               : %.2f", current_result.defocus2).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Used Defocus Angle           : %.2f", current_result.defocus_angle).ToUTF8( ).data( ));
-        coordinate_file.WriteCommentLine(wxString::Format("Used Phase Shift             : %.2f", current_result.phase_shift).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Used Pixel Size              : %.4f", current_result.db.pixel_size).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Used Spherical Aberration    : %.2f", current_result.db.spherical_aberration).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Used Amplitude Contrast      : %.2f", current_result.db.amplitude_contrast).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Used Defocus 1               : %.2f", current_result.db.defocus1).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Used Defocus 2               : %.2f", current_result.db.defocus2).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Used Defocus Angle           : %.2f", current_result.db.defocus_angle).ToUTF8( ).data( ));
+        coordinate_file.WriteCommentLine(wxString::Format("Used Phase Shift             : %.2f", current_result.db.phase_shift).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Low-Res Limit           : %.2f", current_result.low_res_limit).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used High-Res Limit          : %.2f", current_result.high_res_limit).ToUTF8( ).data( ));
         coordinate_file.WriteCommentLine(wxString::Format("Used Out of Plane Step       : %.2f", current_result.out_of_plane_step).ToUTF8( ).data( ));
@@ -107,11 +107,11 @@ void ShowTemplateMatchResultsPanel::OnPeakListSelectionChange(wxListEvent& event
         ImageDisplayPanel->ClearActiveTemplateMatchMarker( );
     else {
         int selected_peak = PeakListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-        ImageDisplayPanel->SetActiveTemplateMatchMarkerPostion(current_result.found_peaks[selected_peak].x_pos / current_result.pixel_size, current_result.found_peaks[selected_peak].y_pos / current_result.pixel_size, (current_result.reference_box_size_in_angstroms / current_result.pixel_size) * 0.5f);
+        ImageDisplayPanel->SetActiveTemplateMatchMarkerPostion(current_result.found_peaks[selected_peak].x_pos / current_result.db.pixel_size, current_result.found_peaks[selected_peak].y_pos / current_result.db.pixel_size, (current_result.reference_box_size_in_angstroms / current_result.db.pixel_size) * 0.5f);
 
         // if this is a refinement, also select the appropriate peak
 
-        if ( current_result.job_type == cistem::job_type::template_match_refinement ) {
+        if ( current_result.db.search_type_code == cistem::job_type::template_match_refinement ) {
             int selected_change;
             if ( ChangesListCtrl->GetSelectedItemCount( ) > 0 )
                 selected_change = ChangesListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
@@ -127,7 +127,7 @@ void ShowTemplateMatchResultsPanel::OnPeakListSelectionChange(wxListEvent& event
 }
 
 void ShowTemplateMatchResultsPanel::OnChangeListSelectionChange(wxListEvent& event) {
-    if ( ChangesListCtrl->GetSelectedItemCount( ) > 0 && current_result.job_type == cistem::job_type::template_match_refinement ) {
+    if ( ChangesListCtrl->GetSelectedItemCount( ) > 0 && current_result.db.search_type_code == cistem::job_type::template_match_refinement ) {
         int selected_change = ChangesListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
 
         if ( current_result.peak_changes[selected_change].new_peak_number != -1 ) {
@@ -151,9 +151,9 @@ void ShowTemplateMatchResultsPanel::SetActiveResult(TemplateMatchJobResults& res
     Freeze( );
     BottomPanel->Freeze( );
 
-    wxFileName input_file = image_asset_panel->ReturnAssetLongFilename(image_asset_panel->ReturnArrayPositionFromAssetID(current_result.image_asset_id));
+    wxFileName input_file = image_asset_panel->ReturnAssetLongFilename(image_asset_panel->ReturnArrayPositionFromAssetID(current_result.db.image_asset_id));
 
-    if ( current_result.job_type == cistem::job_type::template_match_full_search ) {
+    if ( current_result.db.search_type_code == cistem::job_type::template_match_full_search ) {
         SetHistogramLabelText(wxString::Format("Survival Histogram (%s)", current_result.job_name));
         DrawHistogram(current_result.GetHistogramFilename( ));
         HistogramPlotPanel->Show(true);
@@ -315,7 +315,7 @@ void ShowTemplateMatchResultsPanel::FillPeakInfoTable(float threshold_used) {
 
     // if it's a refinement fill the changes table..
 
-    if ( current_result.job_type == cistem::job_type::template_match_refinement ) {
+    if ( current_result.db.search_type_code == cistem::job_type::template_match_refinement ) {
         ChangesListCtrl->DeleteAllItems( );
 
         for ( counter = 0; counter < current_result.peak_changes.GetCount( ); counter++ ) {

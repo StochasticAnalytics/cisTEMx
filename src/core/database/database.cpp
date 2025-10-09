@@ -1970,12 +1970,12 @@ void Database::AddTemplateMatchingResult(long wanted_template_match_id, Template
                     "DEFOCUS1", "DEFOCUS2", "DEFOCUS_ANGLE", "PHASE_SHIFT",
                     "FUTURE_FLOAT_1", "FUTURE_FLOAT_2",
                     wanted_template_match_id,
-                    job_details.datetime_of_run, job_details.elapsed_time_seconds, job_details.search_id,
-                    job_details.job_type, job_details.input_job_id, job_details.image_asset_id,
-                    job_details.ref_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
-                    job_details.output_filename_base.ToUTF8( ).data( ),
-                    job_details.pixel_size, job_details.voltage, job_details.spherical_aberration, job_details.amplitude_contrast,
-                    job_details.defocus1, job_details.defocus2, job_details.defocus_angle, job_details.phase_shift,
+                    job_details.db.datetime_of_run, job_details.db.elapsed_time_seconds, job_details.db.search_id,
+                    job_details.db.search_type_code, job_details.db.parent_search_id, job_details.db.image_asset_id,
+                    job_details.db.reference_volume_asset_id, 1, // IS_ACTIVE = 1 for new results
+                    job_details.db.output_filename_base.ToUTF8( ).data( ),
+                    job_details.db.pixel_size, job_details.db.voltage, job_details.db.spherical_aberration, job_details.db.amplitude_contrast,
+                    job_details.db.defocus1, job_details.db.defocus2, job_details.db.defocus_angle, job_details.db.phase_shift,
                     0.0f, 0.0f); // Future columns
 
     CreateTemplateMatchPeakListTable(wanted_template_match_id);
@@ -2043,30 +2043,30 @@ TemplateMatchJobResults Database::GetTemplateMatchingResultByID(long wanted_temp
     return_code = Step(list_statement);
 
     // Read from joined query (columns 0-32)
-    template_match_id                = sqlite3_column_int64(list_statement, 0);
-    temp_result.template_match_id    = template_match_id; // Store in result for filename generation
-    temp_result.job_name             = sqlite3_column_text(list_statement, 1);
-    temp_result.datetime_of_run      = sqlite3_column_int64(list_statement, 2);
-    temp_result.elapsed_time_seconds = sqlite3_column_int64(list_statement, 3);
-    temp_result.search_id            = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
-    temp_result.job_type             = sqlite3_column_int(list_statement, 5);
-    temp_result.input_job_id         = sqlite3_column_int64(list_statement, 6); // PARENT_SEARCH_ID
-    temp_result.image_asset_id       = sqlite3_column_int64(list_statement, 7);
-    temp_result.ref_volume_asset_id  = sqlite3_column_int64(list_statement, 8);
+    template_match_id                        = sqlite3_column_int64(list_statement, 0);
+    temp_result.db.template_match_id         = template_match_id; // Store in result for filename generation
+    temp_result.job_name                     = sqlite3_column_text(list_statement, 1);
+    temp_result.db.datetime_of_run           = sqlite3_column_int64(list_statement, 2);
+    temp_result.db.elapsed_time_seconds      = sqlite3_column_int64(list_statement, 3);
+    temp_result.db.search_id                 = sqlite3_column_int64(list_statement, 4); // SEARCH_ID
+    temp_result.db.search_type_code          = sqlite3_column_int(list_statement, 5);
+    temp_result.db.parent_search_id          = sqlite3_column_int64(list_statement, 6); // PARENT_SEARCH_ID
+    temp_result.db.image_asset_id            = sqlite3_column_int64(list_statement, 7);
+    temp_result.db.reference_volume_asset_id = sqlite3_column_int64(list_statement, 8);
     // Column 9 is IS_ACTIVE which is not recorded in the class
 
     // Output filename base from LIST table (column 10)
-    temp_result.output_filename_base = sqlite3_column_text(list_statement, 10);
+    temp_result.db.output_filename_base = sqlite3_column_text(list_statement, 10);
 
     // CTF parameters from LIST table (columns 11-18)
-    temp_result.pixel_size           = sqlite3_column_double(list_statement, 11);
-    temp_result.voltage              = sqlite3_column_double(list_statement, 12);
-    temp_result.spherical_aberration = sqlite3_column_double(list_statement, 13);
-    temp_result.amplitude_contrast   = sqlite3_column_double(list_statement, 14);
-    temp_result.defocus1             = sqlite3_column_double(list_statement, 15);
-    temp_result.defocus2             = sqlite3_column_double(list_statement, 16);
-    temp_result.defocus_angle        = sqlite3_column_double(list_statement, 17);
-    temp_result.phase_shift          = sqlite3_column_double(list_statement, 18);
+    temp_result.db.pixel_size           = sqlite3_column_double(list_statement, 11);
+    temp_result.db.voltage              = sqlite3_column_double(list_statement, 12);
+    temp_result.db.spherical_aberration = sqlite3_column_double(list_statement, 13);
+    temp_result.db.amplitude_contrast   = sqlite3_column_double(list_statement, 14);
+    temp_result.db.defocus1             = sqlite3_column_double(list_statement, 15);
+    temp_result.db.defocus2             = sqlite3_column_double(list_statement, 16);
+    temp_result.db.defocus_angle        = sqlite3_column_double(list_statement, 17);
+    temp_result.db.phase_shift          = sqlite3_column_double(list_statement, 18);
 
     // Search parameters from QUEUE table (columns 19-32)
     temp_result.symmetry                        = sqlite3_column_text(list_statement, 19);

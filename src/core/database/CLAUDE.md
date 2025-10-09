@@ -151,6 +151,139 @@ When modifying a table schema:
    grep -r "plrliiliitrrrrrrrrrr" src/
    ```
 
+## Type-Safe Database Operations (NEW - October 2025)
+
+### Overview
+
+cisTEM now supports **compile-time type-safe database operations** using template metaprogramming and the `DB_COL()` macro pattern. This eliminates manual encoding strings and provides refactor-safe, self-documenting code.
+
+**Files:**
+- `src/core/database/typesafe_database_schema.h` - Type-safe struct definitions and schemas
+- `src/core/database/typesafe_database_helpers.h` - Template machinery and DB_COL macro
+
+### Type-Safe Schema Definition
+
+Instead of encoding strings like `"plrliiliitrrrrrrrrrr"`, define typed structs:
+
+```cpp
+// In typesafe_database_schema.h
+struct template_match_list {
+    static constexpr const char* table_name = "TEMPLATE_MATCH_LIST";
+
+    int         template_match_id;        // p - PRIMARY KEY
+    long        datetime_of_run;          // l
+    long        elapsed_time_seconds;     // l
+    // ... all 20 typed members
+    std::string output_filename_base;     // t - TEXT (using std::string, not wxString)
+    double      pixel_size;               // r - REAL
+    // ... remaining members
+};
+
+// Schema connects struct to column names
+using template_match_list_schema = TableSchema<template_match_list, 20>;
+constexpr template_match_list_schema template_match_list_columns{{
+    "template_match_id",
+    "datetime_of_run",
+    // ... column names matching struct members (lowercase, SQL case-insensitive)
+}};
+```
+
+**Key Design Decisions:**
+- **Struct members use `std::string`** instead of `wxString` for portability
+- **Column names match struct members** (lowercase) - SQL is case-insensitive anyway
+- **Table name embedded in struct** as `static constexpr`
+- **std::string used for TEXT columns** - convert to/from wxString when interfacing with existing code
+
+### DB_COL() Macro Pattern
+
+The `DB_COL()` macro extracts member names from `struct.member` syntax:
+
+```cpp
+template_match_list record;
+
+// DB_COL(record.pixel_size) expands to: "pixel_size", record.pixel_size
+// Name extracted automatically - no manual typing!
+```
+
+### Type-Safe SELECT Example
+
+```cpp
+template_match_list record;
+
+batch_select(template_match_list_columns,
+             "template_match_id = 42",  // WHERE clause
+             DB_COL(record.template_match_id),
+             DB_COL(record.pixel_size),
+             DB_COL(record.voltage));
+
+// Generates: SELECT template_match_id, pixel_size, voltage
+//            FROM TEMPLATE_MATCH_LIST
+//            WHERE template_match_id = 42
+```
+
+**Benefits:**
+- ✅ No encoding string required
+- ✅ Column names validated at compile-time (or runtime if enabled)
+- ✅ Refactor-safe: rename `record.pixel_size` → compiler finds all uses
+- ✅ Self-documenting: struct IS the schema
+- ✅ SQL generated via fold expressions
+
+### Runtime Validation (Toggleable)
+
+```cpp
+// In typesafe_database_helpers.h
+constexpr bool validate_db_schema_at_runtime = false;  // Zero overhead when disabled
+```
+
+When enabled:
+```cpp
+// Invalid column name detected at runtime
+batch_select(schema, "...", "INVALID_COLUMN", value, ...);
+// Throws: std::runtime_error("Column not in schema: INVALID_COLUMN")
+```
+
+**Validation guarantees:**
+- When **disabled**: Complete optimization - zero runtime cost
+- When **enabled**: Descriptive error messages with column names
+- Uses `if constexpr` - validation code eliminated at compile time when disabled
+
+### Integration with Existing Code
+
+**Current approach** (still valid):
+```cpp
+InsertOrReplace("TEMPLATE_MATCH_LIST", "pllliiliitrrrrrrrrrr",
+                "TEMPLATE_MATCH_ID", "DATETIME_OF_RUN", ...,
+                id, datetime, ...);
+```
+
+**Future type-safe approach** (in development):
+```cpp
+template_match_list record = CreateTemplateMatchListRecord(id, job_details);
+batch_insert(template_match_list_columns, DB_COL(record.template_match_id), ...);
+```
+
+### Migration Strategy
+
+1. **Phase 1 (COMPLETE):** Type-safe schema definitions and SQL generation
+2. **Phase 2 (IN PROGRESS):** Database integration - execute queries, bind results
+3. **Phase 3:** Update `AddTemplateMatchingResult()` and `GetTemplateMatchingResultByID()`
+4. **Phase 4:** Extend to other tables (TEMPLATE_MATCH_QUEUE, IMAGE_ASSETS, etc.)
+
+### Testing Type-Safe Operations
+
+See `.claude/cache/test_typesafe_db.cpp` for validation tests.
+
+```bash
+# Compile and run test
+g++ -std=c++17 test_typesafe_db.cpp -o test_typesafe_db
+./test_typesafe_db
+
+# Expected output:
+# SQL: SELECT template_match_id, pixel_size FROM TEMPLATE_MATCH_LIST WHERE ...
+# ✓ Validation passed (with validation enabled)
+# ✗ Caught validation error: Column not in schema: INVALID_NAME
+```
+
 ## Common Database Operations
 
 ### Batch Insert Pattern

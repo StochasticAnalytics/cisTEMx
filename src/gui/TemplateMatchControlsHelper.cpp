@@ -5,6 +5,7 @@
 // Extern globals for asset panels (declared in MatchTemplatePanel.cpp)
 extern MyImageAssetPanel*  image_asset_panel;
 extern MyVolumeAssetPanel* volume_asset_panel;
+extern MyRunProfilesPanel* run_profiles_panel;
 extern MyMainFrame*        main_frame;
 
 // TemplateMatchControls struct implementation
@@ -82,14 +83,22 @@ void TemplateMatchControlsHelper::PopulateFromQueueItem(const TemplateMatchQueue
         }
     }
 
-    // Set reference volume selection
-    if ( controls.reference_panel && item.reference_volume_asset_id >= 0 ) {
-        controls.reference_panel->SetSelection(item.reference_volume_asset_id);
+    // Set reference volume selection by finding matching asset_id
+    if ( controls.reference_panel && item.reference_volume_asset_id >= 0 && volume_asset_panel ) {
+        int array_position = volume_asset_panel->ReturnArrayPositionFromAssetID(item.reference_volume_asset_id);
+        if ( array_position >= 0 ) {
+            controls.reference_panel->SetSelection(array_position);
+        }
     }
 
-    // Set run profile
-    if ( controls.run_profile_combo && item.run_profile_id >= 0 ) {
-        controls.run_profile_combo->SetSelection(item.run_profile_id);
+    // Set run profile by finding matching profile id
+    if ( controls.run_profile_combo && item.run_profile_id >= 0 && run_profiles_panel ) {
+        for ( int profile_index = 0; profile_index < run_profiles_panel->run_profile_manager.number_of_run_profiles; profile_index++ ) {
+            if ( run_profiles_panel->run_profile_manager.run_profiles[profile_index].id == item.run_profile_id ) {
+                controls.run_profile_combo->SetSelection(profile_index);
+                break;
+            }
+        }
     }
 
     // Set symmetry
@@ -199,13 +208,15 @@ bool TemplateMatchControlsHelper::ExtractToQueueItem(TemplateMatchQueueItem& ite
     }
 
     // Extract reference volume asset ID
-    if ( controls.reference_panel ) {
-        item.reference_volume_asset_id = controls.reference_panel->GetSelection( );
+    if ( controls.reference_panel && volume_asset_panel ) {
+        int selected_index             = controls.reference_panel->GetSelection( );
+        item.reference_volume_asset_id = volume_asset_panel->ReturnAssetPointer(selected_index)->asset_id;
     }
 
     // Extract run profile ID
-    if ( controls.run_profile_combo ) {
-        item.run_profile_id = controls.run_profile_combo->GetSelection( );
+    if ( controls.run_profile_combo && run_profiles_panel ) {
+        int selected_index  = controls.run_profile_combo->GetSelection( );
+        item.run_profile_id = run_profiles_panel->run_profile_manager.run_profiles[selected_index].id;
     }
 
     // Extract symmetry

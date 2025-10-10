@@ -1,3 +1,5 @@
+#define cisTEM_temp_disable_gpu_noFastFFT
+
 //#include "../core/core_headers.h"
 #include "../constants/constants.h"
 #include "../core/gui_core_headers.h"
@@ -42,6 +44,11 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
 #ifndef cisTEM_USING_FastFFT
     UseFastFFTRadioYes->Enable(false);
     UseFastFFTRadioNo->Enable(false);
+#endif
+
+#ifdef cisTEM_temp_disable_gpu_noFastFFT
+    UseGPURadioYes->Enable(false);
+    UseGPURadioNo->Enable(false);
 #endif
 
     // We need to allow a higher precision, otherwise, the option to resample will almost always be taken
@@ -175,6 +182,7 @@ void MatchTemplatePanel::ResetDefaults( ) {
 #else
     UseGPURadioNo->SetValue(true);
     UseFastFFTRadioNo->SetValue(true);
+#endif
 #endif
 
     DefocusSearchRangeNumericCtrl->ChangeValueFloat(1200.0f);

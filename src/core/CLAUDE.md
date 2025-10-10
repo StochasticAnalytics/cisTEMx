@@ -204,6 +204,71 @@ if (!file.OpenFile(filename, false)) {
 }
 ```
 
+## Code Style Guidelines
+
+### Using Declarations and Type Aliases
+
+**`using` declarations should be scoped as narrowly as possible:**
+
+```cpp
+// ❌ AVOID: Global scope using declarations
+using MyType = cistem::fundamental_type::Enum;
+
+void MyFunction() {
+    MyType value = MyType::integer_t;  // Pollutes global namespace
+}
+
+// ✅ GOOD: Function-scoped using declarations
+void MyFunction() {
+    using MyType = cistem::fundamental_type::Enum;
+    MyType value = MyType::integer_t;  // Scoped to function
+}
+
+// ✅ ACCEPTABLE: Class-scoped (only if used extensively throughout class)
+class MyClass {
+    using MyType = cistem::fundamental_type::Enum;
+
+    void Method1() {
+        MyType value = MyType::integer_t;
+    }
+
+    void Method2() {
+        MyType value = MyType::float_t;
+    }
+};
+
+// ✅ BEST: Use full type when only used a few times
+void MyFunction() {
+    cistem::fundamental_type::Enum value = cistem::fundamental_type::integer_t;
+}
+```
+
+**Rationale:**
+- Global `using` declarations pollute the namespace for all files that include the header
+- Function-scoped declarations keep type aliases local and clear
+- Class-scoped declarations are acceptable when a type is used extensively throughout a class
+- Full type names are preferred when brevity doesn't significantly improve readability
+
+**Static Assertions for Type Safety:**
+When using function-scoped `using` declarations for type aliases, add static assertions to verify critical type properties:
+```cpp
+// ✅ BEST: Function-scoped using with compile-time safety check
+bool JobPackage::SendJobPackage(wxSocketBase* socket) {
+    using c_ft = cistem::fundamental_type::Enum;
+    static_assert(sizeof(c_ft) == sizeof(uint8_t),
+                  "fundamental_type::Enum must match uint8_t size for safe casting in wire protocol");
+
+    // Now safe to use c_ft throughout function
+    c_ft type_descriptor = c_ft::integer_t;
+    // ...
+}
+```
+
+This pattern combines readability (short alias) with safety (compile-time verification), ensuring type assumptions don't break during refactoring.
+
+**Legacy Code:**
+Most cisTEM code has been updated to use properly-scoped `using` declarations. If you encounter global `using` declarations in older files, refactor them to function or class scope when modernizing those files.
+
 ## Best Practices Summary
 
 1. **Use debug assertions** to verify preconditions in methods
@@ -214,3 +279,4 @@ if (!file.OpenFile(filename, false)) {
 6. **Document mathematical algorithms** with references to papers
 7. **Consider GPU acceleration** for computationally intensive operations
 8. **Maintain backward compatibility** with existing file formats
+9. **Scope `using` declarations narrowly** - function > class > never global

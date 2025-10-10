@@ -6,7 +6,7 @@
 #include <wx/evtloop.h>
 
 #include "../../core/core_headers.h"
-#include "../../core/socket_codes.h"
+#include "../../core/socket_communication_utils/socket_codes.h"
 
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_LAUNCHJOB, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_SENDINFO, wxThreadEvent);
@@ -400,6 +400,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
             have_assigned_master = true;
 
             WriteToSocket(new_connection, socket_you_are_the_master, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+            // See JobPackage::SendJobPackage() Doxygen for encoding order specification
             current_job_package.SendJobPackage(new_connection);
 
             bool no_error;

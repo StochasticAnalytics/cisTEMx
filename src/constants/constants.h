@@ -99,6 +99,25 @@ constexpr float critical_dose_c         = 2.8141f;
 constexpr float reduced_critical_dose_b = critical_dose_b / 2.f;
 } // namespace electron_dose
 
+// Fundamental data types used for job arguments, parameters, and data serialization
+namespace fundamental_type {
+enum Enum : uint8_t {
+    none_t,
+    text_t,
+    integer_t,
+    float_t,
+    bool_t,
+    long_t,
+    double_t,
+    char_t,
+    variable_length_t,
+    integer_unsigned_t // MUST remain last element for safety check
+};
+
+// Ensure all enum values fit in wire protocol (1 byte per type descriptor)
+static_assert(integer_unsigned_t < 256, "fundamental_type::Enum values must fit in uint8_t");
+} // namespace fundamental_type
+
 // To ensure data base type parity, force int type (even though this should be the default).
 namespace job_type {
 enum Enum : int {

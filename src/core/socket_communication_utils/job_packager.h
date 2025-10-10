@@ -1,5 +1,4 @@
 
-
 // we need a header to describe how to decode the stream. - which i'm about to make up off the top of my head..  SENDER AND RECEIVER MUST HAVE THE SAME ENDIANESS
 
 // 4 bytes = number_of_jobs (int)
@@ -37,22 +36,26 @@ class RunArgument {
     void SetBoolArgument(bool wanted_argument);
 
     inline std::string ReturnStringArgument( ) {
-        MyDebugAssertTrue(type_of_argument == TEXT, "Returning wrong type!");
+        using c_ft = cistem::fundamental_type::Enum;
+        MyDebugAssertTrue(type_of_argument == c_ft::text_t, "Returning wrong type!");
         return string_argument[0];
     }
 
     inline int ReturnIntegerArgument( ) {
-        MyDebugAssertTrue(type_of_argument == INTEGER, "Returning wrong type!");
+        using c_ft = cistem::fundamental_type::Enum;
+        MyDebugAssertTrue(type_of_argument == c_ft::integer_t, "Returning wrong type!");
         return integer_argument[0];
     }
 
     inline float ReturnFloatArgument( ) {
-        MyDebugAssertTrue(type_of_argument == FLOAT, "Returning wrong type!");
+        using c_ft = cistem::fundamental_type::Enum;
+        MyDebugAssertTrue(type_of_argument == c_ft::float_t, "Returning wrong type!");
         return float_argument[0];
     }
 
     inline bool ReturnBoolArgument( ) {
-        MyDebugAssertTrue(type_of_argument == BOOL, "Returning wrong type!");
+        using c_ft = cistem::fundamental_type::Enum;
+        MyDebugAssertTrue(type_of_argument == c_ft::bool_t, "Returning wrong type!");
         return bool_argument[0];
     }
 

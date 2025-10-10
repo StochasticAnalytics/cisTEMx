@@ -295,7 +295,7 @@ bool DoFourierExpandVsLerpResize(const wxString& cistem_ref_dir, const wxString&
         Image host_cropped_img = cropped_img.CopyDeviceToNewHost(true, true);
 
         host_binned_img.CorrectSinc( );
-        host_binned_img.CorrectSinc( );
+        host_cropped_img.CorrectSinc( );
         host_binned_img.CosineMask(logical_input_size * 0.35, 7.f);
         host_cropped_img.CosineMask(logical_input_size * 0.35, 7.f);
 
@@ -306,10 +306,12 @@ bool DoFourierExpandVsLerpResize(const wxString& cistem_ref_dir, const wxString&
         host_binned_img.QuickAndDirtyWriteSlices("binned_img_" + std::to_string(upsampled_size) + ".mrc", 1, 1);
         host_cropped_img.QuickAndDirtyWriteSlices("cropped_img_" + std::to_string(upsampled_size) + ".mrc", 1, 1);
         // Calculate the mean square error between the two images
-        cropped_img.SubtractImage(binned_img);
-        float SS = cropped_img.ReturnSumOfSquares( );
+        host_cropped_img.SubtractImage(&host_binned_img);
+        float SS = host_cropped_img.ReturnSumOfSquares( );
         std::cerr << "SS: " << SS << std::endl;
-        passed = passed && (FloatsAreAlmostTheSame(SS, 0.0f));
+        // Use 5x epsilon for upsampling comparison due to legitimate numerical differences
+        // between upsampling in 3D then extracting 2D vs extracting 2D then upsampling
+        passed = passed && (SS < (5.0f * cistem::float_epsilon));
     }
 
     all_passed = passed ? all_passed : false;

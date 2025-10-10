@@ -17,19 +17,6 @@
 #define SOCKET_FLAGS wxSOCKET_WAITALL | wxSOCKET_BLOCK
 //#define SOCKET_FLAGS wxSOCKET_WAITALL
 
-// data types.. (moved from job_packager.h)
-
-#define NONE        	 0
-#define TEXT			 1
-#define INTEGER			 2
-#define FLOAT			 3
-#define BOOL	 	 	 4
-#define LONG        	 5
-#define DOUBLE      	 6
-#define CHAR			 7
-#define VARIABLE_LENGTH  8
-#define INTEGER_UNSIGNED 9
-
 // Types of noise distributions
 namespace cistem {
 

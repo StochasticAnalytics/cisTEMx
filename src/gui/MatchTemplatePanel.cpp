@@ -183,7 +183,6 @@ void MatchTemplatePanel::ResetDefaults( ) {
     UseGPURadioNo->SetValue(true);
     UseFastFFTRadioNo->SetValue(true);
 #endif
-#endif
 
     DefocusSearchRangeNumericCtrl->ChangeValueFloat(1200.0f);
     DefocusSearchStepNumericCtrl->ChangeValueFloat(200.0f);

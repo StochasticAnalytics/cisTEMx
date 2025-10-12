@@ -14,7 +14,8 @@
       "Bash(echo \"Exit status: $?\")",
       "Bash(make:*)",
       "Bash(tee:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(git diff:*)"
     ],
     "deny": [],
     "ask": []

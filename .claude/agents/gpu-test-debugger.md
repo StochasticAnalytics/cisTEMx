@@ -174,7 +174,10 @@ MyPrintWithDetails("Max threads per block: %d, Shared mem per block: %zu",
 
 For each experiment:
 1. **Implement instrumentation** - Add minimal diagnostic code
-2. **Rebuild and test** - Compile with debug symbols: `make -j16`
+2. **Rebuild and test** - Use the Task tool to invoke the cpp-build-expert agent for compilation:
+   - Invoke with: `Task(subagent_type="cpp-build-expert", prompt="Build cisTEM to test [instrumentation description]")`
+   - The cpp-build-expert will handle `/build-cistem` and provide filtered diagnostics
+   - Only use direct `make` commands if you need special build flags not supported by the slash command
 3. **Analyze output** - Look for patterns, correlations, anomalies
 4. **Refine hypothesis** - Update based on new evidence
 5. **Document findings** - Record what worked, what didn't, and why

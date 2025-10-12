@@ -822,8 +822,10 @@ bool MatchTemplateApp::DoCalculation( ) {
     else
         mask_radius_search = particle_radius_angstroms;
 
+    bool calculated_angular_step = false;
     if ( angular_step <= 0 ) {
-        angular_step = CalculateAngularStep(high_resolution_limit_search, mask_radius_search);
+        calculated_angular_step = true;
+        angular_step            = CalculateAngularStep(high_resolution_limit_search, mask_radius_search);
     }
 
     if ( in_plane_angular_step <= 0 ) {
@@ -833,6 +835,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     else {
         psi_step = in_plane_angular_step;
     }
+
+    if ( calculated_angular_step )
+        wxPrintf("Out-of-plane step (%3.1f) and in-plane step (%3.1f) calculated automatically because the inputs were zero\n");
 
     psi_start = 0.0f;
     psi_max   = 360.0f;
@@ -903,6 +908,9 @@ bool MatchTemplateApp::DoCalculation( ) {
         defocus_search_range = 0.0f;
         defocus_step         = 100.0f;
     }
+
+    if ( pixel_size_search_range > 0.f && use_gpu )
+        SendErrorAndCrash("The gpu implementation is not set to work with pixel size search. FIXME: we should just disable this in the GUI options or fix the problem.");
 
     if ( pixel_size_step <= 0.0f ) {
         pixel_size_search_range = 0.0f;

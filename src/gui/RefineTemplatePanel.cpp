@@ -823,7 +823,7 @@ void RefineTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* con
         cached_results[image_number - 1].peak_changes[change_peak_counter].original_peak_number = -1;
 
         for ( result_peak_counter = 0; result_peak_counter < current_input.found_peaks.GetCount( ); result_peak_counter++ ) {
-            if ( fabsf(current_input.found_peaks[result_peak_counter].x_pos - original_x) < current_input.pixel_size && fabsf(current_input.found_peaks[result_peak_counter].y_pos - original_y) < current_input.pixel_size ) {
+            if ( fabsf(current_input.found_peaks[result_peak_counter].x_pos - original_x) < current_input.db.pixel_size && fabsf(current_input.found_peaks[result_peak_counter].y_pos - original_y) < current_input.db.pixel_size ) {
                 cached_results[image_number - 1].peak_changes[change_peak_counter].original_peak_number = result_peak_counter + 1;
                 break;
             }

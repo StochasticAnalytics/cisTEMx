@@ -258,6 +258,11 @@ void DisplayPanel::SetActiveTemplateMatchMarkerPostion(float wanted_x_pos, float
 }
 
 void DisplayPanel::ClearActiveTemplateMatchMarker( ) {
+    // Guard: Only clear markers if we have all 3 pages initialized
+    if ( my_notebook->GetPageCount( ) < 3 ) {
+        return;
+    }
+
     ((DisplayNotebookPanel*)my_notebook->GetPage(0))->template_matching_marker_x_pos  = -1;
     ((DisplayNotebookPanel*)my_notebook->GetPage(0))->template_matching_marker_y_pos  = -1;
     ((DisplayNotebookPanel*)my_notebook->GetPage(0))->template_matching_marker_radius = -1;

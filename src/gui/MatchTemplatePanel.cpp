@@ -1488,6 +1488,36 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
     temp_result.exclude_above_xy_threshold = false;
     temp_result.xy_change_threshold        = 0.0f;
 
+    // Determine search_id BEFORE calculating predicted_search_id for filenames
+    if ( pending_queue_id > 0 ) {
+        int existing_search_id = main_frame->current_project.database.GetSearchIdForQueueItem(pending_queue_id);
+        if ( existing_search_id > 0 ) {
+            search_id = existing_search_id;
+            QM_LOG_DB("Queue item %ld resuming with existing search_id %d", pending_queue_id, search_id);
+            int result_count = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(
+                    wxString::Format("SELECT COUNT(*) FROM TEMPLATE_MATCH_LIST WHERE SEARCH_ID = %d", search_id));
+            MyDebugAssertTrue(result_count > 0,
+                              "Queue item has search_id %d but no results in TEMPLATE_MATCH_LIST", search_id);
+        }
+        else {
+            search_id = -1;
+            QM_LOG_DB("Queue item %ld starting fresh - search_id will be assigned when first result is written", pending_queue_id);
+        }
+    }
+    else {
+        search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
+        QM_LOG_DB("Non-queue job - assigning search_id %d immediately", search_id);
+    }
+
+    // Calculate predicted_search_id for filenames (now that search_id is correctly set)
+    int predicted_search_id;
+    if ( search_id == -1 ) {
+        predicted_search_id = main_frame->current_project.database.ReturnHighestTemplateMatchJobID( ) + 1;
+    }
+    else {
+        predicted_search_id = search_id;
+    }
+
     // Loop over all images to set up jobs
     for ( int image_counter = 0; image_counter < active_group.number_of_members; image_counter++ ) {
         image_number_for_gui = image_counter + 1;
@@ -1523,42 +1553,35 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         if ( orientations_per_process < 1 )
             orientations_per_process = 1;
 
-        int number_of_previous_template_matches = main_frame->current_project.database.ReturnNumberOfPreviousTemplateMatchesByAssetID(current_image->asset_id);
+        // Predict what the template_match_id WILL BE when this image completes
+        // Each image gets unique template_match_id, but all images in batch share predicted_search_id (calculated above)
+        int predicted_template_match_id = main_frame->current_project.database.ReturnHighestTemplateMatchID( ) + image_counter + 1;
+
         main_frame->current_project.database.GetCTFParameters(current_image->ctf_estimation_id, voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, phase_shift, iciness);
 
-        // Generate output filenames
-        wxString mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        mip_output_file += wxString::Format("/%s_mip_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
+        // Generate output filename base in correct format: <path>/<image_name>
+        // The helper functions will add _<type>_<tm_id>_<search_id>.mrc
+        wxString output_filename_base = main_frame->current_project.template_matching_asset_directory.GetFullPath( ) +
+                                        "/" + current_image->filename.GetName( );
 
-        wxString best_psi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_psi_output_file += wxString::Format("/%s_psi_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
+        // Create temp result object with predicted IDs for generating correct filenames
+        TemplateMatchJobResults temp_filename_helper;
+        temp_filename_helper.output_filename_base = output_filename_base;
+        temp_filename_helper.template_match_id    = predicted_template_match_id;
+        temp_filename_helper.job_id               = predicted_search_id;
 
-        wxString best_theta_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_theta_output_file += wxString::Format("/%s_theta_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString best_phi_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_phi_output_file += wxString::Format("/%s_phi_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString best_defocus_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_defocus_output_file += wxString::Format("/%s_defocus_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString best_pixel_size_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        best_pixel_size_output_file += wxString::Format("/%s_pixel_size_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString scaled_mip_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        scaled_mip_output_file += wxString::Format("/%s_scaled_mip_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString output_histogram_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        output_histogram_file += wxString::Format("/%s_histogram_%i_%i.txt", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString output_result_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        output_result_file += wxString::Format("/%s_plotted_result_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString correlation_avg_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        correlation_avg_output_file += wxString::Format("/%s_avg_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
-
-        wxString correlation_std_output_file = main_frame->current_project.template_matching_asset_directory.GetFullPath( );
-        correlation_std_output_file += wxString::Format("/%s_std_%i_%i.mrc", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
+        // Generate output filenames using helper methods
+        wxString mip_output_file             = temp_filename_helper.GetMipFilename( );
+        wxString best_psi_output_file        = temp_filename_helper.GetPsiFilename( );
+        wxString best_theta_output_file      = temp_filename_helper.GetThetaFilename( );
+        wxString best_phi_output_file        = temp_filename_helper.GetPhiFilename( );
+        wxString best_defocus_output_file    = temp_filename_helper.GetDefocusFilename( );
+        wxString best_pixel_size_output_file = temp_filename_helper.GetPixelSizeFilename( );
+        wxString scaled_mip_output_file      = temp_filename_helper.GetScaledMipFilename( );
+        wxString output_histogram_file       = temp_filename_helper.GetHistogramFilename( );
+        wxString output_result_file          = temp_filename_helper.GetProjectionResultFilename( );
+        wxString correlation_avg_output_file = temp_filename_helper.GetAvgFilename( );
+        wxString correlation_std_output_file = temp_filename_helper.GetStdFilename( );
 
         current_orientation_counter = 0;
 
@@ -1593,9 +1616,10 @@ bool MatchTemplatePanel::SetupSearchFromQueueItem(const TemplateMatchQueueItem& 
         temp_result.pixel_size_search_range         = pixel_size_search_range;
         temp_result.pixel_size_step                 = pixel_size_step;
         temp_result.reference_box_size_in_angstroms = ref_box_size_in_pixels * pixel_size;
-        // Set output filename base - individual filenames generated by helper methods
-        temp_result.output_filename_base = main_frame->current_project.template_matching_asset_directory.GetFullPath( ) +
-                                           wxString::Format("/%s_%i_%i", current_image->filename.GetName( ), current_image->asset_id, number_of_previous_template_matches);
+        // Set output filename base - just image name, helper methods will add IDs
+        temp_result.output_filename_base = output_filename_base;
+        temp_result.template_match_id    = predicted_template_match_id;
+        temp_result.job_id               = predicted_search_id; // This is the search_id
 
         cached_results.Add(temp_result);
 

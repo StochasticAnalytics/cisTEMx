@@ -50,7 +50,34 @@ cisTEM uses GNU Autotools as the primary build system with Intel MKL for optimiz
 
 For detailed build instructions, see `scripts/CLAUDE.md`.
 
-### Quick Start
+### **IMPORTANT: Use the cpp-build-expert Agent**
+
+**Always use the cpp-build-expert agent for compilation tasks.** This agent exists to:
+- **Keep your context clean** by handling compilation output in a separate agent context
+- **Handle build errors systematically** with specialized error analysis
+- **Manage incremental vs. clean rebuilds** based on what changed
+- **Integrate with existing build infrastructure** (build-cistem.sh, tasks.json)
+
+**When to use cpp-build-expert:**
+- After modifying C++ source files (.cpp, .h, .cu)
+- When testing whether code compiles
+- During iterative development with compile-test-fix cycles
+- After applying git commits or patches
+
+**How to invoke:**
+```
+Use the Task tool with subagent_type="cpp-build-expert"
+Prompt: "Build cisTEM after modifying MatchTemplatePanel.cpp"
+```
+
+**Do NOT directly invoke:**
+- `Bash(.claude/commands/build-cistem.sh)` - use cpp-build-expert instead
+- `Bash(make ...)` - use cpp-build-expert instead
+- VS Code build tasks directly - use cpp-build-expert instead
+
+The agent is designed to make your life easier by handling the messy compilation output and keeping your main context focused on the logic and problem-solving.
+
+### Quick Start (For Manual Testing)
 
 ```bash
 # Initial setup

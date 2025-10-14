@@ -1,4 +1,4 @@
-#include "../core_headers.h"
+#include "core_headers.h"
 
 Project::Project( ) {
 

@@ -1,5 +1,5 @@
-#include "../../constants/constants.h"
-#include "../../gui/UpdateProgressTracker.h"
+#include "../constants/constants.h"
+#include "../gui/UpdateProgressTracker.h"
 
 // Type alias for database-storable numeric types
 // TODO: When moving to C++17/20, convert to a concept

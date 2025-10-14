@@ -1,4 +1,3 @@
-#include "database/typesafe_database_schema.h"
 
 class Image;
 class ImageFile;
@@ -24,9 +23,6 @@ class TemplateMatchJobResults {
   public:
     TemplateMatchJobResults( );
 
-    // Database record for TEMPLATE_MATCH_LIST table
-    template_match_list db;
-
     wxString job_name;
     wxString symmetry;
     float    low_res_limit;
@@ -42,50 +38,69 @@ class TemplateMatchJobResults {
     float    xy_change_threshold;
     bool     exclude_above_xy_threshold;
 
-    // Helper methods to generate individual output filenames from db.output_filename_base
+    // Database fields needed for helper methods
+    long     parent_search_id;
+    int      search_type_code;
+    long     image_asset_id;
+    long     reference_volume_asset_id;
+    double   pixel_size;
+    double   voltage;
+    double   spherical_aberration;
+    double   amplitude_contrast;
+    double   defocus1;
+    double   defocus2;
+    double   defocus_angle;
+    double   phase_shift;
+    long     datetime_of_run;
+    long     elapsed_time_seconds;
+    wxString output_filename_base;
+    long     template_match_id; // the job id, ie the P in TEMPLATE_MATCH_LIST table
+    long     search_id;
+
+    // Helper methods to generate individual output filenames from output_filename_base
     // Format: <base>_<type>_<template_match_id>_<search_id>.mrc
     wxString GetMipFilename( ) const {
-        return db.output_filename_base + wxString::Format("_mip_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_mip_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetScaledMipFilename( ) const {
-        return db.output_filename_base + wxString::Format("_scaled_mip_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_scaled_mip_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetAvgFilename( ) const {
-        return db.output_filename_base + wxString::Format("_avg_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_avg_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetStdFilename( ) const {
-        return db.output_filename_base + wxString::Format("_std_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_std_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetPsiFilename( ) const {
-        return db.output_filename_base + wxString::Format("_psi_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_psi_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetThetaFilename( ) const {
-        return db.output_filename_base + wxString::Format("_theta_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_theta_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetPhiFilename( ) const {
-        return db.output_filename_base + wxString::Format("_phi_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_phi_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetDefocusFilename( ) const {
-        return db.output_filename_base + wxString::Format("_defocus_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_defocus_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetPixelSizeFilename( ) const {
-        return db.output_filename_base + wxString::Format("_pixel_size_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_pixel_size_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     wxString GetHistogramFilename( ) const {
-        return db.output_filename_base + wxString::Format("_histogram_%ld_%ld.txt", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_histogram_%ld_%ld.txt", template_match_id, search_id);
     }
 
     wxString GetProjectionResultFilename( ) const {
-        return db.output_filename_base + wxString::Format("_projection_result_%ld_%ld.mrc", db.template_match_id, db.search_id);
+        return output_filename_base + wxString::Format("_projection_result_%ld_%ld.mrc", template_match_id, search_id);
     }
 
     float refinement_threshold;

@@ -207,18 +207,13 @@ class TemplateMatchQueueManager : public wxPanel {
     // UI Controls - Static text labels for queue sections
     wxStaticText* execution_queue_label; ///< Label for execution queue section
     wxStaticText* available_searches_label; ///< Label for available searches section
-    wxStaticText* cli_args_label; ///< Label for custom CLI arguments
 #ifdef cisTEM_QM_LOGGING
     wxStaticText* logging_label; ///< Label for debug logging controls
 #endif
 
     // UI Controls - Container panels that need show/hide during editor view switch
     wxPanel* controls_panel; ///< Panel containing Run Queue button and logging controls
-    wxPanel* cli_args_panel; ///< Panel containing CLI arguments controls
-
-    // UI Controls - Custom CLI arguments
-    wxTextCtrl* custom_cli_args_text; ///< Text control for custom command-line arguments
-    wxPanel*    bottom_controls; ///< Panel containing bottom management buttons
+    wxPanel* bottom_controls; ///< Panel containing bottom management buttons
 
     // UI Controls - Execution queue management buttons
     wxButton* run_selected_button; ///< Execute highest priority search
@@ -295,8 +290,10 @@ class TemplateMatchQueueManager : public wxPanel {
      * Persists search to database via AddToTemplateMatchQueue, assigns next available queue_order
      * for priority sequencing, and adds to in-memory execution_queue. Core method called by
      * AddSearchToQueue workflow for both immediate execution and interactive queueing.
+     *
+     * @return Database queue ID assigned by AddToTemplateMatchQueue
      */
-    void AddToExecutionQueue(const TemplateMatchQueueItem& item);
+    long AddToExecutionQueue(const TemplateMatchQueueItem& item);
     /**
      * @brief Removes search from execution queue by index
      * @param index Position in execution_queue to remove

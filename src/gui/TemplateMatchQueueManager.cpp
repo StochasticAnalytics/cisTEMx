@@ -141,27 +141,13 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     available_searches_ctrl->AppendColumn(wxString::FromUTF8("Latest") + sort_indicator_avail, wxLIST_FORMAT_LEFT, calc_width_avail("Latest", true));
     available_searches_ctrl->AppendColumn("CLI Args", wxLIST_FORMAT_LEFT, 80);
 
-    // Create CLI args section with Hide Completed checkbox
-    cli_args_panel             = new wxPanel(this, wxID_ANY);
-    wxBoxSizer* cli_args_sizer = new wxBoxSizer(wxHORIZONTAL);
-
-    cli_args_label       = new wxStaticText(cli_args_panel, wxID_ANY, "Custom CLI Arguments:");
-    custom_cli_args_text = new wxTextCtrl(cli_args_panel, wxID_ANY, wxEmptyString,
-                                          wxDefaultPosition, wxSize(200, -1));
-
-    // Hide completed checkbox (moved from available searches header)
-    hide_completed_checkbox = new wxCheckBox(cli_args_panel, wxID_ANY, "Hide completed searches");
-    hide_completed_checkbox->SetValue(true); // Checked by default
-
-    cli_args_sizer->Add(cli_args_label, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-    cli_args_sizer->Add(custom_cli_args_text, 1, wxEXPAND | wxALL, 5);
-    cli_args_sizer->AddStretchSpacer( );
-    cli_args_sizer->Add(hide_completed_checkbox, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-    cli_args_panel->SetSizer(cli_args_sizer);
-
-    // Create bottom controls panel with left and right button groups
+    // Create bottom controls panel with left and right button groups and hide completed checkbox
     bottom_controls          = new wxPanel(this, wxID_ANY);
     wxBoxSizer* bottom_sizer = new wxBoxSizer(wxHORIZONTAL);
+
+    // Hide completed checkbox (at start of bottom controls)
+    hide_completed_checkbox = new wxCheckBox(bottom_controls, wxID_ANY, "Hide completed searches");
+    hide_completed_checkbox->SetValue(true); // Checked by default
 
     // Left side - stacked Add/Remove from Queue buttons
     wxBoxSizer* left_button_sizer = new wxBoxSizer(wxVERTICAL);
@@ -177,6 +163,8 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     right_button_sizer->Add(remove_selected_button, 0, wxEXPAND | wxBOTTOM, 5);
     right_button_sizer->Add(clear_queue_button, 0, wxEXPAND);
 
+    bottom_sizer->Add(hide_completed_checkbox, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+    bottom_sizer->AddStretchSpacer( );
     bottom_sizer->Add(left_button_sizer, 0, wxALL, 5);
     bottom_sizer->AddStretchSpacer( );
     bottom_sizer->Add(right_button_sizer, 0, wxALL, 5);
@@ -188,7 +176,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     main_sizer->Add(controls_panel, 0, wxEXPAND | wxALL, 5); // Run Queue + Panel Display + Logging (monitoring controls)
     main_sizer->Add(available_searches_label, 0, wxEXPAND | wxALL, 5);
     main_sizer->Add(available_searches_ctrl, 1, wxEXPAND | wxALL, 5); // Smaller but still expandable
-    main_sizer->Add(cli_args_panel, 0, wxEXPAND | wxALL, 5); // CLI args + Update button + Hide Completed checkbox
     main_sizer->Add(bottom_controls, 0, wxEXPAND | wxALL, 5);
 
     SetSizer(main_sizer);
@@ -237,11 +224,7 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
 
 TemplateMatchQueueManager::~TemplateMatchQueueManager( ) {
     // Manual drag and drop doesn't need cleanup
-
-    // Clear completion callback if we set one
-    if ( match_template_panel_ptr ) {
-        match_template_panel_ptr->ClearQueueCompletionCallback( );
-    }
+    // No callback cleanup needed - panel has persistent queue_manager member
 }
 
 bool TemplateMatchQueueManager::ValidateQueueItem(const TemplateMatchQueueItem& item, wxString& error_message) {
@@ -269,12 +252,12 @@ bool TemplateMatchQueueManager::ValidateQueueItem(const TemplateMatchQueueItem& 
     return true;
 }
 
-void TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem& item) {
+long TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem& item) {
     // Validate the queue item before adding
     wxString error_message;
     if ( ! ValidateQueueItem(item, error_message) ) {
         wxMessageBox(error_message, "Invalid Queue Item", wxOK | wxICON_ERROR);
-        return;
+        return -1;
     }
 
     MyDebugAssertTrue(match_template_panel_ptr != nullptr, "AddToExecutionQueue called with null match_template_panel_ptr");
@@ -317,6 +300,8 @@ void TemplateMatchQueueManager::AddToExecutionQueue(const TemplateMatchQueueItem
         int new_row = queue_list_ctrl->GetItemCount( ) - 1;
         queue_list_ctrl->SetItemState(new_row, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
     }
+
+    return new_database_queue_id;
 }
 
 void TemplateMatchQueueManager::PrintQueueState( ) {
@@ -844,8 +829,7 @@ bool TemplateMatchQueueManager::ExecuteSearch(TemplateMatchQueueItem& search_to_
     MyDebugAssertTrue(match_template_panel_ptr != nullptr, "match_template_panel_ptr is null - cannot execute searches");
 
     if ( match_template_panel_ptr ) {
-        // Register this queue manager for completion callbacks
-        match_template_panel_ptr->SetQueueCompletionCallback(this);
+        // No callback registration needed - panel has persistent queue_manager member
 
         if constexpr ( skip_search_execution_for_queue_debugging ) {
             // Debug mode: Mark job as running immediately, then simulate execution time
@@ -1142,11 +1126,6 @@ void TemplateMatchQueueManager::OnAvailableSearchesSelectionChanged(wxListEvent&
             QM_LOG_UI("Populating GUI from available queue item: %s (status: %s)",
                       first_selected_item->search_name, first_selected_item->queue_status);
             match_template_panel_ptr->PopulateGuiFromQueueItem(*first_selected_item, true);
-
-            // Also populate the custom CLI args field
-            if ( custom_cli_args_text ) {
-                custom_cli_args_text->SetValue(first_selected_item->custom_cli_args);
-            }
 
             // Track which item was populated and enable/disable update button
             last_populated_queue_id = first_selected_item->database_queue_id;
@@ -1768,11 +1747,6 @@ void TemplateMatchQueueManager::OnSelectionChanged(wxListEvent& event) {
             QM_LOG_UI("Populating GUI from execution queue item %d (status: %s)",
                       first_selected_index, selected_item.queue_status.mb_str( ).data( ));
             match_template_panel_ptr->PopulateGuiFromQueueItem(selected_item, true);
-
-            // Also populate the custom CLI args field
-            if ( custom_cli_args_text ) {
-                custom_cli_args_text->SetValue(selected_item.custom_cli_args);
-            }
 
             // Track which item was populated and enable/disable update button
             last_populated_queue_id = selected_item.database_queue_id;
@@ -2901,7 +2875,6 @@ void TemplateMatchQueueManager::SwitchToEditorView( ) {
     // Hide queue labels
     execution_queue_label->Show(false);
     available_searches_label->Show(false);
-    cli_args_label->Show(false);
 #ifdef cisTEM_QM_LOGGING
     logging_label->Show(false);
 #endif
@@ -2912,7 +2885,6 @@ void TemplateMatchQueueManager::SwitchToEditorView( ) {
 
     // Hide container panels
     controls_panel->Show(false);
-    cli_args_panel->Show(false);
     bottom_controls->Show(false);
 
     // Hide individual queue buttons (for extra safety, though panels should hide them)
@@ -2923,7 +2895,6 @@ void TemplateMatchQueueManager::SwitchToEditorView( ) {
     remove_selected_button->Show(false);
     clear_queue_button->Show(false);
     hide_completed_checkbox->Show(false);
-    custom_cli_args_text->Show(false);
 
     // Show editor panel
     editor_panel->Show(true);
@@ -2949,7 +2920,6 @@ void TemplateMatchQueueManager::SwitchToQueueView( ) {
     // Show queue labels
     execution_queue_label->Show(true);
     available_searches_label->Show(true);
-    cli_args_label->Show(true);
 #ifdef cisTEM_QM_LOGGING
     logging_label->Show(true);
 #endif
@@ -2960,7 +2930,6 @@ void TemplateMatchQueueManager::SwitchToQueueView( ) {
 
     // Show container panels
     controls_panel->Show(true);
-    cli_args_panel->Show(true);
     bottom_controls->Show(true);
 
     // Show individual queue buttons (for extra safety, though panels should show them)
@@ -2971,7 +2940,6 @@ void TemplateMatchQueueManager::SwitchToQueueView( ) {
     remove_selected_button->Show(true);
     clear_queue_button->Show(true);
     hide_completed_checkbox->Show(true);
-    custom_cli_args_text->Show(true);
 
     // Refresh display with any changes
     UpdateQueueDisplay( );

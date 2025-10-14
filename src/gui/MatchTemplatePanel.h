@@ -13,12 +13,8 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     JobTracker my_job_tracker;
 
-    // Check if a job is currently running by querying job controller directly
-    // Replaces the old running_job boolean to avoid redundant state tracking
-    inline bool IsJobRunning( ) const {
-        return my_job_id >= 0 && my_job_id < MAX_GUI_JOBS &&
-               main_frame && main_frame->job_controller.job_list[my_job_id].is_active;
-    }
+    bool running_job;
+    int  template_match_job_id;
 
     Image    result_image;
     wxBitmap result_bitmap;
@@ -56,9 +52,8 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     // Queue tracking
     long                             running_queue_id; // Database queue ID of the currently executing search (-1 when idle)
-    class TemplateMatchQueueManager* queue_completion_callback; // For live queue updates
+    class TemplateMatchQueueManager* queue_manager; // Persistent queue manager instance
     wxString                         current_custom_cli_args; // Custom CLI args for current job
-    static wxDialog*                 active_queue_dialog; // Track the currently open queue manager dialog
 
     // methods
     void WriteResultToDataBase( );
@@ -129,18 +124,15 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
      * search, and optionally shows queue management dialog. Used by both immediate execution
      * (show_dialog=false) and interactive queueing (show_dialog=true) workflows.
      *
-     * @param job Search parameters collected from GUI via CollectJobParametersFromGui()
+     * @param job Search parameters collected from GUI via CollectJobParametersFromGui().
+     *            Modified in place: job.database_queue_id is set to the database queue ID.
      * @param show_dialog If true, opens queue manager dialog; if false, adds silently for immediate execution
      * @return Database queue ID when show_dialog=false, -1 when show_dialog=true (dialog mode doesn't track ID)
      */
-    long AddJobToQueue(const TemplateMatchQueueItem& job, bool show_dialog = true);
-    bool SetupSearchFromQueueItem(const TemplateMatchQueueItem& job, long& pending_queue_id);
+    long AddJobToQueue(TemplateMatchQueueItem& job, bool show_dialog = true);
+    bool SetupSearchBatchFromQueueItem(const TemplateMatchQueueItem& job, long& pending_queue_id);
     bool ExecuteCurrentSearch(long pending_queue_id);
     bool ExecuteSearch(const TemplateMatchQueueItem* queue_item);
-
-    // Queue completion callback support
-    void SetQueueCompletionCallback(class TemplateMatchQueueManager* queue_manager);
-    void ClearQueueCompletionCallback( );
 };
 
 #endif

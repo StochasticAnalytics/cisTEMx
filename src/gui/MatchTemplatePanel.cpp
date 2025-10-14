@@ -1742,7 +1742,8 @@ bool MatchTemplatePanel::ExecuteSearch(const TemplateMatchQueueItem* queue_item)
                       "Cannot execute job with status '%s', must be 'pending', 'failed', or 'partial'", queue_item->queue_status.mb_str( ).data( ));
     MyDebugAssertFalse(queue_item->search_name.IsEmpty( ), "Cannot execute search with empty search_name");
     MyDebugAssertTrue(queue_item->image_group_id >= -1, "Cannot execute job with invalid image_group_id: %d", queue_item->image_group_id);
-    MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 0, "Cannot execute job with invalid reference_volume_asset_id: %d", queue_item->reference_volume_asset_id);
+    MyDebugAssertTrue(queue_item->reference_volume_asset_id >= 1, "Cannot execute job with invalid reference_volume_asset_id: %d (asset IDs start at 1)", queue_item->reference_volume_asset_id);
+    MyDebugAssertTrue(queue_item->run_profile_id >= 1, "Cannot execute job with invalid run_profile_id: %d (profile IDs start at 1)", queue_item->run_profile_id);
 
     // Check if another job is already running
     if ( running_job == true ) {

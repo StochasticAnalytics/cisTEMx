@@ -75,12 +75,15 @@ void TemplateMatchControlsHelper::FillComboBoxes( ) {
 void TemplateMatchControlsHelper::PopulateFromQueueItem(const TemplateMatchQueueItem& item) {
     // Set the group selection by finding matching database ID
     if ( controls.group_combo && image_asset_panel && image_asset_panel->all_groups_list ) {
+        bool found = false;
         for ( int group_index = 0; group_index < image_asset_panel->all_groups_list->number_of_groups; group_index++ ) {
             if ( image_asset_panel->all_groups_list->groups[group_index].id == item.image_group_id ) {
                 controls.group_combo->SetSelection(group_index);
+                found = true;
                 break;
             }
         }
+        MyDebugAssertTrue(found, "CRITICAL: Image group ID %d not found in asset panel! This indicates corrupted queue data that must be fixed in the database.", item.image_group_id);
     }
 
     // Set reference volume selection by finding matching asset_id
@@ -89,31 +92,22 @@ void TemplateMatchControlsHelper::PopulateFromQueueItem(const TemplateMatchQueue
         // revert - debug population
         QM_LOG_UI("PopulateFromQueueItem: asset_id=%d, array_position=%d",
                   item.reference_volume_asset_id, array_position);
-        if ( array_position >= 0 ) {
-            controls.reference_panel->SetSelection(array_position);
-            QM_LOG_UI("PopulateFromQueueItem: SetSelection(%d) complete", array_position);
-        }
-        else {
-            // Asset ID not found - this indicates corrupted queue item
-            // Set to first available volume as safe default
-            QM_LOG_UI("WARNING: Reference volume asset_id=%d not found! Setting to first volume as default.",
-                      item.reference_volume_asset_id);
-            if ( volume_asset_panel->all_assets_list->number_of_assets > 0 ) {
-                controls.reference_panel->SetSelection(0);
-                QM_LOG_UI("PopulateFromQueueItem: Set to default selection 0 (asset_id=%d)",
-                          volume_asset_panel->ReturnAssetPointer(0)->asset_id);
-            }
-        }
+        MyDebugAssertTrue(array_position >= 0, "CRITICAL: Reference volume asset_id %d not found in asset panel! This indicates corrupted queue data that must be fixed in the database.", item.reference_volume_asset_id);
+        controls.reference_panel->SetSelection(array_position);
+        QM_LOG_UI("PopulateFromQueueItem: SetSelection(%d) complete", array_position);
     }
 
     // Set run profile by finding matching profile id
     if ( controls.run_profile_combo && item.run_profile_id >= 0 && run_profiles_panel ) {
+        bool found = false;
         for ( int profile_index = 0; profile_index < run_profiles_panel->run_profile_manager.number_of_run_profiles; profile_index++ ) {
             if ( run_profiles_panel->run_profile_manager.run_profiles[profile_index].id == item.run_profile_id ) {
                 controls.run_profile_combo->SetSelection(profile_index);
+                found = true;
                 break;
             }
         }
+        MyDebugAssertTrue(found, "CRITICAL: Run profile ID %d not found in run profiles panel! This indicates corrupted queue data that must be fixed in the database.", item.run_profile_id);
     }
 
     // Set symmetry

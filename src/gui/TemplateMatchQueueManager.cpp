@@ -1536,13 +1536,9 @@ void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
                     }
                 }
 
-                if ( found_index >= 0 ) {
-                    RemoveFromExecutionQueue(found_index);
-                    QM_LOG_UI("Removed queue_id %ld from execution queue", database_queue_id);
-                }
-                else {
-                    QM_LOG_UI("WARNING: queue_id %ld not found in execution queue!", database_queue_id);
-                }
+                MyDebugAssertTrue(found_index >= 0, "CRITICAL: queue_id %ld not found in execution queue! This indicates UI/data desynchronization.", database_queue_id);
+                RemoveFromExecutionQueue(found_index);
+                QM_LOG_UI("Removed queue_id %ld from execution queue", database_queue_id);
             }
             QM_LOG_UI("EXQ removal complete");
         }
@@ -1645,7 +1641,7 @@ void TemplateMatchQueueManager::OnRemoveSelectedClick(wxCommandEvent& event) {
                         }
                     }
                     else {
-                        QM_LOG_UI("WARNING: queue_id %ld not found in execution_queue or available_queue!", database_queue_id);
+                        MyDebugAssertTrue(false, "CRITICAL: queue_id %ld not found in execution_queue or available_queue! This indicates UI/data desynchronization.", database_queue_id);
                     }
                 }
 

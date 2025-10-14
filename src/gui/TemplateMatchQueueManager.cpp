@@ -927,7 +927,7 @@ bool TemplateMatchQueueManager::IsSearchRunning( ) const {
 // IsJobRunningStatic removed - no longer needed with unified architecture
 
 void TemplateMatchQueueManager::UpdateSearchStatus(long database_queue_id, const wxString& new_status) {
-    MyDebugAssertTrue(database_queue_id >= 0, "Invalid database_queue_id in UpdateSearchStatus: %ld", database_queue_id);
+    MyDebugAssertTrue(database_queue_id > 0, "Invalid database_queue_id in UpdateSearchStatus: %ld (database IDs start at 1)", database_queue_id);
     MyDebugAssertTrue(new_status == "pending" || new_status == "running" || new_status == "complete" || new_status == "failed",
                       "Invalid new_status in UpdateSearchStatus: %s", new_status.mb_str( ).data( ));
 
@@ -2411,7 +2411,7 @@ void TemplateMatchQueueManager::ValidateQueueConsistency( ) const {
         const auto& item = execution_queue[i];
 
         // Validate basic item consistency
-        MyDebugAssertTrue(item.database_queue_id >= 0, "Queue item %zu has invalid database_queue_id: %ld", i, item.database_queue_id);
+        MyDebugAssertTrue(item.database_queue_id > 0, "Queue item %zu has invalid database_queue_id: %ld (database IDs start at 1)", i, item.database_queue_id);
         MyDebugAssertFalse(item.search_name.IsEmpty( ), "Queue item %zu (ID: %ld) has empty search_name", i, item.database_queue_id);
         MyDebugAssertTrue(item.queue_status == "pending" || item.queue_status == "running" ||
                                   item.queue_status == "complete" || item.queue_status == "failed",

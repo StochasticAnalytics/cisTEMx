@@ -515,8 +515,8 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
     if ( image_number < 1 || image_number > cached_results.GetCount( ) ) {
         wxPrintf("ERROR: Invalid image_number %d received from socket (cached_results size: %d)\n",
                  image_number, int(cached_results.GetCount( )));
-        MyDebugAssertFalse(image_number >= 1 && image_number <= cached_results.GetCount( ),
-                           "Received invalid image_number from socket - data corruption?");
+        MyDebugAssertTrue(image_number < 1 || image_number > cached_results.GetCount( ),
+                          "Received invalid image_number from socket - data corruption?");
         return;
     }
 
@@ -1737,7 +1737,7 @@ bool MatchTemplatePanel::ExecuteSearch(const TemplateMatchQueueItem* queue_item)
     MyDebugAssertTrue(queue_item != nullptr, "ExecuteSearch called with null queue_item - both StartEstimationClick and QueueManager should provide a queue_item");
 
     // Validate job parameters before execution
-    MyDebugAssertTrue(queue_item->database_queue_id >= 0, "Cannot execute job with invalid database_queue_id: %ld", queue_item->database_queue_id);
+    MyDebugAssertTrue(queue_item->database_queue_id > 0, "Cannot execute job with invalid database_queue_id: %ld (database IDs start at 1)", queue_item->database_queue_id);
     MyDebugAssertTrue(queue_item->queue_status == "pending" || queue_item->queue_status == "failed" || queue_item->queue_status == "partial",
                       "Cannot execute job with status '%s', must be 'pending', 'failed', or 'partial'", queue_item->queue_status.mb_str( ).data( ));
     MyDebugAssertFalse(queue_item->search_name.IsEmpty( ), "Cannot execute search with empty search_name");

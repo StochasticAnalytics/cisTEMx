@@ -154,10 +154,10 @@ class TemplateMatchQueueItem {
      * @return Always returns true (assertions will abort on invalid state)
      */
     bool AreSearchParametersValid( ) const {
-        MyDebugAssertTrue(database_queue_id >= 0, "database_queue_id must be >= 0, got %ld", database_queue_id);
+        MyDebugAssertTrue(database_queue_id > 0, "database_queue_id must be > 0 (database IDs start at 1), got %ld", database_queue_id);
         MyDebugAssertTrue(image_group_id >= -1, "image_group_id must be >= -1, got %d", image_group_id);
-        MyDebugAssertTrue(reference_volume_asset_id >= 0, "reference_volume_asset_id must be >= 0, got %d", reference_volume_asset_id);
-        MyDebugAssertTrue(run_profile_id >= 0, "run_profile_id must be >= 0, got %d", run_profile_id);
+        MyDebugAssertTrue(reference_volume_asset_id >= 1, "reference_volume_asset_id must be >= 1 (asset IDs start at 1), got %d", reference_volume_asset_id);
+        MyDebugAssertTrue(run_profile_id >= 1, "run_profile_id must be >= 1 (profile IDs start at 1), got %d", run_profile_id);
         MyDebugAssertTrue(queue_status == "pending" || queue_status == "running" || queue_status == "complete" || queue_status == "failed",
                           "Invalid queue_status: %s", queue_status.mb_str( ).data( ));
         MyDebugAssertTrue(! search_name.IsEmpty( ), "search_name cannot be empty");

@@ -44,7 +44,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN python --version && pip --version
 
 # Install wxWidgets
-COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh /tmp/
+COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_llm_optimization_tools.sh /tmp/
 
 
 # If we do not do this, we want to link the static or dynamic libs from /opt/WX to /usr/bin so we don't need to set it on configure lines and also so that wxformbuilder can find them
@@ -54,7 +54,7 @@ RUN echo "checking for wxWidgets 3.1.5" && if [[ "x${build_wx_version}" == "xdev
 RUN pip3 install -r /tmp/requirements.txt
 
 # Get reference images for testing and debugging
-RUN mkdir -p /opt && cd /opt && gdown --fuzzy https://drive.google.com/file/d/12OiZIkfm4YF61lJo5-EEVc264pYD13OJ/view?usp=sharing && tar -xjvf FastFFT_forBuild.tar.bz2 && rm FastFFT_forBuild.tar.bz2 && mv FastFFT_forBuild /opt/FastFFT
+RUN mkdir -p /opt && cd /opt && gdown --fuzzy https://drive.google.com/file/d/1QqeDbv9dUrl6FertvKbDukJ6wjG2PsDi/view?usp=sharing && unzip FastFFT.zip && rm FastFFT.zip
 RUN if [[ "x${build_ref_images}" == "xtrue" ]]; then mkdir -p /cisTEMdev && cd /cisTEMdev && gdown --fuzzy https://drive.google.com/file/d/197sE_pO4FWmjCo0zlqRJXAxN2BLbmHS_/view?usp=sharing && tar -xjvf cistem_reference_images_fp32.tar.bz2 && rm cistem_reference_images_fp32.tar.bz2 ;fi
 
 
@@ -63,8 +63,11 @@ RUN if [[ "x${build_ref_images}" == "xtrue" ]]; then mkdir -p /cisTEMdev && cd /
 # Install wxFormbuilder
 # Note, this will ignore the stable dynamic wx at /opt/WX/intel-dynamic and install libwxbase3.0-0v5 and libwxgtk3.0-gtk3-0v5 and libwxgtk-media3.0-gtk3-0v5
 RUN cd /opt/WX && \
-    apt-get update && apt install -y ./wxformbuilder_3.10.0_ubuntu-20.04_amd64.deb && rm wxformbuilder_3.10.0_ubuntu-20.04_amd64.deb && \
+    apt-get update && apt install -y ./wxformbuilder_3.10.0_ubuntu-20.04_amd64.deb && rm wxformbuilder_3.10.0_ubuntu-20.04_amd64.deb  && \
     rm -rf /var/lib/apt/lists/*
+
+#  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM
+RUN apt-get update && apt install -y flameshot && rm -rf /var/lib/apt/lists/*
 
 # # Install Node 16
 RUN echo "build npm" && if [[ "x${build_npm}" == "xtrue" ]] ; then /tmp/install_node_16.sh ; fi
@@ -86,7 +89,7 @@ RUN if [[ "x${build_type}" != "xstatic" ]]; then echo "export LD_RUN_PATH=/opt/l
 
 RUN echo 'source /opt/venv/bin/activate' >> /home/cisTEMdev/.bashrc
 
-RUN if [[ "x${build_docs}" == "xtrue" ]] ; then /tmp/install_documentation_tooling.sh ; fi
+RUN if [[ "x${build_docs}" == "xtrue" ]] ; then /tmp/install_documentation_tooling.sh  && /tmp/install_llm_optimization_tools.sh ; fi
 
 USER cisTEMdev
 WORKDIR /home/cisTEMdev

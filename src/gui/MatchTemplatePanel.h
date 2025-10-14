@@ -105,9 +105,6 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     void        ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event);
     wxArrayLong CheckForUnfinishedWork(bool is_checked, bool is_from_check_box);
-
-    // Queue functionality
-    void OnAddToQueueClick(wxCommandEvent& event);
 };
 
 #endif

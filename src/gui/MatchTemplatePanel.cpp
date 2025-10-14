@@ -1,3 +1,5 @@
+#define cisTEM_temp_disable_gpu_noFastFFT
+
 //#include "../core/core_headers.h"
 #include "../constants/constants.h"
 #include "../core/gui_core_headers.h"
@@ -30,6 +32,11 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
 #ifndef cisTEM_USING_FastFFT
     UseFastFFTRadioYes->Enable(false);
     UseFastFFTRadioNo->Enable(false);
+#endif
+
+#ifdef cisTEM_temp_disable_gpu_noFastFFT
+    UseGPURadioYes->Enable(false);
+    UseGPURadioNo->Enable(false);
 #endif
 
     // We need to allow a higher precision, otherwise, the option to resample will almost always be taken
@@ -167,6 +174,15 @@ void MatchTemplatePanel::ResetDefaults( ) {
         ResumeRunCheckBox->Enable(false);
     }
 
+#ifdef cisTEM_temp_disable_gpu_noFastFFT
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+#ifdef cisTEM_USING_FastFFT
+    UseFastFFTRadioYes->SetValue(true);
+#endif
+#else
+    UseFastFFTRadioNo->SetValue(true);
+#endif
+#else
 #ifdef SHOW_CISTEM_GPU_OPTIONS
     UseGPURadioYes->SetValue(true);
 #ifdef cisTEM_USING_FastFFT
@@ -175,6 +191,7 @@ void MatchTemplatePanel::ResetDefaults( ) {
 #else
     UseGPURadioNo->SetValue(true);
     UseFastFFTRadioNo->SetValue(true);
+#endif
 #endif
 
     DefocusSearchRangeNumericCtrl->ChangeValueFloat(1200.0f);
@@ -656,8 +673,13 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
     float min_peak_radius = MinPeakRadiusNumericCtrl->ReturnValue( );
 
+#ifdef cisTEM_temp_disable_gpu_noFastFFT
+    use_fast_fft = UseFastFFTRadioYes->GetValue( ) ? true : false;
+    use_gpu      = use_fast_fft;
+#else
     use_gpu      = UseGPURadioYes->GetValue( ) ? true : false;
     use_fast_fft = UseFastFFTRadioYes->GetValue( ) ? true : false;
+#endif
 
     wxString wanted_symmetry    = SymmetryComboBox->GetValue( );
     wanted_symmetry             = SymmetryComboBox->GetValue( ).Upper( );
@@ -1292,23 +1314,4 @@ wxArrayLong MatchTemplatePanel::CheckForUnfinishedWork(bool is_checked, bool is_
         SetInputsForPossibleReRun(false);
     }
     return unfinished_match_template_ids;
-}
-
-// Queue functionality implementation
-void MatchTemplatePanel::OnAddToQueueClick(wxCommandEvent& event) {
-    // Stub implementation for testing
-    wxMessageDialog* dialog = new wxMessageDialog(this,
-                                                  "Add To Queue button successfully implemented!\n\n"
-                                                  "This will queue the current template matching job for later execution.",
-                                                  "Queue Implementation Test",
-                                                  wxOK | wxICON_INFORMATION);
-    dialog->ShowModal( );
-    delete dialog;
-
-    // TODO: Implement actual queue functionality
-    // 1. Collect all parameters from GUI
-    // 2. Generate job_id
-    // 3. Store in database with IS_ACTIVE = 0
-    // 4. Add to Results Panel as pending
-    // 5. Update queue manager UI if visible
 }

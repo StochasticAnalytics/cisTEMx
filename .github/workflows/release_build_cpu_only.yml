@@ -1,0 +1,18 @@
+name: cisTEM cpu release
+
+on:
+  workflow_call:
+
+jobs:
+  run_build:
+    uses: ./.github/workflows/run_builds.yml
+    with:
+      build_type: "cpu_release"
+      configure_options: ""
+      global_configure_options: " --disable-FastFFT --enable-openmp --enable-experimental --disable-multiple-global-refinements  --disable-multiple-global-refinements --with-wx-config=/opt/WX/icc-static/bin/wx-config"
+      runs_on_os: ubuntu-latest
+      CC: icc
+      CXX: icpc
+      cppstandard: 17
+      run_tests: true
+      n_threads: 4

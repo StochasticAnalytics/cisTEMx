@@ -1,8 +1,25 @@
 # Description
 
-Please include a summary of the change and which issue is fixed. Please also include **relevant motivation** and context. It is usually easy to see what you are doing, so please be thoughtful with explaining *Why* you are doing it!
+Please structure your description with two numbered sub-sections:
 
-Fixes # (issue)
+## Summary
+Brief conceptual overview of changes (like a table of contents):
+1. First major change
+2. Second major change
+3. ...
+
+## Details
+Detailed explanations with motivation and context (like book chapters):
+1. **First change** - Explain *why* this change was needed, what problem it solves, and any relevant technical details
+2. **Second change** - ...
+3. ...
+
+# Related Issues/PRs
+
+List any related issues or pull requests that provide context:
+- Fixes #(issue number)
+- Related to #(issue number)
+- Supports #(PR number)
 
 # I have rebased my feature branch to be current with the master branch using to minimize conflicts and headaches
 

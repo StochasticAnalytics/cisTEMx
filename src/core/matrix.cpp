@@ -269,12 +269,23 @@ void RotationMatrix::ConvertToValidEulerAngles(float& output_phi_in_degrees, flo
     }
     else {
         // for THETA=0/180, PHI and PSI can have an infinite number of values, only
-        // [PSI-PHI] is defined, so PHI can be set to zero without restriction
+        // [PSI-PHI] (for theta=0) or [PSI+PHI] (for theta=180) is defined
+        // PHI can be set to zero without restriction
 
         output_phi_in_degrees = 0.0f;
 
-        cos_psi               = m[0][0];
-        sin_psi               = m[1][0];
+        // Need to distinguish between theta≈0 (cos_theta≈+1) and theta≈180 (cos_theta≈-1)
+        if ( cos_theta > 0.0f ) {
+            // theta ≈ 0: matrix has form with m[0][0] = cos(ψ), m[1][0] = sin(ψ)
+            cos_psi = m[0][0];
+            sin_psi = m[1][0];
+        }
+        else {
+            // theta ≈ 180: matrix has form with m[0][0] = -cos(ψ), m[1][0] = -sin(ψ)
+            cos_psi = -m[0][0];
+            sin_psi = -m[1][0];
+        }
+
         cos_psi               = std::max(-1.0f, std::min(1.0f, cos_psi));
         output_psi_in_degrees = acosf(cos_psi);
         if ( sin_psi <= 0.0f )

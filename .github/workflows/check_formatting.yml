@@ -35,6 +35,10 @@ jobs:
     needs: check-format
     uses: ./.github/workflows/debug_build_cpu_only.yml
 
+  build-cpu-release:
+    needs: check-format
+    uses: ./.github/workflows/release_build_cpu_only.yml
+
   build-gpu-release:
     needs: check-format
     uses: ./.github/workflows/release_build.yml

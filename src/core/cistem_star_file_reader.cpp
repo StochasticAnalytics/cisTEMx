@@ -1,5 +1,7 @@
 #include "core_headers.h"
 
+using c_ft = cistem::fundamental_type::Enum;
+
 //TODO : Currently, any strings with spaces will cause the star file (but not binary) reader to break - needs to be fixed.
 
 // ADDING A NEW COLUMN
@@ -1093,15 +1095,15 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
 
     // get the order of columns..
 
-    long column_order_buffer[number_of_columns]; // so we can keep the order for reading later..
-    char column_data_types[number_of_columns]; // in case we don't recognize a column - see cistem_paramters for more details
+    long    column_order_buffer[number_of_columns]; // so we can keep the order for reading later..
+    uint8_t column_data_types[number_of_columns]; // in case we don't recognize a column - see cistem_paramters for more details // sizeof(c_ft::Enum) == sizeof(uint8_t)
 
     ResetColumnPositions( );
 
     for ( current_column = 0; current_column < number_of_columns; current_column++ ) {
         if ( SafelyReadFromBinaryBufferIntoLong(column_order_buffer[current_column]) == false )
             return false;
-        if ( SafelyReadFromBinaryBufferIntoChar(column_data_types[current_column]) == false )
+        if ( SafelyReadFromBinaryBufferIntoUnsignedChar(column_data_types[current_column]) == false )
             return false;
 
         if ( column_order_buffer[current_column] == POSITION_IN_STACK ) {
@@ -1542,37 +1544,37 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
                 if ( current_line == 0 )
                     wxPrintf("Unknown Column Type in Binary File (%li) - it will be ignored.\n");
 
-                if ( column_data_types[current_column] == INTEGER ) {
+                if ( column_data_types[current_column] == c_ft::integer_t ) {
                     int buffer_int;
                     if ( SafelyReadFromBinaryBufferIntoInteger(buffer_int) == false )
                         return false;
                 }
-                else if ( column_data_types[current_column] == INTEGER_UNSIGNED ) {
+                else if ( column_data_types[current_column] == c_ft::integer_unsigned_t ) {
                     unsigned int buffer_int;
                     if ( SafelyReadFromBinaryBufferIntoUnsignedInteger(buffer_int) == false )
                         return false;
                 }
-                else if ( column_data_types[current_column] == FLOAT ) {
+                else if ( column_data_types[current_column] == c_ft::float_t ) {
                     float buffer_float;
                     if ( SafelyReadFromBinaryBufferIntoFloat(buffer_float) == false )
                         return false;
                 }
-                else if ( column_data_types[current_column] == LONG ) {
+                else if ( column_data_types[current_column] == c_ft::long_t ) {
                     long buffer_long;
                     if ( SafelyReadFromBinaryBufferIntoLong(buffer_long) == false )
                         return false;
                 }
-                else if ( column_data_types[current_column] == DOUBLE ) {
+                else if ( column_data_types[current_column] == c_ft::double_t ) {
                     double buffer_double;
                     if ( SafelyReadFromBinaryBufferIntoDouble(buffer_double) == false )
                         return false;
                 }
-                else if ( column_data_types[current_column] == CHAR ) {
+                else if ( column_data_types[current_column] == c_ft::char_t ) {
                     char buffer_char;
                     if ( SafelyReadFromBinaryBufferIntoChar(buffer_char) == false )
                         return false;
                 }
-                else if ( column_data_types[current_column] == VARIABLE_LENGTH ) {
+                else if ( column_data_types[current_column] == c_ft::variable_length_t ) {
                     wxString buffer_string;
                     if ( SafelyReadFromBinaryBufferIntowxString(buffer_string) == false )
                         return false;
@@ -1590,8 +1592,8 @@ bool cisTEMStarFileReader::ReadBinaryFile(wxString wanted_filename, ArrayOfcisTE
     wxPrintf("  parameters_that_were_read.particle_group: %s\n", parameters_that_were_read.particle_group ? "YES" : "NO");
     wxPrintf("  parameters_that_were_read.pre_exposure: %s\n", parameters_that_were_read.pre_exposure ? "YES" : "NO");
     wxPrintf("  parameters_that_were_read.total_exposure: %s\n", parameters_that_were_read.total_exposure ? "YES" : "NO");
-    wxPrintf("  Total particles read: %ld\n", cached_parameters->GetCount());
-    if (cached_parameters->GetCount() > 0) {
+    wxPrintf("  Total particles read: %ld\n", cached_parameters->GetCount( ));
+    if ( cached_parameters->GetCount( ) > 0 ) {
         wxPrintf("  First particle multi-view data:\n");
         wxPrintf("    beam_tilt_group: %d\n", cached_parameters->Item(0).beam_tilt_group);
         wxPrintf("    particle_group: %d\n", cached_parameters->Item(0).particle_group);

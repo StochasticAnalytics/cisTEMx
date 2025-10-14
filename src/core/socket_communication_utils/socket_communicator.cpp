@@ -1,4 +1,4 @@
-#include "../core/core_headers.h"
+#include "../core_headers.h"
 
 wxThread::ExitCode SocketServerThread::Entry( ) {
 

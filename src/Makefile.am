@@ -23,7 +23,7 @@ noinst_HEADERS = core/stopwatch.h \
                  core/dm_file.h \
                  core/sqlite/sqlite3.h \
                  core/assets.h \
-                 core/socket_codes.h \
+                 core/socket_communication_utils/socket_codes.h \
                  core/userinput.h \
                  core/randomnumbergenerator.h \
                  core/matrix.h \
@@ -39,14 +39,14 @@ noinst_HEADERS = core/stopwatch.h \
                  core/reconstruct_3d.h \
                  core/electron_dose.h \
                  core/run_command.h \
-                 core/run_profile.h \
-                 core/run_profile_manager.h \
+                 core/socket_communication_utils/run_profile.h \
+                 core/socket_communication_utils/run_profile_manager.h \
                  core/refinement_package.h \
                  core/template_matches_package.h \
                  core/refinement.h \
                  core/database.h \
                  core/project.h \
-                 core/job_packager.h \
+                 core/socket_communication_utils/job_packager.h \
                  core/job_tracker.h \
                  core/numeric_text_file.h \
                  core/progressbar.h \
@@ -75,7 +75,7 @@ noinst_HEADERS = core/stopwatch.h \
                  core/local_resolution_estimator.h \
                  core/cistem_parameters.h \
                  core/cistem_star_file_reader.h \
-                 core/socket_communicator.h \
+                 core/socket_communication_utils/socket_communicator.h \
                  core/template_matching.h \
                  core/json/json_defs.h \
                  core/json/jsonval.h \
@@ -605,11 +605,11 @@ libcore_a_SOURCES  = core/stopwatch.cpp \
                        core/reconstructed_volume.cpp \
                        core/resolution_statistics.cpp \
                        core/particle.cpp \
-                       core/job_packager.cpp \
+                       core/socket_communication_utils/job_packager.cpp \
                        core/job_tracker.cpp \
                        core/run_command.cpp \
-                       core/run_profile.cpp \
-                       core/run_profile_manager.cpp \
+                       core/socket_communication_utils/run_profile.cpp \
+                       core/socket_communication_utils/run_profile_manager.cpp \
                        core/myapp.cpp \
                        core/empirical_distribution.cpp \
                        core/ctf.cpp \
@@ -633,7 +633,7 @@ libcore_a_SOURCES  = core/stopwatch.cpp \
                        core/local_resolution_estimator.cpp  \
                        core/cistem_parameters.cpp \
                        core/cistem_star_file_reader.cpp \
-                       core/socket_communicator.cpp \
+                       core/socket_communication_utils/socket_communicator.cpp \
                        core/json/jsonval.cpp \
                        core/json/jsonreader.cpp \
                        core/json/jsonwriter.cpp \

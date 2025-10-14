@@ -2,6 +2,8 @@
 #include <wx/arrimpl.cpp> // this is a magic incantation which must be done!
 WX_DEFINE_OBJARRAY(ArrayOfcisTEMParameterLines);
 
+using c_ft = cistem::fundamental_type::Enum;
+
 // **************************************
 // ADDING NEW COLUMNS TO THE DATA FILES..
 // **************************************
@@ -27,13 +29,13 @@ cistem_parameters.cpp
 	if (parameters_to_write.total_exposure == true)
 	{
 		bitmask_identifier = TOTAL_EXPOSURE;
-		data_type = VARIABLE_LENGTH;
+		data_type = c_ft::variable_length_t;
 		fwrite ( &bitmask_identifier, sizeof(long), 1, cisTEM_bin_file );
 		fwrite ( &data_type, sizeof(char), 1, cisTEM_bin_file );
 	}
 
 You will need to change parameters_to_write.total_exposure to your variable, bitmask_identifier = to your identifier and data_type to your
-data type (it can be INTEGER, UNSIGNED_INTEGER, FLOAT, LONG, BYTE, DOUBLE or VARIABLE)
+data type (it can be cistem::fundamental_type::integer_t, integer_unsigned_t, float_t, long_t, char_t, double_t or variable_length_t)
 
 You will then have to add it to loop where the data values are written out - this currently ends at line ~996, and looks like this :-
 
@@ -792,18 +794,18 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     // write an identifier for each column based on bit mask values above, after the identifier which is a long, write the type
     // of the data.  This is needed so that we can skip that contains unknown columns (e.g. from a later version of cisTEM).
 
-    // The data type can be :-
+    // The data type can be (using cistem::fundamental_type::Enum) :-
 
-    // INTEGER
-    // UNSIGNED_INTEGER
-    // FLOAT
-    // LONG
-    // BYTE
-    // DOUBLE
-    // VARIABLE - variable will be an integer first, which tells us how many bytes the next sections is.
+    // cistem::fundamental_type::integer_t
+    // cistem::fundamental_type::integer_unsigned_t
+    // cistem::fundamental_type::float_t
+    // cistem::fundamental_type::long_t
+    // cistem::fundamental_type::char_t
+    // cistem::fundamental_type::double_t
+    // cistem::fundamental_type::variable_length_t - variable will be an integer first, which tells us how many bytes the next sections is.
 
-    long bitmask_identifier;
-    char data_type;
+    long                           bitmask_identifier;
+    cistem::fundamental_type::Enum data_type;
 
     if ( first_image_to_write == -1 )
         first_image_to_write = 1;
@@ -812,257 +814,257 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
 
     if ( parameters_to_write.position_in_stack == true ) {
         bitmask_identifier = POSITION_IN_STACK;
-        data_type          = INTEGER_UNSIGNED;
+        data_type          = c_ft::integer_unsigned_t;
 
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.psi == true ) {
         bitmask_identifier = PSI;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
 
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.theta == true ) {
         bitmask_identifier = THETA;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.phi == true ) {
         bitmask_identifier = PHI;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.x_shift == true ) {
         bitmask_identifier = X_SHIFT;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.y_shift == true ) {
         bitmask_identifier = Y_SHIFT;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.defocus_1 == true ) {
         bitmask_identifier = DEFOCUS_1;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.defocus_2 == true ) {
         bitmask_identifier = DEFOCUS_2;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.defocus_angle == true ) {
         bitmask_identifier = DEFOCUS_ANGLE;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.phase_shift == true ) {
         bitmask_identifier = PHASE_SHIFT;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.image_is_active == true ) {
         bitmask_identifier = IMAGE_IS_ACTIVE;
-        data_type          = INTEGER;
+        data_type          = c_ft::integer_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.occupancy == true ) {
         bitmask_identifier = OCCUPANCY;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.logp == true ) {
         bitmask_identifier = LOGP;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.sigma == true ) {
         bitmask_identifier = SIGMA;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.score == true ) {
         bitmask_identifier = SCORE;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.score_change == true ) {
         bitmask_identifier = SCORE_CHANGE;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.pixel_size == true ) {
         bitmask_identifier = PIXEL_SIZE;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.microscope_voltage_kv == true ) {
         bitmask_identifier = MICROSCOPE_VOLTAGE;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.microscope_spherical_aberration_mm == true ) {
         bitmask_identifier = MICROSCOPE_CS;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.amplitude_contrast == true ) {
         bitmask_identifier = AMPLITUDE_CONTRAST;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.beam_tilt_x == true ) {
         bitmask_identifier = BEAM_TILT_X;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.beam_tilt_y == true ) {
         bitmask_identifier = BEAM_TILT_Y;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.image_shift_x == true ) {
         bitmask_identifier = IMAGE_SHIFT_X;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.image_shift_y == true ) {
         bitmask_identifier = IMAGE_SHIFT_Y;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.best_2d_class == true ) {
         bitmask_identifier = BEST_2D_CLASS;
-        data_type          = INTEGER;
+        data_type          = c_ft::integer_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.beam_tilt_group == true ) {
         // revert - debug
         wxPrintf("Writing BEAM_TILT_GROUP column header\n");
         bitmask_identifier = BEAM_TILT_GROUP;
-        data_type          = INTEGER;
+        data_type          = c_ft::integer_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.stack_filename == true ) {
         bitmask_identifier = STACK_FILENAME;
-        data_type          = VARIABLE_LENGTH;
+        data_type          = c_ft::variable_length_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.original_image_filename == true ) {
         bitmask_identifier = ORIGINAL_IMAGE_FILENAME;
-        data_type          = VARIABLE_LENGTH;
+        data_type          = c_ft::variable_length_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.reference_3d_filename == true ) {
         bitmask_identifier = REFERENCE_3D_FILENAME;
-        data_type          = VARIABLE_LENGTH;
+        data_type          = c_ft::variable_length_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.particle_group == true ) {
         // revert - debug
         wxPrintf("Writing PARTICLE_GROUP column header\n");
         bitmask_identifier = PARTICLE_GROUP;
-        data_type          = INTEGER;
+        data_type          = c_ft::integer_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.assigned_subset == true ) {
         bitmask_identifier = ASSIGNED_SUBSET;
-        data_type          = INTEGER;
+        data_type          = c_ft::integer_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.pre_exposure == true ) {
         // revert - debug
         wxPrintf("Writing PRE_EXPOSURE column header\n");
         bitmask_identifier = PRE_EXPOSURE;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.total_exposure == true ) {
         // revert - debug
         wxPrintf("Writing TOTAL_EXPOSURE column header\n");
         bitmask_identifier = TOTAL_EXPOSURE;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.original_x_position == true ) {
         bitmask_identifier = ORIGINAL_X_POSITION;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     if ( parameters_to_write.original_y_position == true ) {
         bitmask_identifier = ORIGINAL_Y_POSITION;
-        data_type          = FLOAT;
+        data_type          = c_ft::float_t;
         fwrite(&bitmask_identifier, sizeof(long), 1, cisTEM_bin_file);
-        fwrite(&data_type, sizeof(char), 1, cisTEM_bin_file);
+        fwrite(&data_type, sizeof(fundamental_type::Enum), 1, cisTEM_bin_file);
     }
 
     // now write the data..
@@ -1811,7 +1813,7 @@ float cisTEMParameters::ReturnAverageScore(bool exclude_negative_film_numbers) {
 bool cisTEMParameters::ContainsMultipleParticleGroups( ) {
     bool particle_group_different_from_first = false;
     bool particle_group_to_compare_to_is_set = false; // use to record the first active particle group
-    int  particle_group_to_compare_to = 0; // all other groups are compared to this
+    int  particle_group_to_compare_to        = 0; // all other groups are compared to this
 
     // First, check to see if the particle_group field is even set.
     if ( parameters_that_were_read.particle_group ) {

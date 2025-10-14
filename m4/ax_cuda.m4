@@ -147,7 +147,7 @@ NVCCFLAGS+=" --gpu-architecture=sm_$target_arch -gencode=arch=compute_$target_ar
 
 # This is the oldest arch that will have JIT-able code g
 oldest_arch=""
-AC_ARG_WITH([oldest-gpu-arch], AS_HELP_STRING([--with-oldest-gpu-arch@<:@=70,75,80,86,89,90:>@], [Oldest architecture make compatible for (default=80)]),
+AC_ARG_WITH([oldest-gpu-arch], AS_HELP_STRING([--with-oldest-gpu-arch@<:@=70,75,80,86,89,90@:>@], [Oldest architecture make compatible for (default=70)]),
 [
 	if test "$withval" = "90" ; then oldest_arch=90
 	elif  test "$withval" = "89" ; then oldest_arch=89
@@ -159,7 +159,7 @@ AC_ARG_WITH([oldest-gpu-arch], AS_HELP_STRING([--with-oldest-gpu-arch@<:@=70,75,
 		AC_MSG_ERROR([Requested target-oldest_arch must be in 70,75,80,86,89 not $withval])
 	fi
 	
-], [ oldest_arch="80"] )
+], [ oldest_arch="70"] )
 AC_MSG_NOTICE([oldest gpu architecture is sm$oldest_arch])
 
 if test "$oldest_arch" -gt "$target_arch" ; then 
@@ -167,32 +167,33 @@ if test "$oldest_arch" -gt "$target_arch" ; then
 else
 
 	current_arch="70"
-	if test "$current_arch" -ge $oldest_arch && test "$current_arch" -ne "$target_arch" ; then
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
-	fi	
-	
+	fi
+
 	current_arch="75"
-	if test "$current_arch" -ge $oldest_arch && test "$current_arch" -ne "$target_arch" ; then
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
-	fi	
-	
+	fi
+
 	current_arch="80"
-	if test "$current_arch" -ge $oldest_arch && test "$current_arch" -ne "$target_arch" ; then
+	AC_MSG_NOTICE(current arch $current_arch oldest $oldest_arch target $target_arch )
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
-	fi		
+	fi
 
 	current_arch="86"
-	if test "$current_arch" -ge $oldest_arch && test "$current_arch" -ne "$target_arch" ; then
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
-	fi	
+	fi
 
 	current_arch="89"
-	if test "$current_arch" -ge $oldest_arch && test "$current_arch" -ne "$target_arch" ; then
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
-	fi	
+	fi
 
 	current_arch="90"
-	if test "$current_arch" -ge $oldest_arch && test "$current_arch" -ne "$target_arch" ; then
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
 	fi	
 		
@@ -200,9 +201,9 @@ fi
 
 if test "x$is_cuda_ge_11" = "x1" ; then
   AC_MSG_NOTICE([CUDA >= 11.0, enabling --extra-device-vectorization])
-  NVCCFLAGS+=" --extra-device-vectorization -std=c++17 --expt-relaxed-constexpr --threads=8 --split-compile=8 " 
+  NVCCFLAGS+=" --extra-device-vectorization -std=c++17 --expt-relaxed-constexpr --threads=8 --split-compile=8 "
 else
-  NVCCFLAGS+=" -std=c++11" 
+  AC_MSG_NOTICE([CUDA VERSION is not >= 11.0, some optimizations will be disabled])
 fi
 
 # to trouble shoot ptx warnings for example.  

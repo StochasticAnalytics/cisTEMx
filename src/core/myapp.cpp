@@ -231,6 +231,7 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
     // if we haven't dispatched all jobs yet, then send it, otherwise tell the worker to die..
 
     if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
+        // See RunJob::SendJob() Doxygen for encoding order specification
         current_job_package.jobs[number_of_dispatched_jobs].SendJob(socket);
         socket_to_worker_job_pointer_hash[socket] = &current_job_package.jobs[number_of_dispatched_jobs];
         number_of_dispatched_jobs++;
@@ -257,6 +258,7 @@ void MyApp::SendJobResult(JobResult* result) {
     //MyDebugAssertTrue(i_am_the_master == true, "SendJobResult called by a worker!");
 
     WriteToSocket(controller_socket, socket_job_result, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+    // See JobResult::SendToSocket() Doxygen for encoding order specification
     result->SendToSocket(controller_socket);
 }
 
@@ -264,6 +266,7 @@ void MyApp::SendJobResultQueue(ArrayofJobResults& queue_to_send) {
     //MyDebugAssertTrue(i_am_the_master == true, "SendJobResultQueue called by a worker!");
 
     WriteToSocket(controller_socket, socket_job_result_queue, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+    // See SendResultQueueToSocket() Doxygen for encoding order specification
     SendResultQueueToSocket(controller_socket, queue_to_send);
 }
 

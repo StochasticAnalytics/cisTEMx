@@ -72,7 +72,7 @@ pip install \
 
 # AST parsing and C++ documentation
 pip install \
-    "libclang>=16.0.0" \
+    "libclang>=14.0.0,<15.0.0" \
     "pyyaml>=6.0" \
     "jinja2>=3.0.0" \
     "click>=8.0.0"

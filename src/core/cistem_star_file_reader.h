@@ -108,6 +108,18 @@ class cisTEMStarFileReader {
         return true;
     }
 
+    inline bool SafelyReadFromBinaryBufferIntoUnsignedChar(uint8_t& unsigned_char_to_read_into) {
+        if ( binary_buffer_position + sizeof(uint8_t) - 1 >= binary_file_size ) {
+            MyPrintWithDetails("Error: Binary file is too short\n");
+            return false;
+        }
+
+        uint8_t* temp_uchar_pointer = reinterpret_cast<uint8_t*>(&binary_file_read_buffer[binary_buffer_position]);
+        unsigned_char_to_read_into  = *temp_uchar_pointer;
+        binary_buffer_position += sizeof(uint8_t);
+        return true;
+    }
+
     inline bool SafelyReadFromBinaryBufferIntoDouble(double& double_to_read_into) {
         if ( binary_buffer_position + sizeof(double) - 1 >= binary_file_size ) {
             MyPrintWithDetails("Error: Binary file is too short\n");

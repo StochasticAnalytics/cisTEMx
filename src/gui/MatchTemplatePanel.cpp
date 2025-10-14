@@ -29,8 +29,9 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     current_pixel_size     = -1.0f; // Initialize to invalid value to force first update
 
     // Queue manager integration
-    running_queue_id        = -1; // Database queue ID of the currently executing search (-1 when idle)
-    current_custom_cli_args = ""; // Clear custom CLI args (used by queue for custom parameters)
+    running_queue_id                = -1; // Database queue ID of the currently executing search (-1 when idle)
+    current_custom_cli_args         = ""; // Clear custom CLI args (used by queue for custom parameters)
+    block_auto_progression_of_queue = false; // Allow queue auto-advance by default
 
     // Create persistent queue manager instance
     queue_manager = new TemplateMatchQueueManager(this, this);
@@ -494,6 +495,9 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     TemplateMatchQueueItem new_job = CollectJobParametersFromGui( );
     AddJobToQueue(new_job, false); // Sets new_job.database_queue_id in place
 
+    // Block auto-progression - user wants to run ONE search only
+    block_auto_progression_of_queue = true;
+
     MyAssertTrue(new_job.database_queue_id > 0, "Queue ID is <= 0");
 
     // Execute the search via unified method
@@ -640,7 +644,6 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     // If this was a queue job, notify the queue manager of termination
     if ( running_queue_id > 0 && queue_manager ) {
         QM_LOG_SEARCH("Notifying queue manager of job termination for queue ID %ld", running_queue_id);
-        queue_manager->SetAutoProgressQueue(false); // Stop auto-progression when user terminates
         queue_manager->OnSearchCompleted(running_queue_id, false); // false = job failed/terminated
         running_queue_id = -1;
     }
@@ -738,6 +741,9 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         QM_LOG_STATE("Notifying queue manager that search with queue ID %ld is entering finalization", running_queue_id);
         queue_manager->OnSearchEnteringFinalization(running_queue_id);
     }
+    else {
+        QM_LOG_STATE("Not entering finalization in ProcessAllJosFinished");
+    }
 
     // Update the GUI with project timings
     extern MyOverviewPanel* overview_panel;
@@ -778,41 +784,50 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);
 
-    // Check if there are more items in the execution queue waiting to run
-    bool has_active_queue_items = false;
-    if ( queue_manager ) {
-        has_active_queue_items = queue_manager->ExecutionQueueHasActiveItems( );
-    }
-
-    if ( has_active_queue_items ) {
-        // Don't show finish button yet - more queue items to process
-        TimeRemainingText->SetLabel("Time Remaining : Waiting for next queue item...");
-        CancelAlignmentButton->Show(false);
-        FinishButton->Show(false);
-
-        // Safety net: 30-second timeout to show finish button if queue progression fails
-        // With immediate OnSearchCompleted call, this should rarely fire
-        long job_id_at_timeout_start = my_job_id;
-
-        wxTimer* timeout_timer = new wxTimer( );
-        timeout_timer->Bind(wxEVT_TIMER, [this, timeout_timer, job_id_at_timeout_start](wxTimerEvent&) {
-            // If no new job started after 30 seconds, show finish button as fallback
-            if ( my_job_id == job_id_at_timeout_start && running_job == false &&
-                 FinishButton && ! FinishButton->IsShown( ) ) {
-                QM_LOG_ERROR("Queue auto-advance timeout after 30 seconds - showing Finish button as safety net");
-                TimeRemainingText->SetLabel("Time Remaining : Queue progression stalled");
-                FinishButton->Show(true);
-                ProgressPanel->Layout( );
-            }
-            delete timeout_timer;
-        });
-        timeout_timer->StartOnce(30000);
-    }
-    else {
-        // All done - show finish button
+    // Decide whether to continue queue or show Finish button
+    // Based on block_auto_progression_of_queue flag set by launch source
+    if ( block_auto_progression_of_queue ) {
+        // Launched from Start button - show Finish button, no auto-advance
+        block_auto_progression_of_queue = false; // Reset for next execution
         TimeRemainingText->SetLabel("Time Remaining : All Done!");
         CancelAlignmentButton->Show(false);
         FinishButton->Show(true);
+    }
+    else {
+        // Launched from Queue Manager - check if more items to process
+        bool has_active_queue_items = false;
+        if ( queue_manager ) {
+            has_active_queue_items = queue_manager->ExecutionQueueHasActiveItems( );
+        }
+
+        if ( has_active_queue_items ) {
+            // Don't show finish button yet - more queue items to process
+            TimeRemainingText->SetLabel("Time Remaining : Waiting for next queue item...");
+            CancelAlignmentButton->Show(false);
+            FinishButton->Show(false);
+
+            // Safety net: 30-second timeout to show finish button if queue progression fails
+            long job_id_at_timeout_start = my_job_id;
+
+            wxTimer* timeout_timer = new wxTimer( );
+            timeout_timer->Bind(wxEVT_TIMER, [this, timeout_timer, job_id_at_timeout_start](wxTimerEvent&) {
+                if ( my_job_id == job_id_at_timeout_start && running_job == false &&
+                     FinishButton && ! FinishButton->IsShown( ) ) {
+                    QM_LOG_ERROR("Queue auto-advance timeout after 30 seconds - showing Finish button as safety net");
+                    TimeRemainingText->SetLabel("Time Remaining : Queue progression stalled");
+                    FinishButton->Show(true);
+                    ProgressPanel->Layout( );
+                }
+                delete timeout_timer;
+            });
+            timeout_timer->StartOnce(30000);
+        }
+        else {
+            // All done - show finish button
+            TimeRemainingText->SetLabel("Time Remaining : All Done!");
+            CancelAlignmentButton->Show(false);
+            FinishButton->Show(true);
+        }
     }
     ProgressPanel->Layout( );
 }
@@ -1728,8 +1743,9 @@ void MatchTemplatePanel::HandleSocketDisconnect(wxSocketBase* connected_socket) 
     QM_LOG_METHOD_ENTRY("HandleSocketDisconnect");
     QM_LOG_STATE("    Socket disconnect detected (my_job_id=%ld, running_queue_id=%ld)", my_job_id, running_queue_id);
 
-    // If this was a queue job, auto-advance to the next item
-    // The master socket has now disconnected cleanly after we sent socket_time_to_die
+    // If this was a queue job, reset panel state and trigger auto-advance
+    // HandleSocketDisconnect is called when master process exits, which may happen before
+    // ProcessAllJobsFinished is called (especially for fast-completing or failing jobs)
     if ( running_queue_id > 0 && queue_manager ) {
         long completed_queue_id = running_queue_id;
         running_queue_id        = -1; // Clear before triggering callback

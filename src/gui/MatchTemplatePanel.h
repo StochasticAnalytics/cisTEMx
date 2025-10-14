@@ -54,6 +54,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     long                             running_queue_id; // Database queue ID of the currently executing search (-1 when idle)
     class TemplateMatchQueueManager* queue_manager; // Persistent queue manager instance
     wxString                         current_custom_cli_args; // Custom CLI args for current job
+    bool                             block_auto_progression_of_queue; // True if launched from StartEstimationClick (no auto-advance)
 
     // methods
     void WriteResultToDataBase( );

@@ -27,7 +27,6 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     : wxPanel(parent, wxID_ANY), match_template_panel_ptr(match_template_panel), currently_running_id(-1), last_populated_queue_id(-1) {
 
     // Initialize state variables
-    auto_progress_queue            = true; // Auto-progress to next search when one completes
     hide_completed_searches        = true; // Hide completed searches by default
     gui_update_frozen              = false; // GUI updates allowed initially
     search_is_finalizing           = false; // No search in finalization initially
@@ -473,10 +472,8 @@ void TemplateMatchQueueManager::ProgressExecutionQueue( ) {
             UpdateQueueDisplay( );
 
             // Recursively try the next search in the queue
-            if ( auto_progress_queue ) {
-                QM_LOG_SEARCH("ProgressQueue: Attempting next search after failure");
-                ProgressExecutionQueue( );
-            }
+            QM_LOG_SEARCH("ProgressQueue: Attempting next search after failure");
+            ProgressExecutionQueue( );
             return; // Early return to avoid duplicate save/update below
         }
 
@@ -781,9 +778,6 @@ void TemplateMatchQueueManager::RunNextSearch( ) {
     MyDebugPrint("  Status: '%s'", next_search->queue_status.mb_str( ).data( ));
     MyDebugPrint("  Image Group: %d", next_search->image_group_id);
     MyDebugPrint("  Reference Volume: %d", next_search->reference_volume_asset_id);
-
-    // Enable auto-progression for queue mode - each search completion will trigger the next
-    SetAutoProgressQueue(true);
 
     // Move to priority -1 (out of execution queue) but keep original status
     next_search->queue_order = -1; // Move running search out of execution queue for crash safety
@@ -2522,31 +2516,25 @@ void TemplateMatchQueueManager::OnSearchCompleted(long database_queue_id, bool s
         PrintQueueState( );
     }
 
-    // Only auto-progress if enabled (default false - user controls progression)
-    if ( auto_progress_queue ) {
-        if constexpr ( skip_search_execution_for_queue_debugging ) {
-            QM_LOG_DEBUG("=== Auto-progressing to next job in queue ===");
-        }
+    // Always attempt to auto-progress to next search
+    // Panel controls UI behavior (show Finish button vs wait for next item)
+    if constexpr ( skip_search_execution_for_queue_debugging ) {
+        QM_LOG_DEBUG("=== Auto-progressing to next job in queue ===");
+    }
 
-        // Add a small delay before auto-advancing to ensure all finalization completes
-        // This prevents race conditions where the next job might start before the previous
-        // job's results are fully written to the database or UI is updated
-        wxTimer* delay_timer = new wxTimer( );
-        delay_timer->Bind(wxEVT_TIMER, [this, delay_timer](wxTimerEvent&) {
-            QM_LOG_SEARCH("Auto-advance timer fired - progressing queue");
-            // Force another display update before starting next search to ensure complete status is visible
-            UpdateQueueDisplay( );
-            ProgressExecutionQueue( );
-            delete delay_timer; // Clean up the timer
-        });
-        delay_timer->StartOnce(500); // 500ms delay before auto-advancing
-        QM_LOG_SEARCH("Scheduled auto-advance in 500ms");
-    }
-    else {
-        if constexpr ( skip_search_execution_for_queue_debugging ) {
-            QM_LOG_DEBUG("Job completed - auto-progression disabled (user controls queue progression)");
-        }
-    }
+    // Add a small delay before auto-advancing to ensure all finalization completes
+    // This prevents race conditions where the next job might start before the previous
+    // job's results are fully written to the database or UI is updated
+    wxTimer* delay_timer = new wxTimer( );
+    delay_timer->Bind(wxEVT_TIMER, [this, delay_timer](wxTimerEvent&) {
+        QM_LOG_SEARCH("Auto-advance timer fired - progressing queue");
+        // Force another display update before starting next search to ensure complete status is visible
+        UpdateQueueDisplay( );
+        ProgressExecutionQueue( );
+        delete delay_timer; // Clean up the timer
+    });
+    delay_timer->StartOnce(500); // 500ms delay before auto-advancing
+    QM_LOG_SEARCH("Scheduled auto-advance in 500ms");
 
     if constexpr ( skip_search_execution_for_queue_debugging ) {
         QM_LOG_DEBUG("=== OnSearchCompleted finished ===");

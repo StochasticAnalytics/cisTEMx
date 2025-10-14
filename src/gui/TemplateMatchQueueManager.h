@@ -241,7 +241,6 @@ class TemplateMatchQueueManager : public wxPanel {
     long                               last_populated_queue_id; ///< Database ID of last item populated in GUI
 
     // State Tracking - Execution and display control
-    bool auto_progress_queue; ///< True if queue should auto-advance after search completion
     bool hide_completed_searches; ///< True if completed searches should be hidden from available queue
     bool gui_update_frozen; ///< True while SetupJobFromQueueItem is executing to prevent GUI interference
     bool search_is_finalizing; ///< True when search is in final processing (writing results, cleanup)
@@ -347,7 +346,6 @@ class TemplateMatchQueueManager : public wxPanel {
      * @brief Continues queue execution after current search completes
      *
      * Called by completion callbacks to advance to next pending search.
-     * Enables automatic queue progression when auto_progress_queue is enabled.
      */
     void ContinueQueueExecution( );
 
@@ -375,12 +373,6 @@ class TemplateMatchQueueManager : public wxPanel {
      * @return True if execution_in_progress flag is set
      */
     bool IsSearchRunning( ) const;
-
-    /**
-     * @brief Controls automatic queue progression after search completion
-     * @param enable If true, queue will automatically advance to next search
-     */
-    void SetAutoProgressQueue(bool enable) { auto_progress_queue = enable; }
 
     /**
      * @brief Freezes GUI parameter updates during search setup to prevent interference

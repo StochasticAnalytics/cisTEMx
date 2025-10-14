@@ -1974,6 +1974,18 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
     MyDebugAssertTrue(main_frame != nullptr, "LoadQueueFromDatabase: main_frame is null");
     MyDebugAssertTrue(main_frame->current_project.is_open, "LoadQueueFromDatabase: no project open");
 
+    // Reset state variables to clean state (matches constructor initialization)
+    // This ensures LoadQueueFromDatabase behaves like a fresh manager load even when called
+    // on a persistent queue manager that may have stale state from previous operations
+    currently_running_id    = -1;
+    last_populated_queue_id = -1;
+    search_is_finalizing    = false;
+    drag_in_progress        = false;
+    updating_display        = false;
+    dragged_row             = -1;
+    dragged_search_id       = -1;
+    mouse_down              = false;
+
     MyDebugPrint("Loading queue from database...");
     execution_queue.clear( );
 

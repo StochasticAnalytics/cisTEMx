@@ -36,6 +36,92 @@ This iterative learning mirrors how human research teams build institutional kno
 
 **Follow existing patterns, not assumptions.** When implementing new features, find and follow proven patterns from existing code rather than making assumptions about how things work. When the user points out flawed assumptions, **listen and verify their observations** rather than defending the assumptions.
 
+### Critical Error Handling Principle: NEVER Silent Failures
+
+**FUNDAMENTAL, UNCHANGEABLE RULE: There is NO such thing as a "safe default" when data is invalid.**
+
+When code encounters invalid data (missing IDs, out-of-range values, corrupted database entries), it must **crash immediately with a clear error message using MyDebugAssertTrue/False**. Never attempt to "fix" invalid data by substituting defaults, using first available values, or logging warnings and continuing.
+
+**Why this is absolute:**
+- Silent data substitution masks corruption and leads to incorrect scientific results
+- "Safe defaults" create debugging nightmares by hiding root causes
+- Warnings get ignored; crashes force investigation and database cleanup
+- Better to fail loudly during development than silently produce wrong results in production
+
+**Anti-patterns (NEVER DO THIS):**
+
+```cpp
+// ❌ WRONG: "Safe default" when asset_id not found
+if (array_position < 0) {
+    wxPrintf("WARNING: asset_id not found, using first volume\n");
+    controls.reference_panel->SetSelection(0);  // DANGEROUS!
+}
+
+// ❌ WRONG: Silent failure when ID lookup fails
+for (int i = 0; i < profiles.size(); i++) {
+    if (profiles[i].id == target_id) {
+        SetSelection(i);
+        break;  // If not found, just silently do nothing
+    }
+}
+
+// ❌ WRONG: Warning instead of crash for UI/data desync
+if (found_index < 0) {
+    wxPrintf("WARNING: item not found in queue!\n");
+    return;  // Silently continue with inconsistent state
+}
+```
+
+**Correct patterns (ALWAYS DO THIS):**
+
+```cpp
+// ✅ CORRECT: Crash with clear message on invalid data
+int array_position = volume_asset_panel->ReturnArrayPositionFromAssetID(item.asset_id);
+MyDebugAssertTrue(array_position >= 0,
+    "CRITICAL: Reference volume asset_id %d not found! Database corruption must be fixed.",
+    item.asset_id);
+controls.reference_panel->SetSelection(array_position);
+
+// ✅ CORRECT: Assert that required ID was found
+bool found = false;
+for (int i = 0; i < profiles.size(); i++) {
+    if (profiles[i].id == target_id) {
+        SetSelection(i);
+        found = true;
+        break;
+    }
+}
+MyDebugAssertTrue(found,
+    "CRITICAL: Profile ID %d not found in panel! Database corruption must be fixed.",
+    target_id);
+
+// ✅ CORRECT: Assert on UI/data inconsistency
+MyDebugAssertTrue(found_index >= 0,
+    "CRITICAL: queue_id %ld not found! UI/data desynchronization.",
+    queue_id);
+RemoveFromQueue(found_index);
+```
+
+**When to use assertions for error handling:**
+1. **Database ID lookups fail** → Assert (indicates corrupted database)
+2. **Required resources missing** → Assert (indicates broken preconditions)
+3. **UI state inconsistent with data** → Assert (indicates synchronization bug)
+4. **Invalid parameters from validated sources** → Assert (indicates validation gap)
+
+**The only acceptable error handling WITHOUT assertions:**
+- User input validation (show error dialog, don't crash)
+- Network timeouts and transient failures (retry logic)
+- Optional features not available (graceful degradation)
+- File I/O failures on user-provided paths (error message)
+
+**Never rationalize silent failures with phrases like:**
+- "Let's use a safe default..."
+- "We'll just use the first available..."
+- "Log a warning and continue..."
+- "Set it to something reasonable..."
+
+These phrases indicate you're about to introduce a subtle, dangerous bug. Stop and add an assertion instead.
+
 ### Humility in Debugging
 
 **Case Study: Template Match Timing Bug (Oct 2025)**

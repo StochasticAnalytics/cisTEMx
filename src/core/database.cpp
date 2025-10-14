@@ -2996,7 +2996,7 @@ long Database::AddToTemplateMatchQueue(const wxString& job_name, int image_group
     MyDebugAssertTrue(is_open == true, "Database not open!");
     MyDebugAssertFalse(job_name.IsEmpty( ), "Job name cannot be empty");
     MyDebugAssertTrue(image_group_id == -1 || image_group_id >= 1, "Image group ID must be -1 (All Images) or >= 1");
-    MyDebugAssertTrue(reference_volume_asset_id >= 0, "Reference volume asset ID must be >= 0");
+    MyDebugAssertTrue(reference_volume_asset_id >= 1, "Reference volume asset ID must be >= 1 (asset IDs start at 1, not 0)");
     MyDebugAssertTrue(run_profile_id >= 0, "Run profile ID must be >= 0");
 
     // Get the next position in queue (max position + 1)

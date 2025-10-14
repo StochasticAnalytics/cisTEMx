@@ -86,8 +86,23 @@ void TemplateMatchControlsHelper::PopulateFromQueueItem(const TemplateMatchQueue
     // Set reference volume selection by finding matching asset_id
     if ( controls.reference_panel && item.reference_volume_asset_id >= 0 && volume_asset_panel ) {
         int array_position = volume_asset_panel->ReturnArrayPositionFromAssetID(item.reference_volume_asset_id);
+        // revert - debug population
+        QM_LOG_UI("PopulateFromQueueItem: asset_id=%d, array_position=%d",
+                  item.reference_volume_asset_id, array_position);
         if ( array_position >= 0 ) {
             controls.reference_panel->SetSelection(array_position);
+            QM_LOG_UI("PopulateFromQueueItem: SetSelection(%d) complete", array_position);
+        }
+        else {
+            // Asset ID not found - this indicates corrupted queue item
+            // Set to first available volume as safe default
+            QM_LOG_UI("WARNING: Reference volume asset_id=%d not found! Setting to first volume as default.",
+                      item.reference_volume_asset_id);
+            if ( volume_asset_panel->all_assets_list->number_of_assets > 0 ) {
+                controls.reference_panel->SetSelection(0);
+                QM_LOG_UI("PopulateFromQueueItem: Set to default selection 0 (asset_id=%d)",
+                          volume_asset_panel->ReturnAssetPointer(0)->asset_id);
+            }
         }
     }
 
@@ -211,6 +226,9 @@ bool TemplateMatchControlsHelper::ExtractToQueueItem(TemplateMatchQueueItem& ite
     if ( controls.reference_panel && volume_asset_panel ) {
         int selected_index             = controls.reference_panel->GetSelection( );
         item.reference_volume_asset_id = volume_asset_panel->ReturnAssetPointer(selected_index)->asset_id;
+        // revert - debug extraction
+        QM_LOG_UI("ExtractToQueueItem: reference_panel GetSelection()=%d, asset_id=%d",
+                  selected_index, item.reference_volume_asset_id);
     }
 
     // Extract run profile ID
@@ -300,6 +318,28 @@ bool TemplateMatchControlsHelper::ExtractToQueueItem(TemplateMatchQueueItem& ite
     item.refinement_threshold       = 0.0;
     item.xy_change_threshold        = 0.0;
     item.exclude_above_xy_threshold = false;
+
+    // revert - debug: Log ALL extracted parameters
+    QM_LOG_UI("=== ExtractToQueueItem: ALL PARAMETERS ===");
+    QM_LOG_UI("  image_group_id: %d", item.image_group_id);
+    QM_LOG_UI("  reference_volume_asset_id: %d", item.reference_volume_asset_id);
+    QM_LOG_UI("  run_profile_id: %d", item.run_profile_id);
+    QM_LOG_UI("  symmetry: %s", item.symmetry);
+    QM_LOG_UI("  high_resolution_limit: %.2f", item.high_resolution_limit);
+    QM_LOG_UI("  low_resolution_limit: %.2f", item.low_resolution_limit);
+    QM_LOG_UI("  out_of_plane_angular_step: %.2f", item.out_of_plane_angular_step);
+    QM_LOG_UI("  in_plane_angular_step: %.2f", item.in_plane_angular_step);
+    QM_LOG_UI("  defocus_search_range: %.2f", item.defocus_search_range);
+    QM_LOG_UI("  defocus_step: %.2f", item.defocus_step);
+    QM_LOG_UI("  pixel_size_search_range: %.4f", item.pixel_size_search_range);
+    QM_LOG_UI("  pixel_size_step: %.4f", item.pixel_size_step);
+    QM_LOG_UI("  min_peak_radius: %.2f", item.min_peak_radius);
+    QM_LOG_UI("  use_gpu: %d", item.use_gpu);
+    QM_LOG_UI("  use_fast_fft: %d", item.use_fast_fft);
+    QM_LOG_UI("  ref_box_size_in_angstroms: %.2f", item.ref_box_size_in_angstroms);
+    QM_LOG_UI("  mask_radius: %.2f", item.mask_radius);
+    QM_LOG_UI("  search_name: %s", item.search_name);
+    QM_LOG_UI("=== END PARAMETERS ===");
 
     return true;
 }

@@ -4,6 +4,8 @@
 #include "TemplateMatchQueueItemEditor.h"
 #include <algorithm>
 
+extern MyVolumeAssetPanel* volume_asset_panel;
+
 #ifdef cisTEM_QM_LOGGING
 // Initialize static members for QueueManagerLogger
 std::ofstream QueueManagerLogger::log_file;
@@ -93,9 +95,14 @@ TemplateMatchQueueManager::TemplateMatchQueueManager(wxWindow* parent, MatchTemp
     wxBoxSizer* logging_row_sizer = new wxBoxSizer(wxHORIZONTAL);
     logging_label                 = new wxStaticText(controls_panel, wxID_ANY, "Log file:");
     log_file_text                 = new wxStaticText(controls_panel, wxID_ANY, "", wxDefaultPosition, wxSize(150, -1));
-    logging_toggle                = new wxToggleButton(controls_panel, wxID_ANY, "Enable Logging",
+    logging_toggle                = new wxToggleButton(controls_panel, wxID_ANY, "Disable Logging",
                                                        wxDefaultPosition, wxSize(130, -1));
-    logging_toggle->SetValue(false); // Off by default
+    logging_toggle->SetValue(true); // revert - On by default for debugging
+
+    // Enable logging immediately
+    QueueManagerLogManager::EnableLogging(true);
+    wxString log_path = QueueManagerLogManager::GetLogFilePath( );
+    log_file_text->SetLabel(wxString::Format("Log: %s", log_path));
 
     logging_row_sizer->Add(logging_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     logging_row_sizer->Add(log_file_text, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
@@ -232,8 +239,8 @@ bool TemplateMatchQueueManager::ValidateQueueItem(const TemplateMatchQueueItem& 
         error_message = wxString::Format("Invalid image group ID: %d", item.image_group_id);
         return false;
     }
-    if ( item.reference_volume_asset_id < 0 ) {
-        error_message = wxString::Format("Invalid reference volume ID: %d", item.reference_volume_asset_id);
+    if ( item.reference_volume_asset_id < 1 ) {
+        error_message = wxString::Format("Invalid reference volume ID: %d (asset IDs start at 1)", item.reference_volume_asset_id);
         return false;
     }
     if ( item.search_name.IsEmpty( ) ) {
@@ -1450,6 +1457,15 @@ void TemplateMatchQueueManager::OnUpdateSelectedClick(wxCommandEvent& event) {
     // Otherwise combo boxes are empty and SetSelection causes segfault
     editor_panel->FillComboBoxes( );
 
+    // revert - debug volume ordering
+    if ( volume_asset_panel ) {
+        QM_LOG_UI("Volume assets after FillComboBoxes():");
+        for ( int i = 0; i < volume_asset_panel->all_assets_list->number_of_assets; i++ ) {
+            VolumeAsset* vol = volume_asset_panel->ReturnAssetPointer(i);
+            QM_LOG_UI("  [%d] asset_id=%d, name=%s", i, vol->asset_id, vol->asset_name);
+        }
+    }
+
     editor_panel->PopulateFromQueueItem(*item_to_edit);
     SwitchToEditorView( );
 }
@@ -2031,6 +2047,28 @@ void TemplateMatchQueueManager::LoadQueueFromDatabase( ) {
                 temp_item.exclude_above_xy_threshold);
 
         if ( success ) {
+            // revert - debug: Log parameters as loaded from database for comparison
+            QM_LOG_DEBUG("=== LoadQueueFromDatabase: Queue Item %ld Parameters ===", queue_ids[i]);
+            QM_LOG_DEBUG("  search_name: %s", temp_item.search_name);
+            QM_LOG_DEBUG("  image_group_id: %d", temp_item.image_group_id);
+            QM_LOG_DEBUG("  reference_volume_asset_id: %d", temp_item.reference_volume_asset_id);
+            QM_LOG_DEBUG("  run_profile_id: %d", temp_item.run_profile_id);
+            QM_LOG_DEBUG("  symmetry: %s", temp_item.symmetry);
+            QM_LOG_DEBUG("  high_resolution_limit: %.2f", temp_item.high_resolution_limit);
+            QM_LOG_DEBUG("  low_resolution_limit: %.2f", temp_item.low_resolution_limit);
+            QM_LOG_DEBUG("  out_of_plane_angular_step: %.2f", temp_item.out_of_plane_angular_step);
+            QM_LOG_DEBUG("  in_plane_angular_step: %.2f", temp_item.in_plane_angular_step);
+            QM_LOG_DEBUG("  defocus_search_range: %.2f", temp_item.defocus_search_range);
+            QM_LOG_DEBUG("  defocus_step: %.2f", temp_item.defocus_step);
+            QM_LOG_DEBUG("  pixel_size_search_range: %.4f", temp_item.pixel_size_search_range);
+            QM_LOG_DEBUG("  pixel_size_step: %.4f", temp_item.pixel_size_step);
+            QM_LOG_DEBUG("  min_peak_radius: %.2f", temp_item.min_peak_radius);
+            QM_LOG_DEBUG("  use_gpu: %d", temp_item.use_gpu);
+            QM_LOG_DEBUG("  use_fast_fft: %d", temp_item.use_fast_fft);
+            QM_LOG_DEBUG("  ref_box_size_in_angstroms: %.2f", temp_item.ref_box_size_in_angstroms);
+            QM_LOG_DEBUG("  mask_radius: %.2f", temp_item.mask_radius);
+            QM_LOG_DEBUG("=== END Database Load Parameters ===");
+
             // Compute queue status from completion data
             std::pair<int, int> completion_counts;
             if ( temp_item.search_id > 0 ) {
@@ -2964,14 +3002,16 @@ void TemplateMatchQueueManager::OnEditorSaveClick( ) {
         return; // Stay in edit mode
     }
 
-    // Extract edited values
+    // IMPORTANT: Extract ALL user-editable parameters from editor panel
+    // This creates a completely fresh queue item populated entirely from the current GUI state.
+    // We do NOT preserve any old parameter values - everything comes from the editor.
     TemplateMatchQueueItem updated_item;
     if ( ! editor_panel->ExtractToQueueItem(updated_item) ) {
         wxMessageBox("Failed to extract values from editor", "Error", wxOK | wxICON_ERROR);
         return;
     }
 
-    // Find original item
+    // Find original item to preserve non-editable metadata
     TemplateMatchQueueItem* original_item = nullptr;
     for ( auto& qi : execution_queue ) {
         if ( qi.database_queue_id == editing_queue_id ) {
@@ -2994,13 +3034,14 @@ void TemplateMatchQueueManager::OnEditorSaveClick( ) {
         return;
     }
 
-    // Preserve metadata fields
-    updated_item.database_queue_id = original_item->database_queue_id;
-    updated_item.search_id         = original_item->search_id;
-    updated_item.queue_status      = original_item->queue_status;
-    updated_item.queue_order       = original_item->queue_order;
+    // Preserve ONLY non-editable metadata fields (not shown in editor panel)
+    // All user-editable search parameters were already extracted from GUI above
+    updated_item.database_queue_id = original_item->database_queue_id; // Primary key - never changes
+    updated_item.search_id         = original_item->search_id; // Links to results table
+    updated_item.queue_status      = original_item->queue_status; // Runtime execution state
+    updated_item.queue_order       = original_item->queue_order; // Runtime queue position
 
-    // Update in memory
+    // Replace original item entirely with updated values from editor
     *original_item = updated_item;
 
     // Update database

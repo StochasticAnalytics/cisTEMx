@@ -1266,13 +1266,27 @@ bool MatchTemplatePanel::SetupSearchBatchFromQueueItem(const TemplateMatchQueueI
     // First populate GUI with the job parameters
     PopulateGuiFromQueueItem(job);
 
-    // Debug prints to check job parameters
-    QM_LOG_DEBUG("=== DEBUG: SetupSearchBatchFromQueueItem Parameters ===");
-    QM_LOG_DEBUG("Search Name: %s", job.search_name);
-    QM_LOG_DEBUG("Image Group ID: %d", job.image_group_id);
-    QM_LOG_DEBUG("Reference Volume Asset ID: %d", job.reference_volume_asset_id);
-    QM_LOG_DEBUG("Run Profile ID: %d", job.run_profile_id);
-    QM_LOG_DEBUG("=== END DEBUG ===");
+    // revert - debug: Log ALL parameters being used for execution
+    QM_LOG_DEBUG("=== SetupSearchBatchFromQueueItem: ALL EXECUTION PARAMETERS ===");
+    QM_LOG_DEBUG("  search_name: %s", job.search_name);
+    QM_LOG_DEBUG("  image_group_id: %d", job.image_group_id);
+    QM_LOG_DEBUG("  reference_volume_asset_id: %d", job.reference_volume_asset_id);
+    QM_LOG_DEBUG("  run_profile_id: %d", job.run_profile_id);
+    QM_LOG_DEBUG("  symmetry: %s", job.symmetry);
+    QM_LOG_DEBUG("  high_resolution_limit: %.2f", job.high_resolution_limit);
+    QM_LOG_DEBUG("  low_resolution_limit: %.2f", job.low_resolution_limit);
+    QM_LOG_DEBUG("  out_of_plane_angular_step: %.2f", job.out_of_plane_angular_step);
+    QM_LOG_DEBUG("  in_plane_angular_step: %.2f", job.in_plane_angular_step);
+    QM_LOG_DEBUG("  defocus_search_range: %.2f", job.defocus_search_range);
+    QM_LOG_DEBUG("  defocus_step: %.2f", job.defocus_step);
+    QM_LOG_DEBUG("  pixel_size_search_range: %.4f", job.pixel_size_search_range);
+    QM_LOG_DEBUG("  pixel_size_step: %.4f", job.pixel_size_step);
+    QM_LOG_DEBUG("  min_peak_radius: %.2f", job.min_peak_radius);
+    QM_LOG_DEBUG("  use_gpu: %d", job.use_gpu);
+    QM_LOG_DEBUG("  use_fast_fft: %d", job.use_fast_fft);
+    QM_LOG_DEBUG("  ref_box_size_in_angstroms: %.2f", job.ref_box_size_in_angstroms);
+    QM_LOG_DEBUG("  mask_radius: %.2f", job.mask_radius);
+    QM_LOG_DEBUG("=== END EXECUTION PARAMETERS ===");
 
     // Now run the existing setup logic that was in StartEstimationClick
     // This mirrors the logic from StartEstimationClick but uses the job parameters directly
@@ -1342,7 +1356,10 @@ bool MatchTemplatePanel::SetupSearchBatchFromQueueItem(const TemplateMatchQueueI
     ImageAsset*  current_image;
     VolumeAsset* current_volume;
 
-    current_volume         = volume_asset_panel->ReturnAssetPointer(job.reference_volume_asset_id);
+    // Convert database asset ID to array position
+    int volume_array_position = volume_asset_panel->ReturnArrayPositionFromAssetID(job.reference_volume_asset_id);
+    MyDebugAssertTrue(volume_array_position >= 0, "Reference volume asset ID %d not found in volume panel", job.reference_volume_asset_id);
+    current_volume         = volume_asset_panel->ReturnAssetPointer(volume_array_position);
     ref_box_size_in_pixels = current_volume->x_size / current_volume->pixel_size;
 
     ParameterMap parameter_map;
@@ -1364,7 +1381,16 @@ bool MatchTemplatePanel::SetupSearchBatchFromQueueItem(const TemplateMatchQueueI
     QM_LOG_DEBUG("Setting up search with symmetry %s, defocus range %.2f, defocus step %.2f",
                  wanted_symmetry, defocus_search_range, defocus_step);
 
-    RunProfile active_refinement_run_profile = run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection( )];
+    // Find run profile by database ID (not combo box index)
+    int profile_array_index = -1;
+    for ( int i = 0; i < run_profiles_panel->run_profile_manager.number_of_run_profiles; i++ ) {
+        if ( run_profiles_panel->run_profile_manager.run_profiles[i].id == job.run_profile_id ) {
+            profile_array_index = i;
+            break;
+        }
+    }
+    MyDebugAssertTrue(profile_array_index >= 0, "Run profile ID %d not found in run profiles panel", job.run_profile_id);
+    RunProfile active_refinement_run_profile = run_profiles_panel->run_profile_manager.run_profiles[profile_array_index];
 
     int number_of_processes = active_refinement_run_profile.ReturnTotalJobs( );
 

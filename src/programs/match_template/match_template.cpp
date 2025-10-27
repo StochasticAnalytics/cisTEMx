@@ -38,7 +38,7 @@ using namespace cistem_timer_noop;
 #define TEST_LOCAL_NORMALIZATION
 
 // Testing a size optimized approach for search
-#define MAX_SEARCH_SIZE 1024
+#define MAX_SEARCH_SIZE 2048
 
 /**
  * @class AggregatedTemplateResult
@@ -862,6 +862,9 @@ bool MatchTemplateApp::DoCalculation( ) {
         defocus_step         = 100.0f;
     }
 
+    if ( pixel_size_search_range > 0.f && use_gpu )
+        SendErrorAndCrash("The gpu implementation is not set to work with pixel size search. FIXME: we should just disable this in the GUI options or fix the problem.");
+
     if ( pixel_size_step <= 0.0f ) {
         pixel_size_search_range = 0.0f;
         pixel_size_step         = 0.02f;
@@ -1046,7 +1049,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                                                    actual_number_of_angles_searched, defocus_step) firstprivate(template_reconstruction_gpu, L2_persistance_fraction, current_correlation_position)
             {
                 int tIDX = ReturnThreadNumberOfCurrentThread( );
-                // gpuDev.SetGpu( );
+                // gpuDev.SetGpu( ); // Redundant when only 1 GPU visible, but doesn't hurt
 
                 // Initialize TemplateMatchingCore for this thread on its first loop iteration
                 if ( first_gpu_loop.at(tIDX) ) {
@@ -1388,6 +1391,10 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     // Resize output images (MIP, angles, etc.) and statistical maps back to original dimensions if search was on resized images.
     // Even if we apply_result_rescaling, we still want to remove any padding.
+    int use_threads = max_threads;
+    MyDebugAssertTrue(max_intensity_projection.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_image.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_of_squares_image.IsFinite( ), "Nan detected");
     data_sizer.ResizeImage_postSearch(max_intensity_projection,
                                       best_psi,
                                       best_phi,
@@ -1397,7 +1404,10 @@ bool MatchTemplateApp::DoCalculation( ) {
                                       correlation_pixel_sum_image,
                                       correlation_pixel_sum_of_squares_image,
                                       apply_result_rescaling,
-                                      max_threads);
+                                      use_threads);
+    MyDebugAssertTrue(max_intensity_projection.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_image.IsFinite( ), "Nan detected");
+    MyDebugAssertTrue(correlation_pixel_sum_of_squares_image.IsFinite( ), "Nan detected");
 
     float output_pixel_size = apply_result_rescaling ? data_sizer.GetPixelSize( ) : data_sizer.GetSearchPixelSize( );
 
@@ -1691,6 +1701,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
     // Check if an AggregatedTemplateResult already exists for this image
     for ( int result_counter = 0; result_counter < aggregated_results.GetCount( ); result_counter++ ) {
         if ( aggregated_results[result_counter].image_number == result_number ) {
+
             aggregated_results[result_counter].AddResult(result_array, array_size, result_number, number_of_expected_results);
             need_a_new_result = false;
             array_location    = result_counter;
@@ -2308,8 +2319,14 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
     const double total_number_of_ccs = double(n_angles_in_search) * double(counted_values);
     std::cerr << "Counted Values: " << counted_values << " out of " << N << " fractions: " << float(counted_values) / float(N) << std::endl;
 
-    global_ccc_mean    = global_sum / total_number_of_ccs;
-    global_ccc_std_dev = sqrt(global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean));
+    MyDebugAssertTrue(counted_values > 0, "No valid pixels counted - all correlation_pixel_sum_of_squares below epsilon");
+
+    global_ccc_mean = global_sum / total_number_of_ccs;
+
+    double variance_arg = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
+    MyDebugAssertTrue(variance_arg > 0.0f, "Variance calculation produced non-positive value - numerical precision issue");
+
+    global_ccc_std_dev = sqrt(variance_arg);
 
     return;
 }
@@ -2392,6 +2409,7 @@ void MatchTemplateApp::RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(Image
                                                                            long*       histogram,
                                                                            const float n_angles_in_search,
                                                                            const bool  disable_flat_fielding) {
+    MyDebugAssertTrue(n_angles_in_search > 0, "n_angles_in_search must be > = zero");
 
     double global_ccc_mean    = 0.0;
     double global_ccc_std_dev = 0.0;

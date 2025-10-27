@@ -145,14 +145,14 @@ void Histogram::AddToHistogram(GpuImage& input_image) {
     precheck;
     histogram_smem_atomics<<<gridDims_img, threadsPerBlock_img, 0, cudaStreamPerThread>>>(
             (const __half*)input_image.real_values_16f, input_image.dims, histogram, histogram_min, histogram_step, max_padding);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 void Histogram::Accumulate(GpuImage& input_image) {
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
     precheck;
     histogram_final_accum<<<gridDims_accum_array, threadsPerBlock_accum_array, 0, cudaStreamPerThread>>>(histogram, cummulative_histogram, cistem::match_template::histogram_number_of_points, gridDims_img.x * gridDims_img.y);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 void Histogram::CopyToHostAndAdd(long* array_to_add_to) {

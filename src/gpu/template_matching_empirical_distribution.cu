@@ -73,7 +73,6 @@ TM_EmpiricalDistribution<ccfType, mipType>::TM_EmpiricalDistribution(GpuImage* r
     //   angle data, and the histogram.
     // - Launch parameters for CUDA kernels are determined based on the reference image dimensions and ROI.
 
-    std::cerr << "n_images" << n_imgs_to_process_at_once_ << std::endl;
     int least_priority, highest_priority;
 
     my_rng_ = std::make_unique<RandomNumberGenerator>(pi_v<float>);
@@ -169,13 +168,13 @@ template <typename ccfType, typename mipType>
 void TM_EmpiricalDistribution<ccfType, mipType>::Delete( ) {
     // Design Note: Releases all GPU resources associated with this instance.
     // - Frees all `cudaMallocAsync` allocated memory.
-    // - Destroys the CUDA stream and event.
+    // - Explicitly synchronizes the stream before destroying resources.
+    // - Destroys the CUDA event and stream in safe order (events before stream).
     // - Frees host-pinned memory.
-    // All `cudaFreeAsync` calls are enqueued onto `calc_stream_[0]`.
-    // A `cudaStreamDestroy` will implicitly synchronize the stream before destruction.
+    // All `cudaFreeAsync` calls are enqueued onto `calc_stream_[0]`, then the stream
+    // is explicitly synchronized before destroying events and the stream itself.
     // Thread Safety Note: This method should only be called when no other operations
-    // are pending on `calc_stream_[0]`. The `cudaStreamDestroy` will wait for
-    // all enqueued tasks in `calc_stream_[0]` to complete.
+    // are pending on `calc_stream_[0]`.
     MyDebugAssertFalse(cudaStreamQuery(calc_stream_[0]) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
 
     cudaErr(cudaFreeAsync(histogram_, calc_stream_[0]));
@@ -195,8 +194,18 @@ void TM_EmpiricalDistribution<ccfType, mipType>::Delete( ) {
         cudaErr(cudaFreeAsync(device_host_angle_arrays_.at(i), calc_stream_[0]));
     }
 
-    cudaErr(cudaStreamDestroy(calc_stream_[0]));
+    // Check if stream has pending work (diagnostic)
+    cudaError_t status = cudaStreamQuery(calc_stream_[0]);
+    if ( status == cudaErrorNotReady ) {
+        wxPrintf("WARNING: TM_EmpiricalDistribution::Delete() called with pending GPU work - synchronizing before cleanup\n");
+    }
+
+    // Explicitly synchronize stream before destroying resources
+    cudaErr(cudaStreamSynchronize(calc_stream_[0]));
+
+    // Destroy event first, then stream
     cudaErr(cudaEventDestroy(mip_stack_is_ready_event_[0]));
+    cudaErr(cudaStreamDestroy(calc_stream_[0]));
 
     object_initialized_ = false;
 }
@@ -553,7 +562,7 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution(int n_im
             (ccfType*)&device_host_angle_arrays_.at(active_idx_)[phi_idx],
             min_counter_val_,
             threshold_val_);
-    postcheck;
+    postcheck(calc_stream_[0]);
 
     // Switch the active index
     // This allows the CPU to prepare the next batch of CCF data and angles in the inactive buffers
@@ -583,7 +592,7 @@ void TM_EmpiricalDistribution<ccfType, mipType>::FinalAccumulate( ) {
 
     precheck;
     FinalAccumulateKernel<<<gridDims_accum_array, threadsPerBlock_accum_array, 0, calc_stream_[0]>>>(histogram_, n_bins, n_blocks);
-    postcheck;
+    postcheck(calc_stream_[0]);
 }
 
 /**
@@ -682,15 +691,15 @@ void TM_EmpiricalDistribution<ccfType, mipType>::CopySumAndSumSqAndZero(GpuImage
     dim3 threadsPerBlock = dim3(1024, 1, 1);
     dim3 gridDims        = dim3((image_plane_mem_allocated_ + threadsPerBlock.x - 1) / threadsPerBlock.x, 1, 1);
 
-    // Potential Stream Issue: Uses cudaStreamPerThread. If sum_array etc. are populated
-    // by kernels on calc_stream_[0], this needs synchronization or to use calc_stream_[0].
-    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(sum_array,
-                                                                                sum_sq_array,
-                                                                                sum_img.real_values,
-                                                                                sq_sum_img.real_values,
-                                                                                sum_counter,
-                                                                                sq_sum_img.real_memory_allocated);
-    postcheck;
+    // Fixed: Use calc_stream_[0] consistently to ensure proper stream ordering and cache coherency.
+    // sum_array, sum_sq_array, and sum_counter are written by AccumulateDistributionKernel on calc_stream_[0].
+    AccumulateSumsKernel<<<gridDims, threadsPerBlock, 0, calc_stream_[0]>>>(sum_array,
+                                                                            sum_sq_array,
+                                                                            sum_img.real_values,
+                                                                            sq_sum_img.real_values,
+                                                                            sum_counter,
+                                                                            sq_sum_img.real_memory_allocated);
+    postcheck(calc_stream_[0]);
 }
 
 /**
@@ -775,18 +784,16 @@ void TM_EmpiricalDistribution<ccfType, mipType>::MipToImage(GpuImage& d_max_inte
     dim3 threadsPerBlock = dim3(1024, 1, 1);
     dim3 gridDims        = dim3((image_plane_mem_allocated_ + threadsPerBlock.x - 1) / threadsPerBlock.x, 1, 1);
 
-    // FIXME: Potential Stream Issue: Uses cudaStreamPerThread. If mip_psi and theta_phi are populated
-    // by kernels on calc_stream_[0], this needs synchronization or to use calc_stream_[0].
-    // third arg was secondary_peaks,
-    // last arg was n_global_search_images_to_save
-    MipToImageKernel<mipType><<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(mip_psi,
-                                                                                     theta_phi,
-                                                                                     image_plane_mem_allocated_,
-                                                                                     d_max_intensity_projection.real_values,
-                                                                                     d_best_psi.real_values,
-                                                                                     d_best_theta.real_values,
-                                                                                     d_best_phi.real_values);
-    postcheck;
+    // Fixed: Use calc_stream_[0] consistently to ensure proper stream ordering and cache coherency.
+    // mip_psi and theta_phi are written by AccumulateDistributionKernel on calc_stream_[0].
+    MipToImageKernel<mipType><<<gridDims, threadsPerBlock, 0, calc_stream_[0]>>>(mip_psi,
+                                                                                 theta_phi,
+                                                                                 image_plane_mem_allocated_,
+                                                                                 d_max_intensity_projection.real_values,
+                                                                                 d_best_psi.real_values,
+                                                                                 d_best_theta.real_values,
+                                                                                 d_best_phi.real_values);
+    postcheck(calc_stream_[0]);
 }
 
 // Apparenty clang cares if this is not at the end of the file, and doesn't generate these instantiations for any methods defined after.

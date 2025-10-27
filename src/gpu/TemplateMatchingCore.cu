@@ -219,7 +219,7 @@ size_t TemplateMatchingCore::SetL2CachePersisting(const float L2_persistance_fra
         return 0;
     }
 
-    cudaDeviceSetLimit(cudaLimitPersistingL2CacheSize, size); // set-aside 3/4 of L2 cache for persisting accesses or the max allowed
+    cudaErr(cudaDeviceSetLimit(cudaLimitPersistingL2CacheSize, size)); // set-aside 3/4 of L2 cache for persisting accesses or the max allowed
 
     // In the cuda programming manual, it suggests setting the window size as follows:
     // size_t window_size = std::min(size_t(accessPolicyMaxWindowSize), data_size_bytes);
@@ -259,7 +259,7 @@ void TemplateMatchingCore::SetL2AccessPolicy(const size_t window_size) {
     stream_attribute.accessPolicyWindow.hitProp   = cudaAccessPropertyPersisting; // Persistence Property
     stream_attribute.accessPolicyWindow.missProp  = cudaAccessPropertyStreaming; // Type of access property on cache miss
 
-    cudaStreamSetAttribute(cudaStreamPerThread, cudaStreamAttributeAccessPolicyWindow, &stream_attribute); // Set the attributes to a CUDA Stream
+    cudaErr(cudaStreamSetAttribute(cudaStreamPerThread, cudaStreamAttributeAccessPolicyWindow, &stream_attribute)); // Set the attributes to a CUDA Stream
 };
 
 void TemplateMatchingCore::ClearL2AccessPolicy( ) {
@@ -267,7 +267,7 @@ void TemplateMatchingCore::ClearL2AccessPolicy( ) {
     // Similar to SetL2AccessPolicy, this clears the policy for the current thread's stream.
     // Safe when each thread manages its own TemplateMatchingCore instance.
     stream_attribute.accessPolicyWindow.num_bytes = 0; // Setting the window size to 0 disable it
-    cudaStreamSetAttribute(cudaStreamPerThread, cudaStreamAttributeAccessPolicyWindow, &stream_attribute); // Overwrite the access policy attribute to a CUDA Stream
+    cudaErr(cudaStreamSetAttribute(cudaStreamPerThread, cudaStreamAttributeAccessPolicyWindow, &stream_attribute)); // Overwrite the access policy attribute to a CUDA Stream
 }
 
 /**
@@ -407,7 +407,7 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
     float temp_float;
 
     int thisDevice;
-    cudaGetDevice(&thisDevice);
+    cudaErr(cudaGetDevice(&thisDevice));
 
     GpuImage d_projection_filter(projection_filter);
     if ( use_gpu_prj ) {
@@ -818,7 +818,7 @@ void TemplateMatchingCore::UpdateSecondaryPeaks( ) {
                                                                                                                             theta_phi,
                                                                                                                             n_global_search_images_to_save,
                                                                                                                             (int)d_padded_reference.real_memory_allocated);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     // We need to reset this each outer angle search or we'll never see new maximums
     cudaErr(cudaMemsetAsync(mip_psi, 0, sizeof(__half2) * d_input_image->real_memory_allocated, cudaStreamPerThread));

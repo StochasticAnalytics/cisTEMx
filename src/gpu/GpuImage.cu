@@ -264,7 +264,7 @@ GpuImage& GpuImage::operator=(const GpuImage* other_gpu_image) {
 
         precheck;
         cudaErr(cudaMemcpyAsync(real_values, other_gpu_image->real_values, sizeof(cufftReal) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
 
     return *this;
@@ -332,6 +332,8 @@ void GpuImage::SetupInitialValues( ) {
     limit_SMs_by_threads = 1;
 
     set_batch_size = 1;
+    // FIXME: this makes sense, but testing to see if it is causing the disconnect.
+    // set_stream_for_cufft = cudaStreamPerThread;
     AllocateTmpVarsAndEvents( );
     UpdateBoolsToDefault( );
 }
@@ -599,7 +601,7 @@ void GpuImage::MultiplyPixelWiseComplexConjugate<StorageTypeBase>(GpuImage& refe
         }
     }
 
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 template void GpuImage::MultiplyPixelWiseComplexConjugate<__half>(GpuImage& reference_img, GpuImage& result_image, int phase_multiplier);
@@ -616,7 +618,7 @@ float GpuImage::ReturnAverageOfRealValuesOnEdges( ) {
     precheck;
     float ret_val = 0.0f;
     ReturnSumOfRealValuesOnEdgesKernel<<<1, 1, 0, cudaStreamPerThread>>>(real_values, dims, padding_jump_value, ret_val);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     // FIXME Need to wait on the return value
     cudaErr(cudaStreamSynchronize(cudaStreamPerThread));
@@ -680,15 +682,15 @@ void GpuImage::NppInit(cudaStream_t wanted_stream) {
         int sharedMem;
         // Used for calls to npp buffer functions, but memory alloc/free is synced using cudaStreamPerThread as it does not recognize the nppStreamContext
         nppStream.hStream = wanted_stream;
-        cudaGetDevice(&nppStream.nCudaDeviceId);
-        cudaDeviceGetAttribute(&nppStream.nMultiProcessorCount, cudaDevAttrMultiProcessorCount, nppStream.nCudaDeviceId);
-        cudaDeviceGetAttribute(&nppStream.nMaxThreadsPerMultiProcessor, cudaDevAttrMaxThreadsPerMultiProcessor, nppStream.nCudaDeviceId);
-        cudaDeviceGetAttribute(&nppStream.nMaxThreadsPerBlock, cudaDevAttrMaxThreadsPerBlock, nppStream.nCudaDeviceId);
-        cudaDeviceGetAttribute(&nppStream.nMaxThreadsPerMultiProcessor, cudaDevAttrMaxThreadsPerMultiProcessor, nppStream.nCudaDeviceId);
-        cudaDeviceGetAttribute(&sharedMem, cudaDevAttrMaxSharedMemoryPerBlock, nppStream.nCudaDeviceId);
+        cudaErr(cudaGetDevice(&nppStream.nCudaDeviceId));
+        cudaErr(cudaDeviceGetAttribute(&nppStream.nMultiProcessorCount, cudaDevAttrMultiProcessorCount, nppStream.nCudaDeviceId));
+        cudaErr(cudaDeviceGetAttribute(&nppStream.nMaxThreadsPerMultiProcessor, cudaDevAttrMaxThreadsPerMultiProcessor, nppStream.nCudaDeviceId));
+        cudaErr(cudaDeviceGetAttribute(&nppStream.nMaxThreadsPerBlock, cudaDevAttrMaxThreadsPerBlock, nppStream.nCudaDeviceId));
+        cudaErr(cudaDeviceGetAttribute(&nppStream.nMaxThreadsPerMultiProcessor, cudaDevAttrMaxThreadsPerMultiProcessor, nppStream.nCudaDeviceId));
+        cudaErr(cudaDeviceGetAttribute(&sharedMem, cudaDevAttrMaxSharedMemoryPerBlock, nppStream.nCudaDeviceId));
         nppStream.nSharedMemPerBlock = (size_t)sharedMem;
-        cudaDeviceGetAttribute(&nppStream.nCudaDevAttrComputeCapabilityMajor, cudaDevAttrComputeCapabilityMajor, nppStream.nCudaDeviceId);
-        cudaDeviceGetAttribute(&nppStream.nCudaDevAttrComputeCapabilityMinor, cudaDevAttrComputeCapabilityMinor, nppStream.nCudaDeviceId);
+        cudaErr(cudaDeviceGetAttribute(&nppStream.nCudaDevAttrComputeCapabilityMajor, cudaDevAttrComputeCapabilityMajor, nppStream.nCudaDeviceId));
+        cudaErr(cudaDeviceGetAttribute(&nppStream.nCudaDevAttrComputeCapabilityMinor, cudaDevAttrComputeCapabilityMinor, nppStream.nCudaDeviceId));
 
         //    nppSetStream(cudaStreamPerThread);
 
@@ -1129,7 +1131,7 @@ void GpuImage::NormalizeRealSpaceSumToUnity(cudaStream_t wanted_stream) {
     NormalizeRealSpaceSumToUnityKernel<<<gridDims, threadsPerBlock, 0, wanted_stream>>>(real_values,
                                                                                         &tmpValComplex[tmp_val_idx::ReturnSumOfRealValues],
                                                                                         dims);
-    postcheck;
+    postcheck(wanted_stream);
 }
 
 __global__ void NormalizeRealSpaceStdDeviationKernel(float* input_reals, double* __restrict__ sqrt_sum_of_squares, const float additional_scalar, const float average_sq, const float average_on_edge, const int4 dims) {
@@ -1159,7 +1161,7 @@ void GpuImage::NormalizeRealSpaceStdDeviation(float additional_scalar, float pre
     ReturnLaunchParameters(dims, true);
     precheck;
     NormalizeRealSpaceStdDeviationKernel<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values, (double*)&tmpValComplex[tmp_val_idx::L2Norm], additional_scalar, (pre_calculated_avg * pre_calculated_avg), average_on_edge, dims);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 __global__ void NormalizeRealSpaceStdDeviationAndCastToFp16Kernel(const float* __restrict__ input_reals,
@@ -1200,7 +1202,7 @@ void GpuImage::NormalizeRealSpaceStdDeviationAndCastToFp16(float additional_scal
     additional_scalar *= float(number_of_real_space_pixels);
     NormalizeRealSpaceStdDeviationAndCastToFp16Kernel<<<gridDims, threadsPerBlock, 0, wanted_stream>>>(
             real_values, real_values_fp16, (double*)&tmpValComplex[tmp_val_idx::L2Norm], additional_scalar, (pre_calculated_avg * pre_calculated_avg), average_on_edge, dims);
-    postcheck;
+    postcheck(wanted_stream);
 }
 
 float GpuImage::ReturnSumSquareModulusComplexValues( ) {
@@ -1272,7 +1274,7 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
     BufferInit(b_image);
     precheck;
     cudaErr(cudaMemcpyAsync(image_buffer->real_values, mask_CSOS->real_values, sizeof(float) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     image_buffer->is_in_real_space = false;
     image_buffer->npp_ROI          = image_buffer->npp_ROI_fourier_space;
@@ -1290,7 +1292,7 @@ float GpuImage::ReturnSumSquareModulusComplexValues( ) {
 
     // FIXME: streamWaitEvent
     cudaErr(cudaStreamSynchronize(nppStream.hStream));
-    postcheck;
+    postcheck(nppStream.hStream);
     return float(tmpValComplex[tmp_val_idx::ReturnSumSquareModulusComplexValues] * tmpValComplex[tmp_val_idx::ReturnSumSquareModulusComplexValues]);
 }
 
@@ -1347,7 +1349,7 @@ void GpuImage::ApplyBFactor<StorageTypeBase>(float bfactor) {
                                                                                   physical_upper_bound_complex,
                                                                                   bfactor);
     }
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 template void GpuImage::ApplyBFactor<float>(float bfactor);
@@ -1420,7 +1422,7 @@ void GpuImage::ApplyBFactor<StorageTypeBase>(float bfactor, const float vertical
                                                                                   vertical_mask_size,
                                                                                   horizontal_mask_size);
     }
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 template void GpuImage::ApplyBFactor<float>(float bfactor, const float vertical_mask_size, const float horizontal_mask_size);
@@ -1623,7 +1625,7 @@ void GpuImage::Whiten(float resolution_limit) {
                                                                                               n_bins,
                                                                                               n_bins2,
                                                                                               resolution_limit_pixel);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     precheck;
     WhitenKernel<<<gridDims, threadsPerBlock, shared_mem, cudaStreamPerThread>>>(complex_values,
@@ -1633,7 +1635,7 @@ void GpuImage::Whiten(float resolution_limit) {
                                                                                  n_bins,
                                                                                  n_bins2,
                                                                                  resolution_limit_pixel);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     cudaErr(cudaFreeAsync(rotational_average_ps, cudaStreamPerThread));
 }
@@ -2039,12 +2041,12 @@ Peak GpuImage::FindPeakAtCenterFast2d(const BatchedSearch& batch, bool load_half
     if ( load_half_precision ) {
         precheck;
         FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, batch._d_peak_buffer, min_pix_x_y, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
     else {
         precheck;
         FindPeakAtCenterFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values, batch._d_peak_buffer, min_pix_x_y, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
 
     cudaErr(cudaMemcpyAsync(batch._peak_buffer, batch._d_peak_buffer, batch.n_images_in_this_batch( ) * sizeof(IntegerPeak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
@@ -2109,12 +2111,12 @@ Peak GpuImage::FindPeakAtOriginFast2D(int max_pix_x, int max_pix_y, IntegerPeak*
     if ( load_half_precision ) {
         precheck;
         FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values_fp16, device_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
     else {
         precheck;
         FindPeakAtOriginFast2DKernel<<<gd, tpb, 0, cudaStreamPerThread>>>(real_values, device_buffer, max_pix_x, max_pix_y, dims.x, dims.y, dims.w);
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
 
     cudaErr(cudaMemcpyAsync(pinned_host_buffer, device_buffer, wanted_batch_size * sizeof(IntegerPeak), cudaMemcpyDeviceToHost, cudaStreamPerThread));
@@ -2166,7 +2168,7 @@ void GpuImage::AbsDiff(GpuImage& other_image) {
 
     precheck;
     cudaErr(cudaMemcpyAsync(real_values, this->image_buffer->real_values, sizeof(cufftReal) * real_memory_allocated, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 void GpuImage::AbsDiff(GpuImage& other_image, GpuImage& output_image) {
@@ -2328,7 +2330,7 @@ void GpuImage::MultiplyPixelWise(GpuImage& other_image, GpuImage& output_image) 
                                     (Npp32fc*)output_image.complex_values, pitch,
                                     npp_ROI, nppStream));
     }
-    postcheck;
+    postcheck(nppStream.hStream);
 }
 
 void GpuImage::DividePixelWise(GpuImage& other_image) {
@@ -2560,7 +2562,7 @@ void GpuImage::AddImageStack(std::vector<GpuImage>& input_stack, GpuImage& outpu
                                                                                                input_stack.size( ),
                                                                                                this->dims.w);
     }
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 //a
@@ -2953,7 +2955,7 @@ void GpuImage::CopyHostToDevice16f(Image& host_image, bool should_block_until_fi
     // always unregister the temporary pointer as it is not associated with a GpuImage
     precheck;
     cudaErr(cudaMemcpyAsync((void*)ctf_buffer_16f, host_image.real_values_16f, real_memory_allocated * sizeof(half_float::half), cudaMemcpyHostToDevice, cudaStreamPerThread));
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     if ( should_block_until_finished ) {
         cudaError(cudaStreamSynchronize(cudaStreamPerThread));
@@ -2979,7 +2981,7 @@ void GpuImage::CopyDeviceToHost(Image& cpu_image, bool unpin_host_memory) {
 
     precheck;
     cudaErr(cudaMemcpyAsync(cpu_image.real_values, real_values, real_memory_allocated * sizeof(float), cudaMemcpyDeviceToHost, cudaStreamPerThread));
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     if ( unpin_host_memory ) {
         cpu_image.UnRegisterPageLockedMemory(cpu_image.real_values);
@@ -3198,6 +3200,7 @@ void GpuImage::BackwardFFTBatched(int wanted_batch_size, cudaStream_t wanted_str
     npp_ROI = npp_ROI_real_space;
 }
 
+// FIXME: In general, swapping out the stream may produce undefined results for a given fftplan as the workspace could overlap.
 void GpuImage::BackwardFFT(cudaStream_t wanted_stream) {
 
     MyDebugAssertTrue(is_in_memory_gpu, "Gpu memory not allocated");
@@ -3478,7 +3481,7 @@ void GpuImage::PhaseShift<StorageTypeBase>(float wanted_x_shift, float wanted_y_
                                                                                 physical_upper_bound_complex);
     }
 
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     if ( need_to_fft == true )
         BackwardFFT( );
@@ -3739,7 +3742,7 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
                                                                                       other_image->physical_address_of_box_center,
                                                                                       wanted_coordinate_of_box_center,
                                                                                       wanted_padding_value);
-            postcheck;
+            postcheck(cudaStreamPerThread);
         }
         else {
             precheck;
@@ -3751,7 +3754,7 @@ void GpuImage::ClipInto(GpuImage* other_image, float wanted_padding_value,
                                                                                         other_image->physical_address_of_box_center,
                                                                                         wanted_coordinate_of_box_center,
                                                                                         wanted_padding_value);
-            postcheck;
+            postcheck(cudaStreamPerThread);
         }
     }
 }
@@ -3786,7 +3789,7 @@ void GpuImage::ClipIntoReturnMask(GpuImage* other_image) {
                                                                                   other_image->physical_address_of_box_center,
                                                                                   wanted_coordinate_of_box_center,
                                                                                   0.0f);
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
 }
 
@@ -3812,6 +3815,8 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
         // We are good to go, except maybe the stream.
         if ( wanted_stream != set_stream_for_cufft ) {
             // TODO: I'm not sure how this would behave if the stream was toggled back and forth without care by the caller.
+            // NOTE: After reading more, it looks like a plan can be used on multiple streams, but that can lead to conflicts in the workspace.
+            // And since we are associating our memory address with the plan, I have to assume that is also a problem.
             cufftErr(cufftSetStream(cuda_plan_forward, wanted_stream));
             cufftErr(cufftSetStream(cuda_plan_inverse, wanted_stream));
             set_stream_for_cufft = wanted_stream;
@@ -3996,6 +4001,26 @@ void GpuImage::Deallocate( ) {
         is_in_memory_managed_tmp_vals = false;
     }
 
+    // Check if any events are still pending before destroying them
+    bool has_pending_events = false;
+    if ( is_npp_calc_event_initialized && cudaEventQuery(npp_calc_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+    if ( is_block_host_event_initialized && cudaEventQuery(block_host_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+    if ( is_return_sum_of_squares_event_initialized && cudaEventQuery(return_sum_of_squares_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+    if ( is_return_sum_of_reals_event_initialized && cudaEventQuery(return_sum_of_reals_event) == cudaErrorNotReady ) {
+        has_pending_events = true;
+    }
+
+    if ( has_pending_events ) {
+        wxPrintf("WARNING: GpuImage::Deallocate() called with pending GPU events - synchronizing cudaStreamPerThread before cleanup\n");
+        cudaStreamSynchronize(cudaStreamPerThread);
+    }
+
     if ( is_npp_calc_event_initialized ) {
         cudaErr(cudaEventDestroy(npp_calc_event));
         is_npp_calc_event_initialized = false;
@@ -4117,7 +4142,7 @@ void GpuImage::CopyFP32toFP16bufferAndScale(float scalar) {
     precheck;
     CopyFP32toFP16bufferAndScaleKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(
             complex_values, complex_values_fp16, scalar, real_memory_allocated / 2, this->dims);
-    postcheck;
+    postcheck(cudaStreamPerThread);
 }
 
 void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
@@ -4131,13 +4156,13 @@ void GpuImage::CopyFP32toFP16buffer(bool deallocate_single_precision) {
         ReturnLaunchParameters(dims, true);
         precheck;
         CopyFP32toFP16bufferKernelReal<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(real_values, real_values_fp16, this->dims);
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
     else {
         ReturnLaunchParameters(dims, false);
         precheck;
         CopyFP32toFP16bufferKernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values, complex_values_fp16, this->dims, this->physical_upper_bound_complex);
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
 
     if ( deallocate_single_precision ) {
@@ -4162,7 +4187,7 @@ void GpuImage::CopyFP16buffertoFP32(bool deallocate_half_precision) {
         ReturnLaunchParameters(dims, false);
         CopyFP16buffertoFP32KernelComplex<<<gridDims, threadsPerBlock, 0, cudaStreamPerThread>>>(complex_values, complex_values_fp16, this->dims, this->physical_upper_bound_complex);
     }
-    postcheck;
+    postcheck(cudaStreamPerThread);
 
     if ( deallocate_half_precision ) {
         cudaErr(cudaFreeAsync(real_values_16f, cudaStreamPerThread));
@@ -4823,6 +4848,8 @@ void GpuImage::Consume(GpuImage* other_image) {
     cuda_plan_inverse = other_image->cuda_plan_inverse;
     set_plan_type     = other_image->set_plan_type;
     cufft_batch_size  = other_image->cufft_batch_size;
+    // FIXME: I think this makes sense, but checking for issues now
+    // set_stream_for_cufft = other_image->set_stream_for_cufft;
 
     // We neeed to override the other image pointers so that it doesn't deallocate the memory.
     other_image->real_values      = NULL;
@@ -4863,7 +4890,7 @@ void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_pa
                                                                                           padding_value,
                                                                                           zero_central_pixel);
 
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
     else {
 
@@ -4881,7 +4908,7 @@ void GpuImage::ClipIntoFourierSpace(GpuImage* destination_image, float wanted_pa
                                                                                           padding_value,
                                                                                           zero_central_pixel);
 
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
     cudaStreamSynchronize(cudaStreamPerThread);
 }
@@ -5131,7 +5158,7 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
                                                                                                     n_bins,
                                                                                                     n_bins2);
 
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
     else {
         precheck;
@@ -5145,7 +5172,7 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
                                                                                   resolution_limit_pixel,
                                                                                   apply_resolution_limit);
 
-        postcheck;
+        postcheck(cudaStreamPerThread);
     }
 
     object_is_centred_in_box = false;
@@ -5404,7 +5431,7 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
                                                                                            mask_ptr,
                                                                                            one_over_two_sigma_squared);
 
-        postcheck;
+        postcheck(stream);
     }
     else {
         precheck;
@@ -5427,7 +5454,7 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
                                                                                            mask_ptr,
                                                                                            one_over_two_sigma_squared);
 
-        postcheck;
+        postcheck(stream);
     }
 
     if ( swap_quadrants )

@@ -101,12 +101,36 @@ class ProjectionQueue {
     /**
      * @brief Destructor for ProjectionQueue.
      * Cleans up all created CUDA streams and events.
+     * Explicitly synchronizes streams before destroying resources to ensure safe cleanup.
      */
     ~ProjectionQueue( ) {
+        // Check if any streams still have pending work (diagnostic)
+        bool has_pending_work = false;
         for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
-            cudaErr(cudaStreamDestroy(gpu_projection_stream[i]));
+            cudaError_t status = cudaStreamQuery(gpu_projection_stream[i]);
+            if ( status == cudaErrorNotReady ) {
+                has_pending_work = true;
+                break;
+            }
+        }
+        if ( has_pending_work ) {
+            wxPrintf("WARNING: ProjectionQueue destructor called with pending GPU work - synchronizing before cleanup\n");
+        }
+
+        // 1. Synchronize all streams to ensure work completes cleanly
+        for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
+            cudaErr(cudaStreamSynchronize(gpu_projection_stream[i]));
+        }
+
+        // 2. Destroy events first (no longer needed after sync)
+        for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
             cudaErr(cudaEventDestroy(gpu_projection_is_ready_Event[i]));
             cudaErr(cudaEventDestroy(cpu_projection_is_writeable_Event[i]));
+        }
+
+        // 3. Destroy streams (now guaranteed empty)
+        for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
+            cudaErr(cudaStreamDestroy(gpu_projection_stream[i]));
         }
     }
 

@@ -107,9 +107,9 @@ class Particle {
     bool                 complex_ctf;
 
     // revert - debug: Add exposure tracking for debugging weighting
-    float                pre_exposure;
-    float                total_exposure;
-    int                  particle_group;  // Multi-view particle group identifier
+    float pre_exposure;
+    float total_exposure;
+    int   particle_group; // Multi-view particle group identifier
 
     Particle( );
     Particle(int wanted_logical_x_dimension, int wanted_logical_y_dimension);
@@ -150,7 +150,6 @@ class Particle {
     void  SetParameterConstraints(float wanted_noise_variance);
     float ReturnParameterPenalty(cisTEMParameterLine& parameters);
     float ReturnParameterLogP(cisTEMParameterLine& parameters);
-    
     int   MapParameterAccuracy(float* accuracies);
     int   MapParametersFromExternal(cisTEMParameterLine& input_parameters, float* mapped_parameters);
     int   MapParameters(float* mapped_parameters);

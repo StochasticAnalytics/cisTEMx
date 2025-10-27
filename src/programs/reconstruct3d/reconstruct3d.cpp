@@ -250,11 +250,9 @@ bool Reconstruct3DApp::DoCalculation( ) {
     bool       file_read;
     wxDateTime my_time_in;
 
-    wxPrintf("\nStarting C Refine3D\n");
-
     if ( ! DoesFileExist(input_star_filename) ) {
         SendErrorAndCrash(wxString::Format("Error: Input star file %s not found\n", input_star_filename));
-        }
+    }
     if ( ! DoesFileExist(input_particle_stack) ) {
         SendErrorAndCrash(wxString::Format("Error: Input particle stack %s not found\n", input_particle_stack));
     }
@@ -468,8 +466,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
     input_particle.mask_falloff = mask_falloff;
     //input_par_file.Rewind();
 
-    Reconstruct3D my_reconstruction_1(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
-    Reconstruct3D my_reconstruction_2(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
+    Reconstruct3D my_reconstruction_1(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
+    Reconstruct3D my_reconstruction_2(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
     my_reconstruction_1.original_x_dimension = original_box_size;
     my_reconstruction_1.original_y_dimension = original_box_size;
     my_reconstruction_1.original_z_dimension = original_box_size;
@@ -719,8 +717,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
         input_particle.SetParameterStatistics(parameter_averages, parameter_variances);
         input_particle.mask_radius  = outer_mask_radius;
         input_particle.mask_falloff = mask_falloff;
-        Reconstruct3D my_reconstruction_1_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
-        Reconstruct3D my_reconstruction_2_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere, parameter_averages.logp, parameter_variances.logp);
+        Reconstruct3D my_reconstruction_1_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
+        Reconstruct3D my_reconstruction_2_local(box_size, box_size, box_size, pixel_size, parameter_averages.occupancy, parameter_averages.score, score_weight_conversion, my_symmetry, correct_ewald_sphere);
         my_reconstruction_1_local.original_x_dimension = original_box_size;
         my_reconstruction_1_local.original_y_dimension = original_box_size;
         my_reconstruction_1_local.original_z_dimension = original_box_size;

@@ -458,22 +458,6 @@ void Generate3DPanel::StartReconstructionClick(wxCommandEvent& event) {
 
     input_refinement = main_frame->current_project.database.GetRefinementByID(current_input_refinement_id);
 
-    // revert - debug: check if multi-view data is loaded
-    wxPrintf("\n=== Generate3DPanel: Loaded refinement from database ===\n");
-    wxPrintf("Refinement ID: %ld\n", current_input_refinement_id);
-    wxPrintf("Number of particles: %ld\n", input_refinement->number_of_particles);
-    if (input_refinement->number_of_particles > 0 && input_refinement->number_of_classes > 0) {
-        wxPrintf("Sample first 3 particles from class 1:\n");
-        for (int i = 0; i < std::min(3L, input_refinement->number_of_particles); i++) {
-            wxPrintf("  Particle %d:\n", i);
-            wxPrintf("    beam_tilt_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].beam_tilt_group);
-            wxPrintf("    particle_group: %d\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].particle_group);
-            wxPrintf("    pre_exposure: %.2f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].pre_exposure);
-            wxPrintf("    total_exposure: %.2f\n", input_refinement->class_refinement_results[0].particle_refinement_results[i].total_exposure);
-        }
-    }
-    wxPrintf("==========================================\n\n");
-
     Freeze( );
     StartPanel->Show(false);
     ProgressPanel->Show(true);

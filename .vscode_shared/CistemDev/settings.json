@@ -115,7 +115,8 @@
         "github.copilot-chat": "ui"
     },
     "github.copilot.enable": {
-        "*": true,
+        "*": false,
+        "plaintext": false,
         "markdown": true,
         "scminput": false,
         "quarto": false,

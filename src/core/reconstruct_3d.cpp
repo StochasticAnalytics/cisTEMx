@@ -1,6 +1,6 @@
 #include "core_headers.h"
 
-Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, int wanted_correct_ewald_sphere, float wanted_average_logp, float wanted_logp_variance) {
+Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, int wanted_correct_ewald_sphere) {
     logical_x_dimension  = 0;
     logical_y_dimension  = 0;
     logical_z_dimension  = 0;
@@ -15,8 +15,6 @@ Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occup
     average_occupancy        = wanted_average_occupancy;
     average_score            = wanted_average_score;
     score_weights_conversion = wanted_score_weights_conversion;
-    average_logp             = wanted_average_logp;
-    logp_variance            = wanted_logp_variance;
     correct_ewald_sphere     = wanted_correct_ewald_sphere;
 
     ctf_reconstruction = NULL;
@@ -26,7 +24,7 @@ Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occup
     center_mass           = false;
 }
 
-Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere, float wanted_average_logp, float wanted_logp_variance) {
+Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere) {
     logical_x_dimension  = 0;
     logical_y_dimension  = 0;
     logical_z_dimension  = 0;
@@ -41,8 +39,6 @@ Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occup
     average_occupancy        = wanted_average_occupancy;
     average_score            = wanted_average_score;
     score_weights_conversion = wanted_score_weights_conversion;
-    average_logp             = wanted_average_logp;
-    logp_variance            = wanted_logp_variance;
     correct_ewald_sphere     = wanted_correct_ewald_sphere;
 
     ctf_reconstruction = NULL;
@@ -52,12 +48,9 @@ Reconstruct3D::Reconstruct3D(float wanted_pixel_size, float wanted_average_occup
     center_mass           = false;
 }
 
-Reconstruct3D::Reconstruct3D(int wanted_logical_x_dimension, int wanted_logical_y_dimension, int wanted_logical_z_dimension, float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere, float wanted_average_logp, float wanted_logp_variance) {
+Reconstruct3D::Reconstruct3D(int wanted_logical_x_dimension, int wanted_logical_y_dimension, int wanted_logical_z_dimension, float wanted_pixel_size, float wanted_average_occupancy, float wanted_average_score, float wanted_score_weights_conversion, wxString wanted_symmetry, int wanted_correct_ewald_sphere) {
     ctf_reconstruction = NULL;
     Init(wanted_logical_x_dimension, wanted_logical_y_dimension, wanted_logical_z_dimension, wanted_pixel_size, wanted_average_occupancy, wanted_average_score, wanted_score_weights_conversion, wanted_correct_ewald_sphere);
-
-    average_logp  = wanted_average_logp;
-    logp_variance = wanted_logp_variance;
 
     symmetry_matrices.Init(wanted_symmetry);
 }
@@ -165,30 +158,8 @@ void Reconstruct3D::InsertSliceWithCTF(Particle& particle_to_insert, float symme
         float theta;
         //		float average_score_1 = std::max(1.0f, average_score);
         float score_weights_conversion4 = score_weights_conversion / powf(pixel_size, 2) * 0.25;
-        float weight_conversion;
-
-        // Check for multi-view data and likely score bug
-        bool use_logp_weighting = (particle_to_insert.particle_group > 0 && fabsf(average_score) < 0.001f);
-
-        if (use_logp_weighting && logp_variance > 0.0f) {
-            // Normalized logP approach (z-score)
-            float logp_std = sqrtf(logp_variance);
-            float normalized_logp = (particle_to_insert.logp - average_logp) / logp_std;
-
-            // Invert because more negative logP = better fit
-            weight_conversion = -normalized_logp * score_weights_conversion4;
-        } else if (use_logp_weighting && logp_variance <= 0.0f) {
-            // LogP weighting requested but variance is zero - fall back to no weighting
-            weight_conversion = 0.0f;
-        } else {
-            // Original score-based weighting
-            weight_conversion = (particle_to_insert.particle_score - average_score) * score_weights_conversion4;
-            //		float weight_conversion = (particle_to_insert.particle_score - average_score) * score_weights_conversion4 / average_score_1;
-        }
-
-        // Safety clamping to prevent numerical issues
-        if (weight_conversion > 10.0f) weight_conversion = 10.0f;
-        if (weight_conversion < -10.0f) weight_conversion = -10.0f;
+        float weight_conversion         = (particle_to_insert.particle_score - average_score) * score_weights_conversion4;
+        //		float weight_conversion = (particle_to_insert.particle_score - average_score) * score_weights_conversion4 / average_score_1;
 
         // Make sure that the exponentiated conversion factor will not lead to an overflow
         //		if (weight_conversion > 60.0) {weight_conversion = 60.0;};

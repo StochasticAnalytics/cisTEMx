@@ -71,7 +71,6 @@ make -j16
 ### Core Components
 
 - **src/core/** - Core libraries and data structures (see `src/core/CLAUDE.md`)
-  - **src/core/tensor/** - Modern Tensor system refactoring Image class (see `src/core/tensor/CLAUDE.md` and `.claude/cache/tensor_code_walkthrough.md`)
 - **src/gui/** - wxWidgets-based graphical interface (see `src/gui/CLAUDE.md`)
 - **src/programs/** - Command-line executables (see `src/programs/CLAUDE.md`)
 - **scripts/** - Build and utility scripts (see `scripts/CLAUDE.md`)

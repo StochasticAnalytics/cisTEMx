@@ -1,7 +1,7 @@
 #include "../../core/core_headers.h"
 
 // Enable experimental exposure filtering during refinement for multiview data
-#define cisTEM_test_exposure_filtering
+// #define cisTEM_test_exposure_filtering
 
 class
         Refine3DApp : public MyApp {

@@ -1532,15 +1532,16 @@ RefinementPackage* Database::GetNextRefinementPackage( ) {
         return_code = Step(list_statement);
 
         long particle_index = 0;
+        // FIXME: this seems like a really ineffecient way to do this
         while ( return_code == SQLITE_ROW && particle_index < temp_package->contained_particles.GetCount( ) ) {
             long position_in_stack = sqlite3_column_int64(list_statement, 0);
 
             // Find the corresponding particle by position_in_stack
             for ( long i = particle_index; i < temp_package->contained_particles.GetCount( ); i++ ) {
                 if ( temp_package->contained_particles.Item(i).position_in_stack == position_in_stack ) {
-                    temp_package->contained_particles.Item(i).particle_group  = sqlite3_column_int(list_statement, 1);
-                    temp_package->contained_particles.Item(i).pre_exposure    = sqlite3_column_double(list_statement, 2);
-                    temp_package->contained_particles.Item(i).total_exposure  = sqlite3_column_double(list_statement, 3);
+                    temp_package->contained_particles.Item(i).particle_group = sqlite3_column_int(list_statement, 1);
+                    temp_package->contained_particles.Item(i).pre_exposure   = sqlite3_column_double(list_statement, 2);
+                    temp_package->contained_particles.Item(i).total_exposure = sqlite3_column_double(list_statement, 3);
                     // Skip FUTURE columns (4-7) for now
                     particle_index = i;
                     break;
@@ -1850,20 +1851,15 @@ void Database::AddRefinementPackageAsset(RefinementPackage* asset_to_add) {
     if ( asset_to_add->ContainsMultiViewData( ) ) {
         CreateRefinementPackageContainedParticlesMultiViewTable(asset_to_add->asset_id);
 
-        BeginBatchInsert(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li", asset_to_add->asset_id), 8,
-                        "POSITION_IN_STACK", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE",
-                        "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2");
+        BeginBatchInsert(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li", asset_to_add->asset_id), 4,
+                         "POSITION_IN_STACK", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE");
 
         for ( long counter = 0; counter < asset_to_add->contained_particles.GetCount( ); counter++ ) {
-            AddToBatchInsert("lirrttrr",
-                           asset_to_add->contained_particles.Item(counter).position_in_stack,
-                           asset_to_add->contained_particles.Item(counter).particle_group,
-                           asset_to_add->contained_particles.Item(counter).pre_exposure,
-                           asset_to_add->contained_particles.Item(counter).total_exposure,
-                           "",   // FUTURE_TEXT_1
-                           "",   // FUTURE_TEXT_2
-                           0.0f, // FUTURE_FLOAT_1
-                           0.0f);// FUTURE_FLOAT_2
+            AddToBatchInsert("lirr",
+                             asset_to_add->contained_particles.Item(counter).position_in_stack,
+                             asset_to_add->contained_particles.Item(counter).particle_group,
+                             asset_to_add->contained_particles.Item(counter).pre_exposure,
+                             asset_to_add->contained_particles.Item(counter).total_exposure);
         }
 
         EndBatchInsert( );
@@ -2264,9 +2260,8 @@ Refinement* Database::GetRefinementByID(long wanted_refinement_id, bool include_
 
             temp_refinement->class_refinement_results[class_counter].average_occupancy = 0.0f;
             number_of_active_images                                                    = 0;
-
             while ( more_data == true ) {
-                more_data = GetFromBatchSelect("lssssssssssssisssssssssiiiss", &temp_result.position_in_stack,
+                more_data = GetFromBatchSelect("lsssssssssssssissssssssiiiss", &temp_result.position_in_stack,
                                                &temp_result.psi,
                                                &temp_result.theta,
                                                &temp_result.phi,

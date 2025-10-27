@@ -1,3 +1,6 @@
+#ifndef _SRC_CORE_DATABASE_H_
+#define _SRC_CORE_DATABASE_H_
+
 #include "../constants/constants.h"
 #include "../gui/UpdateProgressTracker.h"
 
@@ -265,9 +268,8 @@ class Database {
 
     bool CreateRefinementPackageContainedParticlesMultiViewTable(const long refinement_package_asset_id) {
         return CreateTable(wxString::Format("REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_%li", refinement_package_asset_id),
-                          "pirrttrr",
-                          "POSITION_IN_STACK", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE",
-                          "FUTURE_TEXT_1", "FUTURE_TEXT_2", "FUTURE_FLOAT_1", "FUTURE_FLOAT_2");
+                           "pirr",
+                           "POSITION_IN_STACK", "PARTICLE_GROUP", "PRE_EXPOSURE", "TOTAL_EXPOSURE");
     };
 
     bool DoesRefinementPackageHaveMultiView(const long refinement_package_asset_id) {
@@ -444,3 +446,5 @@ class BeginCommitLocker // just call begin in the contructor, and commit in the 
     ~BeginCommitLocker( );
     void Commit( );
 };
+
+#endif // _SRC_CORE_DATABASE_H_

@@ -127,16 +127,16 @@ void Particle::Init( ) {
     origin_x_coordinate = -1;
     origin_y_coordinate = -1;
     location_in_stack   = -1;
-    pixel_size          = 0.0;
-    sigma_signal        = 0.0;
-    sigma_noise         = 0.0;
-    snr                 = 0.0;
+    pixel_size          = 0.0f;
+    sigma_signal        = 0.0f;
+    sigma_noise         = 0.0f;
+    snr                 = 0.0f;
     logp                = -std::numeric_limits<float>::max( );
     ;
-    particle_occupancy                = 0.0;
-    particle_score                    = 0.0;
+    particle_occupancy                = 0.0f;
+    particle_score                    = 0.0f;
     particle_image                    = NULL;
-    scaled_noise_variance             = 0.0;
+    scaled_noise_variance             = 0.0f;
     ctf_is_initialized                = false;
     ctf_image                         = NULL;
     ctf_image_calculated              = false;
@@ -146,33 +146,33 @@ void Particle::Init( ) {
     is_normalized                     = false;
     is_phase_flipped                  = false;
     is_masked                         = false;
-    mask_radius                       = 0.0;
-    mask_falloff                      = 0.0;
-    mask_volume                       = 0.0;
-    molecular_mass_kDa                = 0.0;
+    mask_radius                       = 0.0f;
+    mask_falloff                      = 0.0f;
+    mask_volume                       = 0.0f;
+    molecular_mass_kDa                = 0.0f;
     is_filtered                       = false;
-    filter_radius_low                 = 0.0;
-    filter_radius_high                = 0.0;
-    filter_falloff                    = 0.0;
-    filter_volume                     = 0.0;
-    signed_CC_limit                   = 0.0;
+    filter_radius_low                 = 0.0f;
+    filter_radius_high                = 0.0f;
+    filter_falloff                    = 0.0f;
+    filter_volume                     = 0.0f;
+    signed_CC_limit                   = 0.0f;
     is_ssnr_filtered                  = false;
     is_centered_in_box                = true;
     shift_counter                     = 0;
     insert_even                       = false;
     number_of_search_dimensions       = 0;
     bin_index                         = NULL;
-    mask_center_2d_x                  = 0.0;
-    mask_center_2d_y                  = 0.0;
-    mask_center_2d_z                  = 0.0;
-    mask_radius_2d                    = 0.0;
+    mask_center_2d_x                  = 0.0f;
+    mask_center_2d_y                  = 0.0f;
+    mask_center_2d_z                  = 0.0f;
+    mask_radius_2d                    = 0.0f;
     apply_2D_masking                  = false;
     no_ctf_weighting                  = false;
     complex_ctf                       = false;
     // revert - debug: Initialize exposure values for debugging
-    pre_exposure                      = 0.0;
-    total_exposure                    = 0.0;
-    particle_group                    = 0;  // 0 indicates single-view particle, >0 for multi-view groups
+    pre_exposure   = 0.0f;
+    total_exposure = 0.0f;
+    particle_group = 0; // 0 indicates single-view particle, >0 for multi-view groups
 }
 
 void Particle::AllocateImage(int wanted_logical_x_dimension, int wanted_logical_y_dimension) {
@@ -501,23 +501,26 @@ void Particle::WeightBySSNR(Curve& SSNR, Image& projection_image, bool weight_pa
     includes_reference_ssnr_weighting = false;
 }
 
+// FIXME: add docs if this is retained - experimenting with refinement for multi-view particles.
 void Particle::ApplyExposureDecayToSSNRCurve(Curve& SSNR_curve, float total_exposure_electrons_per_angstrom2, float voltage_kV) {
     // Apply exposure-dependent decay to SSNR curve based on Grant & Grigorieff 2015
     // SNR(k,N) = SNR(k,0) * exp(-N/Ne(k))
     // Where N = accumulated exposure, Ne(k) = critical exposure at frequency k
 
-    if ( total_exposure_electrons_per_angstrom2 <= 0.0f ) return;
-    if ( SSNR_curve.NumberOfPoints() == 0 ) return;
+    if ( total_exposure_electrons_per_angstrom2 <= 0.0f )
+        return;
+    if ( SSNR_curve.NumberOfPoints( ) == 0 )
+        return;
 
     // Create ElectronDose calculator for critical dose computation
     ElectronDose dose_calculator(voltage_kV, pixel_size);
 
     // Modify each point in the SSNR curve
-    for ( int i = 0; i < SSNR_curve.NumberOfPoints(); i++ ) {
+    for ( int i = 0; i < SSNR_curve.NumberOfPoints( ); i++ ) {
         // SSNR curve x-axis is in normalized frequency units (0 to 0.5)
         // Convert to spatial frequency in 1/Angstrom for critical dose calculation
-        float normalized_frequency = SSNR_curve.data_x[i];
-        float spatial_frequency_angstrom = normalized_frequency / pixel_size;  // 1/Angstrom
+        float normalized_frequency       = SSNR_curve.data_x[i];
+        float spatial_frequency_angstrom = normalized_frequency / pixel_size; // 1/Angstrom
 
         // Get critical dose at this frequency
         float critical_dose = dose_calculator.ReturnCriticalDose(spatial_frequency_angstrom);

@@ -336,7 +336,6 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
     temp_refinement.class_refinement_results[0].class_resolution_statistics.GenerateDefaultStatistics(temp_refinement_package->estimated_particle_weight_in_kda);
 
     for ( int particle_counter = 0; particle_counter < stack_num_images; particle_counter++ ) {
-
         // cisTEMParameters and BasicStarFileReader (for reading Relion format) have several identical function names that can be lumped together; so, to save code,
         // they are included in this if block, with further specific checks for divergence in parameter loading.
         if constexpr ( is_cistem_import || is_relion_import ) {

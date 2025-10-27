@@ -3,7 +3,6 @@ class RefinementResult {
   public:
     RefinementResult( );
     ~RefinementResult( );
-
     long  position_in_stack;
     float psi;
     float theta;

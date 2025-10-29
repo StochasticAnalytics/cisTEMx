@@ -4,6 +4,11 @@
 // clang-format off
 
 #include "../constants/constants.h"
+// Includes for std::thread and std::chrono
+#include <thread>
+#include <chrono>
+#include <cstdarg>
+#include <wx/wx.h>
 
 #define INTEGER_DATABASE_VERSION 2
 #define START_PORT 3000
@@ -55,6 +60,29 @@ namespace cistem {
 
 #define SCALED_IMAGE_SIZE 1200
 
+inline void print_debug_to_cerr(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    // First, compute required size
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int n = std::vsnprintf(nullptr, 0, fmt, ap_copy);
+    va_end(ap_copy);
+    if (n < 0) { va_end(ap); return; }
+
+    std::string buf;
+    buf.resize(static_cast<size_t>(n));
+    std::vsnprintf(buf.data(), buf.size() + 1, fmt, ap);
+    va_end(ap);
+
+    // Prepend newline like the original macro
+    std::cerr << '\n' << buf;
+    std::cerr << "Failed Assert at " << __FILE__ << ":" << __LINE__ << __PRETTY_FUNCTION__ << "\n";
+    std::cerr.flush();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+}
+
 #define CheckSuccess(bool_to_check) if (bool_to_check == false) {return false;};
 #define FUNCTION_DETAILS_AS_WXSTRING wxString::Format("%s (%s:%i)",__PRETTY_FUNCTION__,__FILE__,__LINE__)
 #define MyPrintfGreen(...)  {wxPrintf(ANSI_COLOR_GREEN); wxPrintf(__VA_ARGS__); wxPrintf(ANSI_COLOR_RESET);}
@@ -63,11 +91,14 @@ namespace cistem {
 
 #ifdef DEBUG
 #define MyDebugWarnThreadSafety(cond, ...) {if (cond) { wxLogWarning("Potential thread safety issue detected, this object should be declared private or explicitly constructed in thread parallel region %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); }}
-#define MyDebugPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); StackDump dump(NULL); dump.Walk(2);}
-#define MyPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__);StackDump dump(NULL); dump.Walk(2);}
+#define MyDebugPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); StackDump dump(NULL); dump.MyWalk(2);}
+#define MyPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__);StackDump dump(NULL); dump.MyWalk(2);}
 #define MyDebugPrint(...)	{wxPrintf(__VA_ARGS__); wxPrintf("\n");}
-#define MyDebugAssertTrue(cond, msg, ...) {if ((cond) != true) { wxPrintf("\n" msg, ##__VA_ARGS__); wxPrintf("\nFailed Assert at %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); DEBUG_ABORT;}}
-#define MyDebugAssertFalse(cond, msg, ...) {if ((cond) == true) { wxPrintf("\n" msg, ##__VA_ARGS__); wxPrintf("\nFailed Assert at %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); DEBUG_ABORT;}}
+
+#define MyDebugAssertTrue(cond, msg, ...) {if ((cond) != true) { print_debug_to_cerr("\n" msg, ##__VA_ARGS__); DEBUG_ABORT;}}
+#define MyDebugAssertFalse(cond, msg, ...) {if ((cond) == true) { print_debug_to_cerr("\n" msg, ##__VA_ARGS__); DEBUG_ABORT;}}
+// #define MyDebugAssertTrue(cond, msg, ...) {if ((cond) != true) { wxPrintf("\n" msg, ##__VA_ARGS__); wxPrintf("\nFailed Assert at %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); DEBUG_ABORT;}}
+// #define MyDebugAssertFalse(cond, msg, ...) {if ((cond) == true) { wxPrintf("\n" msg, ##__VA_ARGS__); wxPrintf("\nFailed Assert at %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); DEBUG_ABORT;}}
 #define DEBUG_ABORT {StackDump dump(NULL); dump.Walk(1); abort();}
 #else
 #define MyDebugWarnThreadSafety(cond, ...) 

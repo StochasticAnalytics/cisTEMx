@@ -7,7 +7,7 @@
             "cuda_dir": "/usr/local/cuda",
             "oldest_gpu_arch": "70",
             "target_gpu_arch": "86",
-            "gpu_debug_level": "1",
+            "gpu_debug_level": "0",
             "build_dir": "${workspaceFolder}/build",
             // -diag-file-append makes Intel compiler show absolute paths in error messages for easier IDE navigation
             "common_flags": "--enable-experimental --enable-openmp --disable-build-all --enable-profiling",

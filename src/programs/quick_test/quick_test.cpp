@@ -68,5 +68,58 @@ bool QuickTestApp::DoCalculation( ) {
     // quick_test_gpu.callHelloFromGPU(idx);
 #endif
 
+    // Counted Values: 4171655 out of 4175850 fractions: 0.998995
+    // Over n_cccs 89411 the Global mean and variance are 2.05256e+26 and -4.213e+52
+
+    double global_ccc_mean         = 0.0;
+    double global_ccc_std_variance = 0.0;
+    double n_angles_in_search      = 4171655.0;
+
+    Image mip;
+    Image sum_of_sqs;
+    Image sum;
+
+    mip.QuickAndDirtyReadSlice("/scratch/salina/EMPIAR_11063/DebugMip.mrc", 1);
+    sum.QuickAndDirtyReadSlice("/scratch/salina/EMPIAR_11063/DebugSum.mrc", 1);
+    sum_of_sqs.QuickAndDirtyReadSlice("/scratch/salina/EMPIAR_11063/DebugSumSqs.mrc", 1);
+
+    double global_sum            = 0.0;
+    double global_sum_of_squares = 0.0;
+
+    long      counted_values = 0;
+    long      address        = 0;
+    const int N              = mip.real_memory_allocated;
+    // for ( int y = 0; y < mip.logical_y_dimension; y++ ) {
+    //     for ( int x = 0; x < mip.logical_x_dimension; x++ ) {
+    //         if ( sum_of_sqs.real_values[address] > cistem::float_epsilon ) {
+    //             global_sum += double(sum.real_values[address]);
+    //             global_sum_of_squares += double(sum_of_sqs.real_values[address]);
+    //             counted_values++;
+    //         }
+    //         address++;
+    //     }
+    //     address += mip.padding_jump_value;
+    // }
+    for ( address = 0; address < mip.real_memory_allocated; address++ ) {
+        if ( sum_of_sqs.real_values[address] > cistem::float_epsilon ) {
+            global_sum += double(sum.real_values[address]);
+            global_sum_of_squares += double(sum_of_sqs.real_values[address]);
+            counted_values++;
+        }
+    }
+
+    const double total_number_of_ccs = double(n_angles_in_search) * double(counted_values);
+    std::cerr << "Counted Values: " << counted_values << " out of " << N << " fractions: " << float(counted_values) / float(N) << std::endl;
+
+    MyDebugAssertTrue(counted_values > 0, "No valid pixels counted - all correlation_pixel_sum_of_squares below epsilon");
+
+    std::cerr << " Global sum and sumsq " << global_sum / total_number_of_ccs << " " << global_sum_of_squares / total_number_of_ccs << "\n";
+    std::cerr << " Global mean sq " << pow(global_sum / total_number_of_ccs, 2) << "\n";
+
+    global_ccc_mean = global_sum / total_number_of_ccs;
+
+    global_ccc_std_variance = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
+
+    std::cerr << "global mean " << global_ccc_mean << " and variance " << global_ccc_std_variance << "\n";
     return true;
 }

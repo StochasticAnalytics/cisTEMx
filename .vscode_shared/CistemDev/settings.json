@@ -121,12 +121,13 @@
         "scminput": false,
         "quarto": false,
         "yaml": true,
-        "cuda-cpp": true,
+        "cuda-cpp": false,
         "shellscript": true,
         "python": true,
         "jsonc": true,
         "log": false,
-        "matlab": true
+        "matlab": true,
+        "cpp": false
     },
     "chat.tools.terminal.autoApprove": {
         "mkdir": true,

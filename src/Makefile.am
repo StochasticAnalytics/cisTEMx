@@ -568,9 +568,13 @@ libgpucore_a_AR = $(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) -lib -o
 SUFFIXES = .cu .o
 
 # This line only knows about objects build from libgpucore_a_SOURCES. We have to add any others e.g. gpu/gpu_device_code.o mannually above in the LIBADD
+# -MD generates dependency files (.d), -MP adds phony targets for headers to avoid errors when headers are deleted
 .cu.o:
-	$(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) $(WX_CPPFLAGS_BASE) -dc -o $@ $<
-    
+	$(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) $(WX_CPPFLAGS_BASE) -MD -MP -dc -o $@ $<
+
+# Include generated dependency files for proper dependency tracking
+-include $(libgpucore_a_SOURCES:.cu=.d)
+
 # FastFFT_LIBS will be empty if we are building the library, or /opt/FastFFT/lib/FastFFT.o if we are linking from the object included in the build container (latter prefered) $(libgpucore_OBJECTS) $(libFastFFT_OBJECTS)
 gpu/gpudevicecode.o: $(libgpucore_OBJECTS) $(libFastFFT_OBJECTS)
 	$(NVCC) -DENABLEGPU $(CUDA_CXXFLAGS) --device-link $^ -o gpu/gpudevicecode.o $(CUDA_LIBS)

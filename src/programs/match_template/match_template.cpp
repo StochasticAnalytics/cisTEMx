@@ -146,12 +146,12 @@ class
      * @param N The total number of pixels in the sum/sum_of_sqs arrays (image_real_memory_allocated).
      */
     template <typename StatsType>
-    void CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
-                                    double&     global_ccc_std_dev,
-                                    StatsType*  sum,
-                                    StatsType*  sum_of_sqs,
-                                    const float n_angles_in_search,
-                                    const int   N);
+    void CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
+                                    double&      global_ccc_std_variance,
+                                    StatsType*   sum,
+                                    StatsType*   sum_of_sqs,
+                                    const float  n_angles_in_search,
+                                    const Image& mip_image);
 
     /**
      * @brief Resamples the histogram data based on global CCC mean and standard deviation.
@@ -461,7 +461,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     // This allows us to not use local normalization while also compiling with this option
     bool  use_local_normalization{false};
     float min_counter_val{std::numeric_limits<float>::max( )}; // This way, if we aren't using it, we short-circute the calculation of the SD every pixel in the OR clause
-    float threshold_val{3.0f};
+    float threshold_val{0.0f}; // no threshold by default
 
 #ifdef TEST_LOCAL_NORMALIZATION
     wxString healpix_file;
@@ -657,6 +657,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     }
 
     data_sizer.PreProcessInputImage(input_image, false, true);
+
     profile_timing.lap("PreProcessInputImage");
 
     // Resize template and image for the search resolution
@@ -871,7 +872,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     }
 
     float n_defocus_steps = (2.f * myroundint(float(defocus_search_range) / float(defocus_step)) + 1.f);
-    if ( ignore_defocus_for_threshold ) {
+    if ( ignore_defocus_for_threshold && n_defocus_steps > 0 ) {
         fraction_of_search_positions_that_are_independent /= n_defocus_steps;
     }
 
@@ -1698,6 +1699,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
     wxPrintf("Master Handling result for image %i..", result_number);
 
+    MyPrintWithDetails("");
     // Check if an AggregatedTemplateResult already exists for this image
     for ( int result_counter = 0; result_counter < aggregated_results.GetCount( ); result_counter++ ) {
         if ( aggregated_results[result_counter].image_number == result_number ) {
@@ -1709,7 +1711,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
             break;
         }
     }
-
+    MyPrintWithDetails("");
     // If no existing result, create a new one
     if ( need_a_new_result == true ) {
         AggregatedTemplateResult result_to_add;
@@ -1720,12 +1722,12 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         array_location = aggregated_results.GetCount( ) - 1;
         wxPrintf("Adding new result to array for image %i, at %i\n", result_number, array_location);
     }
-
+    MyPrintWithDetails("");
     // Check if all expected results for this image have been received
     if ( aggregated_results[array_location].number_of_received_results == number_of_expected_results ) {
         // All parts of the result for this image are now collected. Proceed to finalize.
         // TODO send the result back to the GUI, for now hack mode to save the files to the directory..
-
+        MyPrintWithDetails("");
         wxString directory_for_writing_results = current_job_package.jobs[0].arguments[37].ReturnStringArgument( );
 
         // Image objects for storing and processing results
@@ -1757,7 +1759,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         Peak            current_peak;
         AnglesAndShifts angles;
-
+        MyPrintWithDetails("");
         bool use_gpu = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[40].ReturnBoolArgument( );
 
         int    image_size_x                                      = int(aggregated_results[array_location].collated_data_array[cistem::match_template::image_size_x]);
@@ -1772,12 +1774,12 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         double number_of_search_positions = double(aggregated_results[array_location].total_number_of_angles_searched * fraction_of_search_positions_that_are_independent);
 
         bool using_binned_ref = input_binning_factor > 1.0f ? true : false;
-
+        MyPrintWithDetails("");
         ImageFile input_reconstruction_file;
         input_reconstruction_file.OpenFile(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[1].ReturnStringArgument( ), false);
 
         temp_image.Allocate(int(image_size_x), int(image_size_y), true);
-
+        MyPrintWithDetails("");
         // Fill the temp_image with data form the collatged mip before passing it on to be rescaled.
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_mip_data[pixel_counter];
@@ -1791,13 +1793,13 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
                                                             aggregated_results[array_location].collated_histogram_data,
                                                             aggregated_results[array_location].total_number_of_angles_searched,
                                                             aggregated_results[array_location].disable_flat_fielding);
-
+        MyPrintWithDetails("");
         // Update the collated mip data which is used downstream for the scaled mip and other calcs
         // Fill the temp_image with data form the collatged mip before passing it on to be rescaled.
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             aggregated_results[array_location].collated_mip_data[pixel_counter] = temp_image.real_values[pixel_counter];
         }
-
+        MyPrintWithDetails("");
         MRCFile mip_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[21].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         mip_output_file.SetOutputToFP16( );
@@ -1806,11 +1808,12 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         mip_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
 
         wxPrintf("Writing result %i\n", aggregated_results[array_location].image_number - 1);
-
+        MyPrintWithDetails("");
         // psi
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_psi_data[pixel_counter];
         }
+        MyPrintWithDetails("");
         MRCFile psi_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[22].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         psi_output_file.SetOutputToFP16( );
@@ -1935,7 +1938,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         double      temp_threshold   = 0.0;
         double      erf_input        = (n_expected_false_positives * 2.0) / (1.0 * (double(number_of_valid_search_pixels) * double(number_of_search_positions)));
         //        wxPrintf("ox oy total %3.3e %3.3e %3.3e\n", (double)result_array[5] , (double)result_array[6] , (double)aggregated_results[array_location].total_number_of_angles_searched, erf_input);
-
+        MyPrintWithDetails("");
 #ifdef MKL
         vdErfcInv(1, &erf_input, &temp_threshold);
 #else
@@ -1963,7 +1966,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
             }
 #endif
         }
-
+        MyPrintWithDetails("");
         for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
             temp_double_array[0] = histogram_first_bin_midpoint + histogram_step * float(line_counter);
             temp_double_array[1] = aggregated_results[array_location].collated_histogram_data[line_counter];
@@ -2015,7 +2018,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 #else
         int exclusion_radius = input_reconstruction.logical_x_dimension / cistem::fraction_of_box_size_to_exclude_for_border + 1;
 #endif
-
+        MyPrintWithDetails("");
         // if we used a resampled search and have elected to skip resampling the results images, this border region is already removed.
         // this should be true for any binning > 1
         if ( input_binning_factor > 1.0f ) {
@@ -2125,7 +2128,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         ArrayOfTemplateMatchFoundPeakInfos blank_changes;
         SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, expected_threshold, all_peak_infos, blank_changes);
-
+        MyPrintWithDetails("");
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it
 
@@ -2293,13 +2296,14 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
  * @param N Total number of elements in sum and sum_of_sqs arrays (image_real_memory_allocated).
  */
 template <typename StatsType>
-void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
-                                                  double&     global_ccc_std_dev,
-                                                  StatsType*  sum,
-                                                  StatsType*  sum_of_sqs,
-                                                  const float n_angles_in_search,
-                                                  const int   N) {
+void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
+                                                  double&      global_ccc_std_variance,
+                                                  StatsType*   sum,
+                                                  StatsType*   sum_of_sqs,
+                                                  const float  n_angles_in_search,
+                                                  const Image& mip_image) {
 
+    const long N = mip_image.real_memory_allocated;
     MyDebugAssertTrue(N > 0, "N must be greater than 0");
 
     double global_sum            = 0.0;
@@ -2307,13 +2311,16 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
 
     long counted_values = 0;
     long address        = 0;
-
-    for ( int address = 0; address < N; address++ ) {
-        if ( sum_of_sqs[address] > cistem::float_epsilon ) {
-            global_sum += double(sum[address]);
-            global_sum_of_squares += double(sum_of_sqs[address]);
-            counted_values++;
+    for ( int y = 0; y < mip_image.logical_y_dimension; y++ ) {
+        for ( int x = 0; x < mip_image.logical_x_dimension; x++ ) {
+            if ( sum_of_sqs[address] > cistem::float_epsilon ) {
+                global_sum += double(sum[address]);
+                global_sum_of_squares += double(sum_of_sqs[address]);
+                counted_values++;
+            }
+            address++;
         }
+        address += mip_image.padding_jump_value;
     }
 
     const double total_number_of_ccs = double(n_angles_in_search) * double(counted_values);
@@ -2323,10 +2330,7 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
 
     global_ccc_mean = global_sum / total_number_of_ccs;
 
-    double variance_arg = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
-    MyDebugAssertTrue(variance_arg > 0.0f, "Variance calculation produced non-positive value - numerical precision issue");
-
-    global_ccc_std_dev = sqrt(variance_arg);
+    global_ccc_std_variance = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
 
     return;
 }
@@ -2413,9 +2417,26 @@ void MatchTemplateApp::RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(Image
 
     double global_ccc_mean    = 0.0;
     double global_ccc_std_dev = 0.0;
-    CalcGlobalCCCScalingFactor(global_ccc_mean, global_ccc_std_dev, correlation_pixel_sum, correlation_pixel_sum_of_squares, n_angles_in_search, mip_image->real_memory_allocated);
+    CalcGlobalCCCScalingFactor(global_ccc_mean, global_ccc_std_dev, correlation_pixel_sum, correlation_pixel_sum_of_squares, n_angles_in_search, *mip_image);
 
-    std::cerr << "Over n_cccs " << n_angles_in_search << " the Global mean and std_dev are " << global_ccc_mean << " and " << global_ccc_std_dev << std::endl;
+    std::cerr << "Over n_cccs " << n_angles_in_search << " the Global mean and variance are " << global_ccc_mean << " and " << global_ccc_std_dev << std::endl;
+    std::cerr << "With disable_flat_fielding: " << disable_flat_fielding << "\n";
+    // Temp debugging revert
+    if ( global_ccc_std_dev <= 0.f || ! std::isfinite(global_ccc_std_dev) ) {
+        std::cerr << "Saving debug mip \n";
+        mip_image->QuickAndDirtyWriteSlice("DebugMip.mrc", 1);
+        for ( int i = 0; i < mip_image->real_memory_allocated; i++ ) {
+            mip_image->real_values[i] = correlation_pixel_sum[i];
+        }
+        mip_image->QuickAndDirtyWriteSlice("DebugSum.mrc", 1);
+        for ( int i = 0; i < mip_image->real_memory_allocated; i++ ) {
+            mip_image->real_values[i] = correlation_pixel_sum_of_squares[i];
+        }
+        mip_image->QuickAndDirtyWriteSlice("DebugSumSqs.mrc", 1);
+    }
+    MyDebugAssertTrue(global_ccc_std_dev > 0.0f, "Variance calculation produced non-positive value - numerical precision issue");
+    global_ccc_std_dev = std::sqrt(global_ccc_std_dev);
+
     // Use the global statistics to resample the histogram from a smoothed curve fit to the measured data.
     ResampleHistogramData(histogram, global_ccc_mean, global_ccc_std_dev);
 

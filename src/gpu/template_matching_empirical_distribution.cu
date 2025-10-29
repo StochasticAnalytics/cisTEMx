@@ -17,7 +17,7 @@
  * by a single host thread. Internal operations are enqueued onto a dedicated CUDA stream
  * (`calc_stream_`) for asynchronous execution on the GPU. Synchronization primitives
  * like `cudaEventSynchronize` are used where necessary to coordinate host and device.
- * The `active_idx_` mechanism for double buffering CCF and angle data is managed
+ * The `mip_dbl_buffer_idx_` mechanism for double buffering CCF and angle data is managed
  * internally and does not make the class methods thread-safe for concurrent host calls.
  */
 
@@ -79,7 +79,7 @@ TM_EmpiricalDistribution<ccfType, mipType>::TM_EmpiricalDistribution(GpuImage* r
 
     cudaErr(cudaDeviceGetStreamPriorityRange(&least_priority, &highest_priority));
     cudaErr(cudaStreamCreateWithPriority(&calc_stream_[0], cudaStreamNonBlocking, least_priority));
-    cudaErr(cudaEventCreateWithFlags(&mip_stack_is_ready_event_[0], cudaEventBlockingSync)); // blocking sync makes the host wait if calling cudaEventSynchronize
+    cudaErr(cudaEventCreateWithFlags(&mip_stack_is_ready_event_[0], cudaEventBlockingSync | cudaEventDisableTiming)); // blocking sync makes the host wait if calling cudaEventSynchronize
 
     image_dims_.x = reference_image->dims.x;
     image_dims_.y = reference_image->dims.y;
@@ -119,6 +119,8 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AllocateAndZeroStatisticalArray
     cudaErr(cudaMallocAsync(&sum_array, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&sum_sq_array, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&sum_counter, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
+    cudaErr(cudaMallocAsync(&sum_error_array, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
+    cudaErr(cudaMallocAsync(&sum_sq_error_array, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&mip_psi, image_plane_mem_allocated_ * sizeof(mipType), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&theta_phi, image_plane_mem_allocated_ * sizeof(mipType), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&psi, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
@@ -130,6 +132,8 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AllocateAndZeroStatisticalArray
     cudaErr(cudaMemsetAsync(sum_array, 0, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(sum_sq_array, 0, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(sum_counter, 0, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
+    cudaErr(cudaMemsetAsync(sum_error_array, 0, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
+    cudaErr(cudaMemsetAsync(sum_sq_error_array, 0, image_plane_mem_allocated_ * sizeof(float), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(mip_psi, 0, image_plane_mem_allocated_ * sizeof(mipType), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(theta_phi, 0, image_plane_mem_allocated_ * sizeof(mipType), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(psi, 0, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
@@ -181,6 +185,8 @@ void TM_EmpiricalDistribution<ccfType, mipType>::Delete( ) {
     cudaErr(cudaFreeAsync(sum_array, calc_stream_[0]));
     cudaErr(cudaFreeAsync(sum_sq_array, calc_stream_[0]));
     cudaErr(cudaFreeAsync(sum_counter, calc_stream_[0]));
+    cudaErr(cudaFreeAsync(sum_error_array, calc_stream_[0]));
+    cudaErr(cudaFreeAsync(sum_sq_error_array, calc_stream_[0]));
     cudaErr(cudaFreeAsync(mip_psi, calc_stream_[0]));
     cudaErr(cudaFreeAsync(theta_phi, calc_stream_[0]));
     cudaErr(cudaFreeAsync(psi, calc_stream_[0]));
@@ -271,7 +277,7 @@ inline __device__ float convert_input(const T* __restrict__ input_ptr,
  * @param min_counter_val Minimum count for robust statistics calculation.
  * @param threshold_val Sigma threshold for outlier rejection.
  */
-inline __device__ void sum_squares_and_check_max(const float val,
+inline __device__ bool sum_squares_and_check_max(const float val,
                                                  float&      sum,
                                                  float&      sum_sq,
                                                  float&      sum_counter_val,
@@ -307,7 +313,40 @@ inline __device__ void sum_squares_and_check_max(const float val,
         const float t2 = sum_sq + y2;
         sum_sq_err     = (t2 - sum_sq) - y2;
         sum_sq         = t2;
+        return true;
     }
+    return false;
+}
+
+inline __device__ bool sum_squares_and_check_max(const float val,
+                                                 float&      sum,
+                                                 float&      sum_sq,
+                                                 float&      sum_counter_val,
+                                                 float&      sum_err,
+                                                 float&      sum_sq_err,
+                                                 float&      max_val,
+                                                 int&        max_idx,
+                                                 int         idx) {
+
+    if ( val > max_val ) {
+        max_val = val;
+        max_idx = idx;
+    }
+
+    // For Kahan summationter_val;
+    sum_counter_val += 1.0f;
+
+    // Kahan summation
+    const float y = val - sum_err;
+    const float t = sum + y;
+    sum_err       = (t - sum) - y;
+    sum           = t;
+
+    const float y2 = __fmaf_ieee_rn(val, val, -sum_sq_err);
+    const float t2 = sum_sq + y2;
+    sum_sq_err     = (t2 - sum_sq) - y2;
+    sum_sq         = t2;
+    return true;
 }
 
 /**
@@ -332,11 +371,15 @@ inline __device__ void sum_squares_and_check_max(const float val,
 template <typename ccfType, typename mipType>
 inline __device__ void write_mip_and_stats(float*      sum_array,
                                            float*      sum_sq_array,
+                                           float*      sum_error_array,
+                                           float*      sum_sq_error_array,
                                            float*      sum_counter,
                                            mipType*    mip_psi,
                                            mipType*    theta_phi,
                                            const float sum,
                                            const float sum_sq,
+                                           const float sum_err,
+                                           const float sum_sq_err,
                                            const float sum_counter_val,
                                            const ccfType* __restrict__ psi,
                                            const ccfType* __restrict__ theta,
@@ -346,9 +389,11 @@ inline __device__ void write_mip_and_stats(float*      sum_array,
                                            const int   address) {
 
     // There may be rare cases where no stats have been evaluated, but then sum/sum_sq == 0. Rather than introduce extra branching logic, just do the extra io for those rare cases.
-    sum_array[address]    = sum;
-    sum_sq_array[address] = sum_sq;
-    sum_counter[address]  = sum_counter_val;
+    sum_array[address]          = sum;
+    sum_sq_array[address]       = sum_sq;
+    sum_counter[address]        = sum_counter_val;
+    sum_error_array[address]    = sum_err;
+    sum_sq_error_array[address] = sum_sq_err;
 
     // TODO: I'm assuming we can avoid reading the mip value when <= histogram min based on short circuit logic, but
     // there may prefetching going on that might be prevented with a second nested if?
@@ -401,7 +446,7 @@ inline __device__ void write_mip_and_stats(float*      sum_array,
  * @note Shared memory `smem` is used for efficient, coalesced updates to the histogram within a block.
  * @note Angle data (psi, theta, phi) for the current batch is read from global memory.
  */
-template <typename ccfType, typename mipType>
+template <bool use_trimming, typename ccfType, typename mipType>
 __global__ void __launch_bounds__(TM::histogram_number_of_points)
         AccumulateDistributionKernel(const ccfType* __restrict__ input_ptr,
                                      histogram_storage_t* __restrict__ output_ptr,
@@ -412,6 +457,8 @@ __global__ void __launch_bounds__(TM::histogram_number_of_points)
                                      const __grid_constant__ int  n_slices_to_process,
                                      float*                       sum_array,
                                      float*                       sum_sq_array,
+                                     float*                       sum_error_array,
+                                     float*                       sum_sq_error_array,
                                      float*                       sum_counter,
                                      mipType* __restrict__ mip_psi,
                                      mipType* __restrict__ theta_phi,
@@ -451,32 +498,71 @@ __global__ void __launch_bounds__(TM::histogram_number_of_points)
             float     max_val{TM::histogram_min};
             int       max_idx = 0;
             // even though we only use kahan summation over ~ 20 numbers, the increase in accuracy is worth it.
-            float sum    = sum_array[address];
-            float sum_sq = sum_sq_array[address];
-            float sum_err{0.f}, sum_sq_err{0.f};
+            float sum             = sum_array[address];
+            float sum_sq          = sum_sq_array[address];
+            float sum_err         = sum_error_array[address];
+            float sum_sq_err      = sum_sq_error_array[address];
             float sum_counter_val = sum_counter[address];
             for ( int k = 0; k < n_slices_to_process; k++ ) {
                 // pixel_idx = __half2int_rd((input_ptr[j * dims.w + i] -  TM::histogram_min) /  TM::histogram_step);
                 int         pixel_idx;
                 const float val = convert_input(input_ptr, pixel_idx, address + k * plane_stride_pixels_img);
 
-                if ( pixel_idx >= 0 && pixel_idx < TM::histogram_number_of_points )
-                    atomicAdd(&smem[pixel_idx], 1);
-                sum_squares_and_check_max(val,
-                                          sum,
-                                          sum_sq,
-                                          sum_counter_val,
-                                          sum_err,
-                                          sum_sq_err,
-                                          max_val,
-                                          max_idx,
-                                          k,
-                                          min_counter_val,
-                                          threshold_val);
+                // By placing the sum_squares_and_check_max logic inside this if, we avoid unnecessary computation for out of range values
+                if ( pixel_idx >= 0 && pixel_idx < TM::histogram_number_of_points ) {
+                    if constexpr ( use_trimming ) {
+                        if ( sum_squares_and_check_max(val,
+                                                       sum,
+                                                       sum_sq,
+                                                       sum_counter_val,
+                                                       sum_err,
+                                                       sum_sq_err,
+                                                       max_val,
+                                                       max_idx,
+                                                       k,
+                                                       min_counter_val,
+                                                       threshold_val) ) {
+                            // only increment the histogram if we accepted the value for sum/sum_sq
+                            atomicAdd(&smem[pixel_idx], 1);
+                        }
+                    }
+                    else {
+                        // Always returns true if we aren't trimming
+                        sum_squares_and_check_max(val,
+                                                  sum,
+                                                  sum_sq,
+                                                  sum_counter_val,
+                                                  sum_err,
+                                                  sum_sq_err,
+                                                  max_val,
+                                                  max_idx,
+                                                  k);
+                        // only increment the histogram if we accepted the value for sum/sum_sq
+                        atomicAdd(&smem[pixel_idx], 1);
+                    }
+                }
+
             } // loop over slices
 
             // Now we need to actually write out to global memory for the mip if we are doing it
-            write_mip_and_stats(sum_array, sum_sq_array, sum_counter, mip_psi, theta_phi, sum, sum_sq, sum_counter_val, psi, theta, phi, max_val, max_idx, address);
+            write_mip_and_stats(sum_array,
+                                sum_sq_array,
+                                sum_error_array,
+                                sum_sq_error_array,
+                                sum_counter,
+                                mip_psi,
+                                theta_phi,
+                                sum,
+                                sum_sq,
+                                sum_err,
+                                sum_sq_err,
+                                sum_counter_val,
+                                psi,
+                                theta,
+                                phi,
+                                max_val,
+                                max_idx,
+                                address);
         }
     }
 
@@ -527,47 +613,76 @@ FinalAccumulateKernel(histogram_storage_t* input_ptr, const int n_bins, const in
  * - Asynchronously copies the current batch's angle data from host-pinned memory to device memory
  *   using `UpdateDeviceAngleArrays()`, which enqueues the copy on `calc_stream_[0]`.
  * - Launches `AccumulateDistributionKernel` on `calc_stream_[0]`. This kernel reads from
- *   `ccf_array_.at(active_idx_)` and `device_host_angle_arrays_.at(active_idx_)`.
- * - After launching the kernel, it calls `SetActive_idx()` to switch the `active_idx_`.
+ *   `ccf_array_.at(mip_dbl_buffer_idx_)` and `device_host_angle_arrays_.at(mip_dbl_buffer_idx_)`.
+ * - After launching the kernel, it calls `ToggleActiveDoubleBufferIdx()` to switch the `mip_dbl_buffer_idx_`.
  *   This allows the host to start filling the *next* `ccf_array_` buffer and `host_angle_arrays_`
  *   while the current batch is being processed on the GPU, achieving H2D-D2D overlap.
  *
  * @note Thread Safety: This method is not thread-safe for concurrent calls from multiple host threads.
- * It relies on `active_idx_` for internal double buffering, managed by a single calling sequence.
+ * It relies on `mip_dbl_buffer_idx_` for internal double buffering, managed by a single calling sequence.
  */
+
 template <typename ccfType, typename mipType>
-void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution(int n_images_this_batch) {
-    MyDebugAssertTrue(n_images_this_batch <= n_imgs_to_process_at_once_, "The number of images to accumulate is greater than the number of images to accumulate concurrently");
+void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution( ) {
+    const int n_images_this_batch = GetCurrentMip_idx( ); // Always called after we have incremented the counter s.t. index = n_images;
     MyDebugAssertFalse(cudaStreamQuery(calc_stream_[0]) == cudaErrorInvalidResourceHandle, "The cuda stream is invalid");
 
     // Copy the host angle arrays to the device (async in calc_stream_[0])
     UpdateDeviceAngleArrays( );
 
-    precheck;
-    AccumulateDistributionKernel<<<gridDims_, threadsPerBlock_, 0, calc_stream_[0]>>>(
-            ccf_array_.at(active_idx_),
-            histogram_,
-            image_dims_.y * image_dims_.w,
-            image_dims_.w,
-            pre_padding_,
-            roi_,
-            n_images_this_batch,
-            sum_array,
-            sum_sq_array,
-            sum_counter,
-            mip_psi,
-            theta_phi,
-            (ccfType*)&device_host_angle_arrays_.at(active_idx_)[psi_idx],
-            (ccfType*)&device_host_angle_arrays_.at(active_idx_)[theta_idx],
-            (ccfType*)&device_host_angle_arrays_.at(active_idx_)[phi_idx],
-            min_counter_val_,
-            threshold_val_);
-    postcheck(calc_stream_[0]);
+    if ( threshold_val_ > 0.f ) {
+        precheck;
+        AccumulateDistributionKernel<true><<<gridDims_, threadsPerBlock_, 0, calc_stream_[0]>>>(
+                ccf_array_.at(mip_dbl_buffer_idx_),
+                histogram_,
+                image_dims_.y * image_dims_.w,
+                image_dims_.w,
+                pre_padding_,
+                roi_,
+                n_images_this_batch,
+                sum_array,
+                sum_sq_array,
+                sum_error_array,
+                sum_sq_error_array,
+                sum_counter,
+                mip_psi,
+                theta_phi,
+                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
+                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
+                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
+                min_counter_val_,
+                threshold_val_);
+        postcheck(calc_stream_[0]);
+    }
+    else {
+        precheck;
+        AccumulateDistributionKernel<false><<<gridDims_, threadsPerBlock_, 0, calc_stream_[0]>>>(
+                ccf_array_.at(mip_dbl_buffer_idx_),
+                histogram_,
+                image_dims_.y * image_dims_.w,
+                image_dims_.w,
+                pre_padding_,
+                roi_,
+                n_images_this_batch,
+                sum_array,
+                sum_sq_array,
+                sum_error_array,
+                sum_sq_error_array,
+                sum_counter,
+                mip_psi,
+                theta_phi,
+                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
+                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
+                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
+                min_counter_val_,
+                threshold_val_);
+        postcheck(calc_stream_[0]);
+    }
 
     // Switch the active index
     // This allows the CPU to prepare the next batch of CCF data and angles in the inactive buffers
     // while the GPU is processing the current batch using the (previously) active buffers.
-    SetActive_idx( );
+    ToggleActiveDoubleBufferIdx( );
 };
 
 /**
@@ -651,6 +766,8 @@ __global__ void AccumulateSumsKernel(float* sum,
                                      float* sumsq,
                                      float* __restrict__ sum_img_array,
                                      float* __restrict__ sq_sum_img_array,
+                                     float* __restrict__ sum_err_array,
+                                     float* __restrict__ sq_sum_err_array,
                                      float*    sum_counter,
                                      const int numel) {
 
@@ -660,9 +777,11 @@ __global__ void AccumulateSumsKernel(float* sum,
         sum_img_array[x] += sum[x];
         sq_sum_img_array[x] += sumsq[x];
 
-        sum[x]         = 0.0f;
-        sumsq[x]       = 0.0f;
-        sum_counter[x] = 0.0f;
+        sum[x]              = 0.0f;
+        sumsq[x]            = 0.0f;
+        sum_counter[x]      = 0.0f;
+        sum_err_array[x]    = 0.0f;
+        sq_sum_err_array[x] = 0.0f;
     }
 }
 
@@ -697,6 +816,8 @@ void TM_EmpiricalDistribution<ccfType, mipType>::CopySumAndSumSqAndZero(GpuImage
                                                                             sum_sq_array,
                                                                             sum_img.real_values,
                                                                             sq_sum_img.real_values,
+                                                                            sum_error_array,
+                                                                            sum_sq_error_array,
                                                                             sum_counter,
                                                                             sq_sum_img.real_memory_allocated);
     postcheck(calc_stream_[0]);

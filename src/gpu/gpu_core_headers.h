@@ -141,13 +141,20 @@ const int MAX_GPU_COUNT = 32;
 
 // Level 1: Error checking without expensive synchronization
 // This provides maximum debugging detail but is slow - syncs after every kernel launch
-#define cudaErr(error) { auto status = static_cast<cudaError_t>(error); if (status != cudaSuccess && status != cudaErrorNotReady) { std::cerr << "Failed Assert: " << cudaGetErrorString(status) << " :-> "; MyPrintWithDetails(""); std::exit(-1);} }
+#define cudaErr(error) { auto status = static_cast<cudaError_t>(error); if (status != cudaSuccess && status != cudaErrorNotReady) { std::cerr << "Failed Assert: " << cudaGetErrorString(status) << " :-> "; print_debug_to_cerr("");} }
 
-#define nppErr(npp_stat) { if (npp_stat != NPP_SUCCESS) { std::cerr << "NPP_CHECK_NPP NPP_SUCCESS = (" << NPP_SUCCESS << ") - npp_stat = " << npp_stat; wxPrintf(" at %s:(%d)\nFind error codes at /usr/local/cuda/targets/x86_64-linux/include/nppdefs.h:(170)\n\n", __FILE__, __LINE__); std::exit(-1);} }
+#define nppErr(npp_stat) { if (npp_stat != NPP_SUCCESS) { std::cerr << "Failed Assert NPP_CHECK_NPP NPP_SUCCESS = (" << NPP_SUCCESS << ") - npp_stat = " << npp_stat << " Find error codes at /usr/local/cuda/targets/x86_64-linux/include/nppdefs.h:(170)\n\n"; print_debug_to_cerr("");} } 
 
-#define cufftErr(error) { auto status = static_cast<cufftResult>(error); if (status != CUFFT_SUCCESS) { std::cerr << "Failed Assert: " << cistem::gpu::cufft_error_types[status] << " :-> "; MyPrintWithDetails(""); std::exit(-1);} }
+#define cufftErr(error) { auto status = static_cast<cufftResult>(error); if (status != CUFFT_SUCCESS) { std::cerr << "Failed Assert: " << cistem::gpu::cufft_error_types[status] << " :-> \n"; print_debug_to_cerr("");} }
 
-#define cuTensorErr(error) { auto status = static_cast<cutensorStatus_t>(error); if (status != CUTENSOR_STATUS_SUCCESS) { std::cerr << cutensorGetErrorString(status) << " :-> "; MyPrintWithDetails(""); std::exit(-1);} }
+#define cuTensorErr(error) { auto status = static_cast<cutensorStatus_t>(error); if (status != CUTENSOR_STATUS_SUCCESS) { std::cerr << "Failed Assert " << cutensorGetErrorString(status) << " :-> \n"; print_debug_to_cerr("");} }
+// #define cudaErr(error) { auto status = static_cast<cudaError_t>(error); if (status != cudaSuccess && status != cudaErrorNotReady) { std::cerr << "Failed Assert: " << cudaGetErrorString(status) << " :-> "; MyPrintWithDetails(""); {StackDump dump(NULL); dump.MyWalk(1); abort();};} }
+
+// #define nppErr(npp_stat) { if (npp_stat != NPP_SUCCESS) { std::cerr << "Failed Assert NPP_CHECK_NPP NPP_SUCCESS = (" << NPP_SUCCESS << ") - npp_stat = " << npp_stat; wxPrintf(" at %s:(%d)\nFind error codes at /usr/local/cuda/targets/x86_64-linux/include/nppdefs.h:(170)\n\n", __FILE__, __LINE__);  {StackDump dump(NULL); dump.MyWalk(1); abort();};} }
+
+// #define cufftErr(error) { auto status = static_cast<cufftResult>(error); if (status != CUFFT_SUCCESS) { std::cerr << "Failed Assert: " << cistem::gpu::cufft_error_types[status] << " :-> "; MyPrintWithDetails("");  {StackDump dump(NULL); dump.MyWalk(1); abort();};} }
+
+// #define cuTensorErr(error) { auto status = static_cast<cutensorStatus_t>(error); if (status != CUTENSOR_STATUS_SUCCESS) { std::cerr << "Failed Assert " << cutensorGetErrorString(status) << " :-> "; MyPrintWithDetails("");  {StackDump dump(NULL); dump.MyWalk(1); abort();};} }
 
 #if ENABLE_GPU_DEBUG == 1
 

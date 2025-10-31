@@ -38,7 +38,6 @@ NC='\033[0m' # No Color
 
 # Project paths
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-HOOK_CONFIG="$PROJECT_ROOT/.git/hooks/.pre-push-config"
 TASKS_JSON="$PROJECT_ROOT/.vscode/tasks.json"
 
 # Timing
@@ -126,52 +125,15 @@ select_build_config() {
     echo ""
     echo -e "${GREEN}Selected: $selected_label${NC}"
     echo -e "${BLUE}Build directory: $build_dir${NC}"
-
-    # Save configuration
-    cat > "$HOOK_CONFIG" <<EOFCONFIG
-# Pre-push hook configuration
-# Generated: $(date)
-BUILD_LABEL="$selected_label"
-BUILD_DIR="$build_dir"
-BUILD_COMMAND="$selected_command"
-EOFCONFIG
-
     echo ""
+
+    # Export for use by the rest of the script
+    BUILD_DIR="$build_dir"
+    BUILD_LABEL="$selected_label"
 }
 
-# Function to load build configuration
-load_build_config() {
-    if [ ! -f "$HOOK_CONFIG" ]; then
-        return 1
-    fi
-
-    source "$HOOK_CONFIG"
-
-    # Verify configuration is still valid
-    if [ -z "$BUILD_DIR" ] || [ ! -d "$BUILD_DIR" ]; then
-        echo -e "${YELLOW}WARNING: Saved build directory no longer exists${NC}"
-        return 1
-    fi
-
-    echo -e "${BLUE}Using saved configuration: $BUILD_LABEL${NC}"
-    echo -e "${BLUE}Build directory: $BUILD_DIR${NC}"
-
-    # Ask if user wants to reselect
-    read -p "Use this configuration? (Y/n): " response </dev/tty
-    if [[ "$response" =~ ^[Nn] ]]; then
-        return 1
-    fi
-
-    echo ""
-    return 0
-}
-
-# Load or select build configuration
-if ! load_build_config; then
-    select_build_config
-    # Reload the newly created config
-    source "$HOOK_CONFIG"
-fi
+# Select build configuration
+select_build_config
 
 # Phase 1: Build
 echo -e "${YELLOW}=== Phase 1: Building cisTEMx ===${NC}"

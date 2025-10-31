@@ -131,9 +131,9 @@ select_build_config() {
     cat > "$HOOK_CONFIG" <<EOFCONFIG
 # Pre-push hook configuration
 # Generated: $(date)
-BUILD_LABEL=$selected_label
-BUILD_DIR=$build_dir
-BUILD_COMMAND=$selected_command
+BUILD_LABEL="$selected_label"
+BUILD_DIR="$build_dir"
+BUILD_COMMAND="$selected_command"
 EOFCONFIG
 
     echo ""

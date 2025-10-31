@@ -12,4 +12,10 @@ if [ -f scripts/install_clang_format_hook.sh ]; then
     ./scripts/install_clang_format_hook.sh
 fi
 
+# Install pre-push hook
+if [ -f scripts/install_pre_push_hook.sh ]; then
+    echo "Installing pre-push hook..."
+    ./scripts/install_pre_push_hook.sh
+fi
+
 

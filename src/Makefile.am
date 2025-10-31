@@ -795,7 +795,7 @@ cisTEM_display_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 gui_test_SOURCES = programs/gui_test/gui_test.cpp gui/PlotCurvePanel.cpp gui/mathplot.cpp
 gui_test_CXXFLAGS = $(WX_CPPFLAGS)
 gui_test_CPPFLAGS = $(WX_CPPFLAGS)
-gui_test_LDADD = libguicore.a libcore.a $(WX_LIBS)
+gui_test_LDADD = libguicore.a libcore.a $(WX_LIBS) $(MKL_LIBS)
 gui_test_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 cisTEM_job_control_SOURCES  = programs/guix_job_control/guix_job_control.cpp 

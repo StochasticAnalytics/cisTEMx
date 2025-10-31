@@ -241,7 +241,7 @@ echo ""
 echo -e "${BLUE}[2/3] Running console_test...${NC}"
 TEST2_START=$(date +%s)
 set +e
-"$BUILD_DIR/src/console_test/console_test"
+"$BUILD_DIR/src/console_test"
 TEST2_EXIT=$?
 set -e
 TEST2_END=$(date +%s)
@@ -267,7 +267,7 @@ echo ""
 echo -e "${BLUE}[3/3] Running samples_functional_testing...${NC}"
 TEST3_START=$(date +%s)
 set +e
-"$BUILD_DIR/src/samples/samples_functional_testing"
+"$BUILD_DIR/src/samples_functional_testing"
 TEST3_EXIT=$?
 set -e
 TEST3_END=$(date +%s)

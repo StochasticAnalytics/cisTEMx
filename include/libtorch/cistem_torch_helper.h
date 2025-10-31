@@ -1,8 +1,8 @@
 #ifndef _INCLUDE_LIBTORCH_CISTEM_TORCH_HELPER_H_
 #define _INCLUDE_LIBTORCH_CISTEM_TORCH_HELPER_H_
 
-// This header provides a clean interface for including LibTorch in cisTEM code.
-// It handles macro conflicts between cisTEM/wxWidgets and LibTorch headers.
+// This header provides a clean interface for including LibTorch in cisTEMx code.
+// It handles macro conflicts between cisTEMx/wxWidgets and LibTorch headers.
 //
 // Usage:
 //   #ifdef cisTEM_USING_LIBTORCH
@@ -38,7 +38,7 @@
 // Include LibTorch headers
 #include <torch/torch.h>
 
-// Restore all macros for use in cisTEM code
+// Restore all macros for use in cisTEMx code
 #pragma pop_macro("CHAR")
 #pragma pop_macro("DOUBLE")
 #pragma pop_macro("LONG")

@@ -41,7 +41,7 @@ void PrepareStackApp::DoInteractiveUserInput( ) {
 
     input_particle_images      = my_input->GetFilenameFromUser("Input particle stack", "The input image stack, containing the experimental particle images", "my_image_stack.mrc", true);
     output_classaverage_images = my_input->GetFilenameFromUser("Output particle stack", "The output image stack, containing the prepared particle images", "my_image_stack_prep.mrc", false);
-    input_star_file            = my_input->GetFilenameFromUser("Input cisTEM star filename", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
+    input_star_file            = my_input->GetFilenameFromUser("Input cisTEMx star filename", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
     input_selection_file       = my_input->GetFilenameFromUser("Input class selection filename", "text file containing the wanted class averages", "my_selection.txt", true);
     output_pixel_size          = my_input->GetFloatFromUser("Wanted Output Pixel Size (Angstroms)", "Pixel Size of the images", "1", 0.0);
     mask_radius                = my_input->GetFloatFromUser("Mask radius (Angstroms)", "For calculating noise statistics", "100", 0.0);

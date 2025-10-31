@@ -1,4 +1,15 @@
 /*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
+/*
  * GpuImage.cpp
  *
  *  Created on: Jul 31, 2019
@@ -495,7 +506,7 @@ MultiplyPixelWiseComplexConjugateKernel(const StorageType* __restrict__ img_comp
 
     const StorageType ref_val = (StorageType)ref_complex_values[address];
     for ( int k = 0; k < dims.z; k++ ) {
-        // In cisTEM translational search is ref * conj(img) (which gives a passive xform, i.e. how the image needs to be shifted back to match the reference)
+        // In cisTEMx translational search is ref * conj(img) (which gives a passive xform, i.e. how the image needs to be shifted back to match the reference)
         result_values[address] = (StorageType)ComplexConjMul(ref_val, (StorageType)img_complex_values[address]);
         address += stride;
     }
@@ -4940,7 +4951,7 @@ ExtractSliceKernel(const cudaTextureObject_t tex_real,
 
         // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
         // The logical origin is physically at X = 1, Y = Z = NY/2
-        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
+        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEMx
         tu += 1.5f;
         tv += (float(NY / 2) + 0.5f);
         tw += (float(NY / 2) + 0.5f);
@@ -5027,7 +5038,7 @@ ExtractSliceAndWhitenKernel(const cudaTextureObject_t tex_real,
 
         // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
         // The logical origin is physically at X = 1, Y = Z = NY/2
-        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
+        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEMx
         tu += 1.5f;
         tv += (float(NY / 2) + 0.5f);
         tw += (float(NY / 2) + 0.5f);
@@ -5253,7 +5264,7 @@ __global__ // __global__void, replacing return type with EnableIf
         }
         // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
         // The logical origin is physically at X = 1, Y = Z = 0 + NY/2
-        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
+        // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEMx
         tu += 1.5f;
         tv += (float(NY_3d / 2) + 0.5f);
         tw += (float(NY_3d / 2) + 0.5f);

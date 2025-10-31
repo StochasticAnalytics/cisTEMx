@@ -1,6 +1,6 @@
 # Python Linting
 
-Static analysis, linting, and formatting for Python code in cisTEM.
+Static analysis, linting, and formatting for Python code in cisTEMx.
 
 ## Status
 
@@ -11,10 +11,12 @@ This guide is a placeholder for future Python linting integration.
 ## Planned Tools
 
 ### pylint
+
 **Purpose:** Comprehensive Python linting
-**Website:** https://pylint.org/
+**Website:** <https://pylint.org/>
 
 **What it detects:**
+
 - Code style issues (PEP 8)
 - Programming errors
 - Code smells
@@ -22,46 +24,54 @@ This guide is a placeholder for future Python linting integration.
 - Refactoring suggestions
 
 ### flake8
+
 **Purpose:** Fast style and error checking
-**Website:** https://flake8.pycqa.org/
+**Website:** <https://flake8.pycqa.org/>
 
 **What it combines:**
+
 - PyFlakes (logic errors)
 - pycodestyle (PEP 8)
 - McCabe (complexity)
 
 ### black
+
 **Purpose:** Opinionated code formatter
-**Website:** https://black.readthedocs.io/
+**Website:** <https://black.readthedocs.io/>
 
 **What it does:**
+
 - Automatic code formatting
 - Consistent style
 - Minimal configuration
 - PEP 8 compliant
 
 ### mypy
+
 **Purpose:** Static type checking
-**Website:** https://mypy.readthedocs.io/
+**Website:** <https://mypy.readthedocs.io/>
 
 **What it does:**
+
 - Type hint validation
 - Type inference
 - Catches type errors
 - Gradual typing support
 
 ### isort
+
 **Purpose:** Import statement sorting
-**Website:** https://pycqa.github.io/isort/
+**Website:** <https://pycqa.github.io/isort/>
 
 **What it does:**
+
 - Organize imports
 - Group by type (stdlib, third-party, local)
 - Consistent ordering
 
 ## Scope
 
-Python code in cisTEM (currently limited):
+Python code in cisTEMx (currently limited):
 
 - **Build scripts** - Python-based build tools
 - **Testing utilities** - Test harness and validation scripts
@@ -71,6 +81,7 @@ Python code in cisTEM (currently limited):
 ## Planned Configuration
 
 ### `pyproject.toml`
+
 Located at project root (centralizes Python tool config):
 
 ```toml
@@ -104,6 +115,7 @@ disallow_untyped_defs = false  # Gradual adoption
 ```
 
 ### `.flake8`
+
 Located at project root:
 
 ```ini
@@ -126,6 +138,7 @@ per-file-ignores =
 ### Development
 
 **Format code:**
+
 ```bash
 # Format all Python files
 black scripts/
@@ -138,6 +151,7 @@ isort scripts/
 ```
 
 **Lint code:**
+
 ```bash
 # Fast check (pre-commit)
 flake8 scripts/
@@ -193,23 +207,27 @@ jobs:
 Similar to C++ linting, use tiers:
 
 **Tier 0 - Blocker:**
+
 - Syntax errors
 - Undefined names
 - Import errors
 
 **Tier 1 - Critical:**
+
 - PEP 8 violations
 - Common bugs (comparison to None with ==)
 - Unused variables
 - Formatting issues
 
 **Tier 2 - Important:**
+
 - Code complexity
 - Documentation strings
 - Naming conventions
 - Type hints
 
 **Tier 3 - Aspirational:**
+
 - Refactoring suggestions
 - Design patterns
 - Full type coverage
@@ -259,6 +277,7 @@ Similar to C++ linting, use tiers:
 ## Common Python Issues to Detect
 
 **Mutable default arguments:**
+
 ```python
 # BAD
 def process_data(data, results=[]):
@@ -274,6 +293,7 @@ def process_data(data, results=None):
 ```
 
 **Comparison to None:**
+
 ```python
 # BAD
 if x == None:
@@ -283,6 +303,7 @@ if x is None:
 ```
 
 **Catching too broad exceptions:**
+
 ```python
 # BAD
 try:
@@ -298,6 +319,7 @@ except ValueError as e:
 ```
 
 **Missing type hints (gradually add):**
+
 ```python
 # Current
 def calculate_fft(image, size):
@@ -339,6 +361,7 @@ flake8-comprehensions>=3.10.0
 ## Integration with VS Code
 
 VS Code Python extension supports:
+
 - Auto-formatting on save (black)
 - Inline linting (pylint/flake8)
 - Type checking (mypy)
@@ -382,7 +405,7 @@ repos:
 
 ## Next Steps
 
-1. Audit Python code in cisTEM (currently minimal)
+1. Audit Python code in cisTEMx (currently minimal)
 2. Install linting tools in container
 3. Create `pyproject.toml` configuration
 4. Run baseline analysis
@@ -403,4 +426,4 @@ repos:
 ---
 
 **Last Updated:** 2025-10-04
-**Implementation Priority:** Low (Python usage in cisTEM is currently minimal)
+**Implementation Priority:** Low (Python usage in cisTEMx is currently minimal)

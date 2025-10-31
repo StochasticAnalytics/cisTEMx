@@ -1,6 +1,6 @@
 # C++ and CUDA Static Analysis with clang-tidy
 
-Comprehensive guide for static analysis of cisTEM's C++ and CUDA code using clang-tidy and related LLVM tools.
+Comprehensive guide for static analysis of cisTEMx's C++ and CUDA code using clang-tidy and related LLVM tools.
 
 ## Overview
 
@@ -10,7 +10,7 @@ Comprehensive guide for static analysis of cisTEM's C++ and CUDA code using clan
 
 ## Multi-Tier Check System
 
-cisTEM uses a **tiered approach** to static analysis, balancing thoroughness with practicality. All checks are defined in the project's `.clang-tidy` configuration, but we selectively run different subsets based on context using the `--checks=` command-line override.
+cisTEMx uses a **tiered approach** to static analysis, balancing thoroughness with practicality. All checks are defined in the project's `.clang-tidy` configuration, but we selectively run different subsets based on context using the `--checks=` command-line override.
 
 ### Tier 0: Blocker Checks ⛔
 
@@ -27,6 +27,7 @@ cert-err52-cpp
 ```
 
 **Rationale:**
+
 - `use-after-move`: Critical for Tensor's move semantics
 - `dangling-handle`: Prevents references to temporaries (common in template code)
 - `undelegated-constructor`: Memory initialization bugs
@@ -63,11 +64,13 @@ cppcoreguidelines-special-member-functions
 **Key checks explained:**
 
 **Memory Safety:**
+
 - `bugprone-multiple-statement-macro`: Macro safety in parallel regions
 - `bugprone-suspicious-memory-comparison`: memcmp on non-trivial types
 - `misc-unconventional-assign-operator`: Assignment operator correctness
 
 **Performance:**
+
 - `performance-unnecessary-copy-initialization`: Major impact in template code
 - `performance-for-range-copy`: Range loop efficiency
 - `performance-noexcept-move-constructor`: Enables optimizations
@@ -101,12 +104,14 @@ cppcoreguidelines-owning-memory
 ```
 
 **Performance checks detail:**
+
 - `performance-type-promotion-in-math-fn`: sin(float) vs sin(double) - critical for numerical accuracy
 - `performance-inefficient-string-concatenation`: wxString building
 - `performance-trivially-destructible`: Enables compiler optimizations
 - `performance-no-automatic-move`: Catches missed RVO/NRVO opportunities
 
 **Concurrency checks:**
+
 - `concurrency-mt-unsafe`: Non-thread-safe functions (rand, strtok, etc.)
 - `bugprone-multiple-statement-macro`: Dangerous in OpenMP regions
 
@@ -140,12 +145,14 @@ misc-*
 ```
 
 **Readability highlights:**
-- `readability-identifier-naming`: Enforce naming conventions (configure for cisTEM style)
+
+- `readability-identifier-naming`: Enforce naming conventions (configure for cisTEMx style)
 - `readability-redundant-member-init`: Clean up constructors
 - `readability-static-accessed-through-instance`: Template clarity
 - `readability-const-return-type`: Const correctness
 
 **Core Guidelines:**
+
 - `cppcoreguidelines-no-malloc`: Prefer RAII
 - `cppcoreguidelines-pro-type-reinterpret-cast`: Type safety (use sparingly in CUDA code)
 
@@ -155,6 +162,7 @@ misc-*
 **Status:** Not implemented, design phase
 
 **CUDA-specific patterns:**
+
 - Host/device memory transfer validation
 - Kernel launch configuration checks
 - Shared memory bank conflict detection
@@ -162,16 +170,19 @@ misc-*
 - Texture memory usage validation
 
 **FFT-specific patterns:**
+
 - FFTW plan lifecycle (create → execute → destroy)
 - Thread-safe plan creation with mutexes
 - Memory alignment for SIMD (16/32/64 byte)
 
 **Memory pool patterns:**
+
 - Acquire/release pairing
 - Pool capacity validation
 - Device/host pool selection correctness
 
 **Image processing patterns:**
+
 - Boundary condition consistency
 - Index calculation validation (logical to physical)
 - Padding/stride arithmetic correctness
@@ -214,36 +225,43 @@ All tasks are defined in `.vscode/tasks.json`. Use `Ctrl+Shift+P` → `Tasks: Ru
 ### Setup Tasks
 
 **"Configure for Static Analysis (Clang + Bear)"**
+
 - Creates `build/clang-tidy-debug` with Clang compiler
 - Required before first analysis run
 
 **"Build with Bear (Generate compile_commands.json)"**
+
 - Builds project while capturing compilation commands
 - Generates `build/clang-tidy-debug/compile_commands.json`
 - Run after adding new source files or changing build config
 
 **"Link compile_commands.json to Root"**
+
 - Creates symlink in project root for IDE integration
 - Enables clangd and other tools
 
 ### Analysis Tasks (Tiered)
 
 **"clang-tidy: Critical Checks Only" (Tier 0)**
+
 - Fast pre-commit analysis (< 30 seconds)
 - Blocker checks only
 - Use before every commit
 
 **"clang-tidy: Phase 1 (Fast - Pre-commit)" (Tier 0 + Tier 1)**
+
 - Standard development analysis (< 1 minute)
 - Critical issues that should be fixed promptly
 - Use before pushing to remote
 
 **"clang-tidy: Phase 2 (Standard - CI)" (Tier 0-2)**
+
 - Comprehensive pre-PR analysis (< 2 minutes)
 - Matches CI check level
 - Use before creating pull request
 
 **"clang-tidy: Phase 3 (Deep - Weekly)" (All tiers)**
+
 - Full analysis with all checks (5-10 minutes)
 - Uses complete `.clang-tidy` configuration
 - Use before major releases or weekly
@@ -251,15 +269,18 @@ All tasks are defined in `.vscode/tasks.json`. Use `Ctrl+Shift+P` → `Tasks: Ru
 ### Focused Analysis Tasks
 
 **"Analyze Tensor Code (clang-tidy)"**
+
 - Runs standard tier on all `src/core/tensor/` files
 - Uses configuration from `.clang-tidy`
 
 **"Analyze Changed Files (clang-tidy-diff)"**
+
 - Only analyzes lines changed vs. base branch
 - Very fast, ideal for large PRs
 - Prompts for base branch (default: master)
 
 **"Deep Analysis (scan-build)"**
+
 - Uses Clang Static Analyzer (deeper than clang-tidy)
 - Generates HTML report in `.claude/cache/scan-results/`
 - Slower but catches different bug classes
@@ -267,16 +288,19 @@ All tasks are defined in `.vscode/tasks.json`. Use `Ctrl+Shift+P` → `Tasks: Ru
 ### Category-Specific Tasks
 
 **"clang-tidy: Memory Safety Focus"**
+
 ```json
 --checks='bugprone-*,cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc,misc-unconventional-assign-operator,misc-new-delete-overloads'
 ```
 
 **"clang-tidy: Performance Focus"**
+
 ```json
 --checks='performance-*,cert-flp30-c,readability-redundant-*'
 ```
 
 **"clang-tidy: Concurrency Focus"**
+
 ```json
 --checks='concurrency-*,bugprone-multiple-statement-macro,misc-static-assert'
 ```
@@ -286,6 +310,7 @@ All tasks are defined in `.vscode/tasks.json`. Use `Ctrl+Shift+P` → `Tasks: Ru
 Located in `scripts/linting/cpp_cuda/`:
 
 ### `generate_compile_db.sh`
+
 ```bash
 # Generate compilation database
 ./scripts/linting/cpp_cuda/generate_compile_db.sh [build_dir] [clean]
@@ -296,6 +321,7 @@ Located in `scripts/linting/cpp_cuda/`:
 ```
 
 ### `analyze_blocker.sh`
+
 ```bash
 # Fast pre-commit checks (Tier 0)
 ./scripts/linting/cpp_cuda/analyze_blocker.sh [path]
@@ -306,24 +332,28 @@ Located in `scripts/linting/cpp_cuda/`:
 ```
 
 ### `analyze_critical.sh`
+
 ```bash
 # Standard development checks (Tier 0 + 1)
 ./scripts/linting/cpp_cuda/analyze_critical.sh [path]
 ```
 
 ### `analyze_standard.sh`
+
 ```bash
 # Pre-PR checks (Tier 0-2, matches CI)
 ./scripts/linting/cpp_cuda/analyze_standard.sh [path]
 ```
 
 ### `analyze_deep.sh`
+
 ```bash
 # Full analysis (all tiers)
 ./scripts/linting/cpp_cuda/analyze_deep.sh [path]
 ```
 
 ### `analyze_diff.sh`
+
 ```bash
 # Analyze only changed lines
 ./scripts/linting/cpp_cuda/analyze_diff.sh [tier] [base_branch]
@@ -335,6 +365,7 @@ Located in `scripts/linting/cpp_cuda/`:
 ```
 
 ### `analyze_category.sh`
+
 ```bash
 # Analyze specific category
 ./scripts/linting/cpp_cuda/analyze_category.sh <category> [path]
@@ -419,6 +450,7 @@ legacy_function();  // NOLINT
 ```
 
 **Better alternatives:**
+
 1. Fix the code to comply
 2. Refactor to avoid the pattern
 3. Move check to lower tier if consistently problematic
@@ -428,11 +460,11 @@ legacy_function();  // NOLINT
 
 ### Project `.clang-tidy`
 
-Located at project root: `/workspaces/cisTEM/worktrees/refactor_image_class/.clang-tidy`
+Located at project root: `/workspaces/cisTEMx/worktrees/refactor_image_class/.clang-tidy`
 
 ```yaml
 ---
-# cisTEM C++/CUDA Static Analysis Configuration
+# cisTEMx C++/CUDA Static Analysis Configuration
 # Comprehensive multi-tier check system
 # Use --checks= flag to selectively run tiers
 
@@ -487,7 +519,7 @@ WarningsAsErrors: ''  # Don't block builds, just warn
 HeaderFilterRegex: 'src/core/tensor/.*'  # Focus on Tensor initially
 
 CheckOptions:
-  # Naming conventions (cisTEM style)
+  # Naming conventions (cisTEMx style)
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
   - key: readability-identifier-naming.StructCase
@@ -521,6 +553,7 @@ CheckOptions:
 Create `.clang-tidy` in subdirectories to override settings:
 
 **`src/core/tensor/.clang-tidy`:**
+
 ```yaml
 # Tensor-specific overrides
 HeaderFilterRegex: '.*'  # Check all headers in Tensor code
@@ -532,6 +565,7 @@ CheckOptions:
 ```
 
 **`src/gui/.clang-tidy`:**
+
 ```yaml
 # GUI code has different patterns
 Checks: >
@@ -574,6 +608,7 @@ ln -sf build/clang-tidy-debug/compile_commands.json .
 ### When to Regenerate
 
 Regenerate when:
+
 - Adding new source files
 - Changing build configuration
 - Updating compiler flags
@@ -583,9 +618,11 @@ Regenerate when:
 ### Troubleshooting
 
 **Database not found:**
+
 ```bash
 Error: Compilation database not found!
 ```
+
 Solution: Run "Build with Bear" VS Code task
 
 **Stale entries:**
@@ -610,6 +647,7 @@ firefox .claude/cache/scan-results/*/index.html
 ```
 
 **What it finds:**
+
 - Null pointer dereferences
 - Memory leaks
 - Dead code
@@ -704,23 +742,26 @@ jobs:
 ### CI Policy Evolution
 
 **Phase 1 (Current):** Informational only
+
 - Post results as PR comments
 - Don't block merges
 - Gather data on false positive rate
 
 **Phase 2 (After tuning):** Soft enforcement
+
 - Fail CI on Tier 0 violations
 - Warn on Tier 1-2
 - Can override with "skip-lint" label
 
 **Phase 3 (Mature):** Hard enforcement
+
 - Block merge on Tier 0-1 violations
 - Require documented suppression for exceptions
 - Trend reporting for technical debt
 
 ## Custom Check Development
 
-For cisTEM-specific patterns, we can develop custom clang-tidy checks.
+For cisTEMx-specific patterns, we can develop custom clang-tidy checks.
 
 ### Process
 
@@ -734,6 +775,7 @@ For cisTEM-specific patterns, we can develop custom clang-tidy checks.
 ### Example: CUDA Memory Transfer Validation
 
 **Pattern to detect:**
+
 ```cpp
 // BAD: Copying from device to device with cudaMemcpyHostToDevice
 float* d_src;
@@ -742,6 +784,7 @@ cudaMemcpy(d_dst, d_src, size, cudaMemcpyHostToDevice);  // Wrong direction!
 ```
 
 **Custom check pseudocode:**
+
 ```cpp
 // Check name: cistem-cuda-memcpy-direction
 // Analyzes cudaMemcpy calls to validate direction matches pointer types
@@ -764,12 +807,14 @@ See detailed guide in `custom_checks.md` (to be created).
 ### Performance Metrics
 
 **Analysis Speed:**
+
 - Tier 0 (Blocker): < 30 seconds on Tensor subsystem
 - Tier 1 (Critical): < 1 minute
 - Tier 2 (Standard): < 2 minutes
 - Tier 3 (Deep): < 10 minutes
 
 **False Positive Rate:**
+
 - Target: < 5% across all tiers
 - Acceptable: < 10% for Tier 3
 - Action threshold: > 15% requires check tuning
@@ -777,11 +822,13 @@ See detailed guide in `custom_checks.md` (to be created).
 ### Code Quality Metrics
 
 **Issue Trending:**
+
 - Track violations per tier over time
 - Measure reduction in new violations
 - Monitor technical debt (deferred Tier 3 items)
 
 **Coverage:**
+
 - 100% of new code analyzed (Tier 2) before merge
 - 80% of existing code baseline established within 3 months
 - Expand beyond Tensor to other subsystems within 6 months
@@ -791,6 +838,7 @@ See detailed guide in `custom_checks.md` (to be created).
 ### Common Issues
 
 **Issue:** "compilation database not found"
+
 ```bash
 # Solution: Generate database
 cd build/clang-tidy-debug && bear -- make -j$(nproc)
@@ -798,12 +846,14 @@ ln -sf build/clang-tidy-debug/compile_commands.json .
 ```
 
 **Issue:** "header file not found" during analysis
+
 ```bash
 # Solution: Verify database has correct include paths
 jq '.[0].command' build/clang-tidy-debug/compile_commands.json | grep -- -I
 ```
 
 **Issue:** Too many false positives
+
 ```bash
 # Solution 1: Check if using correct tier (maybe using Tier 3 too early)
 # Solution 2: Add check to exclusion list in .clang-tidy
@@ -811,6 +861,7 @@ jq '.[0].command' build/clang-tidy-debug/compile_commands.json | grep -- -I
 ```
 
 **Issue:** Analysis is very slow
+
 ```bash
 # Solution 1: Use parallel execution
 run-clang-tidy-14 -j$(nproc) ...

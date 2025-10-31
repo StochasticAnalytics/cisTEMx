@@ -1,4 +1,4 @@
-name: cisTEM GPU release
+name: cisTEMx GPU release
 
 on:
   workflow_call:

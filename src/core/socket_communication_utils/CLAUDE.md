@@ -1,10 +1,10 @@
-# Socket Communication Utilities for cisTEM
+# Socket Communication Utilities for cisTEMx
 
-This directory contains the core infrastructure for socket-based job distribution and result collection in cisTEM. These components enable distributed processing across multiple worker nodes in a cluster environment.
+This directory contains the core infrastructure for socket-based job distribution and result collection in cisTEMx. These components enable distributed processing across multiple worker nodes in a cluster environment.
 
 ## Architecture Overview
 
-cisTEM uses a hierarchical socket-based architecture for job distribution:
+cisTEMx uses a hierarchical socket-based architecture for job distribution:
 
 ```
 ┌─────────────┐
@@ -44,24 +44,32 @@ cisTEM uses a hierarchical socket-based architecture for job distribution:
 ## Key Components
 
 ### JobPackage
+
 Contains the complete job specification including:
+
 - `RunProfile` - execution parameters (executable_name, gui_address, controller_address, run_commands[])
 - `RunJob[]` - array of individual jobs with arguments
 
 ### RunJob
+
 Represents a single computational task:
+
 - `job_number` - unique identifier
 - `number_of_arguments` - argument count
 - `RunArgument[]` - typed arguments (int, float, bool, string)
 
 ### JobResult
+
 Contains results from a completed job:
+
 - `job_number` - matches the RunJob
 - `result_size` - number of result values
 - `result_data[]` - float array of results
 
 ### RunProfile
+
 Defines the execution environment:
+
 - `executable_name` - program to run
 - `gui_address`, `controller_address` - network addresses
 - `run_commands[]` - shell commands to launch workers
@@ -69,7 +77,9 @@ Defines the execution environment:
 ## Socket Communication Protocol
 
 ### Signal Codes
+
 All socket communications use predefined signal codes before data transfer:
+
 - `socket_sending_job_package` - Sending complete job package
 - `socket_you_are_the_master` - Designating master worker
 - `socket_ready_to_send_single_job` - Individual job transmission
@@ -78,7 +88,9 @@ All socket communications use predefined signal codes before data transfer:
 - `socket_job_finished` - Job completion notification
 
 ### Buffer Transfer Pattern
+
 All data transfers follow this protocol:
+
 ```cpp
 // Sender
 long transfer_size = ReturnEncodedByteTransferSize();
@@ -97,6 +109,7 @@ ReadFromSocket(socket, buffer, transfer_size, ...);
 ## Data Flow Patterns
 
 ### Job Distribution
+
 1. **GUI → Controller:** User submits job via GUI
    - Calls `JobPackage::SendJobPackage(socket)`
 
@@ -109,6 +122,7 @@ ReadFromSocket(socket, buffer, transfer_size, ...);
    - Sends job via `RunJob::SendJob(socket)`
 
 ### Result Collection
+
 1. **Worker → Master:** Worker completes job
    - Sends `socket_job_result` signal
    - Sends result via `JobResult::SendToSocket(socket)`
@@ -123,7 +137,9 @@ ReadFromSocket(socket, buffer, transfer_size, ...);
 ## File Descriptions
 
 ### job_packager.h / job_packager.cpp
+
 Core data structures and serialization methods:
+
 - `JobPackage` - Complete job specification
 - `RunJob` - Individual job with typed arguments
 - `RunArgument` - Type-safe job argument container
@@ -134,27 +150,35 @@ Core data structures and serialization methods:
 - `SendResultQueueToSocket()`, `ReceiveResultQueueFromSocket()` - Batch transfer
 
 ### socket_communicator.h / socket_communicator.cpp
+
 Socket management and monitoring:
+
 - `SocketCommunicator` - Base class for socket-based communication
 - `SocketServerThread` - Accepts incoming connections
 - `SocketClientMonitorThread` - Monitors active connections
 - Virtual handlers for all socket events (must be overridden)
 
 ### socket_codes.h
+
 Protocol signal definitions:
+
 - `SOCKET_CODE_SIZE` - Size of signal codes
 - Signal code constants for all message types
 - `SETUP_SOCKET_CODES` macro for initialization
 
 ### run_profile.h / run_profile.cpp
+
 Execution environment specification:
+
 - `RunProfile` - Launch configuration
 - `RunCommand` - Shell command specification
 - Methods for adding/removing commands
 - Command substitution (e.g., `$command`, `$program_name`)
 
 ### run_profile_manager.h / run_profile_manager.cpp
+
 Management of multiple run profiles:
+
 - `RunProfileManager` - Collection of RunProfile objects
 - Database persistence
 - Profile selection and retrieval
@@ -162,7 +186,9 @@ Management of multiple run profiles:
 ## Encoding and Decoding
 
 ### Current Implementation (Legacy)
+
 Manual byte-by-byte encoding:
+
 ```cpp
 // Example: Encoding wxString
 for (counter = 0; counter < str.Length(); counter++) {
@@ -177,15 +203,17 @@ for (counter = 0; counter < str.Length(); counter++) {
 
 ### Future Enhancement: ByteEncoder/ByteDecoder
 
-A new template-based encoding system is planned (see `/workspaces/cisTEM/.claude/cache/byte_encoder_plan.md`):
+A new template-based encoding system is planned (see `/workspaces/cisTEMx/.claude/cache/byte_encoder_plan.md`):
 
 **Goals:**
+
 - Type-safe encoding/decoding with templates
 - Automatic type deduction
 - Self-describing format (header + data + footer)
 - Backward compatibility via conditional compilation
 
 **Migration Strategy:**
+
 1. Implement `src/core/byte_encoding.h` (header-only)
 2. Guard new code with `#ifdef cisTEM_using_new_byteencoder`
 3. Keep existing code in `#else` blocks
@@ -193,6 +221,7 @@ A new template-based encoding system is planned (see `/workspaces/cisTEM/.claude
 5. Gradual migration after thorough testing
 
 **8 Methods Requiring Updates:**
+
 - `JobPackage::SendJobPackage()` / `ReceiveJobPackage()`
 - `RunJob::SendJob()` / `RecieveJob()`
 - `JobResult::SendToSocket()` / `ReceiveFromSocket()`
@@ -205,7 +234,9 @@ A new template-based encoding system is planned (see `/workspaces/cisTEM/.claude
 **All send/receive method pairs MUST include Doxygen documentation specifying the encoding order.**
 
 #### Pattern: Send Method (Full Specification)
+
 The send method contains the complete encoding specification:
+
 ```cpp
 /**
  * @brief Encodes and sends a JobPackage over a socket
@@ -230,7 +261,9 @@ bool JobPackage::SendJobPackage(wxSocketBase* socket);
 ```
 
 #### Pattern: Receive Method (Reference Only)
+
 The receive method simply references the send method:
+
 ```cpp
 /**
  * @brief Receives and decodes a JobPackage from a socket
@@ -255,10 +288,12 @@ bool JobPackage::ReceiveJobPackage(wxSocketBase* socket);
 ### Required Method Pairs
 
 **Job Distribution:**
+
 - `JobPackage::SendJobPackage()` ↔ `ReceiveJobPackage()`
 - `RunJob::SendJob()` ↔ `RecieveJob()`
 
 **Result Collection:**
+
 - `JobResult::SendToSocket()` ↔ `ReceiveFromSocket()`
 - `SendResultQueueToSocket()` ↔ `ReceiveResultQueueFromSocket()`
 
@@ -273,6 +308,7 @@ bool JobPackage::ReceiveJobPackage(wxSocketBase* socket);
 ## Best Practices
 
 ### Socket Communication
+
 - **Always send signal codes first** before any data
 - **Always send buffer size** as `long` before buffer data
 - **Never block the main thread** - use monitor threads
@@ -280,18 +316,21 @@ bool JobPackage::ReceiveJobPackage(wxSocketBase* socket);
 - **Validate job codes** - prevent cross-job contamination
 
 ### Error Handling
+
 - Use `SendError(wxString)` to propagate errors to GUI
 - Use `SendInfo(wxString)` for status updates
 - Clean up sockets on disconnection
 - Shut down gracefully on fatal errors
 
 ### Thread Safety
+
 - Socket monitoring runs in separate threads
 - Use mutexes for shared data access
 - Never read from sockets outside monitor thread
 - Writing to sockets is thread-safe with proper synchronization
 
 ### Cluster Deployment
+
 - **All nodes must use same binary** (same encoding)
 - **All nodes must have same endianness** (assumed, not checked)
 - Configure firewall to allow socket connections
@@ -301,10 +340,12 @@ bool JobPackage::ReceiveJobPackage(wxSocketBase* socket);
 ## Testing
 
 ### Single-Node Testing
+
 Test complete workflow on one machine:
+
 ```bash
 # Terminal 1: Launch GUI
-./cisTEM
+./cisTEMx
 
 # Terminal 2: Monitor controller
 ps aux | grep cisTEM_job_control
@@ -313,14 +354,17 @@ ps aux | grep cisTEM_job_control
 ```
 
 ### Multi-Node Testing
+
 Test on actual cluster:
-1. Ensure all nodes have same cisTEM build
+
+1. Ensure all nodes have same cisTEMx build
 2. Configure run profile with correct addresses
 3. Start with small job package (2-3 jobs)
 4. Monitor all nodes for errors
 5. Verify result correctness and completeness
 
 ### Common Issues
+
 - **Connection refused:** Check firewall, verify addresses
 - **Mismatched encoding:** All nodes must be same version
 - **Hanging jobs:** Check worker logs, verify executable exists
@@ -329,16 +373,19 @@ Test on actual cluster:
 ## Integration Points
 
 ### GUI Integration
+
 - `gui/job_panel.cpp` - Creates and sends JobPackage
 - `gui/MyRunProfilesPanel.cpp` - Manages run profiles
 - Result handlers update database and display
 
 ### Program Integration
+
 - `core/myapp.cpp` - Base class for all worker programs
 - Programs inherit job handling infrastructure
 - Automatic socket setup and monitoring
 
 ### Database Integration
+
 - Run profiles stored in project database
 - GUI updates database with results
 - Programs do NOT access database directly
@@ -346,6 +393,7 @@ Test on actual cluster:
 ## Future Enhancements
 
 ### Planned Improvements
+
 1. **ByteEncoder/ByteDecoder** - Modern type-safe encoding
 2. **Protocol versioning** - Handle mixed version clusters
 3. **Encryption** - Secure socket communication
@@ -355,7 +403,9 @@ Test on actual cluster:
 7. **Fault tolerance** - Automatic retry on failure
 
 ### Backward Compatibility
+
 All enhancements must maintain compatibility:
+
 - Old GUI should work with new workers (within reason)
 - Graceful degradation when features unavailable
 - Clear error messages for version mismatches

@@ -1,10 +1,11 @@
-# GUI Development Guidelines for cisTEM
+# GUI Development Guidelines for cisTEMx
 
-This file provides GUI-specific guidance for working with wxWidgets in cisTEM's graphical interface.
+This file provides GUI-specific guidance for working with wxWidgets in cisTEMx's graphical interface.
 
 ## Critical wxWidgets Safety Rules
 
 ### Printf Format Specifier Safety
+
 **CRITICAL: Format specifier mismatches cause immediate segmentation faults in wxWidgets.**
 
 ```cpp
@@ -19,6 +20,7 @@ wxPrintf("%ld", int(id));   // SEGFAULT: %ld with int
 ```
 
 ### Unicode Character Restrictions
+
 **Never use Unicode characters in wxPrintf format strings - they cause segfaults.**
 
 ```cpp
@@ -34,6 +36,7 @@ wxPrintf("Angle: 45 deg");         // Use 'deg' not '°'
 ## Memory Management Patterns
 
 ### wxWidgets Parent-Child Ownership
+
 ```cpp
 // Parent-child hierarchy ensures automatic cleanup
 wxDialog* dialog = new wxDialog(parent, ...);
@@ -45,7 +48,9 @@ std::unique_ptr<wxDialog> dialog;  // WRONG: Causes double-deletion
 ```
 
 ### Static Members for Persistence
+
 For data that must survive workflow switches or dialog recreation:
+
 ```cpp
 // In header
 class QueueManager {
@@ -61,6 +66,7 @@ long QueueManager::currently_running_id = -1;
 ## Database Access Patterns
 
 ### Lazy Loading Pattern
+
 **Never access database in constructors - main_frame may be invalid during workflow switches.**
 
 ```cpp
@@ -77,6 +83,7 @@ class MyWidget {
 ```
 
 ### SQL Query Best Practices
+
 ```sql
 -- Format multi-line queries for readability
 SELECT TM.SEARCH_ID,
@@ -93,7 +100,9 @@ ORDER BY TM.QUEUE_ORDER;
 ## Queue Manager Development Patterns
 
 ### Job Tracking Pattern
+
 Track jobs started from queue manager for proper status updates:
+
 ```cpp
 // In panel header
 long running_queue_job_id = -1;
@@ -109,7 +118,9 @@ if (running_queue_job_id > 0) {
 ```
 
 ### Bidirectional Friend Pattern
+
 For clean communication between panels and queue managers:
+
 ```cpp
 // In TemplateMatchPanel.h
 friend class TemplateMatchQueueManager;
@@ -124,37 +135,46 @@ queue_manager->UpdateUIAfterJobComplete(search_id);
 ## Common Workflow Panel Files
 
 ### Core Panel Infrastructure
+
 - `src/gui/MyPanel.cpp/.h` - Base panel class
 - `src/gui/ActionPanel.cpp/.h` - Panel with run controls
 - `src/gui/ResultsPanel.cpp/.h` - Results display base
 
 ### Template Match Workflow
+
 - `src/gui/MatchTemplatePanel.cpp/.h` - Main panel
 - `src/gui/MatchTemplateResultsPanel.cpp/.h` - Results display
 - `src/gui/TemplateMatchQueueManager.cpp/.h` - Queue management dialog
 
 ### Job Management
+
 - `src/gui/MyRunProfilesPanel.cpp/.h` - Run profile management
 - `src/gui/ProjectX_gui_job.cpp/.h` - Job execution framework
 
 ## Debugging Patterns
 
 ### Temporary Debug Code
+
 Mark all temporary debugging with `// revert`:
+
 ```cpp
 // revert - debug output for queue status tracking
 wxPrintf("Queue status: %s\n", status);
 ```
 
 ### Building After Changes
+
 After making GUI changes, always prompt the user to build the project to verify compilation:
+
 - Ask: "Would you like me to build the project to verify these changes?"
 - This ensures immediate feedback on any compilation issues
 
 ## Event Handling Best Practices
 
 ### Toggle Button State Management
+
 **Note: This pattern may not be complete - toggle buttons sometimes require double-click on first use.**
+
 ```cpp
 void OnToggleChanged(wxCommandEvent& event) {
     bool new_state = toggle_button->GetValue();
@@ -171,6 +191,7 @@ void OnToggleChanged(wxCommandEvent& event) {
 ```
 
 ### Workflow Switching Robustness
+
 - Panels are destroyed and recreated during switches
 - Don't assume persistence across workflows
 - Store persistent state in database or static members
@@ -187,6 +208,7 @@ void OnToggleChanged(wxCommandEvent& event) {
 ## File Organization
 
 ### Panel Structure
+
 ```
 src/gui/
 ├── [Feature]Panel.cpp/.h           # Main workflow panel
@@ -196,6 +218,7 @@ src/gui/
 ```
 
 ### Resource Files
+
 ```
 src/gui/icons/
 ├── [feature]_icon.png              # Workflow icons

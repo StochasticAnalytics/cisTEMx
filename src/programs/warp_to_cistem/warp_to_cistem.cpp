@@ -51,9 +51,9 @@ void WarpToCistemApp::DoInteractiveUserInput( ) {
     cistem_parent_directory  = my_input->GetFilenameFromUser("Cistem Project Parent Directory", "The parent directory for the new cistem project", "~/", false);
     project_name             = my_input->GetFilenameFromUser("Project Name", "Name for new cisTEM2 project", "New_Project", false);
     wanted_binned_pixel_size = my_input->GetFloatFromUser("Binned Pixel Size", "Pixel size to resample movies to after import.", "1.0", 0.0);
-    do_import_images         = my_input->GetYesNoFromUser("Import Images?", "Should we import aligned averaged images from WARP (using a different motion correction system than cisTEM)?", "Yes");
+    do_import_images         = my_input->GetYesNoFromUser("Import Images?", "Should we import aligned averaged images from WARP (using a different motion correction system than cisTEMx)?", "Yes");
     if ( do_import_images ) {
-        do_scale_images_and_make_spectra = my_input->GetYesNoFromUser("Generate Scaled Images and Spectra?", "Should we make scaled images and spectra? Scaled images are very slow to generate but accelerate normal cisTEM operations", "No");
+        do_scale_images_and_make_spectra = my_input->GetYesNoFromUser("Generate Scaled Images and Spectra?", "Should we make scaled images and spectra? Scaled images are very slow to generate but accelerate normal cisTEMx operations", "No");
         do_import_ctf_results            = my_input->GetYesNoFromUser("Import CTF Estimates?", "Should we import results of CTF estimation from Warp?", "Yes");
     }
     else {
@@ -496,7 +496,7 @@ RefinementPackage* WarpToCistemApp::LoadRefinementPackageFromLive2D(wxString sta
     for ( int particle_counter = 0; particle_counter < stack_number_of_images; particle_counter++ ) {
         //		 Count number of particles in a given micrograph to associate back to relevant particle ID.
         //		 Micrograph ID = Image ID in this script always, so I can get away with querying movie_list instead of image_list to skip some filename wrangling.
-        //		 This is all necessary because Warp's processing order is very different from cisTEM's import order (and is not consistent, depending on when symlinks are written).
+        //		 This is all necessary because Warp's processing order is very different from cisTEMx's import order (and is not consistent, depending on when symlinks are written).
         if ( movie_name != input_star_file.ReturnMicrographName(particle_counter) ) {
             movie_name                          = input_star_file.ReturnMicrographName(particle_counter);
             particle_coordinate_index_per_image = 0;
@@ -649,7 +649,7 @@ bool WarpToCistemApp::DoCalculation( ) {
     ProgressBar* my_progress;
     long         counter;
 
-    wxPrintf("\nGenerating New cisTEM Project...\n\n");
+    wxPrintf("\nGenerating New cisTEMx Project...\n\n");
 
     if ( warp_directory.EndsWith("/") == false )
         warp_directory += "/";

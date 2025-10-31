@@ -1,6 +1,6 @@
-# Additional programs configuration for cisTEM
+# Additional programs configuration for cisTEMx
 #
-# This file defines optional programs that can be built with cisTEM.
+# This file defines optional programs that can be built with cisTEMx.
 # By default, all programs are built unless --disable-build-all is specified.
 #
 # Configuration flags:

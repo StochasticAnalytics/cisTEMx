@@ -1,3 +1,13 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
 
 // we need a header to describe how to decode the stream. - which i'm about to make up off the top of my head..  SENDER AND RECEIVER MUST HAVE THE SAME ENDIANESS
 

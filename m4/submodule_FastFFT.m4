@@ -19,7 +19,7 @@ use_FastFFT="yes"
 build_FastFFT="no"
 FastFFT_DEFINES=""
 
-# Also introduce synchronizing debug level in FastFFT if it is in place in cisTEM
+# Also introduce synchronizing debug level in FastFFT if it is in place in cisTEMx
 if test "x$want_gpu_debug" = "xyes"; then
     fft_debug_level=4
 else
@@ -51,7 +51,7 @@ AC_ARG_ENABLE(FastFFT, AS_HELP_STRING([--disable-FastFFT],[Do not use the FastFF
         AC_DEFINE([CUFFTDX_DISABLE_RUNTIME_ASSERTS], [], [Define the CUFFTDX_DISABLE_RUNTIME_ASSERTS flag])
        
 
-        # Generally, you probably shouldn't need to use these through cisTEM, but they do need to be defined.
+        # Generally, you probably shouldn't need to use these through cisTEMx, but they do need to be defined.
         # We can't use AC_DEFINE here because the definitions are placed in cistem_config.h which is NOT included in FastFFT      
 
         if test "x$build_FastFFT" = "xno" ; then

@@ -1,8 +1,8 @@
 """
-Temporary Directory Manager for cisTEM tests.
+Temporary Directory Manager for cisTEMx tests.
 
 This module provides functionality to track, list, and clean up temporary directories
-created during cisTEM test runs. It maintains a log file in the current working directory
+created during cisTEMx test runs. It maintains a log file in the current working directory
 that records information about each temporary directory including its path, creation time,
 and a unique identifier.
 """
@@ -17,7 +17,7 @@ from typing import List, Dict, Optional, Tuple, Union
 
 
 class TempDirManager:
-    """Class for managing temporary directories used in cisTEM tests."""
+    """Class for managing temporary directories used in cisTEMx tests."""
     
     def __init__(self):
         """Initialize the TempDirManager with a log file in the current working directory."""

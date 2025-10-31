@@ -109,7 +109,7 @@ bool MyGuiApp::OnInit( ) {
     main_frame = new MyMainFrame((wxWindow*)NULL);
 
     // global config..
-    cistem_config = new wxConfig("cisTEM", "TG");
+    cistem_config = new wxConfig("cisTEMx", "TG");
     wxConfig::Set(cistem_config);
 
     SetupDefaultColorMap( );

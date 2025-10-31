@@ -1,8 +1,8 @@
-# Static Analysis Integration Plan for cisTEM
+# Static Analysis Integration Plan for cisTEMx
 
 ## Executive Summary
 
-This plan outlines the integration of LLVM/Clang static analysis tools into the cisTEM development workflow, with a focus on improving code quality for the heavily templated Tensor system. The integration will use Bear to generate compilation databases and clang-tidy as the primary static analysis tool.
+This plan outlines the integration of LLVM/Clang static analysis tools into the cisTEMx development workflow, with a focus on improving code quality for the heavily templated Tensor system. The integration will use Bear to generate compilation databases and clang-tidy as the primary static analysis tool.
 
 ## Objectives
 
@@ -38,6 +38,7 @@ This plan outlines the integration of LLVM/Clang static analysis tools into the 
 ### Bear Integration
 
 **Why Bear?**
+
 - Intercepts compiler invocations to capture exact build commands
 - Works with any build system (important for our Autotools setup)
 - Generates `compile_commands.json` that clang-tidy requires
@@ -50,9 +51,10 @@ This plan outlines the integration of LLVM/Clang static analysis tools into the 
    - Later: Version 3.1.6 available from source (has more features)
 
 2. **VS Code Task: Configure with Bear**
+
    ```json
    {
-     "label": "Configure cisTEM for Static Analysis (Clang + Bear)",
+     "label": "Configure cisTEMx for Static Analysis (Clang + Bear)",
      "type": "shell",
      "command": "cd build/clang-tidy-debug && ../../configure --enable-debugmode CC=clang CXX=clang++",
      "group": "build",
@@ -61,18 +63,20 @@ This plan outlines the integration of LLVM/Clang static analysis tools into the 
    ```
 
 3. **VS Code Task: Build with Bear**
+
    ```json
    {
      "label": "Build with Bear (Generate compile_commands.json)",
      "type": "shell",
      "command": "cd build/clang-tidy-debug && bear -- make -j$(nproc)",
      "group": "build",
-     "dependsOn": ["Configure cisTEM for Static Analysis (Clang + Bear)"],
+     "dependsOn": ["Configure cisTEMx for Static Analysis (Clang + Bear)"],
      "problemMatcher": ["$gcc"]
    }
    ```
 
 4. **VS Code Task: Clean Build with Bear**
+
    ```json
    {
      "label": "Clean Build with Bear (Full Database)",
@@ -84,6 +88,7 @@ This plan outlines the integration of LLVM/Clang static analysis tools into the 
    ```
 
 5. **Link compilation database to project root**
+
    ```json
    {
      "label": "Link compile_commands.json to Root",
@@ -94,6 +99,7 @@ This plan outlines the integration of LLVM/Clang static analysis tools into the 
    ```
 
 **Rationale for Clang build:**
+
 - Clang-tidy works best with Clang-generated compilation commands
 - Ensures compiler diagnostics match static analysis
 - Avoids ICC-specific extensions that might confuse analysis
@@ -106,7 +112,7 @@ Create `.clang-tidy` in project root with curated checks:
 
 ```yaml
 ---
-# cisTEM clang-tidy configuration
+# cisTEMx clang-tidy configuration
 # Focus: Modern C++17, performance-critical numerical computing, template best practices
 
 Checks: >
@@ -146,6 +152,7 @@ CheckOptions:
 ### Tensor-Specific Check Priorities
 
 **High Priority (Must Fix):**
+
 - `bugprone-use-after-move` - Critical for move semantics
 - `performance-unnecessary-copy-initialization` - Performance critical
 - `performance-move-const-arg` - Incorrect move usage
@@ -154,12 +161,14 @@ CheckOptions:
 - `cppcoreguidelines-special-member-functions` - Rule of 5/0
 
 **Medium Priority (Should Fix):**
+
 - `modernize-use-auto` - Template type deduction
 - `modernize-use-override` - Virtual function safety
 - `readability-redundant-member-init` - Code clarity
 - `performance-noexcept-move-constructor` - Exception safety
 
 **Low Priority (Consider):**
+
 - `modernize-use-nodiscard` - API safety
 - `readability-const-return-type` - Const correctness
 - `cppcoreguidelines-pro-type-reinterpret-cast` - Type safety
@@ -167,6 +176,7 @@ CheckOptions:
 ### Suppression Strategy
 
 Use `NOLINT` comments sparingly for legitimate cases:
+
 ```cpp
 // Intentional pointer arithmetic for SIMD alignment
 float* aligned_ptr = ptr + offset;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -177,6 +187,7 @@ float* aligned_ptr = ptr + offset;  // NOLINT(cppcoreguidelines-pro-bounds-point
 ### Additional Tasks for tasks.json
 
 1. **Run clang-tidy on Tensor files**
+
    ```json
    {
      "label": "Analyze Tensor Code (clang-tidy)",
@@ -200,6 +211,7 @@ float* aligned_ptr = ptr + offset;  // NOLINT(cppcoreguidelines-pro-bounds-point
    ```
 
 2. **Run clang-tidy on changed files only**
+
    ```json
    {
      "label": "Analyze Changed Files (clang-tidy-diff)",
@@ -223,6 +235,7 @@ float* aligned_ptr = ptr + offset;  // NOLINT(cppcoreguidelines-pro-bounds-point
    ```
 
 3. **Fix issues automatically (careful!)**
+
    ```json
    {
      "label": "Apply clang-tidy Fixes (Auto-fix)",
@@ -238,6 +251,7 @@ float* aligned_ptr = ptr + offset;  // NOLINT(cppcoreguidelines-pro-bounds-point
 Create in `.claude/scripts/` directory:
 
 ### 1. `analyze_tensor.sh`
+
 ```bash
 #!/usr/bin/env bash
 # Run clang-tidy on all Tensor source files
@@ -259,6 +273,7 @@ find "$TENSOR_DIR" -name '*.cpp' -o -name '*.cu' | \
 ```
 
 ### 2. `analyze_diff.sh`
+
 ```bash
 #!/usr/bin/env bash
 # Run clang-tidy only on changed lines in current branch
@@ -279,6 +294,7 @@ git diff -U0 "$BASE_BRANCH" | \
 ```
 
 ### 3. `analyze_and_fix.sh`
+
 ```bash
 #!/usr/bin/env bash
 # Run clang-tidy with auto-fix (USE WITH CAUTION)
@@ -302,6 +318,7 @@ echo "Files modified. Please review changes with 'git diff'"
 ```
 
 ### 4. `generate_compile_db.sh`
+
 ```bash
 #!/usr/bin/env bash
 # Generate compilation database with Bear
@@ -341,26 +358,33 @@ echo "Linked to project root for IDE integration"
 ### For Developers Working on Tensor Code
 
 1. **One-time setup** (per development session):
+
    ```
    Tasks: Build with Bear (Generate compile_commands.json)
    ```
 
 2. **Before committing**:
+
    ```
    Tasks: Analyze Changed Files (clang-tidy-diff)
    ```
+
    Review and fix warnings before committing
 
 3. **Deep analysis** (periodic):
+
    ```
    Tasks: Analyze Tensor Code (clang-tidy)
    ```
+
    Run full analysis on Tensor subsystem
 
 4. **Auto-fix simple issues** (optional):
+
    ```
    Tasks: Apply clang-tidy Fixes (Auto-fix)
    ```
+
    Then review with `git diff` before committing
 
 ### Integration with Existing Workflow
@@ -450,6 +474,7 @@ scan-build-14 -o /tmp/scan-results make -j16
 ```
 
 **VS Code Task:**
+
 ```json
 {
   "label": "Deep Analysis (scan-build)",
@@ -464,6 +489,7 @@ scan-build-14 -o /tmp/scan-results make -j16
 **When to use:** Custom code pattern searches
 
 Example: Find all raw pointer allocations in Tensor code:
+
 ```bash
 clang-query-14 -p build/clang-tidy-debug src/core/tensor/*.cpp \
   -c "match cxxNewExpr()"
@@ -480,6 +506,7 @@ clang-check-14 -p build/clang-tidy-debug src/core/tensor/type_traits.h
 ## Implementation Roadmap
 
 ### Week 1: Foundation ✅ COMPLETE (2025-10-04)
+
 - [x] Install Bear 3.1.6 in devcontainer
 - [x] Create VS Code tasks for Bear integration
 - [x] Generate initial compilation database (12,389 entries)
@@ -487,6 +514,7 @@ clang-check-14 -p build/clang-tidy-debug src/core/tensor/type_traits.h
 - [x] Update directory naming to `clang-tidy-debug` for clarity
 
 ### Week 2: Configuration ✅ COMPLETE (2025-10-04)
+
 - [x] Create `.clang-tidy` configuration file with multi-tier system
 - [x] Create helper scripts in `scripts/linting/cpp_cuda/`
   - [x] analyze_blocker.sh (Tier 0)
@@ -498,18 +526,21 @@ clang-check-14 -p build/clang-tidy-debug src/core/tensor/type_traits.h
 - [x] Document workflow in CLAUDE.md and scripts/linting/CLAUDE.md
 
 ### Week 3: Developer Adoption (IN PROGRESS)
+
 - [ ] Run analysis on existing Tensor code
 - [ ] Create baseline of current issues
 - [ ] Fix high-priority issues
 - [ ] Train team on workflow
 
 ### Week 4: Refinement
+
 - [ ] Tune checks based on feedback
 - [ ] Add suppression comments where needed
 - [ ] Create quick reference guide
 - [ ] Set up pre-commit hook (optional)
 
 ### Future: CI Integration
+
 - [ ] Add GitHub Actions workflow
 - [ ] Integrate with PR reviews
 - [ ] Generate trend reports

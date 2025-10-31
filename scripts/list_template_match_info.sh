@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Helper script to list available template matching jobs and image groups from a cisTEM database
+# Helper script to list available template matching jobs and image groups from a cisTEMx database
 # Usage: list_template_match_info.sh <database_path>
 
 set -e
@@ -12,7 +12,7 @@ if [ $# -ne 1 ]; then
     echo "to help you choose parameters for filter_template_matches_to_group.sh"
     echo ""
     echo "Arguments:"
-    echo "  database_path : Path to the cisTEM project database file (.db)"
+    echo "  database_path : Path to the cisTEMx project database file (.db)"
     exit 1
 fi
 
@@ -30,7 +30,7 @@ if ! command -v sqlite3 &> /dev/null; then
     exit 1
 fi
 
-echo "=== cisTEM Database Information ==="
+echo "=== cisTEMx Database Information ==="
 echo "Database: $DATABASE_PATH"
 echo ""
 

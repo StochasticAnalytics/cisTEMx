@@ -1,6 +1,6 @@
-# Static Analysis and Linting for cisTEM
+# Static Analysis and Linting for cisTEMx
 
-This directory contains configuration, documentation, and tools for static analysis and linting across the cisTEM codebase.
+This directory contains configuration, documentation, and tools for static analysis and linting across the cisTEMx codebase.
 
 ## Philosophy
 
@@ -18,11 +18,13 @@ This directory contains configuration, documentation, and tools for static analy
 ## Language-Specific Guides
 
 ### C++ and CUDA
+
 **Location:** `scripts/linting/cpp_cuda/`
 **Primary Tool:** clang-tidy (LLVM 14+)
 **Status:** ✅ Active
 
 Comprehensive static analysis for:
+
 - Memory safety and ownership
 - Performance optimization opportunities
 - Modern C++ idioms (C++17)
@@ -33,11 +35,13 @@ Comprehensive static analysis for:
 See [`cpp_cuda/CLAUDE.md`](cpp_cuda/CLAUDE.md) for detailed implementation guide.
 
 ### Shell Scripts
+
 **Location:** `scripts/linting/shell/`
 **Primary Tools:** shellcheck, shfmt
 **Status:** 📋 Planned
 
 Shell script analysis for:
+
 - Common scripting errors
 - Portability issues
 - Security vulnerabilities
@@ -46,11 +50,13 @@ Shell script analysis for:
 See [`shell/CLAUDE.md`](shell/CLAUDE.md) for details.
 
 ### Python
+
 **Location:** `scripts/linting/python/`
 **Primary Tools:** pylint, flake8, black, mypy
 **Status:** 📋 Planned
 
 Python code analysis for:
+
 - PEP 8 compliance
 - Type checking
 - Code formatting
@@ -59,11 +65,13 @@ Python code analysis for:
 See [`python/CLAUDE.md`](python/CLAUDE.md) for details.
 
 ### Build Systems
+
 **Location:** `scripts/linting/build_systems/`
 **Primary Tools:** (TBD - autotools, cmake linting)
 **Status:** 📋 Planned
 
 Build system validation for:
+
 - Makefile.am correctness
 - CMakeLists.txt best practices
 - Dependency tracking
@@ -76,6 +84,7 @@ See [`build_systems/CLAUDE.md`](build_systems/CLAUDE.md) for details.
 ### For Developers
 
 **Before committing:**
+
 ```bash
 # Run fast, critical checks only
 ./scripts/linting/cpp_cuda/analyze_critical.sh
@@ -84,6 +93,7 @@ See [`build_systems/CLAUDE.md`](build_systems/CLAUDE.md) for details.
 ```
 
 **Before creating PR:**
+
 ```bash
 # Run standard tier checks on changed files
 ./scripts/linting/cpp_cuda/analyze_diff.sh standard
@@ -92,6 +102,7 @@ See [`build_systems/CLAUDE.md`](build_systems/CLAUDE.md) for details.
 ```
 
 **Deep analysis (periodic):**
+
 ```bash
 # Run comprehensive analysis on subsystem
 ./scripts/linting/cpp_cuda/analyze_deep.sh
@@ -102,18 +113,20 @@ See [`build_systems/CLAUDE.md`](build_systems/CLAUDE.md) for details.
 ### CI Integration
 
 **Pull Request Checks:**
+
 - Phase 2 (Standard tier) on changed files
 - Report findings as PR comments
 - Warn on issues, block on critical errors
 
 **Nightly Builds:**
+
 - Phase 3 (Deep tier) on entire codebase
 - Generate trend reports
 - Identify technical debt
 
 ## Tool Installation
 
-All linting tools are installed in the cisTEM development container:
+All linting tools are installed in the cisTEMx development container:
 
 ```dockerfile
 # LLVM/Clang tools (already installed)
@@ -137,6 +150,7 @@ See `scripts/containers/top_image/Dockerfile` for current installation.
 ## Configuration Files
 
 ### Project Root
+
 - `.clang-tidy` - Comprehensive C++/CUDA check configuration
 - `.clang-format` - Code formatting rules (already active)
 - `.shellcheckrc` - Shell script linting config (planned)
@@ -144,7 +158,9 @@ See `scripts/containers/top_image/Dockerfile` for current installation.
 - `pyproject.toml` - Python tool configuration (planned)
 
 ### Directory-Specific Overrides
+
 Each subsystem can override settings with local `.clang-tidy` files:
+
 ```
 src/core/tensor/.clang-tidy  # Tensor-specific rules
 src/gui/.clang-tidy           # GUI-specific rules
@@ -156,6 +172,7 @@ src/programs/.clang-tidy      # Program-specific rules
 All linting tasks are integrated into VS Code tasks.json:
 
 **Task naming convention:**
+
 - `Configure for Static Analysis` - Setup build environment
 - `Build with Bear` - Generate compilation database
 - `clang-tidy: <Level>` - Run analysis at specified level
@@ -168,16 +185,19 @@ Use `Ctrl+Shift+P` → `Tasks: Run Task` to execute.
 ### Success Criteria
 
 **Developer Experience:**
+
 - Pre-commit checks complete in < 30 seconds
 - Standard tier checks complete in < 2 minutes
 - False positive rate < 5%
 
 **Code Quality:**
+
 - Zero critical issues in new code
 - Trending reduction in warnings
 - Consistent application of modern C++ idioms
 
 **Coverage:**
+
 - 100% of new code analyzed before merge
 - 80% of existing code analyzed within 6 months
 - Expand to all languages within 12 months
@@ -205,9 +225,10 @@ Use `Ctrl+Shift+P` → `Tasks: Run Task` to execute.
 
 ## Custom Check Development
 
-For cisTEM-specific patterns not covered by standard tools:
+For cisTEMx-specific patterns not covered by standard tools:
 
 **High-value custom check candidates:**
+
 - CUDA memory transfer patterns (H2D/D2H correctness)
 - FFTW plan lifecycle management
 - Memory pool acquire/release pairing
@@ -215,6 +236,7 @@ For cisTEM-specific patterns not covered by standard tools:
 - Thread-safe MKL usage
 
 **Process:**
+
 1. Document pattern in `cpp_cuda/custom_checks.md`
 2. Prototype using clang-query
 3. Implement as clang-tidy check module
@@ -226,6 +248,7 @@ See `cpp_cuda/CLAUDE.md` for custom check development guide.
 ## Troubleshooting
 
 ### Compilation Database Issues
+
 ```bash
 # Regenerate database
 cd build/clang-tidy-debug
@@ -235,7 +258,9 @@ ln -sf $(pwd)/compile_commands.json ../../
 ```
 
 ### Tool Version Mismatches
+
 All tools should use matching LLVM version:
+
 ```bash
 clang-tidy-14 --version
 clang-format-14 --version
@@ -243,12 +268,14 @@ bear --version  # Should be 3.0+
 ```
 
 ### High False Positive Rate
+
 1. Review check documentation: `clang-tidy-14 -checks='*' -list-checks`
 2. Add suppressions with `// NOLINT(check-name)` sparingly
 3. Consider moving check to lower tier
 4. Document rationale in tier comments
 
 ### Performance Issues
+
 - Use `-j$(nproc)` with `run-clang-tidy` for parallelization
 - Analyze subsystems separately
 - Use `-quiet` flag to reduce output overhead
@@ -256,7 +283,7 @@ bear --version  # Should be 3.0+
 
 ## References
 
-- [cisTEM Build System](../CLAUDE.md)
+- [cisTEMx Build System](../CLAUDE.md)
 - [C++/CUDA Linting Guide](cpp_cuda/CLAUDE.md)
 - [clang-tidy Documentation](https://clang.llvm.org/extra/clang-tidy/)
 - [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/)
@@ -264,6 +291,7 @@ bear --version  # Should be 3.0+
 ## Questions or Issues?
 
 For questions about linting integration:
+
 1. Check the language-specific CLAUDE.md
 2. Review tool documentation
 3. Ask in team discussions

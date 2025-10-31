@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 #include "../core/gui_core_headers.h"
 
 DisplayPanel::DisplayPanel(wxWindow* parent, wxWindowID id, const wxPoint& pos, const wxSize& size, long style)
@@ -402,7 +413,7 @@ void DisplayPanel::OnOpen(wxCommandEvent& WXUNUSED(event)) {
 
         if ( is_valid ) {
             /* In Tigris, there was the option to specify the filetype to open it with the appropriate
-            function; in cisTEM, we have a switch case that is determined by using an if statement
+            function; in cisTEMx, we have a switch case that is determined by using an if statement
             with a sequence of operator=|| that checks the extension; it will only open the file if the
             extension is included in this list, which is not robust against the various extensions that
             could exist*/
@@ -2295,8 +2306,8 @@ void DisplayNotebookPanel::ReDrawPanel(void) {
         scaled_y_size = long(myround(ReturnImageYSize( ) * desired_scale_factor));
 
         // For stacks of 2d images and slices of 3d, we intentionally limit the max scaling to whatever is capable of fitting within the size of the window.
-        // Done because the DisplayPanel is used in several areas of cisTEM without the ability to remove Single Image Mode; this could result in scaled
-        // images in the main cisTEM GUI that could not be adjusted, whereas this viewing mode can be disabled in the cisTEM_display program.
+        // Done because the DisplayPanel is used in several areas of cisTEMx without the ability to remove Single Image Mode; this could result in scaled
+        // images in the main cisTEMx GUI that could not be adjusted, whereas this viewing mode can be disabled in the cisTEM_display program.
         if ( single_image ) {
             actual_scale_factor = desired_scale_factor;
         }

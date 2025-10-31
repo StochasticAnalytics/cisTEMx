@@ -48,7 +48,7 @@ void Project3DApp::DoInteractiveUserInput( ) {
     project_based_on_star = my_input->GetYesNoFromUser("Angles from input .star file?", "If yes, angles and shifts will be obtained from an input star file, if not they will be made on a grid", "Yes");
 
     if ( project_based_on_star == true ) {
-        input_star_filename = my_input->GetFilenameFromUser("Input cisTEM star filename", "The input parameter file, containing your particle alignment parameters", "my_parameters.star", true);
+        input_star_filename = my_input->GetFilenameFromUser("Input cisTEMx star filename", "The input parameter file, containing your particle alignment parameters", "my_parameters.star", true);
         first_particle      = my_input->GetIntFromUser("First particle to project (0 = first in list)", "The first particle in the stack for which a projection should be calculated", "1", 0);
         last_particle       = my_input->GetIntFromUser("Last particle to project (0 = last in list)", "The last particle in the stack for which a projection should be calculated", "0", 0);
         apply_CTF           = my_input->GetYesNoFromUser("Apply CTF", "Should the CTF be applied to the output projections?", "No");

@@ -940,10 +940,10 @@ bool CalculateTemplatePvalue::DoCalculation( ) {
 
                 wxPrintf("Found %i peaks above cutoff...\n", filteredLocalMaxima.size( ));
 
-                // write cisTEM star output for batch images
+                // write cisTEMx star output for batch images
                 for ( int rowId = 0; rowId < filteredLocalMaxima.size( ); ++rowId ) {
                     output_parameters.SetAllToZero( );
-                    // output cisTEM formatted star file
+                    // output cisTEMx formatted star file
                     auto& current_peak                                             = filteredLocalMaxima[rowId];
                     int   coord_x                                                  = std::get<1>(current_peak);
                     int   coord_y                                                  = std::get<2>(current_peak);

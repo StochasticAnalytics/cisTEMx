@@ -1,6 +1,6 @@
 # Shell Script Linting
 
-Static analysis and linting for shell scripts in cisTEM.
+Static analysis and linting for shell scripts in cisTEMx.
 
 ## Status
 
@@ -11,10 +11,12 @@ Minimal shellcheck linting is now available for shell script validation.
 ## Planned Tools
 
 ### shellcheck
+
 **Purpose:** Static analysis for shell scripts
-**Website:** https://www.shellcheck.net/
+**Website:** <https://www.shellcheck.net/>
 
 **What it detects:**
+
 - Common scripting errors (unquoted variables, etc.)
 - Portability issues (bashisms in sh scripts)
 - Security vulnerabilities (injection risks)
@@ -22,6 +24,7 @@ Minimal shellcheck linting is now available for shell script validation.
 - Performance anti-patterns
 
 **Example usage:**
+
 ```bash
 # Check single script
 shellcheck scripts/regenerate_project.b
@@ -34,15 +37,18 @@ shellcheck -s bash scripts/build_helper.sh
 ```
 
 ### shfmt
+
 **Purpose:** Shell script formatter
-**Website:** https://github.com/mvdan/sh
+**Website:** <https://github.com/mvdan/sh>
 
 **What it does:**
+
 - Consistent indentation (2 or 4 spaces)
 - Standardized spacing
 - Simplified syntax where possible
 
 **Example usage:**
+
 ```bash
 # Format in-place
 shfmt -w scripts/*.sh
@@ -68,10 +74,11 @@ Shell scripts to be linted:
 ## Planned Configuration
 
 ### `.shellcheckrc`
+
 Located at project root:
 
 ```bash
-# Disable checks that conflict with cisTEM patterns
+# Disable checks that conflict with cisTEMx patterns
 disable=SC2086  # Allow word splitting for build flags
 disable=SC2046  # Allow word splitting in command substitution
 
@@ -106,12 +113,14 @@ source-path=SCRIPTDIR
 ## Planned Workflow
 
 **Pre-commit:**
+
 ```bash
 # Quick check on modified scripts
 git diff --name-only --cached | grep '\.sh$' | xargs shellcheck
 ```
 
 **CI Integration:**
+
 ```bash
 # Check all scripts
 find scripts/ -name '*.sh' -o -name '*.b' | xargs shellcheck
@@ -123,6 +132,7 @@ shfmt -d scripts/
 ## Common Shell Issues to Detect
 
 **Unquoted variables:**
+
 ```bash
 # BAD
 for file in $FILES; do
@@ -132,6 +142,7 @@ for file in "$FILES"; do
 ```
 
 **Missing error checking:**
+
 ```bash
 # BAD
 cd /some/path
@@ -143,6 +154,7 @@ rm -rf ./*
 ```
 
 **Useless use of cat:**
+
 ```bash
 # BAD
 cat file.txt | grep pattern
@@ -152,6 +164,7 @@ grep pattern file.txt
 ```
 
 **Portability:**
+
 ```bash
 # BAD (bashism in sh script)
 #!/bin/sh

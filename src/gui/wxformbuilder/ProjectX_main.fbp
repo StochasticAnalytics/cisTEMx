@@ -1,3 +1,12 @@
+<!--
+Original Copyright (c) 2017, Howard Hughes Medical Institute
+Licensed under Janelia Research Campus Software License 1.2
+See license_details/LICENSE-JANELIA.txt
+Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+Modifications licensed under MPL 2.0 for academic use; 
+commercial license required for commercial use.
+See LICENSE.md for details.
+-->
 <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <wxFormBuilder_Project>
     <FileVersion major="1" minor="16" />
@@ -50,7 +59,7 @@
             <property name="size">1366,768</property>
             <property name="style">wxDEFAULT_FRAME_STYLE</property>
             <property name="subclass"></property>
-            <property name="title">cisTEM</property>
+            <property name="title">cisTEMx</property>
             <property name="tooltip"></property>
             <property name="two_step_creation">0</property>
             <property name="window_extra_style"></property>
@@ -1300,7 +1309,7 @@
             <property name="size"></property>
             <property name="style">wxDEFAULT_DIALOG_STYLE</property>
             <property name="subclass"></property>
-            <property name="title">About cisTEM</property>
+            <property name="title">About cisTEMx</property>
             <property name="tooltip"></property>
             <property name="two_step_creation">0</property>
             <property name="window_extra_style"></property>
@@ -1517,7 +1526,7 @@
                         <property name="gripper">0</property>
                         <property name="hidden">0</property>
                         <property name="id">wxID_ANY</property>
-                        <property name="label">cisTEM version 1.0beta-RC1</property>
+                        <property name="label">cisTEMx version 1.0beta-RC1</property>
                         <property name="markup">0</property>
                         <property name="max_size"></property>
                         <property name="maximize_button">0</property>
@@ -2628,7 +2637,7 @@
                                 <property name="gripper">0</property>
                                 <property name="hidden">0</property>
                                 <property name="id">wxID_ANY</property>
-                                <property name="label">cisTEM can try to update the database schema format, which for databases with many classifications and refinements from earlier versions of cisTEM can take a long time. &#x0A;&#x0A;It is wise to make a backup before trying this, and to ensure there is enough space remaining on your disk to do so.&#x0A;&#x0A;Attempt to update the project?</property>
+                                <property name="label">cisTEMx can try to update the database schema format, which for databases with many classifications and refinements from earlier versions of cisTEMx can take a long time. &#x0A;&#x0A;It is wise to make a backup before trying this, and to ensure there is enough space remaining on your disk to do so.&#x0A;&#x0A;Attempt to update the project?</property>
                                 <property name="markup">0</property>
                                 <property name="max_size"></property>
                                 <property name="maximize_button">0</property>

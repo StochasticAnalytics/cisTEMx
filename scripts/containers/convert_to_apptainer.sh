@@ -3,7 +3,7 @@
 #########################################################################################################################################################################################
 ### PURPOSE:
 #####################
-# Convert cisTEM Docker container to Apptainer/Singularity format (.sif file)
+# Convert cisTEMx Docker container to Apptainer/Singularity format (.sif file)
 # This enables use of the development environment on HPC systems that use Apptainer/Singularity instead of Docker
 #########################################################################################################################################################################################
 
@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Usage: convert_to_apptainer.sh [OPTIONS]"
       echo ""
-      echo "Convert cisTEM Docker container to Apptainer/Singularity .sif format"
+      echo "Convert cisTEMx Docker container to Apptainer/Singularity .sif format"
       echo ""
       echo "Options:"
       echo "  -h, --help                   Show this help message"

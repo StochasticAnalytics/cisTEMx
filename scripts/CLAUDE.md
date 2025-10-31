@@ -1,15 +1,17 @@
-# Build System and Scripts Guidelines for cisTEM
+# Build System and Scripts Guidelines for cisTEMx
 
-This file provides guidance for working with cisTEM's build system and utility scripts.
+This file provides guidance for working with cisTEMx's build system and utility scripts.
 
 ## Build System Overview
 
-cisTEM uses GNU Autotools as the primary build system, with CMake as an alternative. The build system handles complex dependencies including Intel MKL, CUDA, and wxWidgets.
+cisTEMx uses GNU Autotools as the primary build system, with CMake as an alternative. The build system handles complex dependencies including Intel MKL, CUDA, and wxWidgets.
 
 ## Autotools Build Process
 
 ### Project Regeneration
+
 After modifying build system files:
+
 ```bash
 # Required after changes to:
 # - configure.ac
@@ -19,6 +21,7 @@ After modifying build system files:
 ```
 
 ### Configuration and Building
+
 ```bash
 # Create build directory
 mkdir -p build/intel-debug-static
@@ -36,6 +39,7 @@ make -j16
 ```
 
 ### Common Configure Options
+
 - `--enable-debugmode` - Debug build with assertions
 - `--enable-staticmode` - Static linking
 - `--enable-gpu` - Enable CUDA support
@@ -47,13 +51,17 @@ make -j16
 ## VS Code Integration
 
 ### Task Configuration
+
 Build tasks are defined in `.vscode/tasks.json`:
-- `Configure cisTEM DEBUG build` - Run configure
-- `BUILD cisTEM DEBUG` - Compile the project
+
+- `Configure cisTEMx DEBUG build` - Run configure
+- `BUILD cisTEMx DEBUG` - Compile the project
 - Various compiler/configuration combinations
 
 ### After Making Changes
+
 Always prompt the user to build:
+
 ```
 "Would you like me to build the project to verify these changes?"
 ```
@@ -61,6 +69,7 @@ Always prompt the user to build:
 ## Docker Development Environment
 
 ### Container Architecture
+
 ```
 scripts/containers/
 ├── base_container/      # Base OS and dependencies
@@ -68,6 +77,7 @@ scripts/containers/
 ```
 
 ### Container Management
+
 ```bash
 # Regenerate containers after Dockerfile changes
 ./regenerate_containers.sh
@@ -81,24 +91,30 @@ scripts/containers/
 ## Utility Scripts
 
 ### Project Scripts
+
 - `regenerate_project.b` - Regenerate autotools files
 - `regenerate_containers.sh` - Rebuild Docker containers
 - `scripts/testing/run_tests.sh` - Execute test suite
 
 ### Build Helper Scripts
+
 Located in `scripts/build/`:
+
 - Helper scripts for different build configurations
 - Compiler setup scripts
 - Dependency verification
 
 ### Static Analysis and Linting Scripts
+
 Located in `scripts/linting/`:
+
 - **C++/CUDA linting** (`cpp_cuda/`) - clang-tidy multi-tier analysis
 - **Shell script linting** (`shell/`) - shellcheck validation (planned)
 - **Python linting** (`python/`) - pylint, flake8, black (planned)
 - **Build system validation** (`build_systems/`) - Autotools/CMake checks (planned)
 
 **Quick commands:**
+
 ```bash
 # Pre-commit: Fast critical checks
 ./scripts/linting/cpp_cuda/analyze_blocker.sh
@@ -115,7 +131,9 @@ See `scripts/linting/CLAUDE.md` for comprehensive documentation.
 ## Adding New Source Files
 
 ### Updating Makefile.am
+
 When adding new source files:
+
 ```makefile
 # In src/gui/Makefile.am
 cisTEM_SOURCES += \
@@ -129,6 +147,7 @@ new_program_SOURCES = \
 ```
 
 After updating Makefile.am:
+
 ```bash
 ./regenerate_project.b
 # Then reconfigure and rebuild
@@ -137,6 +156,7 @@ After updating Makefile.am:
 ## Testing Scripts
 
 ### Running Tests
+
 ```bash
 # Unit tests
 ./build/src/unit_test_runner
@@ -149,7 +169,9 @@ After updating Makefile.am:
 ```
 
 ### CI Integration
+
 GitHub Actions workflows in `.github/workflows/`:
+
 - Define test matrices
 - Specify compiler configurations
 - Run automated tests
@@ -157,7 +179,9 @@ GitHub Actions workflows in `.github/workflows/`:
 ## Performance Scripts
 
 ### Profiling Tools
+
 Scripts for performance analysis:
+
 ```bash
 # Intel VTune profiling
 scripts/profile/run_vtune.sh program_name
@@ -169,16 +193,19 @@ scripts/profile/check_memory.sh program_name
 ## Common Issues and Solutions
 
 ### Dependency Issues
+
 - MKL not found: Check `MKLROOT` environment variable
 - wxWidgets issues: Verify `wx-config` path
 - CUDA problems: Ensure CUDA toolkit is installed
 
 ### Build Failures
+
 - Run `make clean` before rebuilding after configuration changes
 - Delete build directory for clean rebuild
 - Check compiler versions match requirements
 
 ### Parallel Build Issues
+
 - Some targets may have race conditions
 - Use `make -j1` for debugging build issues
 - Report parallel build failures for fixing

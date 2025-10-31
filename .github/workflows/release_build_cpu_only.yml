@@ -1,4 +1,4 @@
-name: cisTEM cpu release
+name: cisTEMx cpu release
 
 on:
   workflow_call:

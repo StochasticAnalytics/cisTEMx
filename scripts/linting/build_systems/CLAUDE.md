@@ -1,6 +1,6 @@
 # Build System Linting
 
-Static analysis and validation for build system files in cisTEM.
+Static analysis and validation for build system files in cisTEMx.
 
 ## Status
 
@@ -10,7 +10,8 @@ This guide is a placeholder for future build system linting and validation.
 
 ## Overview
 
-cisTEM uses multiple build systems that could benefit from validation:
+cisTEMx uses multiple build systems that could benefit from validation:
+
 - **Autotools** (primary) - configure.ac, Makefile.am files
 - **CMake** (alternative) - CMakeLists.txt files
 - **Docker** - Dockerfiles for development containers
@@ -21,18 +22,21 @@ cisTEM uses multiple build systems that could benefit from validation:
 ### For Autotools
 
 **autoreconf warnings:**
+
 ```bash
 # Check for common autotools issues
 autoreconf -vi -Wall 2>&1 | grep -i warning
 ```
 
 **automake strict mode:**
+
 ```bash
 # Enable all warnings
 automake --add-missing --copy --warnings=all
 ```
 
 **Custom validation script:**
+
 ```bash
 # Check for common issues in Makefile.am
 scripts/linting/build_systems/check_automake.sh
@@ -41,15 +45,17 @@ scripts/linting/build_systems/check_automake.sh
 ### For CMake
 
 **cmake-lint**
-**Website:** https://github.com/cheshirekow/cmake_format
+**Website:** <https://github.com/cheshirekow/cmake_format>
 
 **What it detects:**
+
 - CMake style issues
 - Common mistakes
 - Deprecated commands
 - Variable naming
 
 **Example:**
+
 ```bash
 cmake-lint CMakeLists.txt
 cmake-format -i CMakeLists.txt  # Format
@@ -58,15 +64,17 @@ cmake-format -i CMakeLists.txt  # Format
 ### For Dockerfiles
 
 **hadolint**
-**Website:** https://github.com/hadolint/hadolint
+**Website:** <https://github.com/hadolint/hadolint>
 
 **What it detects:**
+
 - Best practice violations
 - Common mistakes
 - Security issues
 - Optimization opportunities
 
 **Example:**
+
 ```bash
 hadolint scripts/containers/base_image/Dockerfile
 hadolint scripts/containers/top_image/Dockerfile
@@ -77,6 +85,7 @@ hadolint scripts/containers/top_image/Dockerfile
 ### Autotools Issues
 
 **Missing dependencies in Makefile.am:**
+
 ```makefile
 # BAD - missing header dependency
 tensor_test_SOURCES = test_tensor.cpp
@@ -89,6 +98,7 @@ tensor_test_SOURCES = \
 ```
 
 **Incorrect variable usage:**
+
 ```makefile
 # BAD - using wrong variable
 bin_PROGRAMS = my_program
@@ -102,6 +112,7 @@ my_program_CXXFLAGS = -O2
 ```
 
 **Missing SUBDIRS dependencies:**
+
 ```makefile
 # Check that SUBDIRS are processed in correct order
 # for proper dependency handling
@@ -110,6 +121,7 @@ my_program_CXXFLAGS = -O2
 ### CMake Issues
 
 **Deprecated commands:**
+
 ```cmake
 # BAD
 include_directories(${SOME_DIR})
@@ -121,6 +133,7 @@ target_link_directories(my_target PRIVATE ${SOME_LIB_DIR})
 ```
 
 **Global variables:**
+
 ```cmake
 # BAD
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
@@ -132,6 +145,7 @@ target_compile_options(my_target PRIVATE -Wall)
 ### Dockerfile Issues
 
 **Missing version pins:**
+
 ```dockerfile
 # BAD
 RUN apt-get update && apt-get install -y \
@@ -146,6 +160,7 @@ RUN apt-get update && apt-get install -y \
 ```
 
 **Inefficient layers:**
+
 ```dockerfile
 # BAD
 RUN apt-get update
@@ -299,11 +314,12 @@ jobs:
 }
 ```
 
-## Specific Checks for cisTEM
+## Specific Checks for cisTEMx
 
 ### Autotools Consistency
 
 **Check that all source files are listed:**
+
 ```bash
 # Find .cpp files not in any Makefile.am
 find src -name "*.cpp" | while read -r file; do
@@ -314,6 +330,7 @@ done
 ```
 
 **Verify CUDA configuration:**
+
 ```bash
 # Ensure CUDA files are properly handled
 grep -r "\.cu" --include="Makefile.am" . | \
@@ -321,6 +338,7 @@ grep -r "\.cu" --include="Makefile.am" . | \
 ```
 
 **Check for parallel build safety:**
+
 ```bash
 # Verify proper dependency ordering
 # (complex, would need custom script)
@@ -329,25 +347,30 @@ grep -r "\.cu" --include="Makefile.am" . | \
 ### CMake Modern Practices
 
 **Target-based design:**
+
 - All properties set via `target_*` commands
 - No global `CMAKE_CXX_FLAGS` modifications
 - Proper `PUBLIC`/`PRIVATE`/`INTERFACE` usage
 
 **Generator expressions:**
+
 - Use `$<BUILD_INTERFACE>` and `$<INSTALL_INTERFACE>`
 - Conditional compilation flags
 
 ### Docker Best Practices
 
 **Multi-stage builds:**
+
 - Separate build and runtime stages
 - Minimize final image size
 
 **Layer optimization:**
+
 - Group related operations
 - Clean up in same layer
 
 **Security:**
+
 - Run as non-root user
 - Scan for vulnerabilities
 

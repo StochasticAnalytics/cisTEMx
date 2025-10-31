@@ -2,7 +2,7 @@
 """
 Template Matching Reproducibility Test
 
-This script runs the cisTEM template matching GPU binary multiple times using the same input data
+This script runs the cisTEMx template matching GPU binary multiple times using the same input data
 and parameters, then analyzes the reproducibility by comparing the resulting MIP images.
 
 It uses the Apoferritin dataset for testing, and saves the MIP (Maximum Intensity Projection)

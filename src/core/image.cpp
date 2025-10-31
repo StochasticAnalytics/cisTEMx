@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 //BEGIN_FOR_STAND_ALONE_CTFFIND
 #include "core_headers.h"
 
@@ -978,7 +989,7 @@ __ @param my_rng RandomNumberGenerator instance to generate random numbers.
  */
 void Image::AddNoiseUsingGenerator(RandomNumberGenerator& my_rng, NoiseType wanted_noise_type, float noise_param_1, float noise_param_2) {
     MyDebugAssertTrue(is_in_real_space == true, "Image must be in real space");
-    // These could go down in the switch, but I think it is cleaner to keep DebugAsserts at the top of the method like elsewhere in cisTEM.
+    // These could go down in the switch, but I think it is cleaner to keep DebugAsserts at the top of the method like elsewhere in cisTEMx.
     MyDebugAssertTrue(wanted_noise_type == POISSON ? noise_param_1 > 0 : true, "Mean of a Poisson distribution must be positive");
     MyDebugAssertTrue(wanted_noise_type == EXPONENTIAL ? noise_param_1 > 0 : true, "Mean of an Exponential distribution must be positive");
     MyDebugAssertTrue(wanted_noise_type == GAMMA ? (noise_param_1 > 0 && noise_param_2 > 0) : true, "alpha and beta of a Gamma distribution must be positive");

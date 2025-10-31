@@ -1,7 +1,7 @@
 """
-Utilities for handling threshold values in cisTEM outputs.
+Utilities for handling threshold values in cisTEMx outputs.
 
-This module provides functions for extracting threshold values from cisTEM output files.
+This module provides functions for extracting threshold values from cisTEMx output files.
 """
 
 import os

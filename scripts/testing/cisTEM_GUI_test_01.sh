@@ -1,17 +1,17 @@
 #!/bin/bash
 #
-# Basic cisTEM GUI test
+# Basic cisTEMx GUI test
 #
 # Alexis Rohou, March 2019
 #
 source $( dirname $(readlink -f "$0") )/cisTEM_xdotool.sh
 
-cisTEM_path="/mnt/ext_home/work/git/cisTEM/build/Linux/debug_gnu/src"
+cisTEM_path="/mnt/ext_home/work/git/cisTEMx/build/Linux/debug_gnu/src"
 export PATH=${cisTEM_path}:${PATH}
 
 
 rm -fr /mnt/ext_home/work/MyNewProject
-launch_cisTEM "${cisTEM_path}/cisTEM"
+launch_cisTEM "${cisTEM_path}/cisTEMx"
 create_new_project "MyNewProject" "/mnt/ext_home/work"
 click_on_assets_lhs_icon; sleep 1s
 #click_on_actions_lhs_icon; sleep 1s

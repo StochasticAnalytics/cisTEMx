@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 #include "DatabaseUpdateDialog.h"
@@ -528,7 +539,7 @@ void MyMainFrame::OnAboutLaunch(wxCommandEvent& event) {
 
     AboutDialog about_dialog(this);
     about_dialog.LogoBitmap->SetBitmap(logo_bmp);
-    about_dialog.VersionStaticText->SetLabel(wxString::Format("cisTEM version %s", CISTEM_VERSION_TEXT));
+    about_dialog.VersionStaticText->SetLabel(wxString::Format("cisTEMx version %s", CISTEM_VERSION_TEXT));
     about_dialog.BuildDateText->SetLabel(wxString::Format("Built : %s", __DATE__));
     about_dialog.Fit( );
     about_dialog.ShowModal( );
@@ -544,7 +555,7 @@ void MyMainFrame::StartNewProject( ) {
             return;
 
         current_project.Close( );
-        SetTitle("cisTEM");
+        SetTitle("cisTEMx");
     }
 
     MyNewProjectWizard* my_wizard = new MyNewProjectWizard(this);
@@ -554,7 +565,7 @@ void MyMainFrame::StartNewProject( ) {
     my_wizard->Destroy( );
 
     if ( current_project.is_open == true ) {
-        SetTitle("cisTEM - [" + current_project.project_name + "]");
+        SetTitle("cisTEMx - [" + current_project.project_name + "]");
 
         // if there is a default run profiles, import it..
 
@@ -621,7 +632,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
             if ( my_process_id != 0 && database_process_id != -1 && my_process_id != database_process_id ) {
                 // if we got here then the database is marked as owned..
 
-                wxMessageDialog* my_dialog = new wxMessageDialog(this, wxString::Format("Database is marked as owned by :- \n\nPID : %li\nHost : %s\n\nEach database should only be opened by one instance of cisTEM at a time, otherwise corruption is possible. If it exists, you should close the other instance before continuing, if this message is the result of a crash etc. then you can overide and continue.\n\nDo you want to overide?", database_process_id, database_hostname), "Database already owned", wxICON_ERROR | wxYES_NO | wxNO_DEFAULT);
+                wxMessageDialog* my_dialog = new wxMessageDialog(this, wxString::Format("Database is marked as owned by :- \n\nPID : %li\nHost : %s\n\nEach database should only be opened by one instance of cisTEMx at a time, otherwise corruption is possible. If it exists, you should close the other instance before continuing, if this message is the result of a crash etc. then you can overide and continue.\n\nDo you want to overide?", database_process_id, database_hostname), "Database already owned", wxICON_ERROR | wxYES_NO | wxNO_DEFAULT);
                 my_dialog->SetYesNoLabels("Override", "No");
 
                 if ( my_dialog->ShowModal( ) != wxID_YES ) {
@@ -637,7 +648,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
         // DO DATABASE VERSION CHECK HERE!
 
         if ( current_project.integer_database_version > INTEGER_DATABASE_VERSION ) {
-            wxMessageDialog* my_dialog = new wxMessageDialog(this, "This database was created in a newer version of cisTEM, and cannot be opened.", "Database from newer version", wxICON_ERROR);
+            wxMessageDialog* my_dialog = new wxMessageDialog(this, "This database was created in a newer version of cisTEMx, and cannot be opened.", "Database from newer version", wxICON_ERROR);
             my_dialog->Destroy( );
             current_project.Close(false, false);
             return;
@@ -647,7 +658,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
             auto     schema_comparison = current_project.database.CheckSchema( );
             wxString changes           = "";
             if ( schema_comparison.first.size( ) == 0 && schema_comparison.second.size( ) == 0 ) {
-                wxRichMessageDialog* my_dialog = new wxRichMessageDialog(this, wxString::Format("This project was last opened by a different cisTEM version:-\n\nCurrent Version: \t %s\nProject Version: \t %s\n\nHowever, there seem to be no changes to the file format.\n\nAttempt to open the project?,", CISTEM_VERSION_TEXT, current_project.cistem_version_text), "Database from different cisTEM version?", wxICON_ERROR | wxYES_NO | wxNO_DEFAULT);
+                wxRichMessageDialog* my_dialog = new wxRichMessageDialog(this, wxString::Format("This project was last opened by a different cisTEMx version:-\n\nCurrent Version: \t %s\nProject Version: \t %s\n\nHowever, there seem to be no changes to the file format.\n\nAttempt to open the project?,", CISTEM_VERSION_TEXT, current_project.cistem_version_text), "Database from different cisTEMx version?", wxICON_ERROR | wxYES_NO | wxNO_DEFAULT);
                 if ( my_dialog->ShowModal( ) == wxID_YES )
                     my_dialog->Destroy( );
                 else {
@@ -786,7 +797,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
         picking_results_panel->OnProjectOpen( );
         my_dialog->Update(12, "Opening project (all done)");
 
-        SetTitle("cisTEM - [" + current_project.project_name + "]");
+        SetTitle("cisTEMx - [" + current_project.project_name + "]");
         DirtyEverything( );
         my_dialog->Destroy( );
 
@@ -842,7 +853,7 @@ void MyMainFrame::GetFileAndOpenProject( ) {
         if ( wxMessageBox("The current project must be closed before opening a new project.\n\nClose it now?", "Please confirm", wxICON_QUESTION | wxYES_NO, this) == wxNO )
             return;
         current_project.Close( );
-        SetTitle("cisTEM");
+        SetTitle("cisTEMx");
     }
 
     wxFileDialog openFileDialog(this, _("Open db file"), "", "", "DB files (*.db)|*.db", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
@@ -868,7 +879,7 @@ void MyMainFrame::OnFileCloseProject(wxCommandEvent& event) {
 
     ResetAllPanels( );
 
-    SetTitle("cisTEM");
+    SetTitle("cisTEMx");
     MenuBook->SetSelection(0);
     overview_panel->SetWelcomeInfo( );
     overview_panel->InfoText->Show(true);

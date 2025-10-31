@@ -1,12 +1,13 @@
-# Core Library Development Guidelines for cisTEM
+# Core Library Development Guidelines for cisTEMx
 
-This file provides guidance for working with cisTEM's core computational libraries and data structures.
+This file provides guidance for working with cisTEMx's core computational libraries and data structures.
 
 ## Architecture Overview
 
-The core library provides fundamental image processing, mathematical operations, and data management functionality used throughout cisTEM.
+The core library provides fundamental image processing, mathematical operations, and data management functionality used throughout cisTEMx.
 
 ### Key Components
+
 - **Image Processing:** `image.h`, `mrc_file.h`, `tiff_file.h`
 - **Mathematical Operations:** `matrix.h`, `functions.h`, `numerical_recipes.h`
 - **Database Interface:** `database.h`, `project.h`
@@ -16,7 +17,9 @@ The core library provides fundamental image processing, mathematical operations,
 ## Image Class Best Practices
 
 ### Memory Management
+
 The Image class manages large memory blocks:
+
 ```cpp
 Image my_image;
 my_image.Allocate(x_size, y_size, z_size);
@@ -24,7 +27,9 @@ my_image.Allocate(x_size, y_size, z_size);
 ```
 
 ### MRC File Format
-cisTEM primarily uses MRC (Medical Research Council) format for electron microscopy data:
+
+cisTEMx primarily uses MRC (Medical Research Council) format for electron microscopy data:
+
 ```cpp
 // Reading MRC files
 MRCFile input_file(filename, false);  // false = read mode
@@ -39,13 +44,17 @@ my_image.WriteSlices(&output_file, 1, my_image.logical_z_dimension);
 ## Mathematical Operations
 
 ### Coordinate Systems
-cisTEM uses Fourier space conventions common in cryo-EM:
+
+cisTEMx uses Fourier space conventions common in cryo-EM:
+
 - Real space: Origin at corner (0,0,0)
 - Fourier space: DC component at (0,0,0) after FFT
 - Physical coordinates: Often centered with respect to box center
 
 ### FFT Library Usage
+
 **Intel MKL is the primary FFT library:**
+
 ```cpp
 // Forward FFT
 my_image.ForwardFFT();  // Converts real to complex
@@ -57,7 +66,9 @@ my_image.BackwardFFT(); // Converts complex to real
 ## Database Operations
 
 ### Thread Safety
+
 Database operations are NOT thread-safe. Use appropriate locking:
+
 ```cpp
 // Use database mutex for multi-threaded access
 std::lock_guard<std::mutex> lock(database_mutex);
@@ -65,7 +76,9 @@ database.ExecuteSQL(query);
 ```
 
 ### Transaction Management
+
 Use transactions for multiple related operations:
+
 ```cpp
 database.Begin();
 try {
@@ -82,7 +95,9 @@ try {
 ## GPU Development Patterns
 
 ### CUDA Integration
+
 GPU code follows specific patterns for memory management:
+
 ```cpp
 #ifdef ENABLEGPU
     if (use_gpu) {
@@ -103,7 +118,9 @@ GPU code follows specific patterns for memory management:
 ## Performance Considerations
 
 ### OpenMP Usage
+
 Many core operations are parallelized with OpenMP:
+
 ```cpp
 #pragma omp parallel for
 for (long pixel = 0; pixel < number_of_pixels; pixel++) {
@@ -115,7 +132,9 @@ for (long pixel = 0; pixel < number_of_pixels; pixel++) {
 ## Testing Patterns
 
 ### Unit Testing
+
 Core functionality should have comprehensive unit tests:
+
 ```cpp
 // In unit_test_programs/
 TEST_CASE("Image::ForwardFFT") {
@@ -135,7 +154,9 @@ TEST_CASE("Image::ForwardFFT") {
 ```
 
 ### Console Testing
+
 For more complex scenarios, use console_test:
+
 ```cpp
 // Test individual methods with embedded test data
 if (test_number == IMAGE_FFT_TEST) {
@@ -148,6 +169,7 @@ if (test_number == IMAGE_FFT_TEST) {
 ## Common Core Files
 
 ### Essential Headers
+
 - `src/core/core_headers.h` - Includes all core functionality
 - `src/core/assets.h` - Asset management classes
 - `src/core/image.h` - Primary image processing class
@@ -155,6 +177,7 @@ if (test_number == IMAGE_FFT_TEST) {
 - `src/core/ctf.h` - Contrast transfer function
 
 ### Utility Classes
+
 - `src/core/progressbar.h` - Console progress reporting
 - `src/core/randomnumbergenerator.h` - Random number generation
 - `src/core/curve.h` - 1D curve fitting and interpolation
@@ -163,6 +186,7 @@ if (test_number == IMAGE_FFT_TEST) {
 ## Error Handling
 
 ### Assertions vs Exceptions
+
 - Use `MyDebugAssertTrue()` and `MyDebugAssertFalse()` for development-time checks
 - Use exceptions for runtime errors that can be recovered
 - Never suppress assertions or errors to hide problems
@@ -220,6 +244,7 @@ void MyFunction() {
 ```
 
 **Rationale:**
+
 - Global `using` declarations pollute the namespace for all files that include the header
 - Function-scoped declarations keep type aliases local and clear
 - Class-scoped declarations are acceptable when a type is used extensively throughout a class
@@ -227,6 +252,7 @@ void MyFunction() {
 
 **Static Assertions for Type Safety:**
 When using function-scoped `using` declarations for type aliases, add static assertions to verify critical type properties:
+
 ```cpp
 // ✅ BEST: Function-scoped using with compile-time safety check
 bool JobPackage::SendJobPackage(wxSocketBase* socket) {
@@ -243,7 +269,7 @@ bool JobPackage::SendJobPackage(wxSocketBase* socket) {
 This pattern combines readability (short alias) with safety (compile-time verification), ensuring type assumptions don't break during refactoring.
 
 **Legacy Code:**
-Most cisTEM code has been updated to use properly-scoped `using` declarations. If you encounter global `using` declarations in older files, refactor them to function or class scope when modernizing those files.
+Most cisTEMx code has been updated to use properly-scoped `using` declarations. If you encounter global `using` declarations in older files, refactor them to function or class scope when modernizing those files.
 
 ## Best Practices Summary
 

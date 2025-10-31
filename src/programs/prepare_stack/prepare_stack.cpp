@@ -32,7 +32,7 @@ void PrepareStackApp::DoInteractiveUserInput( ) {
     UserInput* my_input = new UserInput("PrepareStack", 1.00);
 
     input_particle_images  = my_input->GetFilenameFromUser("Input particle stack", "The input image stack, containing the experimental particle images", "my_image_stack.mrc", true);
-    input_star_file        = my_input->GetFilenameFromUser("Input cisTEM star file", "The input parameter file, containing your particle parameters", "my_parameters.star", true);
+    input_star_file        = my_input->GetFilenameFromUser("Input cisTEMx star file", "The input parameter file, containing your particle parameters", "my_parameters.star", true);
     output_particle_images = my_input->GetFilenameFromUser("Output particle stack", "The output image stack, containing the prepared particle images", "my_image_stack_prep.mrc", false);
     pixel_size             = my_input->GetFloatFromUser("Wanted Output Pixel Size (Angstroms)", "Wanted pixel size of the images", "1", 0.0);
     mask_radius            = my_input->GetFloatFromUser("Mask radius (Angstroms)", "For calculating noise statistics", "100", 0.0);

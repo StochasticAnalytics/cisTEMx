@@ -1,5 +1,5 @@
 """
-Image Replicate Analysis utilities for cisTEM tests.
+Image Replicate Analysis utilities for cisTEMx tests.
 
 This module provides a class for comparing multiple replicate MRC images and calculating
 similarity metrics between them.

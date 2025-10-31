@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Basic cisTEM program benchmark
+# Basic cisTEMx program benchmark
 #
 # Johannes Elferich, December 2021
 #
@@ -8,9 +8,9 @@ set -e
 print_help() {
   cat <<DOC
    
-Quick script to benchmark key cisTEM programs using embedded images.
+Quick script to benchmark key cisTEMx programs using embedded images.
 Usage:
-  ${_ME} [cisTEM bin path]
+  ${_ME} [cisTEMx bin path]
   ${_ME} -h | --help
 Options:
   -h --help  Show this screen.
@@ -46,7 +46,7 @@ parse_params() {
   args=("$@")
 
   # check required params and arguments
-  [[ ${#args[@]} -ne 1 ]] && die "cisTEM path not specified"
+  [[ ${#args[@]} -ne 1 ]] && die "cisTEMx path not specified"
 
   cisTEM_path=${args[0]}
   return 0

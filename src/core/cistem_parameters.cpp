@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 #include "core_headers.h"
 #include <wx/arrimpl.cpp> // this is a magic incantation which must be done!
 WX_DEFINE_OBJARRAY(ArrayOfcisTEMParameterLines);
@@ -780,7 +791,7 @@ void cisTEMParameters::WriteTocisTEMBinaryFile(wxString wanted_filename, int fir
     fwrite(&number_of_lines, sizeof(int), 1, cisTEM_bin_file);
 
     // write an identifier for each column based on bit mask values above, after the identifier which is a long, write the type
-    // of the data.  This is needed so that we can skip that contains unknown columns (e.g. from a later version of cisTEM).
+    // of the data.  This is needed so that we can skip that contains unknown columns (e.g. from a later version of cisTEMx).
 
     // The data type can be (using cistem::fundamental_type::Enum) :-
 
@@ -1165,7 +1176,7 @@ void cisTEMParameters::WriteTocisTEMStarFile(wxString wanted_filename, int first
 
     // For console tests, we need to ignore these bytes because the time stampls will be diffferent in the testing as written.
     // The number of bytes to ignore is not fixed as CISTEM_VERSION_TEXT is variable.
-    fprintf(cisTEM_star_file, "# Written by cisTEM Version %s on %s", CISTEM_VERSION_TEXT, wxDateTime::Now( ).FormatISOCombined(' ').ToStdString( ).c_str( ));
+    fprintf(cisTEM_star_file, "# Written by cisTEMx Version %s on %s", CISTEM_VERSION_TEXT, wxDateTime::Now( ).FormatISOCombined(' ').ToStdString( ).c_str( ));
     // In console tests, using the first line return to determine when we've read past the above line. Printing here in case the block over header comments below, which prefixes a new line is changed.
     fprintf(cisTEM_star_file, "\n");
 

@@ -1,6 +1,6 @@
-# cisTEM Testing Tools
+# cisTEMx Testing Tools
 
-This directory contains test scripts and utilities for testing cisTEM functionality.
+This directory contains test scripts and utilities for testing cisTEMx functionality.
 
 ## Running Tests
 
@@ -8,7 +8,7 @@ Each test can be run individually from their respective directories. For example
 
 ```bash
 # Run template matching reproducibility test
-python /path/to/cisTEM/scripts/testing/programs/match_template/test_template_reproducibility.py --binary-path /path/to/binaries
+python /path/to/cisTEMx/scripts/testing/programs/match_template/test_template_reproducibility.py --binary-path /path/to/binaries
 ```
 
 ## Temporary Directory Management

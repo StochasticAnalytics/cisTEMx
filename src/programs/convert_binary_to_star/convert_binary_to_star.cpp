@@ -17,8 +17,8 @@ IMPLEMENT_APP(ConvertBinToStar)
 void ConvertBinToStar::DoInteractiveUserInput( ) {
     UserInput* my_input = new UserInput("ConvertBinToStar", 1.0);
 
-    std::string input_filename  = my_input->GetFilenameFromUser("Input cisTEM binary file", "Filename of cisTEM binary file to convert", "input.cistem", true);
-    std::string output_filename = my_input->GetFilenameFromUser("Output cisTEM Star file", "converted output in the cisTEM Star format", "output.star", false);
+    std::string input_filename  = my_input->GetFilenameFromUser("Input cisTEMx binary file", "Filename of cisTEMx binary file to convert", "input.cistem", true);
+    std::string output_filename = my_input->GetFilenameFromUser("Output cisTEMx Star file", "converted output in the cisTEMx Star format", "output.star", false);
 
     delete my_input;
 

@@ -1,4 +1,4 @@
-# LibTorch configuration for cisTEM
+# LibTorch configuration for cisTEMx
 #
 # This macro configures LibTorch support for machine learning-based tools
 # such as blush regularization for cryo-EM density map denoising.

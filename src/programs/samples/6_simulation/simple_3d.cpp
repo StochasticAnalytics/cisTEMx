@@ -71,7 +71,7 @@ bool MyTest(const wxString& cistem_ref_dir, wxString& temp_directory) {
     // we'll keep a clean copy of the original, unrotated image for re-use later.
     clean_copy.CopyFrom(&test_sim);
 
-    // We can compare transformations to those imposed by the image processing functions in cisTEM.
+    // We can compare transformations to those imposed by the image processing functions in cisTEMx.
     Image xformed_sim;
     Image xformed_map;
     xformed_map.CopyFrom(&clean_copy);

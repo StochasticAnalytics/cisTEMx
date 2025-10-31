@@ -1,4 +1,4 @@
-name: cisTEM GPU release, GNU MKL
+name: cisTEMx GPU release, GNU MKL
 
 on:
   workflow_call:

@@ -1,6 +1,6 @@
-# GitHub Workflows for cisTEM
+# GitHub Workflows for cisTEMx
 
-This directory contains GitHub Actions workflows for the cisTEM repository.
+This directory contains GitHub Actions workflows for the cisTEMx repository.
 
 ## Maintenance Workflows
 
@@ -9,6 +9,7 @@ This directory contains GitHub Actions workflows for the cisTEM repository.
 The `cleanup_actions.yml` workflow can be manually triggered to delete workflow runs older than a specified number of days.
 
 To use:
+
 1. Go to "Actions" tab in GitHub
 2. Select "Cleanup Old Actions" workflow
 3. Click "Run workflow"
@@ -20,6 +21,7 @@ To use:
 The `delete_workflows_by_status.yml` workflow allows you to cancel and delete workflow runs that have a specific status.
 
 To use:
+
 1. Go to "Actions" tab in GitHub
 2. Select "Delete Workflows By Status" workflow
 3. Click "Run workflow"
@@ -27,6 +29,7 @@ To use:
 5. Click "Run workflow"
 
 Common workflow statuses include:
+
 - `action required` - Workflows waiting for user input
 - `cancelled` - Workflows that were canceled
 - `failure` - Failed workflows

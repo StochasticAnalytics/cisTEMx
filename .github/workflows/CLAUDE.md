@@ -86,8 +86,9 @@ git remote get-url upstream
 ```
 
 **Expected remotes:**
-- `origin` - Your fork (e.g., `github.com:YourUsername/cisTEM.git`)
-- `upstream` - Main repository (e.g., `github.com:StochasticAnalytics/cisTEM.git`)
+
+- `origin` - Your fork (e.g., `github.com:YourUsername/cisTEMx.git`)
+- `upstream` - Main repository (e.g., `github.com:StochasticAnalytics/cisTEMx.git`)
 
 PRs must target `upstream/master`, not `origin/master`.
 
@@ -96,6 +97,7 @@ PRs must target `upstream/master`, not `origin/master`.
 ### PR Title Format
 
 Use clear, descriptive titles:
+
 - ✅ "Fix memory leak in CTF estimation worker threads"
 - ✅ "Add CUDA 12.0 support for sm_89 architecture"
 - ❌ "Bug fix"
@@ -104,10 +106,12 @@ Use clear, descriptive titles:
 ### PR Description Guidelines
 
 **Explain WHY, not just WHAT:**
+
 - ✅ "Changed buffer size from 1024 to 4096 bytes because larger micrographs were causing truncation errors during socket transmission"
 - ❌ "Changed buffer size"
 
 **Include context:**
+
 - What problem does this solve?
 - What alternatives were considered?
 - Are there any trade-offs?
@@ -116,6 +120,7 @@ Use clear, descriptive titles:
 ### Testing Requirements
 
 Every PR should document testing performed:
+
 - **Manual GUI testing** - If GUI changes are involved
 - **Manual CLI testing** - If command-line programs are affected
 - **Console tests** - `./console_test` for core functionality
@@ -200,5 +205,5 @@ User: 1 (Accept)
 Claude: Creating pull request...
 [Executes: gh pr create --title "..." --body "$(cat .claude/cache/pr_draft.md)" --base master --repo upstream]
 
-PR created successfully at: https://github.com/StochasticAnalytics/cisTEM/pull/XXX
+PR created successfully at: https://github.com/StochasticAnalytics/cisTEMx/pull/XXX
 ```

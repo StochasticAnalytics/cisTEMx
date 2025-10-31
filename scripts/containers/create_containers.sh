@@ -12,7 +12,7 @@
 #########################################################################################################################################################################################
 ### USAGE:
 #####################
-# This script is intended to be run from the cisTEM/scripts/containers directory
+# This script is intended to be run from the cisTEMx/scripts/containers directory
 # Based on the first arg, it will build the base[top] image, and tag it with the version number from the CONTAINER_VERSION_BASE file in the .vscode directory, which must by linked to your own .vscode_shared/YOUR_NAME
 #    NOTE: When building the top layer, there is no check included that you have the correct baselayer built. We'll let docker handle that.
 #########################################################################################################################################################################################
@@ -49,13 +49,13 @@ fi
 
 # Check the .vscode directory exists
 if [[ ! -d ${usr_path} ]] ; then
-    echo "This script must be run from the cisTEM/scripts/containers directory"
+    echo "This script must be run from the cisTEMx/scripts/containers directory"
     echo "And the .vscode link must be established in the project root directory"
     exit 1
 fi
 
 # Check that we have "base" or "top" as an argument
-#   base - this is the base image that should be the same for all devs working on cisTEM in order to ensure critical tool-chain compatibility
+#   base - this is the base image that should be the same for all devs working on cisTEMx in order to ensure critical tool-chain compatibility
 #   top - this is the top layer that is built on top of the base image and contains the dependencies that are more likely to change, and are less expensive to build/compile. This *may* be different for each dev.
 if [[ $# -lt 1 ]] ; then
     echo "Usage: build_base.sh <base|top|-h|--help>"
@@ -177,7 +177,7 @@ path_to_top_dockerfile="top_image/"
 
 # Get the wanted version number from the CONTAINER_VERSION file
 # These are user specific and should be in the .vscode_shared/UserName directory
-#   NOTE: in the future if more broadly adapted, we should have a .vscode_shared/NewUser (or something) that has good defaults and links to a cisTEM-org repo for pre-built containers
+#   NOTE: in the future if more broadly adapted, we should have a .vscode_shared/NewUser (or something) that has good defaults and links to a cisTEMx-org repo for pre-built containers
 #         so that new users don't have to build from scratch.
 if [[ ! -f ${usr_path}/CONTAINER_VERSION_BASE ]] ; then
     echo "CONTAINER_VERSION_BASE file not found"

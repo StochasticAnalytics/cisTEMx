@@ -1,7 +1,7 @@
-# shellcheck configuration for cisTEM
+# shellcheck configuration for cisTEMx
 # See https://github.com/koalaman/shellcheck/wiki/Directive
 
-# Disable specific checks that conflict with cisTEM patterns
+# Disable specific checks that conflict with cisTEMx patterns
 
 # SC2086: Allow word splitting for build flags (intentional in configure scripts)
 disable=SC2086

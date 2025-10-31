@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 
@@ -110,7 +121,7 @@ void NewTemplateMatchesPackageWizard::OnFinished(wxWizardEvent& event) {
         }
         main_frame->current_project.database.EndBatchSelect( );
     }
-    MyDebugPrint("Writing %li matches to cisTEM star file", match_counter);
+    MyDebugPrint("Writing %li matches to cisTEMx star file", match_counter);
     int                    id                = main_frame->current_project.database.ReturnHighestTemplateMatchesPackageID( ) + 1;
     std::string            starfile_filename = std::string((main_frame->current_project.template_matching_asset_directory.GetFullPath( ) + wxString::Format("/template_matches_package_%i.star", id)).mb_str( ));
     TemplateMatchesPackage temp_package;

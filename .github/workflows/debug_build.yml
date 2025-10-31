@@ -1,4 +1,4 @@
-name: cisTEM GPU debug
+name: cisTEMx GPU debug
 
 on:
   workflow_call:

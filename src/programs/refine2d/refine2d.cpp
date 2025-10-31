@@ -64,9 +64,9 @@ void Refine2DApp::DoInteractiveUserInput( ) {
     UserInput* my_input = new UserInput("Refine2D", 1.02);
 
     input_particle_images = my_input->GetFilenameFromUser("Input particle images", "The input image stack, containing the experimental particle images", "my_image_stack.mrc", true);
-    input_star_filename   = my_input->GetFilenameFromUser("Input cisTEM star file", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
+    input_star_filename   = my_input->GetFilenameFromUser("Input cisTEMx star file", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
     input_class_averages  = my_input->GetFilenameFromUser("Input class averages", "The 2D references representing the current best estimates of the classes", "my_input_classes.mrc", false);
-    output_star_filename  = my_input->GetFilenameFromUser("Output cisTEM star file", "The output star file, containing your refined particle alignment parameters", "my_refined_parameters.star", false);
+    output_star_filename  = my_input->GetFilenameFromUser("Output cisTEMx star file", "The output star file, containing your refined particle alignment parameters", "my_refined_parameters.star", false);
     ouput_class_averages  = my_input->GetFilenameFromUser("Output class averages", "The refined 2D class averages", "my_refined_classes.mrc", false);
     number_of_classes     = my_input->GetIntFromUser("Number of classes (>0 = initialize classes)", "The number of classes that should be refined; 0 = the number is determined by the stack of input averages", "0", 0);
     first_particle        = my_input->GetIntFromUser("First particle to refine (0 = first in stack)", "The first particle in the stack that should be refined", "1", 0);
@@ -372,9 +372,9 @@ bool Refine2DApp::DoCalculation( ) {
     my_time_in = wxDateTime::Now( );
     output_star_file.AddCommentToHeader("# Refine2D run date and time:              " + my_time_in.FormatISOCombined(' '));
     output_star_file.AddCommentToHeader("# Input particle images:                   " + input_particle_images);
-    output_star_file.AddCommentToHeader("# Input cisTEM parameter filename:         " + input_star_filename);
+    output_star_file.AddCommentToHeader("# Input cisTEMx parameter filename:         " + input_star_filename);
     output_star_file.AddCommentToHeader("# Input class averages:                    " + input_class_averages);
-    output_star_file.AddCommentToHeader("# Output cisTEM parameter file:            " + output_star_filename);
+    output_star_file.AddCommentToHeader("# Output cisTEMx parameter file:            " + output_star_filename);
     output_star_file.AddCommentToHeader("# Output class averages:                   " + ouput_class_averages);
     output_star_file.AddCommentToHeader("# First particle to refine:                " + wxString::Format("%i", first_particle));
     output_star_file.AddCommentToHeader("# Last particle to refine:                 " + wxString::Format("%i", last_particle));

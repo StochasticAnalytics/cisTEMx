@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 
@@ -74,12 +85,12 @@ ParticlePositionAsset* MyParticlePositionAssetPanel::ReturnAssetPointer(long wan
 }
 
 int MyParticlePositionAssetPanel::ShowDeleteMessageDialog( ) {
-    wxMessageDialog check_dialog(this, "This will remove the selected particle positions from your ENTIRE project!  It will also remove them from the relevant particle picking results.\n\nIn general, if the positions were created from within cisTEM (i.e. they weren't imported) you probably don't want to do this, you probably want to remove them using the particle picking results panel. Any changes you make here\n\nAre you sure you want to continue?", "Are you sure?", wxYES_NO | wxICON_WARNING);
+    wxMessageDialog check_dialog(this, "This will remove the selected particle positions from your ENTIRE project!  It will also remove them from the relevant particle picking results.\n\nIn general, if the positions were created from within cisTEMx (i.e. they weren't imported) you probably don't want to do this, you probably want to remove them using the particle picking results panel. Any changes you make here\n\nAre you sure you want to continue?", "Are you sure?", wxYES_NO | wxICON_WARNING);
     return check_dialog.ShowModal( );
 }
 
 int MyParticlePositionAssetPanel::ShowDeleteAllMessageDialog( ) {
-    wxMessageDialog check_dialog(this, "This will remove the selected particle positions from your ENTIRE project!  It will also remove them from the relevant particle picking results.\n\nIn general, if the positions were created from within cisTEM (i.e. they weren't imported) you probably don't want to do this, you probably want to remove them using the particle picking results panel.\n\nAre you sure you want to continue?", "Are you sure?", wxYES_NO | wxICON_WARNING);
+    wxMessageDialog check_dialog(this, "This will remove the selected particle positions from your ENTIRE project!  It will also remove them from the relevant particle picking results.\n\nIn general, if the positions were created from within cisTEMx (i.e. they weren't imported) you probably don't want to do this, you probably want to remove them using the particle picking results panel.\n\nAre you sure you want to continue?", "Are you sure?", wxYES_NO | wxICON_WARNING);
     return check_dialog.ShowModal( );
 }
 

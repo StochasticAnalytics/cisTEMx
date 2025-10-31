@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 #include "core_headers.h"
 #include "water.h"
 
@@ -314,7 +325,7 @@ void Water::ReturnPadding(RotationMatrix max_rotation, float in_plane_rotation, 
     const bool vector_padding = true;
 
     if ( vector_padding ) {
-        // TODO just put the vector types into the main cisTEM core.
+        // TODO just put the vector types into the main cisTEMx core.
         // We don't care if existing water is rotated out of bounds with respect to the starting box. If vacuum is rotated in bounds, we want to prevent that.
 
         AtomPos origin;

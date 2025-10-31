@@ -1,6 +1,6 @@
 #!/bin/bash 
 #
-# GUI testing for cisTEM, using xdotool. This file is essentially a "library"
+# GUI testing for cisTEMx, using xdotool. This file is essentially a "library"
 # of functions.
 #
 # This is intended to be run within a Docker / virtual machine,
@@ -17,7 +17,7 @@
 #
 #
 
-# cisTEM window size
+# cisTEMx window size
 cisTEM_window_size_x=1366 
 cisTEM_window_size_y=768
 
@@ -183,10 +183,10 @@ click_on_finish_button() {
 }
 
 
-# This is necessary because the main cisTEM window changes
+# This is necessary because the main cisTEMx window changes
 # ID everytime a popup is shown. I'm not sure why this is.
 update_WID() {
-	WID=$(xdotool search --name --onlyvisible "cisTEM" | tail -1)
+	WID=$(xdotool search --name --onlyvisible "cisTEMx" | tail -1)
 }
 
 activate_cisTEM_window() {
@@ -197,14 +197,14 @@ activate_cisTEM_window() {
 }
 
 
-# Launch cisTEM
+# Launch cisTEMx
 launch_cisTEM() {
 	if [ $# -ne 1 ]; then echo "Need one argument"; fi
-	$1 > cisTEM.log 2>&1 &
+	$1 > cisTEMx.log 2>&1 &
 	sleep 5s
 	# Get the window ID
 	update_WID
-	echo "Launched cisTEM. Window ID = ${WID}"
+	echo "Launched cisTEMx. Window ID = ${WID}"
 	# Size
 	xdotool windowsize "$WID" "$cisTEM_window_size_x" "$cisTEM_window_size_y"
 	# Position
@@ -295,7 +295,7 @@ close_project() {
  	click_on_close_project
 }
 
-# Take a screenshot of the cisTEM window and save it to the supplied
+# Take a screenshot of the cisTEMx window and save it to the supplied
 # filename
 save_screenshot() {
 	if [ $# -ne 1 ]; then echo "Need one argument"; fi

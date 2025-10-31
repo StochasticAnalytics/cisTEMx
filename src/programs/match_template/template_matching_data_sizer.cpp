@@ -1057,7 +1057,7 @@ void TemplateMatchingDataSizer::ResizeImage_postSearch(Image&     max_intensity_
     timer.print_times( );
 };
 
-// //sa_shared/git/grigorieff_lab_cistem/cisTEM
+// //sa_shared/git/grigorieff_lab_cistem/cisTEMx
 void TemplateMatchingDataSizer::FillInNearestNeighbors(Image& output_image, Image& nn_upsampled_image, Image& valid_area_mask, const float no_value) {
 
     // Set the non-valid area to zero (not no_value) so that we can use the no_value to check if the pixel has been filled in.

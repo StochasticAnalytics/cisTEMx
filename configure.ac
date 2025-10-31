@@ -1,6 +1,21 @@
-AC_INIT(cisTEM, [2.0.0-alpha])
-AM_INIT_AUTOMAKE([subdir-objects])
+# #################################################################
+#                                                                 #
+#   Original Copyright (c) 2017, Howard Hughes Medical Institute  #
+#   Licensed under Janelia Research Campus Software License 1.2   #
+#   See license_details/LICENSE-JANELIA.txt                       #
+#   Modifications Copyright (c) 2025, Stochastic Analytics, LLC   #
+#   Modifications licensed under MPL 2.0 for academic use         #
+#   commercial license required for commercial use                #
+#   See LICENSE.md for details                                    #
+#                                                                 #
+###################################################################
+
+AC_INIT(cisTEMx, [1.0.0])
+# foreign so that we don't need NEWS AUTHOR ChangeLog etc.
+AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_MACRO_DIR([m4])
+
+
 
 # The include is to capture <cistem_config.h> where all symbols defined by AC_DEFINE | AC_DEFINE_UNQUOTED placed.
 # This is needed to ensure they are passed to nvcc and also cleans up the output of make.
@@ -186,7 +201,7 @@ AC_ARG_ENABLE(mkl, AS_HELP_STRING([--disable-mkl],[Do not use the Intel MKL]), [
  if test "$enableval" = no; then
     # LINK_MKL_NOT_FFTW3
     AC_MSG_NOTICE([     ])
-    AC_MSG_ERROR([You must use the Intel mkl in cisTEM. See FFT_LICENSE_NOTE in the root directory for details.])
+    AC_MSG_ERROR([You must use the Intel mkl in cisTEMx. See FFT_LICENSE_NOTE in the root directory for details.])
     use_mkl=0
  fi
 ])
@@ -298,7 +313,7 @@ AS_HELP_STRING([--with-fftw-dir=DIR],[Declare the root directory of fftw3, if it
     if test "$withval" != "yes" -a "$withval" != ""; then
       # LINK_MKL_NOT_FFTW3
       AC_MSG_NOTICE([     ])
-      AC_MSG_ERROR([You must use the Intel mkl in cisTEM. See FFT_LICENSE_NOTE in the root directory for details.])
+      AC_MSG_ERROR([You must use the Intel mkl in cisTEMx. See FFT_LICENSE_NOTE in the root directory for details.])
  
       CPPFLAGS="$CPPFLAGS -I$withval/include -L$withval/lib"
       CXXFLAGS="$CXXFLAGS -I$withval/include -L$withval/lib"
@@ -493,7 +508,7 @@ if test "$version_ok" = "yes"; then
 else
     AC_MSG_ERROR([
 **************************************************************************
-wxWidgets version $wxversion is not supported by cisTEM.
+wxWidgets version $wxversion is not supported by cisTEMx.
 
 Supported versions:
   - wxWidgets 3.0.5 (stable, with GTK2)
@@ -569,7 +584,7 @@ MKL_LIBS=""
 LIBTOOL_FLAGS=""
 if test "x$use_mkl_threads" = "xyes" -o "x$use_gnu_threads" = "xyes"; then
 
-    # I added the proper options here along when updating with sequential, which is what cisTEM has always used.
+    # I added the proper options here along when updating with sequential, which is what cisTEMx has always used.
     # To actually use threaded FFTs, we would need to:
     # For multithreaded plans, use normal sequence of calls to the fftw_init_threads() and fftw_plan_with_nthreads() functions (refer to FFTW documentation).
     AC_MSG_NOTICE([      ]) 
@@ -674,14 +689,6 @@ fi
 #fi
 
 
-# What SVN revision are we using? Inner if clause will not work if svnversion is not callable
-AC_CHECK_PROG(SVB_CHECK,svnversion,yes)
-if test "x$SVN_CHECK" == "xyes" ; then
-  define([svnversion], esyscmd([sh -c "svnversion -n"]))dnl
-  if test "x$svnversion" != "xUnversioned directory"; then
-    AC_DEFINE(CISTEM_SVN_REV, "svnversion", [SVN Revision])
-  fi
-fi
 
 AC_CHECK_PROG(GIT_CHECK,git,yes)
 # If we have git, it must not be too old, e.g. 1.8 is still the default on older OS's like CentOS 7 
@@ -700,10 +707,9 @@ AC_CHECK_FILE("$TOPSRCDIR/.git/HEAD",
       # Get the current branch, which could have multiple refs, which is why we need the awk (*) marks the active branch.
       AC_DEFINE_UNQUOTED([CISTEM_CURRENT_BRANCH],["`git  branch | awk '/^\*/{print $2}'`"], [get the current branch])
       # Get the first reachable tag - number of commits since that tag - short commit hash
-      version_name="`cat $TOPSRCDIR/VERSION | $AWK  '{print $1}'`"
-      version_commit="`cat $TOPSRCDIR/VERSION | $AWK  '{print $2}'`"
-      is_dirty="`git status --short | awk '{if($0!="" && FNR==1) print "-dirty"}'`"
-      AC_DEFINE_UNQUOTED([CISTEM_VERSION_TEXT],["`git rev-list ${version_commit}..HEAD | awk -v NAME=$version_name -v ISDIRTY=$is_dirty 'BEGIN{n=0}{n=n+1}{if(FNR==1) H=$1}END{print NAME"-"n-1"-"substr(H,1,7)ISDIRTY}'`"], [current version text])
+      version_name="reboot"
+      is_dirty="`git status --short | awk '{if($0!="" && FNR==1) print "-compiled-from-dirty-state"}'`"
+      AC_DEFINE_UNQUOTED([CISTEM_VERSION_TEXT],["`git rev-list HEAD | head -n 1 | awk -v NAME=$version_name -v ISDIRTY=$is_dirty '{if(FNR==1) print NAME"-"substr($1,1,7)ISDIRTY}'`"], [current version text])
       # Get both an easily parsed date, as well as a more readable date
       AC_DEFINE_UNQUOTED([CISTEM_TIME_YYMMDDHHMMSS],["`git show --no-patch --no-notes --pretty='%cd' --date=format:%y%m%d%H%M%S`"], [time of build complete])
       AC_DEFINE_UNQUOTED([CISTEM_TIME_READABLE],["`git show --no-patch --no-notes --pretty='%ci' --date=format:%y%m%d%H%M%S`"], [time of build readable]) 

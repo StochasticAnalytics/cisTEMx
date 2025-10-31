@@ -1,4 +1,0 @@
-add_executable(warp_to_cistem warp_to_cistem.cpp)
-add_dependencies(warp_to_cistem cisTEM_core)
-
-target_link_libraries(warp_to_cistem cisTEM_core)

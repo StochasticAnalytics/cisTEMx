@@ -1,4 +1,13 @@
-
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
 
 void ConvertImageToBitmap(Image* input_image, wxBitmap* output_bitmap, bool auto_contrast = false, int client_x_size = INT_MAX, int client_y_size = INT_MAX, int img_x_start = 0, int img_y_start = 0, float scaling_factor = 0.0);
 void GetMultilineTextExtent(wxDC* wanted_dc, const wxString& string, int& width, int& height);

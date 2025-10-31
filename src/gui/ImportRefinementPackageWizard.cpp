@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 //#include "../core/core_headers.h"
 #include "../core/gui_core_headers.h"
 
@@ -158,7 +169,7 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
     constexpr bool is_relion_import   = std::is_same_v<StarFileSource_t, BasicStarFileReader>;
 
     if constexpr ( is_cistem_import ) {
-        refinement_package_name = wxString::Format("Refinement Package #%li (cisTEM Import)",
+        refinement_package_name = wxString::Format("Refinement Package #%li (cisTEMx Import)",
                                                    refinement_package_asset_panel->current_asset_number);
 
         pixel_size            = input_params_file.ReturnPixelSize(0);
@@ -289,7 +300,7 @@ void ImportRefinementPackageWizard::ImportRefinementPackage(StarFileSource_t& in
                 temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].occupancy       = input_params_file.ReturnOccupancy(particle_counter);
             }
 
-            // Finish filling in the parameters that have the same function names and can be retrieved the same way for cisTEM/Relion imports
+            // Finish filling in the parameters that have the same function names and can be retrieved the same way for cisTEMx/Relion imports
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].position_in_stack = (int)input_params_file.ReturnPositionInStack(particle_counter);
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].defocus1          = input_params_file.ReturnDefocus1(particle_counter);
             temp_refinement.class_refinement_results[0].particle_refinement_results[particle_counter].defocus2          = input_params_file.ReturnDefocus2(particle_counter);

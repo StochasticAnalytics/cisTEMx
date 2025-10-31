@@ -1,11 +1,22 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 // Description of the database schema.
 // static_tables: Tables that should exist by default. Each table is represented as a 3-member tuple in a vector
 //				 wxString : Database name
-//				 char *: The column types as a char array in cisTEM convention
+//				 char *: The column types as a char array in cisTEMx convention
 //               vector<wxString>: The column names
 // dynamic_tables: Tables that are created for each result. Each table is represented as a 3-member tuple in a vector
 //				 wxString : Database name prefix. Existing tables will have the result number as a suffix.
-//				 char *: The column types as a char array in cisTEM convention
+//				 char *: The column types as a char array in cisTEMx convention
 //               vector<wxString>: The column names
 namespace database_schema {
 using TableData = std::tuple<wxString, char*, std::vector<wxString>>;

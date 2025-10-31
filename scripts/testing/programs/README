@@ -3,7 +3,7 @@ These tests cover basic controls for the template matching implementation over a
 The primary goal is to ensure we have a standard set of test data covering a range of normal and pathological images. The utils and meta data layout are designed
 to minimized error when dealing with writing new tests for existing test data.
 
-I expect the setup may be useful as a more general tool for testing cisTEM binary programs more broadly.
+I expect the setup may be useful as a more general tool for testing cisTEMx binary programs more broadly.
 
 A note on benchmarking:
 
@@ -33,7 +33,7 @@ A note on benchmarking:
                 - for now match_template_gpu
                     - (or match_template if --old_cistem is passed in)
                     - make_template_result is called after calls to match_template
-                - expect to add other cisTEM binaries in the future.
+                - expect to add other cisTEMx binaries in the future.
 
         Experimental input:
 

@@ -73,7 +73,7 @@ jobs:
         cd build/${{ inputs.build_type }} 
         echo $CC
         echo $CXX
-        git config --global --add safe.directory /__w/cisTEM/cisTEM
+        git config --global --add safe.directory /__w/cisTEMx/cisTEMx
         ../../configure   ${{ inputs.configure_options }}  ${{ inputs.global_configure_options }}
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "version=$VERSION" >> $GITHUB_OUTPUT

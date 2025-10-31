@@ -6,7 +6,7 @@
  *
  *      Goal:
  *      	The purpose of this recipe, is to demonstrate the different
- * means of reading/writing images to disk using cisTEM.
+ * means of reading/writing images to disk using cisTEMx.
  *
  *      Scope:
  *      	At the time of writing, all disk i/o must go through the cpu,
@@ -14,12 +14,12 @@
  * this recipe will be <here>.
  *
  *      Background:
- *      	The Image class in cisTEM can be used to represent 1,2 or 3D
+ *      	The Image class in cisTEMx can be used to represent 1,2 or 3D
  * images, in memory, with extensions to higher dimensions only available via
  * arrays of Images (or pointers to them.) To read an image in from disk, we
  * need to know about its representation, the properties of which can be
  * accessed via the Image_file class. This provides an interface with the
- *      	primary types supported in cisTEM: MRC, TIF(F), DM, EER. We
+ *      	primary types supported in cisTEMx: MRC, TIF(F), DM, EER. We
  * predominantly use the MRC format, which is very similar to CCP4. There are
  * class specializations of mrc_file and mrc_header.
  *

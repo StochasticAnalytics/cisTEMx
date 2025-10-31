@@ -9,7 +9,7 @@ if [ $# -ne 4 ]; then
     echo "Usage: $0 <database_path> <group_name> <min_detections> <template_match_job_id>"
     echo ""
     echo "Arguments:"
-    echo "  database_path      : Path to the cisTEM project database file (.db)"
+    echo "  database_path      : Path to the cisTEMx project database file (.db)"
     echo "  group_name         : Name of the existing image asset group to add results to"
     echo "  min_detections     : Minimum number of template match detections required"
     echo "  template_match_job_id : Template matching job ID to filter results from"

@@ -1,4 +1,4 @@
-# Copilot Instructions for cisTEM Repository
+# Copilot Instructions for cisTEMx Repository
 
 ## Commit Messages
 

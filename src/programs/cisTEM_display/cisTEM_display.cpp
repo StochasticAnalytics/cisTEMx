@@ -15,7 +15,7 @@ DisplayFrame* display_frame;
 bool DisplayApp::OnInit( ) {
     wxInitAllImageHandlers( );
 
-    display_frame = new DisplayFrame(NULL, wxID_ANY, "cisTEM Display", wxPoint(-1, -1), wxSize(-1, -1), wxDEFAULT_FRAME_STYLE);
+    display_frame = new DisplayFrame(NULL, wxID_ANY, "cisTEMx Display", wxPoint(-1, -1), wxSize(-1, -1), wxDEFAULT_FRAME_STYLE);
     wxString cmd_full_filename;
     wxString cmd_filename;
 

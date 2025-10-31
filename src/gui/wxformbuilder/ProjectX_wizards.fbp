@@ -1,3 +1,12 @@
+<!--
+Original Copyright (c) 2017, Howard Hughes Medical Institute
+Licensed under Janelia Research Campus Software License 1.2
+See license_details/LICENSE-JANELIA.txt
+Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+Modifications licensed under MPL 2.0 for academic use; 
+commercial license required for commercial use.
+See LICENSE.md for details.
+-->
 <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <wxFormBuilder_Project>
     <FileVersion major="1" minor="16" />
@@ -1563,7 +1572,7 @@
                                     <property name="gripper">0</property>
                                     <property name="hidden">0</property>
                                     <property name="id">wxID_ANY</property>
-                                    <property name="label">cisTEM (Requires particle stack and STAR file)</property>
+                                    <property name="label">cisTEMx (Requires particle stack and STAR file)</property>
                                     <property name="max_size"></property>
                                     <property name="maximize_button">0</property>
                                     <property name="maximum_size"></property>
@@ -3435,7 +3444,7 @@
                                             <property name="gripper">0</property>
                                             <property name="hidden">0</property>
                                             <property name="id">wxID_ANY</property>
-                                            <property name="label">Black (cisTEM Default)</property>
+                                            <property name="label">Black (cisTEMx Default)</property>
                                             <property name="max_size"></property>
                                             <property name="maximize_button">0</property>
                                             <property name="maximum_size"></property>
@@ -8707,7 +8716,7 @@
                         <property name="gripper">0</property>
                         <property name="hidden">0</property>
                         <property name="id">wxID_ANY</property>
-                        <property name="label">Do you want to use the shifts estimated for the class averages to re-center the picking co-ordinates prior to cutting out the images?  This can be especially helpful when the centreing on the picking was not very good, and a subsequent 2D classification with centre averages set to yes was run.   Note : This will only apply if cisTEM has images and co-ordinates for the particles, it will do nothing if the images come from an imported stack.</property>
+                        <property name="label">Do you want to use the shifts estimated for the class averages to re-center the picking co-ordinates prior to cutting out the images?  This can be especially helpful when the centreing on the picking was not very good, and a subsequent 2D classification with centre averages set to yes was run.   Note : This will only apply if cisTEMx has images and co-ordinates for the particles, it will do nothing if the images come from an imported stack.</property>
                         <property name="markup">0</property>
                         <property name="max_size"></property>
                         <property name="maximize_button">0</property>

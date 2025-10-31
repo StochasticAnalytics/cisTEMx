@@ -60,7 +60,7 @@ void Reconstruct3DApp::DoInteractiveUserInput( ) {
     UserInput* my_input = new UserInput("Reconstruct3D", 1.05);
 
     input_particle_stack           = my_input->GetFilenameFromUser("Input particle images", "The input particle image stack, containing the 2D images for each particle in the dataset", "my_particle_stack.mrc", true);
-    input_star_filename            = my_input->GetFilenameFromUser("Input cisTEM star filename", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
+    input_star_filename            = my_input->GetFilenameFromUser("Input cisTEMx star filename", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
     input_reconstruction           = my_input->GetFilenameFromUser("Input reconstruction", "The 3D reconstruction from the previous refinement cycle to perform likelihood blurring", "my_input_reconstruction.mrc", false);
     output_reconstruction_1        = my_input->GetFilenameFromUser("Output reconstruction 1", "The first output 3D reconstruction, calculated form half the data", "my_reconstruction_1.mrc", false);
     output_reconstruction_2        = my_input->GetFilenameFromUser("Output reconstruction 2", "The second output 3D reconstruction, calculated form half the data", "my_reconstruction_2.mrc", false);
@@ -348,7 +348,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
     my_time_in = wxDateTime::Now( );
     output_statistics_file.WriteCommentLine("C Refine3D run date and time:              " + my_time_in.FormatISOCombined(' '));
     output_statistics_file.WriteCommentLine("C Input particle images:                   " + input_particle_stack);
-    output_statistics_file.WriteCommentLine("C Input cisTEM star filename:              " + input_star_filename);
+    output_statistics_file.WriteCommentLine("C Input cisTEMx star filename:              " + input_star_filename);
     output_statistics_file.WriteCommentLine("C Input reconstruction:                    " + input_reconstruction);
     output_statistics_file.WriteCommentLine("C Output reconstruction 1:                 " + output_reconstruction_1);
     output_statistics_file.WriteCommentLine("C Output reconstruction 2:                 " + output_reconstruction_2);
@@ -1168,7 +1168,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
             /*
 		 * Assign each particle to one of the two half-maps for later FSC
 		 */
-            if ( apply_exposure_filter_during_reconstruction ) // TODO - remove this branch - this was a hack for going from emClarity to cisTEM before particle_group and assigned_subset were available
+            if ( apply_exposure_filter_during_reconstruction ) // TODO - remove this branch - this was a hack for going from emClarity to cisTEMx before particle_group and assigned_subset were available
             {
                 if ( input_parameters.beam_tilt_group == 1 )
                     input_particle.insert_even = false;

@@ -103,7 +103,7 @@ void RefineCTFApp::DoInteractiveUserInput( ) {
     int max_threads;
 
     wxString input_particle_images           = my_input->GetFilenameFromUser("Input particle images", "The input image stack, containing the experimental particle images", "my_image_stack.mrc", true);
-    wxString input_star_filename             = my_input->GetFilenameFromUser("Input cisTEM star filename", "The input parameter file, containing your particle alignment parameters", "my_parameters.star", true);
+    wxString input_star_filename             = my_input->GetFilenameFromUser("Input cisTEMx star filename", "The input parameter file, containing your particle alignment parameters", "my_parameters.star", true);
     wxString input_reconstruction            = my_input->GetFilenameFromUser("Input reconstruction", "The 3D reconstruction from which projections are calculated", "my_reconstruction.mrc", true);
     wxString input_reconstruction_statistics = my_input->GetFilenameFromUser("Input data statistics", "The table listing FSC, Part_FSC, Part_SSNR and Rec_SSNR", "my_statistics.txt", false);
     bool     use_statistics                  = my_input->GetYesNoFromUser("Use statistics", "Answer No if no statistics are available?", "Yes");
@@ -466,11 +466,11 @@ bool RefineCTFApp::DoCalculation( ) {
 
         output_star_file.AddCommentToHeader("# RefineCTF run date and time:             " + start_time.FormatISOCombined(' '));
         output_star_file.AddCommentToHeader("# Input particle images:                   " + input_particle_images);
-        output_star_file.AddCommentToHeader("# Input cisTEM parameter filename:         " + input_star_filename);
+        output_star_file.AddCommentToHeader("# Input cisTEMx parameter filename:         " + input_star_filename);
         output_star_file.AddCommentToHeader("# Input reconstruction:                    " + input_reconstruction);
         output_star_file.AddCommentToHeader("# Input data statistics:                   " + input_reconstruction_statistics);
         output_star_file.AddCommentToHeader("# Use statistics:                          " + BoolToYesNo(use_statistics));
-        output_star_file.AddCommentToHeader("# Output cisTEM star file:                 " + output_star_filename);
+        output_star_file.AddCommentToHeader("# Output cisTEMx star file:                 " + output_star_filename);
         output_star_file.AddCommentToHeader("# Output parameter changes:                " + output_shift_filename);
         output_star_file.AddCommentToHeader("# First particle to refine:                " + wxString::Format("%i", first_particle));
         output_star_file.AddCommentToHeader("# Last particle to refine:                 " + wxString::Format("%i", last_particle));

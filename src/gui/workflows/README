@@ -1,6 +1,6 @@
 # Workflow System Integration Guide
 
-This document outlines the steps required to add a new workflow to the cisTEM GUI using the workflow registry system introduced in this PR. Workflows allow for modular, dynamic switching between major analysis modes—such as Single Particle, Template Matching, or new ones you invent—via the graphical interface.
+This document outlines the steps required to add a new workflow to the cisTEMx GUI using the workflow registry system introduced in this PR. Workflows allow for modular, dynamic switching between major analysis modes—such as Single Particle, Template Matching, or new ones you invent—via the graphical interface.
 
 ## Overview
 

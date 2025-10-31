@@ -36,136 +36,153 @@ class DisplayPanel;
 ///////////////////////////////////////////////////////////////////////////////
 /// Class DisplayPanelParent
 ///////////////////////////////////////////////////////////////////////////////
-class DisplayPanelParent : public wxPanel
-{
-	private:
+class DisplayPanelParent : public wxPanel {
+  private:
 
-	protected:
-		wxBoxSizer* MainSizer;
-		wxToolBar* Toolbar;
+  protected:
+    wxBoxSizer* MainSizer;
+    wxToolBar*  Toolbar;
 
-		// Virtual event handlers, override them in your derived class
-		virtual void OnMiddleUp( wxMouseEvent& event ) { event.Skip(); }
+    // Virtual event handlers, override them in your derived class
+    virtual void OnMiddleUp(wxMouseEvent& event) { event.Skip( ); }
 
+  public:
+    DisplayPanelParent(wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize(500, 300), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString);
 
-	public:
-
-		DisplayPanelParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxTAB_TRAVERSAL, const wxString& name = wxEmptyString );
-
-		~DisplayPanelParent();
-
+    ~DisplayPanelParent( );
 };
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Class DisplayFrameParent
 ///////////////////////////////////////////////////////////////////////////////
-class DisplayFrameParent : public wxFrame
-{
-	private:
+class DisplayFrameParent : public wxFrame {
+  private:
 
-	protected:
-		wxMenuBar* m_menubar2;
-		wxMenu* DisplayFileMenu;
-		wxMenuItem* DisplayFileOpen;
-		wxMenuItem* DisplayCloseTab;
-		wxMenuItem* SelectOpenTxt;
-		wxMenuItem* SelectSaveTxt;
-		wxMenuItem* SelectSaveTxtAs;
-		wxMenuItem* DisplayExit;
-		wxMenu* DisplayLabelMenu;
-		wxMenuItem* LabelLocationNumber;
-		wxMenu* DisplaySelectMenu;
-		wxMenuItem* SelectImageSelectionMode;
-		wxMenuItem* SelectCoordsSelectionMode;
-		wxMenuItem* SelectInvertSelection;
-		wxMenuItem* SelectClearSelection;
-		wxMenu* DisplayOptionsMenu;
-		wxMenu* OptionsSetPointSize;
-		wxMenuItem* CoordSize3;
-		wxMenuItem* CoordSize5;
-		wxMenuItem* CoordSize7;
-		wxMenuItem* CoordSize10;
-		wxMenuItem* OptionsSingleImageMode;
-		wxMenuItem* OptionsShowSelectionDistances;
-		wxMenuItem* OptionsShowResolution;
-		wxMenu* DisplayHelpMenu;
-		wxMenuItem* HelpAbout;
+  protected:
+    wxMenuBar*  m_menubar2;
+    wxMenu*     DisplayFileMenu;
+    wxMenuItem* DisplayFileOpen;
+    wxMenuItem* DisplayCloseTab;
+    wxMenuItem* SelectOpenTxt;
+    wxMenuItem* SelectSaveTxt;
+    wxMenuItem* SelectSaveTxtAs;
+    wxMenuItem* DisplayExit;
+    wxMenu*     DisplayLabelMenu;
+    wxMenuItem* LabelLocationNumber;
+    wxMenu*     DisplaySelectMenu;
+    wxMenuItem* SelectImageSelectionMode;
+    wxMenuItem* SelectCoordsSelectionMode;
+    wxMenuItem* SelectInvertSelection;
+    wxMenuItem* SelectClearSelection;
+    wxMenu*     DisplayOptionsMenu;
+    wxMenu*     OptionsSetPointSize;
+    wxMenuItem* CoordSize3;
+    wxMenuItem* CoordSize5;
+    wxMenuItem* CoordSize7;
+    wxMenuItem* CoordSize10;
+    wxMenuItem* OptionsSingleImageMode;
+    wxMenuItem* OptionsShowSelectionDistances;
+    wxMenuItem* OptionsShowResolution;
+    wxMenu*     DisplayHelpMenu;
+    wxMenuItem* HelpAbout;
 
-		// Virtual event handlers, override them in your derived class
-		virtual void OnUpdateUI( wxUpdateUIEvent& event ) { event.Skip(); }
-		virtual void OnFileOpenClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnCloseTabClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnOpenTxtClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnSaveTxtClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnSaveTxtAsClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnExitClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnLocationNumberClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnImageSelectionModeClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnCoordsSelectionModeClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnInvertSelectionClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnClearSelectionClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnSize3( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnSize5( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnSize7( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnSize10( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnSingleImageModeClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnShowSelectionDistancesClick( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnShowResolution( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnDocumentationClick( wxCommandEvent& event ) { event.Skip(); }
+    // Virtual event handlers, override them in your derived class
+    virtual void OnUpdateUI(wxUpdateUIEvent& event) { event.Skip( ); }
 
+    virtual void OnFileOpenClick(wxCommandEvent& event) { event.Skip( ); }
 
-	public:
-		wxBoxSizer* bSizer631;
-		DisplayPanel* cisTEMDisplayPanel;
+    virtual void OnCloseTabClick(wxCommandEvent& event) { event.Skip( ); }
 
-		DisplayFrameParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("cisTEM Display"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxDEFAULT_FRAME_STYLE|wxTAB_TRAVERSAL );
+    virtual void OnOpenTxtClick(wxCommandEvent& event) { event.Skip( ); }
 
-		~DisplayFrameParent();
+    virtual void OnSaveTxtClick(wxCommandEvent& event) { event.Skip( ); }
 
+    virtual void OnSaveTxtAsClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnExitClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnLocationNumberClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnImageSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnCoordsSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnInvertSelectionClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnClearSelectionClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnSize3(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnSize5(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnSize7(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnSize10(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnSingleImageModeClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnShowSelectionDistancesClick(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnShowResolution(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnDocumentationClick(wxCommandEvent& event) { event.Skip( ); }
+
+  public:
+    wxBoxSizer*   bSizer631;
+    DisplayPanel* cisTEMDisplayPanel;
+
+    DisplayFrameParent(wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("cisTEMx Display"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize(500, 300), long style = wxDEFAULT_FRAME_STYLE | wxTAB_TRAVERSAL);
+
+    ~DisplayFrameParent( );
 };
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Class DisplayManualDialogParent
 ///////////////////////////////////////////////////////////////////////////////
-class DisplayManualDialogParent : public wxDialog
-{
-	private:
+class DisplayManualDialogParent : public wxDialog {
+  private:
 
-	protected:
-		wxBoxSizer* MainSizer;
-		wxStaticLine* m_staticline58;
-		wxStaticText* m_staticText315;
-		wxTextCtrl* minimum_text_ctrl;
-		wxStaticText* m_staticText316;
-		wxTextCtrl* maximum_text_ctrl;
-		wxStaticText* m_staticText317;
-		wxToolBar* Toolbar;
-		wxStaticLine* m_staticline61;
-		wxCheckBox* histogram_checkbox;
-		wxCheckBox* live_checkbox;
-		wxStaticLine* m_staticline63;
-		wxButton* m_button94;
-		wxButton* m_button95;
+  protected:
+    wxBoxSizer*   MainSizer;
+    wxStaticLine* m_staticline58;
+    wxStaticText* m_staticText315;
+    wxTextCtrl*   minimum_text_ctrl;
+    wxStaticText* m_staticText316;
+    wxTextCtrl*   maximum_text_ctrl;
+    wxStaticText* m_staticText317;
+    wxToolBar*    Toolbar;
+    wxStaticLine* m_staticline61;
+    wxCheckBox*   histogram_checkbox;
+    wxCheckBox*   live_checkbox;
+    wxStaticLine* m_staticline63;
+    wxButton*     m_button94;
+    wxButton*     m_button95;
 
-		// Virtual event handlers, override them in your derived class
-		virtual void OnClose( wxCloseEvent& event ) { event.Skip(); }
-		virtual void OnLeftDown( wxMouseEvent& event ) { event.Skip(); }
-		virtual void OnMotion( wxMouseEvent& event ) { event.Skip(); }
-		virtual void OnPaint( wxPaintEvent& event ) { event.Skip(); }
-		virtual void OnRightDown( wxMouseEvent& event ) { event.Skip(); }
-		virtual void OnLowChange( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnHighChange( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnHistogramCheck( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnRealtimeCheck( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnButtonOK( wxCommandEvent& event ) { event.Skip(); }
-		virtual void OnButtonCancel( wxCommandEvent& event ) { event.Skip(); }
+    // Virtual event handlers, override them in your derived class
+    virtual void OnClose(wxCloseEvent& event) { event.Skip( ); }
 
+    virtual void OnLeftDown(wxMouseEvent& event) { event.Skip( ); }
 
-	public:
+    virtual void OnMotion(wxMouseEvent& event) { event.Skip( ); }
 
-		DisplayManualDialogParent( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Manual Grey Settings"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxDEFAULT_DIALOG_STYLE );
+    virtual void OnPaint(wxPaintEvent& event) { event.Skip( ); }
 
-		~DisplayManualDialogParent();
+    virtual void OnRightDown(wxMouseEvent& event) { event.Skip( ); }
 
+    virtual void OnLowChange(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnHighChange(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnHistogramCheck(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnRealtimeCheck(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnButtonOK(wxCommandEvent& event) { event.Skip( ); }
+
+    virtual void OnButtonCancel(wxCommandEvent& event) { event.Skip( ); }
+
+  public:
+    DisplayManualDialogParent(wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Manual Grey Settings"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxDEFAULT_DIALOG_STYLE);
+
+    ~DisplayManualDialogParent( );
 };
-

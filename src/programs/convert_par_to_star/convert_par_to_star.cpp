@@ -18,7 +18,7 @@ void ConvertParToStar::DoInteractiveUserInput( ) {
     UserInput* my_input = new UserInput("ConvertParToStar", 1.0);
 
     std::string input_filename_one = my_input->GetFilenameFromUser("Input PAR file", "Filename of frealign par file to convert", "input.par", true);
-    std::string output_filename    = my_input->GetFilenameFromUser("Output cisTEM STAR file", "converted output in the new cisTEM format", "output.star", false);
+    std::string output_filename    = my_input->GetFilenameFromUser("Output cisTEMx STAR file", "converted output in the new cisTEMx format", "output.star", false);
     float       microscope_voltage = my_input->GetFloatFromUser("Wanted Microscope Voltage (kV)", "The microscope voltage in kV to be added to the output file", "300");
     float       microscope_cs      = my_input->GetFloatFromUser("Wanted Microscope Cs (mm)", "The microscope Cs in mm to be added to the output file", "2.7");
     float       amplitude_contrast = my_input->GetFloatFromUser("Wanted Amplitude Contrast", "The image amplitude contrast to be added to the output file", "0.07");

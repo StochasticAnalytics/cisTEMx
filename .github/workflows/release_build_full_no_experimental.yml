@@ -1,4 +1,4 @@
-name: cisTEM GPU release no experimental full build
+name: cisTEMx GPU release no experimental full build
 
 on:
   workflow_call:

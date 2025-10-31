@@ -1,12 +1,12 @@
 # Template Matching Result Filtering Scripts
 
-This directory contains bash scripts to filter template matching results by number of detections and add them to existing image asset groups in cisTEM projects.
+This directory contains bash scripts to filter template matching results by number of detections and add them to existing image asset groups in cisTEMx projects.
 
 ## Scripts
 
 ### 1. `list_template_match_info.sh`
 
-Lists available template matching jobs and image groups from a cisTEM database to help you choose parameters.
+Lists available template matching jobs and image groups from a cisTEMx database to help you choose parameters.
 
 **Usage:**
 
@@ -39,7 +39,7 @@ Filters template matching results by minimum number of detections and adds quali
 
 **Parameters:**
 
-- `database_path`: Path to the cisTEM project database file (.db)
+- `database_path`: Path to the cisTEMx project database file (.db)
 - `group_name`: Name of the existing image asset group to add results to
 - `min_detections`: Minimum number of template match detections required
 - `template_match_job_id`: Template matching job ID to filter results from
@@ -62,7 +62,7 @@ This would add all images from template matching job #1 that have 5 or more dete
 
    This will show you available template matching jobs and their detection statistics.
 
-2. **Create or identify a target image group** in the cisTEM GUI if needed.
+2. **Create or identify a target image group** in the cisTEMx GUI if needed.
 
 3. **Filter and add results:**
 
@@ -83,12 +83,12 @@ This would add all images from template matching job #1 that have 5 or more dete
 ## Requirements
 
 - `sqlite3` command-line tool
-- Read/write access to the cisTEM project database
+- Read/write access to the cisTEMx project database
 - Bash shell
 
 ## Database Schema
 
-The scripts work with these cisTEM database tables:
+The scripts work with these cisTEMx database tables:
 
 - `TEMPLATE_MATCH_LIST`: Contains template matching job results
 - `TEMPLATE_MATCH_PEAK_LIST_<id>`: Contains detected peaks for each template match

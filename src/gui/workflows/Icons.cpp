@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 #include "Icons.h"
 #include "../../gui/icons/overview_icon.cpp"
 #include "../../gui/icons/assets_icon.cpp"
@@ -37,9 +48,9 @@ wxImageList* GetActionsSpaBookIconImages( ) {
 	list every time the workflow is changed, but the tradeoff in added code and complexity is likely not worth 
 	it. The number of icons that are being added to these lists are maximally in the tens, which makes such 
 	lazy loading relatively inexpensive. If the number of images were in the hundreds to thousands, this may be 
-	a worthy solution, but despite being non-optimal, for cisTEM's case this is a perfectly suitable solution. */
+	a worthy solution, but despite being non-optimal, for cisTEMx's case this is a perfectly suitable solution. */
 
-	wxImageList* spa_list = nullptr;
+    wxImageList* spa_list = nullptr;
 
     if ( ! spa_list ) {
         spa_list = new wxImageList( );

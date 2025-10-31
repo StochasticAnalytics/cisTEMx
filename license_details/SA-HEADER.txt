@@ -1,0 +1,11 @@
+/*
+ * Copyright (c) 2025, Stochastic Analytics, LLC
+ * 
+ * This file is part of cisTEMx.
+ *
+ * For academic and non-profit use, this file is licensed under the 
+ * Mozilla Public License Version 2.0. See license_details/LICENSE-MPL-2.0.txt.
+ *
+ * Commercial use requires a separate license from Stochastic Analytics, LLC.
+ * Contact: <commercial-license@clearnoise.org>
+ */

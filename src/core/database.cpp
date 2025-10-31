@@ -1,3 +1,14 @@
+/*
+ * Original Copyright (c) 2017, Howard Hughes Medical Institute
+ * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
+ *
+ * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
+ * Modifications licensed under MPL 2.0 for academic use; 
+ * commercial license required for commercial use.
+ * See LICENSE.md for details.
+ */
+
 #include "core_headers.h"
 #include "database_schema.h"
 
@@ -2751,9 +2762,9 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
 }
 
 /**
- * @brief Older versions of cisTEM used an integer type to represent workflow.
+ * @brief Older versions of cisTEMx used an integer type to represent workflow.
  * Newer versions use a string, and so the database must be checked for this
- * to avoid a crash when cisTEM loads up the static tables.
+ * to avoid a crash when cisTEMx loads up the static tables.
  * 
  * @return true If workflow uses integer.
  * @return false If workflow uses text.

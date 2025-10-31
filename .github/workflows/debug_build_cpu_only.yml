@@ -1,4 +1,4 @@
-name: cisTEM cpu debug
+name: cisTEMx cpu debug
 
 on:
   workflow_call:

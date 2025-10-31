@@ -578,7 +578,7 @@ void SimulateApp::DoInteractiveUserInput( ) {
         // First we check on whether there is an input set of parameters, as this changes the most options following
         use_existing_params = my_input->GetYesNoFromUser("Use an existing set of orientations", "yes no", "no");
         if ( use_existing_params ) {
-            preexisting_particle_file_name = my_input->GetFilenameFromUser("cisTEM star file name", "an input star file to match reconstruction", "myparams.star", true);
+            preexisting_particle_file_name = my_input->GetFilenameFromUser("cisTEMx star file name", "an input star file to match reconstruction", "myparams.star", true);
             int default_number_parameters  = 1;
             if ( DoesFileExist(preexisting_particle_file_name) ) {
                 input_star_file.ReadFromcisTEMStarFile(preexisting_particle_file_name);
@@ -835,7 +835,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     // TODO Set a check on the solvent fraction and scaling and report if it is unreasonable. Define reasonable
     // TODO Set a check on the range of values, report if mean_defocus tolerance is too small (should all be positive)
     //    Image img;
-    //    img.QuickAndDirtyReadSlice("/groups/grigorieff/home/himesb/cisTEM_2/cisTEM/trunk/gpu/include/oval_full.mrc",1);
+    //    img.QuickAndDirtyReadSlice("/groups/grigorieff/home/himesb/cisTEM_2/cisTEMx/trunk/gpu/include/oval_full.mrc",1);
     //    img.QuickAndDirtyWriteSlice("/groups/grigorieff/home/himesb/tmp/noshift.mrc",1,1,false);
     //    img.PhaseShift(1.5,3.5,0.0);
     //    img.QuickAndDirtyWriteSlice("/groups/grigorieff/home/himesb/tmp/withShift.mrc",1,1,false);
@@ -1203,7 +1203,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         if ( do3d || DO_PHASE_PLATE || DO_NOT_RANDOMIZE_ANGLES ) {
             if ( do3d ) {
                 // Because these are not proper euler angles, we can't just flip the order to get the transpose, we need to actually take the transpose the rotation matrix
-                // The angles are used to cut out a slice of the 3d in cisTEM (rotates the projection into the 3d, i.e. a passive transofrm)
+                // The angles are used to cut out a slice of the 3d in cisTEMx (rotates the projection into the 3d, i.e. a passive transofrm)
                 // We are using them here to activly transform the atom coordinates, so we also need to negate.
                 RotationMatrix tmp;
                 tmp.SetToRotation(-extra_rot_x, -extra_rot_y, -extra_rot_z); // To match what is output by align_symmetry, not sure why z is not negated

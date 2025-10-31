@@ -114,16 +114,16 @@ def parse_TM_args(wanted_binary_name):
                         help='GPU index to use (default: 0)')
     args_to_check.append('gpu_idx')
 
-    # add another optional flag to specify that we are using an older version of cisTEM
+    # add another optional flag to specify that we are using an older version of cisTEMx
     # TODO: for now, just trying to catch the case where we use match_template not match_template_gpu, however,
     # there could be other cases where we need to be more specific if the input options change more over time.
     parser.add_argument('--old-cistem', dest='old_cistem', action='store_true',
-                        help='Use this flag if you are using an older version of cisTEM')
+                        help='Use this flag if you are using an older version of cisTEMx')
     args_to_check.append('old_cistem')
 
     # add an optional cpu flag
     parser.add_argument('--cpu', action='store_true',
-                        help='Use this flag if you are using the cpu version of cisTEM')
+                        help='Use this flag if you are using the cpu version of cisTEMx')
     args_to_check.append('cpu')
 
     parser.add_argument('--fast-fft', dest='fast_fft', action='store_true', default=True,

@@ -1,4 +1,4 @@
-name: cisTEM GPU release, clang MKL
+name: cisTEMx GPU release, clang MKL
 
 on:
   workflow_call:

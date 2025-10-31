@@ -284,12 +284,12 @@ void Refine3DApp::DoInteractiveUserInput( ) {
     UserInput* my_input = new UserInput("Refine3D", 1.02);
 
     input_particle_images           = my_input->GetFilenameFromUser("Input particle images", "The input image stack, containing the experimental particle images", "my_image_stack.mrc", true);
-    input_star_filename             = my_input->GetFilenameFromUser("Input cisTEM star file", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
+    input_star_filename             = my_input->GetFilenameFromUser("Input cisTEMx star file", "The input star file, containing your particle alignment parameters", "my_parameters.star", true);
     input_reconstruction            = my_input->GetFilenameFromUser("Input reconstruction", "The 3D reconstruction from which projections are calculated", "my_reconstruction.mrc", true);
     input_reconstruction_statistics = my_input->GetFilenameFromUser("Input data statistics", "The table listing FSC, Part_FSC, Part_SSNR and Rec_SSNR", "my_statistics.txt", false);
     use_statistics                  = my_input->GetYesNoFromUser("Use statistics", "Answer No if no statistics are available?", "Yes");
     ouput_matching_projections      = my_input->GetFilenameFromUser("Output matching projections", "The output image stack, containing the matching projections", "my_projection_stack.mrc", false);
-    ouput_star_filename             = my_input->GetFilenameFromUser("Output cisTEM star file", "The output star file, containing your refined particle alignment parameters", "my_refined_parameters.star", false);
+    ouput_star_filename             = my_input->GetFilenameFromUser("Output cisTEMx star file", "The output star file, containing your refined particle alignment parameters", "my_refined_parameters.star", false);
     ouput_shift_filename            = my_input->GetFilenameFromUser("Output parameter changes", "The changes in the alignment parameters compared to the input parameters", "my_parameter_changes.star", false);
     my_symmetry                     = my_input->GetSymmetryFromUser("Particle symmetry", "The assumed symmetry of the particle to be reconstructed", "C1");
     first_particle                  = my_input->GetIntFromUser("First particle to refine (0 = first in stack)", "The first particle in the stack that should be refined", "1", 0);
@@ -655,13 +655,13 @@ bool Refine3DApp::DoCalculation( ) {
 
     output_star_file.AddCommentToHeader("# Refine3D run date and time:              " + my_time_in.FormatISOCombined(' '));
     output_star_file.AddCommentToHeader("# Input particle images:                   " + input_particle_images);
-    output_star_file.AddCommentToHeader("# Input cisTEM parameter filename:         " + input_star_filename);
+    output_star_file.AddCommentToHeader("# Input cisTEMx parameter filename:         " + input_star_filename);
     output_star_file.AddCommentToHeader("# Input reconstruction:                    " + input_reconstruction);
     output_star_file.AddCommentToHeader("# Input data statistics:                   " + input_reconstruction_statistics);
     output_star_file.AddCommentToHeader("# Use statistics:                          " + BoolToYesNo(use_statistics));
     output_star_file.AddCommentToHeader("# Output matching projections:             " + output_matching_projections);
-    output_star_file.AddCommentToHeader("# Output cisTEM parameter file:            " + output_star_filename);
-    output_star_file.AddCommentToHeader("# Output cisTEM parameter changes:         " + output_shift_filename);
+    output_star_file.AddCommentToHeader("# Output cisTEMx parameter file:            " + output_star_filename);
+    output_star_file.AddCommentToHeader("# Output cisTEMx parameter changes:         " + output_shift_filename);
     output_star_file.AddCommentToHeader("# Particle symmetry:                       " + my_symmetry);
     output_star_file.AddCommentToHeader("# First particle to refine:                " + wxString::Format("%i", first_particle));
     output_star_file.AddCommentToHeader("# Last particle to refine:                 " + wxString::Format("%i", last_particle));

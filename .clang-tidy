@@ -1,5 +1,5 @@
 ---
-# cisTEM C++/CUDA Static Analysis Configuration
+# cisTEMx C++/CUDA Static Analysis Configuration
 # Comprehensive multi-tier check system for clang-tidy
 #
 # Philosophy: All checks are enabled by default (Tier 3 - full analysis)
@@ -129,7 +129,7 @@ HeaderFilterRegex: 'src/core/tensor/.*'
 # ============================================================================
 
 CheckOptions:
-  # Naming conventions (cisTEM style - CamelCase for classes/functions)
+  # Naming conventions (cisTEMx style - CamelCase for classes/functions)
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
   - key: readability-identifier-naming.StructCase

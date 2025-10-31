@@ -174,9 +174,9 @@ echo ""
 echo -e "${YELLOW}=== Phase 2: Verifying test executables ===${NC}"
 
 TEST_EXECUTABLES=(
-    "src/test/unit_test_runner"
-    "src/programs/console_test/console_test"
-    "src/programs/samples/samples_functional_testing"
+    "src/unit_test_runner"
+    "src/console_test"
+    "src/samples_functional_testing"
 )
 
 ALL_EXIST=true

@@ -91,12 +91,17 @@ class SkillValidator:
         lines = content.split('\n')
 
         # Check for main heading after frontmatter
+        in_frontmatter = False
         content_start = False
         for line in lines:
-            if content_start and line.startswith('# '):
+            if line == '---':
+                if not in_frontmatter:
+                    in_frontmatter = True
+                else:
+                    content_start = True
+                    in_frontmatter = False
+            elif content_start and line.startswith('# '):
                 break
-            if line == '---' and content_start:
-                content_start = True
         else:
             self.warnings.append("No main heading (# Title) found after frontmatter")
 

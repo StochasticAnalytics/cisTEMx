@@ -2,10 +2,38 @@
   "permissions": {
     "allow": [
       "SlashCommand(/build-cistem)",
-      "Bash(.claude/commands/build-cistem.sh:*)"
+      "Bash(.claude/commands/build-cistem.sh:*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Task(lab-tech-red)",
+      "Task(lab-tech-blue)",
+      "Task(lab-tech-lead)",
+      "Skill(lab_tech_lead)",
+      "Skill(lab_tech_red)",
+      "Skill(lab_tech_blue)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:stackoverflow.com)",
+      "WebFetch(domain:cppreference.com)",
+      "WebFetch(domain:docs.wxwidgets.org)",
+      "Bash(ls:*)",
+      "Bash(pwd:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git show-branch:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git ls-tree:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": ["*"]
   },
   "includeCoAuthoredBy": false,
   "gitAttribution": false

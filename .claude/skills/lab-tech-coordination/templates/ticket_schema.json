@@ -1,0 +1,32 @@
+{
+  "id": "2025-11-01T12-00-00Z__<uuid>",
+  "session_id": "session_uuid",
+  "type": "initial_analysis|iteration|synthesis|meta",
+  "iteration": 1,
+  "assigned_to": "red|blue|lead",
+  "assigned_by": "lead|main",
+  "topic": "What to analyze",
+  "specific_focus": "Narrowed scope for this iteration",
+  "prior_context": ["artifact_id1", "artifact_id2"],
+  "instructions": "Detailed instructions from Lead",
+  "convergence_gates": ["gate1", "gate2"],
+  "state": "pending|processing|completed|failed",
+  "created_at": "2025-11-01T12:00:00Z",
+  "ttl_seconds": 300,
+  "requeue_count": 0,
+  "max_requeues": 1,
+  "failure_history": [
+    {
+      "failed_at": "2025-11-01T12:05:00Z",
+      "failure_reason": "Agent timeout",
+      "requeued": true
+    }
+  ],
+  "result": {
+    "artifact_path": "artifacts/analysis_uuid.md",
+    "summary": "Brief summary",
+    "gates_passed": ["gate1"],
+    "needs_iteration": true,
+    "iteration_reason": "Why more work needed"
+  }
+}

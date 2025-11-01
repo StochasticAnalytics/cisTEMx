@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "coordination_pattern": "adversarial_review|parallel_decomposition",
+  "convergence_strategy": "AdversarialReviewConvergence|ParallelDecompositionConvergence",
+  "custom_hooks": {
+    "pre_ticket_creation": null,
+    "post_agent_result": null,
+    "custom_gate_evaluator": null
+  },
+  "extensions": {
+    "quorum_percentage": 0.8,
+    "priority_agents": ["red"],
+    "timeout_multiplier": 1.0
+  }
+}

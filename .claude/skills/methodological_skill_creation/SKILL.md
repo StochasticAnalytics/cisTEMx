@@ -85,8 +85,7 @@ Before finalizing a skill:
 - `resources/skill_boundaries.md` - When to create new vs. enhance existing
 - `resources/skill_decomposition.md` - Splitting complex domains into multiple skills
 - `resources/claude_md_conversion.md` - Converting CLAUDE.md files (Week 1 priority)
-- `resources/pattern_library.md` - Successful skill patterns with examples
-- `resources/anti_patterns.md` - Common pitfalls and how to avoid them
+- `resources/script_integration_pattern.md` - How to properly include scripts in skills
 - `resources/lab_tech_consultation.md` - Protocol for technical discussion
 - `templates/workflow_skill_template.md` - Template for procedural skills
 - `templates/reference_skill_template.md` - Template for lookup skills

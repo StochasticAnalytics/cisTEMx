@@ -6,7 +6,10 @@
       "Bash(git show-branch:*)",
       "Bash(git merge-base:*)",
       "Bash(git ls-tree:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Skill(lab_tech_lead)",
+      "Skill(lab_tech_red)",
+      "Skill(lab_tech_blue)"
     ],
     "deny": [],
     "ask": []

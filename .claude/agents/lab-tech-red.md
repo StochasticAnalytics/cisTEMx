@@ -1,7 +1,6 @@
 ---
 name: lab-tech-red
 description: Provides critical analysis for technical reviews. Invoked by lab-tech-lead to identify gaps, weaknesses, edge cases, and potential failures. Works alongside lab-tech-blue to provide balanced technical assessment through adversarial review.
-tools: [Read, Glob]
 color: red
 ---
 

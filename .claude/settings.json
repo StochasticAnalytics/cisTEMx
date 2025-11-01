@@ -33,8 +33,42 @@
       "Bash(git ls-tree:*)"
     ],
     "deny": [],
-    "ask": ["*"]
+    "ask": [
+      "*"
+    ]
   },
   "includeCoAuthoredBy": false,
-  "gitAttribution": false
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/sa_shared/software/push_cut.sh \"Claude Code\" \"Claude needs your input!\""
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/bash -c 'json=$(cat); message=$(echo \"$json\" | grep -o '\"message\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' | sed 's/.*: *\"\\(.*\\)\"/\\1/'); /sa_shared/software/push_cut.sh \"Claude Code\" \"${message:-Notification}\"'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/sa_shared/software/push_cut.sh \"Claude Code Finished\" \"Claude has completed your task\""
+          }
+        ]
+      }
+    ]
+  }
 }

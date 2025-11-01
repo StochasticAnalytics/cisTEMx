@@ -200,8 +200,12 @@ def cleanup_abandoned_sessions(cache_dir: Path = None) -> None:
         state_files = list(session_dir.glob("agents/*/state.json"))
         if not state_files:
             # No agents have checked in, likely abandoned
-            if age > 3600:  # 1 hour
-                shutil.rmtree(session_dir, ignore_errors=True)
+            if age > 1800:  # 30 minutes
+                abandoned_path = cache_dir / f"abandoned_{session_dir.name}"
+                try:
+                    shutil.move(str(session_dir), str(abandoned_path))
+                except Exception:
+                    pass  # May have been cleaned up concurrently
             continue
 
         # Check last state update

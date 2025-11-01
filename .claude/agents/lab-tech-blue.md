@@ -1,7 +1,7 @@
 ---
 name: lab-tech-blue
 description: Provides constructive analysis for technical reviews. Invoked by lab-tech-lead to identify strengths, opportunities, and improvement paths. Works alongside lab-tech-red to provide balanced technical assessment through supportive review.
-model: sonnet
+tools: [Read, Glob]
 color: blue
 ---
 

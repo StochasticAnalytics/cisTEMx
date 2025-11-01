@@ -1,7 +1,7 @@
 ---
 name: lab-tech-lead
 description: Orchestrates technical review discussions between Lab Tech Red (critical) and Blue (constructive). Use for skill reviews, code reviews, architecture discussions, or any technical analysis needing balanced expert perspectives. The lead coordinates the team's collaborative "lunch discussion" and synthesizes findings.
-model: sonnet
+tools: [Read, Glob]
 color: purple
 ---
 

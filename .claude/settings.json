@@ -8,10 +8,9 @@
       "Grep(*)",
       "Task(lab-tech-red)",
       "Task(lab-tech-blue)",
-      "Task(lab-tech-lead)",
-      "Skill(lab_tech_lead)",
-      "Skill(lab_tech_red)",
-      "Skill(lab_tech_blue)",
+      "Skill(security_review)",
+      "Skill(skill_review)",
+      "Skill(plan_review)",
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:en.wikipedia.org)",
       "WebFetch(domain:stackoverflow.com)",
@@ -30,7 +29,11 @@
       "Bash(git branch:*)",
       "Bash(git show-branch:*)",
       "Bash(git merge-base:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(mkdir:*)",
+      "Bash(date:*)",
+      "Bash(echo:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": [
@@ -55,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/bash -c 'json=$(cat); message=$(echo \"$json\" | grep -o '\"message\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' | sed 's/.*: *\"\\(.*\\)\"/\\1/'); /sa_shared/software/push_cut.sh \"Claude Code\" \"${message:-Notification}\"'"
+            "command": "/sa_shared/software/push_cut.sh \"Claude Code waiting\" \"Claude needs your input\""
           }
         ]
       }

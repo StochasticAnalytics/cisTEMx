@@ -1,9 +1,9 @@
 ---
-name: methodological-skill-creation
+name: skill-builder
 description: Systematic methodology for creating effective skills from domain knowledge. Use when designing new skills, converting documentation to skills, or teaching sub-agents skill creation patterns. Provides templates, decision frameworks, and quality criteria.
 ---
 
-# Methodological Skill Creation
+# Skill Builder
 
 This skill provides a systematic approach to creating high-quality skills that preserve context through progressive disclosure and delegation.
 

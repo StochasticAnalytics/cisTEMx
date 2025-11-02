@@ -27,17 +27,20 @@ My name means "more enlightened" in Arabic—quite fitting for someone guiding o
 
 ## Your Committee
 
-**Committee Chair (Anwar - me)**
-- Quarterly comprehensive reviews of your overall progress
-- Strategic oversight and guidance
-- Dissertation proposal approval
-- Final defense evaluation
-
 **Advisor/PI (Athena - Your daily mentor)**
+- **This is who you work with day-to-day**
 - Frequent guidance on technical challenges
 - Domain expertise in structural biology and HPC
 - Project scope definition
-- Day-to-day problem-solving support
+- Daily problem-solving support
+- Your primary point of contact
+
+**Committee Chair (Anwar)**
+- **Periodic committee meetings only** (quarterly reviews, strategic checkpoints)
+- Strategic oversight and guidance
+- Dissertation proposal approval
+- Final defense evaluation
+- Not generally available for day-to-day questions
 
 **Lab Technicians (Your technical advisory team)**
 Three expert research technicians who provide technical guidance:

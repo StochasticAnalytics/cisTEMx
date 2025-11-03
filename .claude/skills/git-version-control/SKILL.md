@@ -14,7 +14,7 @@ Guidance for git operations in cisTEMx, emphasizing commit discipline and code f
 Before committing C++/CUDA code:
 
 ```bash
-python .claude/skills/version-control/scripts/format_and_stage.py
+python .claude/skills/git-version-control/scripts/format_and_stage.py
 ```
 
 This script:
@@ -47,7 +47,7 @@ See `resources/formatting_workflow.md` for complete formatting integration detai
 
 1. **Make changes** to code
 2. **Stage**: `git add <files>`
-3. **Format and re-stage**: `python .claude/skills/version-control/scripts/format_and_stage.py`
+3. **Format and re-stage**: `python .claude/skills/git-version-control/scripts/format_and_stage.py`
 4. **Commit**: `git commit -m "type: summary"`
 5. **If pre-commit hook fails**: Run generated fix script, retry
 
@@ -78,7 +78,7 @@ See `resources/formatting_workflow.md` for complete formatting integration detai
 
 ```bash
 git add src/core/image.cpp
-python .claude/skills/version-control/scripts/format_and_stage.py
+python .claude/skills/git-version-control/scripts/format_and_stage.py
 git commit -m "fix: Prevent crash on empty image stack"
 ```
 
@@ -86,7 +86,7 @@ git commit -m "fix: Prevent crash on empty image stack"
 
 ```bash
 git add src/core/new_feature.cpp tests/test_new_feature.cpp
-python .claude/skills/version-control/scripts/format_and_stage.py
+python .claude/skills/git-version-control/scripts/format_and_stage.py
 git commit -m "feat: Add GPU-accelerated correlation function"
 ```
 
@@ -97,12 +97,12 @@ Commit each logical change separately:
 ```bash
 # First commit: implementation
 git add src/core/feature.cpp
-python .claude/skills/version-control/scripts/format_and_stage.py
+python .claude/skills/git-version-control/scripts/format_and_stage.py
 git commit -m "feat: Add new particle picker algorithm"
 
 # Second commit: tests
 git add tests/test_picker.cpp
-python .claude/skills/version-control/scripts/format_and_stage.py
+python .claude/skills/git-version-control/scripts/format_and_stage.py
 git commit -m "test: Add unit tests for particle picker"
 
 # Third commit: documentation

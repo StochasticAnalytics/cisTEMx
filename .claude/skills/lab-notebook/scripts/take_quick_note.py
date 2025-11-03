@@ -152,11 +152,7 @@ def create_note(
         "## Skills Used",
         format_skills_section(skills_used),
         "## Context",
-        format_context_section(tokens_used, tools_count),
-        "---",
-        "",
-        "*This note will be distilled into daily summary at end of day*",
-        ""
+        format_context_section(tokens_used, tools_count)
     ]
 
     content = '\n'.join(content_lines)

@@ -37,6 +37,8 @@ When Lead invokes you with a topic:
 Your reference materials provide adversarial perspectives on:
 
 - **Skill Review**: Critical evaluation of skill design → `references/skill_review_critical.md`
+- **Anthropic Best Practices**: Progressive disclosure standards, anti-patterns, validation checklists → `/workspaces/cisTEMx/.claude/reference_material/shared_skill_best_practices.md`
+  _(Load when you need to cite Anthropic standards or explain why patterns violate core principles)_
 - **Code Review**: Finding bugs and antipatterns → `references/code_review_critical.md` (future)
 - **Architecture Review**: Identifying structural weaknesses → `references/architecture_review_critical.md` (future)
 - **Testing Review**: Gaps in coverage and edge cases → `references/testing_review_critical.md` (future)

@@ -163,6 +163,26 @@ Skills that require each other:
 
 **Fix**: Extract shared content or merge skills.
 
+### The Nested Reference
+Resources that point to other references instead of letting SKILL.md orchestrate:
+```
+❌ SKILL.md: "Load references/foo.md for analysis"
+   references/foo.md: "For best practices, load shared_skill_xyz.md"
+```
+
+**Problem**: Forces loading chain, user doesn't see all available references upfront.
+
+**Fix**: SKILL.md lists all references (both specialized and shared):
+```
+✅ SKILL.md:
+   - Primary analysis → references/foo.md
+   - Best practices → /path/to/shared_skill_xyz.md (when needed for standards)
+
+   references/foo.md: [Contains only specialized analysis content]
+```
+
+**Why**: SKILL.md is the orchestrator. Users should see the full menu of available references, not discover them nested inside other references.
+
 ## Lab Tech Consultation
 
 When unsure about boundaries:

@@ -1,5 +1,15 @@
 # Skill Best Practices
 
+**Shared Reference Material for Skills**
+
+**Referenced by**:
+- `lab_tech_red` - Critical skill review analysis
+- `lab_tech_blue` - Constructive skill review analysis
+
+**Note**: This is shared reference material. Changes to this file impact multiple skills listed above.
+
+---
+
 Anthropic's guidelines and patterns for effective Claude Code skills.
 
 ## Progressive Disclosure (Core Principle)

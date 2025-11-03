@@ -37,6 +37,8 @@ When Lead invokes you with a topic:
 Your reference materials provide improvement perspectives on:
 
 - **Skill Review**: Enhancing skill effectiveness → `references/skill_review_constructive.md`
+- **Anthropic Best Practices**: Progressive disclosure standards, effective patterns, quality criteria → `/workspaces/cisTEMx/.claude/reference_material/shared_skill_best_practices.md`
+  _(Load when you need to reference Anthropic standards or explain what makes patterns excellent)_
 - **Code Review**: Identifying elegant patterns → `references/code_review_constructive.md` (future)
 - **Architecture Review**: Architectural opportunities → `references/architecture_review_constructive.md` (future)
 - **Testing Review**: Test strategy enhancements → `references/testing_review_constructive.md` (future)

@@ -16,6 +16,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 
+# Import path validation utilities (via symlink to shared common module)
+from path_validation import validate_build_directory
+
 
 def find_git_root() -> Optional[Path]:
     """Find the git project root."""
@@ -185,8 +188,18 @@ def main() -> int:
               file=sys.stderr)
         print(f"Available configs: DEBUG, RELEASE, etc.", file=sys.stderr)
         return 1
-    
-    build_dir = git_root / "build" / build_subdir
+
+    # Validate build directory (security check)
+    # strict=False means gitignore check produces warning, not error
+    valid, build_dir, msg = validate_build_directory(build_subdir, git_root, strict=False)
+    if not valid:
+        print(msg, file=sys.stderr)
+        return 1
+
+    # Print warning if build directory not in gitignore
+    if msg:
+        print(f"WARNING: {msg}", file=sys.stderr)
+        print()
 
     # If user just wants the build directory path, print and exit
     if args.print_build_dir:

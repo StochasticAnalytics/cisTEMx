@@ -18,6 +18,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# Import path validation utilities (via symlink to shared common module)
+from path_validation import validate_path_within_project, find_git_root as git_root_from_validation
+
 
 def find_git_root() -> Optional[Path]:
     """Find the git project root."""
@@ -118,12 +121,19 @@ def create_note(
         Path to created note file
     """
     # Determine output directory
+    git_root = find_git_root()
+    if not git_root:
+        print("Error: Not in a git repository", file=sys.stderr)
+        sys.exit(1)
+
     if output_dir is None:
-        git_root = find_git_root()
-        if not git_root:
-            print("Error: Not in a git repository", file=sys.stderr)
-            sys.exit(1)
         output_dir = git_root / ".claude" / "cache"
+    else:
+        # Validate custom output directory is within project
+        valid, error = validate_path_within_project(output_dir, git_root, "Output directory")
+        if not valid:
+            print(error, file=sys.stderr)
+            sys.exit(1)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 

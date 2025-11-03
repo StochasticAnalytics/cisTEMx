@@ -12,6 +12,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+# Import path validation utilities (via symlink to shared common module)
+from path_validation import validate_path_within_project, find_git_root as git_root_from_validation
+
 
 def find_git_root() -> Optional[Path]:
     """Find the git project root."""
@@ -165,13 +168,19 @@ def main() -> int:
     args = parser.parse_args()
 
     # Determine cache directory
+    git_root = find_git_root()
+    if not git_root:
+        print("Error: Not in a git repository", file=sys.stderr)
+        return 1
+
     if args.cache_dir:
         cache_dir = args.cache_dir
-    else:
-        git_root = find_git_root()
-        if not git_root:
-            print("Error: Not in a git repository", file=sys.stderr)
+        # Validate custom cache directory is within project
+        valid, error = validate_path_within_project(cache_dir, git_root, "Cache directory")
+        if not valid:
+            print(error, file=sys.stderr)
             return 1
+    else:
         cache_dir = git_root / ".claude" / "cache"
 
     # Parse date filter

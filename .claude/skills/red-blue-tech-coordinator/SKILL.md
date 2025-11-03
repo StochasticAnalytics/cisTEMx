@@ -37,6 +37,11 @@ The lab technicians have specialized frameworks for different types of analysis.
 - **Red focuses on**: Design flaws, missing elements, anti-patterns, validation failures
 - **Blue focuses on**: Enhancement opportunities, reusable patterns, effectiveness improvements
 
+### Skill Frontmatter Review
+- **What it's good for**: Testing and improving skill frontmatter (name + description) for correct invocation
+- **Red focuses on**: False negative scenarios (skill not invoked when should be), false positive scenarios (skill invoked when shouldn't be), missing keywords, ambiguous scope, character limit violations
+- **Blue focuses on**: Success scenarios (correct invocation), keyword enhancement, synonym coverage, description optimization, iterative improvements with testing
+
 ### Testing Review
 - **What it's good for**: Evaluating test coverage, quality, and practices
 - **Red focuses on**: Coverage gaps, FIRST principle violations, test quality issues, missing edge cases
@@ -149,7 +154,32 @@ When you receive their reports, check that:
 
 If a tech didn't use their skill properly, you may need to re-invoke them with clearer instructions.
 
-### Step 5: Read and Synthesize Results
+### Step 5: EMPIRICALLY TEST Scenarios (FOR FRONTMATTER REVIEW ONLY)
+
+**CRITICAL FOR FRONTMATTER REVIEWS**: Red and Blue generate test scenarios. You MUST test them before synthesis.
+
+**DO NOT skip this step. DO NOT accept claims without testing. This is science, not guesswork.**
+
+1. **Extract testable scenarios** from Red/Blue outputs
+2. **Test baseline** (current frontmatter):
+   - For each Red false negative: Use Task() to test if skill invokes (predict: NO)
+   - For each Blue success case: Use Task() to test if skill invokes (predict: YES)
+   - For each Red false positive: Use Task() to test if skill invokes (predict: YES but shouldn't)
+3. **Measure baseline**:
+   ```
+   True Positives: X/N (should invoke and does)
+   False Negatives: Y/N (should invoke but doesn't)
+   False Positives: Z/N (shouldn't invoke but does)
+   ```
+4. **If applying changes**: Re-test with proposed description and measure delta
+5. **Report EMPIRICAL results**: "Before: X/N. After: Y/N. Improvement: +Z tests passing."
+
+**Testing method**:
+```markdown
+For each test scenario, use Task(subagent_type="general-purpose") with the EXACT user prompt to see which skills get invoked.
+```
+
+### Step 6: Read and Synthesize Results
 
 After both techs complete:
 

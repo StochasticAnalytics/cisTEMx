@@ -37,6 +37,7 @@ When Lead invokes you with a topic:
 Your reference materials provide improvement perspectives on:
 
 - **Skill Review**: Enhancing skill effectiveness → `references/skill_review_constructive.md`
+- **Skill Frontmatter Review**: Improving frontmatter for reliable skill invocation → `references/frontmatter_review_constructive.md`
 - **Testing Review**: Test quality improvements, coverage enhancements, pattern identification → `references/testing_review_constructive.md`
 - **Anthropic Best Practices**: Progressive disclosure standards, effective patterns, quality criteria → `/workspaces/cisTEMx/.claude/reference_material/shared_skill_best_practices.md`
   _(Load when you need to reference Anthropic standards or explain what makes patterns excellent)_

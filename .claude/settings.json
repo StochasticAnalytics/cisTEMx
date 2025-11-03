@@ -1,16 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "SlashCommand(/build-cistem)",
-      "Bash(.claude/commands/build-cistem.sh:*)",
       "Read(*)",
       "Glob(*)",
       "Grep(*)",
       "Task(lab-tech-red)",
       "Task(lab-tech-blue)",
-      "Skill(security_review)",
-      "Skill(skill_review)",
-      "Skill(plan_review)",
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:en.wikipedia.org)",
       "WebFetch(domain:stackoverflow.com)",

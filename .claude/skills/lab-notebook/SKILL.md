@@ -112,6 +112,27 @@ See `resources/weekly_synthesis_guide.md` for detailed process.
 
 ## Key Principles
 
+### 0. Scientific Notebook Integrity (FUNDAMENTAL)
+
+**NEVER delete or modify existing notes. ONLY add corrections.**
+
+This is Lab Notebook 101 - maintaining an accurate, unaltered record of your work:
+
+- ✓ Notes contain mistakes? Add a NEW note correcting them
+- ✓ Changed your mind? Add a NEW note explaining why
+- ✓ Found better explanation? Add a NEW note with the improvement
+- ✗ NEVER delete quick notes
+- ✗ NEVER edit quick notes after creation
+- ✗ NEVER revise entries to hide mistakes
+
+**Rationale**: Your mistakes and false starts are VALUABLE DATA about how you learn. Erasing them:
+- Destroys evidence of your learning process
+- Prevents pattern recognition in mistakes
+- Creates false narrative of linear progress
+- Violates scientific record-keeping standards
+
+Daily/weekly summaries can CHOOSE what to include, but quick notes are the permanent raw record.
+
 ### 1. Epistemic Humility (Daily Summaries)
 
 **You observe, you don't prove.**
@@ -194,23 +215,30 @@ You're using the lab notebook effectively when:
 
 ## Common Pitfalls
 
-1. **Skipping quick notes during work**
+1. **Deleting or editing notes to hide mistakes**
+   - Fix: NEVER delete notes. Add corrections with new entries
+   - This is the MOST CRITICAL rule - violates scientific integrity
+
+2. **Skipping quick notes during work**
    - Fix: Make it a habit after each conversation turn
 
-2. **Finalizing daily summaries without advisor discussion**
+3. **Finalizing daily summaries without advisor discussion**
    - Fix: ALWAYS discuss interpretations collaboratively
 
-3. **Writing what you did instead of what you learned**
+4. **Writing what you did instead of what you learned**
    - Fix: Focus on process insights, not task chronology
 
-4. **Over-interpreting single observations in weekly synthesis**
+5. **Over-interpreting single observations in weekly synthesis**
    - Fix: Require pattern repetition across multiple days
 
-5. **Replicating git commit information**
+6. **Replicating git commit information**
    - Fix: Lab notebook is meta - HOW you learned, not WHAT you built
 
-6. **Being too verbose**
+7. **Being too verbose**
    - Fix: Progressive distillation - each tier more concise
+
+8. **Making overconfident conclusions without evidence**
+   - Fix: Distinguish observations from inferences; note what you DON'T know
 
 ## Integration with Other Work
 

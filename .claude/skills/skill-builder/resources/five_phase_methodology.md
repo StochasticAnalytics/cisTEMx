@@ -23,11 +23,50 @@ Understand what knowledge exists, who uses it, and how it should be packaged.
 5. Check for existing similar skills
 ```
 
+### Research Requirements
+
+**When creating skills that require external knowledge**, conduct thorough research:
+
+1. **Deep Domain Research**:
+   - Review ALL relevant information shared in the user's prompt
+   - Consult official documentation (language specs, library docs, tool manuals)
+   - Search trusted web resources (Stack Overflow, official blogs, authoritative tutorials)
+   - Look for expert practices, common patterns, and known pitfalls
+   - Document findings in `.claude/cache/` for reference
+
+2. **Parallel Research for Breadth**:
+   - You may use **multiple parallel Task() invocations** to research different aspects simultaneously
+   - **CRITICAL: Use unique filenames to avoid race conditions**
+   - Naming pattern: `.claude/cache/<topic>_<subtopic>_research.md`
+   - Example for git-history skill:
+     - `.claude/cache/git_history_bisect_research.md`
+     - `.claude/cache/git_history_churn_research.md`
+     - `.claude/cache/git_history_testing_research.md`
+   - Each parallel task writes to its own file
+   - After all parallel tasks complete, synthesize into final document
+   - This maximizes research depth and breadth while preventing file conflicts
+
+3. **Research Source Priority** (from CLAUDE.md):
+   - Official documentation (language specs, library docs)
+   - Project documentation (CLAUDE.md files, architecture docs)
+   - Git history (what actually worked/failed)
+   - Your own notes (check before reinventing!)
+   - Trusted community (highly-voted StackOverflow, official issues)
+   - General internet (verify against official sources)
+
+4. **Document Your Research**:
+   - Save individual research findings to unique files (see naming above)
+   - Include sources, dates accessed, key learnings
+   - Note any conflicting information or open questions
+   - Synthesize all parallel findings into `.claude/cache/<topic>_comprehensive_research.md`
+   - This becomes foundation for `resources/citations.md`
+
 ### Output
 - Clear problem statement
 - Audience specification
 - Success criteria
 - Initial structure proposal
+- Research findings document(s) (if external knowledge required)
 
 ## Phase 2: Design & Structure
 

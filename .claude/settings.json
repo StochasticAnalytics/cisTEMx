@@ -28,7 +28,15 @@
       "Bash(mkdir:*)",
       "Bash(date:*)",
       "Bash(echo:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(python .claude/skills/compile-code/scripts/run_build.py:*)",
+      "Bash(python .claude/skills/lab-notebook/scripts/take_quick_note.py:*)",
+      "Bash(python .claude/skills/lab-notebook/scripts/list_notes.py:*)",
+      "Bash(python .claude/skills/lab-notebook/scripts/search_notes.py:*)",
+      "Bash(python .claude/skills/lab-notebook/scripts/note_stats.py:*)",
+      "Bash(python .claude/skills/skill-builder/scripts/validate_skill.py)",
+      "Bash(./regenerate_project.sh:*)",
+      "Write(.claude/cache/**)"
     ],
     "deny": [],
     "ask": [

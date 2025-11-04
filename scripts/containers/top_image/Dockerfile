@@ -81,7 +81,9 @@ RUN wget -q https://sourceforge.net/projects/wxformbuilder.mirror/files/v4.2.1/w
     rm -rf /var/lib/apt/lists/*
 
 #  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM
-RUN apt-get update && apt install -y flameshot xdotool x11-utils wmctrl && rm -rf /var/lib/apt/lists/*
+# xdotool x11-utils wmctrl for a script I have to get push notifications on hooks when claude stalls (TODO add notes for others)
+# sox is for Whisper (local voice trasncription), still testing
+RUN apt-get update && apt install -y flameshot xdotool x11-utils wmctrl sox && rm -rf /var/lib/apt/lists/*
 
 # # Install Node 16 
 RUN echo "build npm" && if [[ "x${build_npm}" == "xtrue" ]] ; then /tmp/install_node_16.sh ; fi

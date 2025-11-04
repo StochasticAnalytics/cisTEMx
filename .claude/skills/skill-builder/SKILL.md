@@ -15,12 +15,46 @@ This skill provides a systematic approach to creating high-quality skills that p
 
 To create a new skill:
 1. Analyze the knowledge domain and audience
-2. Design the directory structure
-3. Write concise SKILL.md with references to resources
-4. Test discovery and execution
-5. Document in journal
+2. **Conduct deep research if needed** (see Research Pattern below)
+3. **Build in `.claude/cache/skills/<skill-name>/`** (avoids permission requests)
+4. Design the directory structure
+5. Write concise SKILL.md with references to resources
+6. Validate the skill structure
+7. **Move to `.claude/skills/` when complete** (single approval)
+8. Document in journal
 
 For detailed methodology on each step, consult `resources/five_phase_methodology.md`.
+
+## Build Location Pattern
+
+**Always build skills in `.claude/cache/skills/` first:**
+- Avoids repeated permission requests for file creation
+- Allows rapid iteration and testing
+- When complete, move entire directory to `.claude/skills/` (one approval)
+
+Example workflow:
+```bash
+# Build here (no permissions needed)
+mkdir -p .claude/cache/skills/my-skill/{resources,scripts,templates}
+
+# Create all files freely in cache...
+
+# When ready, move to production (single approval)
+mv .claude/cache/skills/my-skill .claude/skills/
+```
+
+## Research Pattern for Skills Requiring External Knowledge
+
+**Use parallel Task() invocations for deep, broad research:**
+
+1. **Launch multiple general-purpose agents** in parallel (single message, multiple Task calls)
+2. **Each agent** conducts autonomous multi-step research on a specific subtopic
+3. **Each agent writes** to a uniquely-named file to avoid race conditions:
+   - Pattern: `.claude/cache/<topic>_<subtopic>_research.md`
+   - Example: `git_history_bisect_research.md`, `git_history_churn_research.md`
+4. **After completion**, synthesize findings into comprehensive document
+
+This maximizes research depth and breadth while respecting context limits.
 
 ## Key Constraints
 

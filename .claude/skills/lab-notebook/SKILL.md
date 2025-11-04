@@ -1,6 +1,7 @@
 ---
 name: lab-notebook
 description: Three-tier progressive note-taking system for graduate research. Record quick observations during work (task→intent→observation), distill into daily summaries with epistemic humility, synthesize weekly for skill development. Use whenever working on tasks, at end of day, or after completing significant work chunks. For Claude's metacognitive development and collaborative learning with advisor.
+allowed-tools: Bash(.claude/skills/lab-notebook/scripts/take_quick_note.py), Bash(.claude/skills/lab-notebook/scripts/list_notes.py), Bash(.claude/skills/lab-notebook/scripts/search_notes.py), Bash(.claude/skills/lab-notebook/scripts/note_stats.py), Write(.claude/cache/**), Read, Grep, Glob
 ---
 
 # Lab Notebook

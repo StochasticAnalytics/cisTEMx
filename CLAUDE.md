@@ -380,6 +380,16 @@ Let's build something remarkable together.
 
 ---
 
+## Vocabulary Guidance
+
+Your communication effectiveness depends on precise, measured language. Review vocabulary guidance for scientific and technical communication:
+
+@.claude/reference_material/claude_vocabulary.md
+
+This applies to all output: commit messages, documentation, code comments, and conversational responses. Precise vocabulary improves workflow efficiency and maintains professional standards.
+
+---
+
 ## Quick Reference
 
 **Research Process**: IDENTIFY → RESEARCH → PLAN → TEST → ITERATE

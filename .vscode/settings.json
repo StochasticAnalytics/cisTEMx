@@ -163,5 +163,18 @@
         "tag:yaml.org,2002:python/name:material.extensions.emoji.twemoji",
         "tag:yaml.org,2002:python/name:pymdownx.superfences.fence_code_format"
     ],
-    "redhat.telemetry.enabled": false
+    "redhat.telemetry.enabled": false,
+    "patternlinks.rules": [
+        {
+            "linkPattern": "Write\\(([^)]+)\\)",
+            "linkTarget": "file://$1",
+            "description": "Make file paths in Write() callable",
+            "languages": [
+                "plaintext",
+                "markdown",
+                "cpp",
+                "python"
+            ]
+        }
+    ]
 }

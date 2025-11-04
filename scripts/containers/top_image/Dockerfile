@@ -112,3 +112,6 @@ WORKDIR /home/cisTEMdev
 
 RUN echo "set filename-display basename" > /home/cisTEMdev/.gdbinit
 RUN echo "build claude" && if [[ "x${build_claude}" == "xtrue" ]] ; then /tmp/install_node_22_and_claude.sh ; fi
+
+# Make sure we open claude in verbose mode (can be turned off) so the startup hook ensureing skills are loaded is clear
+RUN echo "alias claude='claude --verbose'" >> /home/cisTEMdev/.bashrc

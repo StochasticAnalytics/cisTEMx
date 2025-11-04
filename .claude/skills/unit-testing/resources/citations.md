@@ -253,7 +253,7 @@ If you discover outdated information:
 
 This skill may depend on:
 - `compile-code` - For building and running C++ tests
-- `git-version-control` - For committing test changes
+- `git-commit` - For committing test changes
 - `lab-notebook` - For documenting testing insights
 
 This skill provides foundation for:

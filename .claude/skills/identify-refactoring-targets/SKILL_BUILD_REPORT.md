@@ -423,14 +423,14 @@ All resources include "Related Resources" sections linking to:
 - `find-bug-introduction`: After hotspot refactoring, verify bugs reduced
 - `understand-code-origins`: Investigate hotspot file history
 - `unit-testing`: Add tests before refactoring hotspots
-- `git-version-control`: Commit refactored code properly
+- `git-commit`: Commit refactored code properly
 
 **Workflow example**:
 1. Use `identify-refactoring-targets` → Find hotspots
 2. Use `understand-code-origins` → Understand hotspot evolution
 3. Use `unit-testing` → Add tests to hotspot
 4. Refactor hotspot code
-5. Use `git-version-control` → Commit changes
+5. Use `git-commit` → Commit changes
 6. Use `find-bug-introduction` → Verify improvement
 
 ---

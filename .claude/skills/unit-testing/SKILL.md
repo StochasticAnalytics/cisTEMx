@@ -136,4 +136,4 @@ For detailed integration steps, see `resources/build_integration.md`.
 
 - Use **`compile-code`** skill to build and run C++ unit tests
 - Document test creation decisions in **`lab-notebook`** skill
-- Commit test changes using **`git-version-control`** skill
+- Commit test changes using **`git-commit`** skill

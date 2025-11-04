@@ -353,7 +353,7 @@ These skills reference or complement this one:
 - **find-bug-introduction**: Cross-reference bugs with coverage gaps
 - **identify-refactoring-targets**: High-complexity, low-coverage candidates
 - **compile-code**: Ensure coverage builds compile successfully
-- **git-version-control**: Commit discipline for test changes
+- **git-commit**: Commit discipline for test changes
 
 ---
 

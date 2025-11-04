@@ -130,7 +130,7 @@ All sources for find-bug-introduction skill. Organized by category for maintaina
 These skills may reference or be referenced by find-bug-introduction:
 
 - **understand-code-origins**: Uses git blame, pickaxe after bisect identifies culprit
-- **git-version-control**: General git workflow context
+- **git-commit**: General git workflow context
 - **compile-code**: Build system integration for bisect test scripts
 
 ## Maintenance Schedule

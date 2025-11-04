@@ -60,7 +60,7 @@ All sources for understand-code-origins skill.
 
 - **find-bug-introduction**: Uses bisect (before understanding origins)
 - **identify-refactoring-targets**: Uses Code Maat (different domain)
-- **git-version-control**: General git workflow context
+- **git-commit**: General git workflow context
 
 ## Maintenance
 

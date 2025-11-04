@@ -102,7 +102,7 @@ This skill works with:
 - **find-bug-introduction**: Cross-reference bugs with coverage
 - **identify-refactoring-targets**: High-complexity + low-coverage candidates
 - **compile-code**: Ensure coverage builds work
-- **git-version-control**: Commit discipline for test changes
+- **git-commit**: Commit discipline for test changes
 
 ## Research Foundation
 

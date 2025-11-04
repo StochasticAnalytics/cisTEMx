@@ -49,23 +49,23 @@ Git commits document product. Lab notebook documents:
 
 ### Taking Quick Notes
 
+**IMPORTANT**: Run scripts directly WITHOUT `python` prefix (they have shebangs and are in allowed-tools). Commands must be on ONE LINE without backslash continuations.
+
 ```bash
 # Record observation during work
-.claude/skills/lab-notebook/scripts/take_quick_note.py \
-  --task "Implementing compile-code skill" \
-  --intent "Replace cpp-build-expert agent with flexible skill system" \
-  --observation "Decided to exclude template error guidance until C++20 migration - avoid premature optimization" \
-  --skills-used '{"name": "skill-builder", "invoker": "me", "scripts": ["validate_skill.py"], "refs": ["five_phase_methodology.md"]}' \
-  --tokens-used "83503/200000" \
-  --tools-count "42"
+# Use: Bash(.claude/skills/lab-notebook/scripts/take_quick_note.py ...)
+.claude/skills/lab-notebook/scripts/take_quick_note.py --task "Implementing compile-code skill" --intent "Replace cpp-build-expert agent with flexible skill system" --observation "Decided to exclude template error guidance until C++20 migration - avoid premature optimization" --skills-used '{"name": "skill-builder", "invoker": "me", "scripts": ["validate_skill.py"], "refs": ["five_phase_methodology.md"]}' --tokens-used "83503/200000" --tools-count "42"
 
 # List recent notes
+# Use: Bash(.claude/skills/lab-notebook/scripts/list_notes.py ...)
 .claude/skills/lab-notebook/scripts/list_notes.py --last 10
 
 # Search for patterns
+# Use: Bash(.claude/skills/lab-notebook/scripts/search_notes.py ...)
 .claude/skills/lab-notebook/scripts/search_notes.py --keyword "skill-builder"
 
 # Check if you have notes today (triggers daily summary)
+# Use: Bash(.claude/skills/lab-notebook/scripts/note_stats.py ...)
 .claude/skills/lab-notebook/scripts/note_stats.py --today
 ```
 
@@ -285,10 +285,8 @@ You're using the lab notebook effectively when:
 1. Take your first quick note about implementing this skill:
 
 ```bash
-.claude/skills/lab-notebook/scripts/take_quick_note.py \
-  --task "Learning lab-notebook skill" \
-  --intent "Establish systematic note-taking practice" \
-  --observation "Three-tier system makes sense - progressive distillation from raw to strategic"
+# Run directly WITHOUT python prefix - single line command
+.claude/skills/lab-notebook/scripts/take_quick_note.py --task "Learning lab-notebook skill" --intent "Establish systematic note-taking practice" --observation "Three-tier system makes sense - progressive distillation from raw to strategic"
 ```
 
 2. Set a reminder to create today's daily summary at end of day

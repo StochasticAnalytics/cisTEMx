@@ -1,6 +1,7 @@
 ---
 name: git-commit
-description: Create properly formatted git commits for cisTEMx with correct message structure and code formatting. Use BEFORE every git commit to format C++/CUDA code with clang-format, write conventional commit messages (feat/fix/refactor/etc), and follow project commit standards. Handles staging, formatting, message templates, and pre-commit hook integration.
+description: Create properly formatted git commits. Structure commit message and ensure code formatting prior to commit. Use before analyzing changes with other git tools like diff, log, status. Handles staging of changes git worktree, commit message formatting, git commit message templates, and pre-commit hook integration.
+allowed-tools:  Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git show-branch:*),Bash(git merge-base:*), Bash(git ls-tree:*),Bash(git add:*), Bash(git commit -m:*)Read, Grep, Glob
 ---
 
 # Git Commit

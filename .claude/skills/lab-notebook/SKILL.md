@@ -1,7 +1,7 @@
 ---
 name: lab-notebook
 description: Three-tier progressive note-taking system for graduate research. Record quick observations during work (task→intent→observation), distill into daily summaries with epistemic humility, synthesize weekly for skill development. Use whenever working on tasks, at end of day, or after completing significant work chunks. For Claude's metacognitive development and collaborative learning with advisor.
-allowed-tools: Bash(.claude/skills/lab-notebook/scripts/take_quick_note.py), Bash(.claude/skills/lab-notebook/scripts/list_notes.py), Bash(.claude/skills/lab-notebook/scripts/search_notes.py), Bash(.claude/skills/lab-notebook/scripts/note_stats.py), Write(.claude/cache/**), Read, Grep, Glob
+allowed-tools: Bash(.claude/skills/lab-notebook/scripts/take_quick_note.py:*), Bash(.claude/skills/lab-notebook/scripts/list_notes.py:*), Bash(.claude/skills/lab-notebook/scripts/search_notes.py:*), Bash(.claude/skills/lab-notebook/scripts/note_stats.py:*), Write(.claude/cache/**), Read, Grep, Glob
 ---
 
 # Lab Notebook
@@ -47,7 +47,7 @@ Git commits document product. Lab notebook documents:
 
 ```bash
 # Record observation during work
-python .claude/skills/lab-notebook/scripts/take_quick_note.py \
+.claude/skills/lab-notebook/scripts/take_quick_note.py \
   --task "Implementing compile-code skill" \
   --intent "Replace cpp-build-expert agent with flexible skill system" \
   --observation "Decided to exclude template error guidance until C++20 migration - avoid premature optimization" \
@@ -56,13 +56,13 @@ python .claude/skills/lab-notebook/scripts/take_quick_note.py \
   --tools-count "42"
 
 # List recent notes
-python .claude/skills/lab-notebook/scripts/list_notes.py --last 10
+.claude/skills/lab-notebook/scripts/list_notes.py --last 10
 
 # Search for patterns
-python .claude/skills/lab-notebook/scripts/search_notes.py --keyword "skill-builder"
+.claude/skills/lab-notebook/scripts/search_notes.py --keyword "skill-builder"
 
 # Check if you have notes today (triggers daily summary)
-python .claude/skills/lab-notebook/scripts/note_stats.py --today
+.claude/skills/lab-notebook/scripts/note_stats.py --today
 ```
 
 ### Creating Daily Summary
@@ -266,7 +266,7 @@ You're using the lab notebook effectively when:
 
 1. Take your first quick note about implementing this skill:
 ```bash
-python .claude/skills/lab-notebook/scripts/take_quick_note.py \
+.claude/skills/lab-notebook/scripts/take_quick_note.py \
   --task "Learning lab-notebook skill" \
   --intent "Establish systematic note-taking practice" \
   --observation "Three-tier system makes sense - progressive distillation from raw to strategic"

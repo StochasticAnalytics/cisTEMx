@@ -1,6 +1,6 @@
 ---
 name: compile-code
-description: Execute cisTEMx C++ builds and diagnose compilation/linking errors. Use when building after code changes, investigating build failures, or analyzing compiler output. For main Claude and sub-agents. Enables rapid iteration with intelligent error diagnosis.
+description: Build/compile the cisTEMx project using cmake, make, ninja. Provides build instructions, configuration, and compilation error diagnosis. Use when you need to build the project, compile code changes, or check for build errors.
 ---
 
 # Compile Code

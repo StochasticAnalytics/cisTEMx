@@ -17,6 +17,11 @@
     },
     "tasks": [
         {
+            "label": "ClearClaudeSkill",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/clear_claude_cache_since_skill.sh"
+        }
+        {
             "label": "Configure cisTEMx build",
             "type": "shell",
             "command": "mkdir -p ${build_dir}/intel-gpu-static && cd ${build_dir}/intel-gpu-static && CC=icx CXX=icpx ../../configure ${input:additional_compiler_flags} --with-wx-config=/opt/WX/wx305-icc-static-gtk2/bin/wx-config --enable-staticmode --with-cuda=${cuda_dir} ${experimental_algo_flags} ${common_optional_programs}  ${common_flags} "

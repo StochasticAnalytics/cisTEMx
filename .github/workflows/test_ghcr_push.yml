@@ -32,6 +32,11 @@ jobs:
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           docker push ghcr.io/$OWNER/test-push:latest
 
+      - name: Push to GHCR Again
+        run: |
+          docker tag test-push ${{ steps.versions.outputs.repo_name }}:base_image_v${{ steps.versions.outputs.base_version }}
+          docker push ${{ steps.versions.outputs.repo_name }}:base_image_v${{ steps.versions.outputs.base_version }}
+
       - name: Summary
         run: |
           echo "### Test push succeeded! :white_check_mark:" >> $GITHUB_STEP_SUMMARY

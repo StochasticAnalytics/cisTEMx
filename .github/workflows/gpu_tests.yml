@@ -1,5 +1,12 @@
 name: GPU Tests
 
+# TODO: When integrating into CI pipeline:
+# 1. Rename this file to run_gpu_tests.yml
+# 2. Delete the 'build' job below (lines marked with DELETE comments)
+# 3. Uncomment artifact upload in run_builds.yml
+# 4. Update test job to accept build_type as workflow input
+# 5. Uncomment gpu-tests section in check_formatting.yml
+
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +19,7 @@ on:
           - GPU_release
         default: GPU_debug
 
+# DELETE THIS ENTIRE JOB when using in CI pipeline (reuses build from debug_build.yml)
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,7 +37,7 @@ jobs:
           fetch-depth: 0
 
       - name: Regenerate project
-        run: ./regenerate_project.b
+        run: ./regenerate_project.sh
 
       - name: Configure
         id: configure
@@ -68,19 +76,21 @@ jobs:
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: cistem_gpu_binaries_${{ inputs.build_type }}
+          name: cistem_binaries_${{ inputs.build_type }}
           path: build/${{ inputs.build_type }}/src
           retention-days: 1
+# END DELETE - Keep everything below this line
 
   test:
-    needs: build
+    needs: build  # TODO: Remove this line when integrating with CI (no build dependency)
     runs-on: gpu_runner
 
     steps:
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
-          name: cistem_gpu_binaries_${{ inputs.build_type }}
+          # NOTE: This artifact name must match the upload in run_builds.yml (cistem_binaries_GPU_debug)
+          name: cistem_binaries_${{ inputs.build_type }}
           path: ./binaries
 
       - name: Setup environment

@@ -25,25 +25,29 @@
 
 usr_path="../../.vscode"
 
+# FIXME:
+# wx-version is obsolete, we are building a whole matrix of options now by default
+# npm is not fully obsolete, but we add this when adding claude (a default) and also when adding back in wxWebView
+# dynamic builds will need to be re-enabled (and we need to add apptainer to the top layer) 
+
 # Check for -h or --help
 if [[ $1 == "-h" || $1 == "--help" ]] ; then
     echo ""
-    echo "Usage: build_base.sh <base|top> [--no-cache] [--wx-version=<stable|dev>] [--compiler=<icpc|g++>] [--build-type=<static|dynamic>] [--npm ] [--ref-images ] [--tag-suffix=<string>]"
+    echo "Usage: build_base.sh <base|top> [--no-cache] [--wx-version=<stable|dev>] [--build-type=<static|dynamic>] [--npm ] [--ref-images ] [--tag-suffix=<string>]"
     echo "      --no-cache: build without cache, must be second arg"
     echo ""
     echo "  positional args are optional and only affect the top layer build"
     echo "      --wx-version: stable or dev, default is stable (currently 3.0.5)"
-    echo "      --compiler: icpc or g++, default is icpc [g++ builds not supported yet]"
     echo "      --build-type: static or dynamic, default is static [BUT only dynamic is supported for --wx-version dev]"
     echo "      --npm: build npm, default is false if not specified"
-    echo "      --claude: build claude, default is false if not specified"
+    echo "      --skip-claude: build claude, default is to build if this skip flag is not specified"
     echo "      --skip-libtorch: default is true to include libtorch dynamic libraries for blush imple if not specified"
     echo "      --ref-images: build reference images, default is true if not specified"
     echo "      --skip-docs: skip including depenencies for the new docs system, default is false if not specified"
     echo "      --tag-suffix: to append to the image tag"
     echo ""
     echo "For example, to build the base image without cache, and the top image with wxWidgets 3.1.5, g++, dynamic, npm, and ref-images:"
-    echo "      create_containers.sh base --no-cache --wx-version=dev --compiler=g++ --npm --ref-images"
+    echo "      create_containers.sh base --no-cache --wx-version=dev --npm --ref-images"
     exit 0
 fi
 
@@ -86,14 +90,13 @@ fi
 # Now look for any additional arguments
 # Default values are:
 build_type="static"
-build_compiler="icpc"
 build_wx_version="stable"
 build_npm="false"
 build_ref_images="true"
 build_libtorch="true"
 build_docs="true"
 tag_suffix=""
-build_claude="false"
+build_claude="true"
 
 
 while [[ $# -gt 0 ]]; do
@@ -103,20 +106,6 @@ while [[ $# -gt 0 ]]; do
       # Check that the version is valid: stable or dev
         if [[ $build_wx_version != "stable" && $build_wx_version != "dev" ]] ; then
             echo "Invalid wx version: ($build_wx_version) - must be stable or dev"
-            exit 1
-        fi
-        shift # past argument
-        shift # past value
-        ;;
-    --compiler)
-        build_compiler="$2"
-        # Check that the compiler is valid: icpc or g++
-        if [[ $build_compiler != "icpc" && $build_compiler != "g++" ]] ; then
-            echo "Invalid compiler: ($build_compiler) - must be icpc or g++"
-            exit 1
-        fi
-        if [[ $build_compiler == "g++" ]] ; then
-            echo "g++ builds not supported yet"
             exit 1
         fi
         shift # past argument
@@ -136,8 +125,8 @@ while [[ $# -gt 0 ]]; do
         build_npm="true"
         shift # past argument
         ;;
-    --claude)
-        build_claude="true"
+    --skip-claude)
+        build_claude="false"
         shift # past argument
         ;;
     --ref-images)
@@ -216,7 +205,6 @@ else
 
     echo "Building top layer with:"
     echo "    wxWidgets version: ${build_wx_version}"
-    echo "    compiler: ${build_compiler}"
     echo "    build type: ${build_type}"
     echo "    npm: ${build_npm}"
     echo "    claude: ${build_claude}"
@@ -255,7 +243,6 @@ echo "Building ${container_repository}:${prefix}${container_version}${tag_suffix
 
 docker build ${skip_cache} --tag ${container_repository}:${prefix}${container_version}${tag_suffix} \
     --build-arg build_type=${build_type} \
-    --build-arg build_compiler=${build_compiler} \
     --build-arg build_wx_version=${build_wx_version} \
     --build-arg build_npm=${build_npm} \
     --build-arg build_ref_images=${build_ref_images} \

@@ -46,6 +46,32 @@ START_TIME=$(date +%s)
 echo -e "${BLUE}=== cisTEMx Pre-Push Hook ===${NC}"
 echo ""
 
+# Phase 0: Sync validation (quick check before expensive build/test)
+echo -e "${YELLOW}=== Phase 0: Validating synchronization ===${NC}"
+echo ""
+
+if [ -f "$PROJECT_ROOT/.github/scripts/validate_sync.py" ]; then
+    python3 "$PROJECT_ROOT/.github/scripts/validate_sync.py"
+    SYNC_EXIT=$?
+
+    if [ $SYNC_EXIT -ne 0 ]; then
+        echo ""
+        echo -e "${RED}============================================${NC}"
+        echo -e "${RED}SYNC VALIDATION FAILED${NC}"
+        echo -e "${RED}============================================${NC}"
+        echo ""
+        echo -e "${YELLOW}Fix the out-of-sync values listed above, then try again.${NC}"
+        echo -e "${YELLOW}To push anyway (not recommended):${NC}"
+        echo -e "  git push --no-verify"
+        echo ""
+        exit 1
+    fi
+    echo ""
+else
+    echo -e "${YELLOW}WARNING: Sync validator not found, skipping validation${NC}"
+    echo ""
+fi
+
 # Function to print elapsed time
 print_elapsed() {
     local end_time=$(date +%s)

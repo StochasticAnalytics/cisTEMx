@@ -4,6 +4,7 @@ description: Identify test coverage gaps by analyzing git history, test-to-produ
 tags: [testing, coverage, diff-cover, test-gaps, quality]
 version: 1.0.0
 author: Claude (cisTEMx)
+status: BROKEN - DO NOT USE. Scripts have critical bugs including incorrect git log format parsing and hard-coded directory assumptions that don't match cisTEMx structure.
 ---
 
 # Analyze Test Coverage Gaps

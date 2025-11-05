@@ -22,7 +22,10 @@
       "Bash(date:*)",
       "Bash(echo:*)",
       "Bash(test:*)",
-      "Bash(python .claude/skills/skill-builder/scripts/validate_skill.py)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git show:*)",
       "Write(.claude/cache/**)"
     ],
     "deny": [],

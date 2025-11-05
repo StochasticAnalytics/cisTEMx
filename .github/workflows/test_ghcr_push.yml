@@ -24,11 +24,13 @@ jobs:
 
       - name: Tag for GHCR
         run: |
-          docker tag test-push ghcr.io/${{ github.repository_owner }}/test-push:latest
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker tag test-push ghcr.io/$OWNER/test-push:latest
 
       - name: Push to GHCR
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/test-push:latest
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker push ghcr.io/$OWNER/test-push:latest
 
       - name: Summary
         run: |

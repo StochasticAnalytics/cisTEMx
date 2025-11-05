@@ -18,13 +18,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull minimal test image
+      - name: Build minimal test image
         run: |
-          docker pull alpine:latest
+          echo "FROM scratch" | docker build -t test-push -
 
       - name: Tag for GHCR
         run: |
-          docker tag alpine:latest ghcr.io/${{ github.repository_owner }}/test-push:latest
+          docker tag test-push ghcr.io/${{ github.repository_owner }}/test-push:latest
 
       - name: Push to GHCR
         run: |

@@ -36,6 +36,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory /__w/cisTEMx/cisTEMx
+
       - name: Regenerate project
         run: ./regenerate_project.sh
 
@@ -47,7 +50,6 @@ jobs:
         run: |
           mkdir -p build/${{ inputs.build_type }}
           cd build/${{ inputs.build_type }}
-          git config --global --add safe.directory /__w/cisTEMx/cisTEMx
 
           if [ "${{ inputs.build_type }}" = "GPU_debug" ]; then
             CONFIGURE_OPTS="--enable-gpu-debug --enable-debugmode"

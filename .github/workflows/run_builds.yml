@@ -56,14 +56,14 @@ jobs:
     outputs:
       version: ${{ steps.configure.outputs.version }}
     steps:
-    # - name: okay the repo
-    #   run: git config --global --add safe.directory /__w/quick-lint-js/quick-lint-js
-
     - uses: actions/checkout@v4
       # the macro for CISTEM_VERSION_TEXT needs access to the history.
       with:
         fetch-depth: 0
-        
+
+    - name: Configure git safe directory
+      run: git config --global --add safe.directory /__w/cisTEMx/cisTEMx
+
     - name: regenerate_project
       run: ./regenerate_project.sh
     - name: configure
@@ -72,11 +72,10 @@ jobs:
         CXX: ${{ inputs.CXX }}
       run: |
         . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
-        mkdir -p build/${{ inputs.build_type }} 
-        cd build/${{ inputs.build_type }} 
+        mkdir -p build/${{ inputs.build_type }}
+        cd build/${{ inputs.build_type }}
         echo $CC
         echo $CXX
-        git config --global --add safe.directory /__w/cisTEMx/cisTEMx
         ../../configure   ${{ inputs.configure_options }}  ${{ inputs.global_configure_options }}
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "version=$VERSION" >> $GITHUB_OUTPUT

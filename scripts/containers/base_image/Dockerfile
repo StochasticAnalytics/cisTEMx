@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM nvidia/cuda:12.3.2-devel-ubuntu22.04
 
 # /groups/himesb/.config/Code\ -\ Insiders/User/globalStorage/ms-vscode-remote.remote-containers/cli-bin/code-insiders build --image-name bhimesbhimes/cistem_build_env:latest ./.devcontainer_build
 
@@ -70,17 +70,9 @@ ENV LD_PRELOAD=/opt/intel/libfakeIntel.so
 
 # Install pytorch - now optional in the top layer container
 
-
-# Install cuda (when the web is live)
-# NOTE: the MINIMUM driver verions is >=525.60.13
-ARG CUDA_VER=12.3.2
-ARG DRIVER_VER=545.23.08
-
-# Install cuda (when the web is live)
-RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run &&\
-    sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit &&\
-    rm cuda_${CUDA_VER}_${DRIVER_VER}_linux.run &&\
-    cd /usr/local/cuda/lib64 && rm -rf libcuspars* libcusolver* libcublasLt* libnppif* nsight-compute-* nsight-systems-* nsightee_plugins
+# CUDA 12.3.2 is provided by the nvidia/cuda:12.3.2-devel-ubuntu22.04 base image
+# No manual installation needed - CUDA toolkit and development tools are pre-installed
+# NOTE: the MINIMUM driver version for CUDA 12.3.2 is >=525.60.13
 
 # Note that for dynamic builds, the base container will be larger than the top layer because we defer removing the static cuda libs until the end
 

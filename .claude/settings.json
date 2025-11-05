@@ -1,16 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "SlashCommand(/build-cistem)",
-      "Bash(.claude/commands/build-cistem.sh:*)",
       "Read(*)",
       "Glob(*)",
       "Grep(*)",
       "Task(lab-tech-red)",
       "Task(lab-tech-blue)",
-      "Skill(security_review)",
-      "Skill(skill_review)",
-      "Skill(plan_review)",
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:en.wikipedia.org)",
       "WebFetch(domain:stackoverflow.com)",
@@ -23,17 +18,15 @@
       "Bash(tail:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git branch:*)",
-      "Bash(git show-branch:*)",
-      "Bash(git merge-base:*)",
-      "Bash(git ls-tree:*)",
       "Bash(mkdir:*)",
       "Bash(date:*)",
       "Bash(echo:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git show:*)",
+      "Write(.claude/cache/**)"
     ],
     "deny": [],
     "ask": [
@@ -69,6 +62,16 @@
           {
             "type": "command",
             "command": "/sa_shared/software/push_cut.sh \"Claude Code Finished\" \"Claude has completed your task\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/scripts/validate_skills_loaded.py"
           }
         ]
       }

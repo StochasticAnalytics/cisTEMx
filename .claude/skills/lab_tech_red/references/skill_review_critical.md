@@ -154,6 +154,47 @@ Classify findings by severity:
 - Inconsistent formatting
 - Redundant content
 
+## Skill Quality Validation
+
+Use these checklists to find what's broken:
+
+### Usability Failures
+
+Will a new user:
+1. NOT understand what the skill does? (unclear title/purpose)
+2. NOT know when to use it? (vague/missing "when to use")
+3. NOT know when NOT to use it? (no boundaries defined)
+4. FAIL to get started? (no quick start or broken example)
+5. NOT find detailed info? (missing/broken resource map)
+
+### Completeness Failures
+
+Missing critical components:
+- [ ] Frontmatter (name, description)
+- [ ] Purpose section
+- [ ] When to use
+- [ ] When NOT to use
+- [ ] At least one example
+- [ ] Progressive disclosure map
+- [ ] Version number
+
+### Progressive Disclosure Violations
+
+Check for failures:
+- [ ] SKILL.md over 200 lines (context bloat)
+- [ ] Resources over 500 lines (should be split)
+- [ ] Circular dependencies (loading deadlock)
+- [ ] No guidance on what to load when (user confusion)
+- [ ] Resources not self-contained (forced loading)
+
+### Clarity Failures
+
+Read aloud and find:
+- Unnatural phrasing that confuses
+- Sentences that require re-reading
+- Undefined jargon creating barriers
+- Unclear examples that don't demonstrate
+
 ## Output Format
 
 ```markdown

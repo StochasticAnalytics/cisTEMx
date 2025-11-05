@@ -1,0 +1,58 @@
+{
+    "name": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/cisTEMx,type=bind,consistency=cached",
+    "workspaceFolder": "/workspaces/cisTEMx",
+    // NOTE: Container version must match .vscode/CONTAINER_VERSION_TOP
+    // Update both when changing versions
+    "image": "ghcr.io/stochasticanalytics/cistem_build_env:v3.0.1",
+    "initializeCommand": "bash -c 'EXPECTED_VERSION=$(cat ${localWorkspaceFolder}/.vscode/CONTAINER_VERSION_TOP 2>/dev/null || echo \"unknown\"); CURRENT_VERSION=\"3.0.1\"; if [ \"$EXPECTED_VERSION\" != \"$CURRENT_VERSION\" ]; then echo \"⚠️  WARNING: devcontainer.json uses v$CURRENT_VERSION but CONTAINER_VERSION_TOP specifies v$EXPECTED_VERSION\"; echo \"   Update devcontainer.json image field to match\"; fi'",
+    "remoteUser": "cisTEMdev",
+    "hostRequirements": {
+        "gpu": "optional"
+    },
+    "remoteEnv": {
+        // We need to set this so we can use wxmctrl -lpx | grep ${WORKSPACE_BASENAME} | awk '{print $1}' to find window IDs
+        // then xdotool get_desktop_for_window <windowID> to get the desktop number
+        // then later compare to xdotool get_desktop to see if the window is on the current desktop, if not we can run a hook to push notify if claude is read.
+        // FIXME this should just come from name
+        "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}"
+    },
+    "runArgs": [
+        "--rm",
+        "-it",
+        "--net",
+        "host",
+        "-e",
+        "DISPLAY=${env:DISPLAY}",
+        "-v",
+        "${env:XAUTHORITY}:/home/cisTEMdev/.Xauthority",
+        "-v",
+        "/tmp/.X11-unix:/tmp/.X11-unix"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "maelvalais.autoconf",
+                "ms-python.autopep8",
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "cschlosser.doxdocgen",
+                "eamodio.gitlens",
+                "ms-toolsai.jupyter",
+                "DavidAnson.vscode-markdownlint",
+                "ms-python.vscode-pylance",
+                "ms-python.python",
+                "frinkr.vscode-tabify",
+                "jomeinaster.bracket-peek",
+                "onnovalkering.vscode-singularity",
+                "GitHub.copilot",
+                "GitHub.copilot-chat"
+            ]
+        }
+    }
+    // For custom mounts, use devcontainer CLI with --mount flag instead of hardcoding here.
+    // Example bash aliases (add to ~/.bashrc):
+    //   alias cistem-devcontainer='devcontainer up --mount type=bind,source=/scratch,target=/scratch --mount type=bind,source=/sa_shared,target=/sa_shared && devcontainer open'
+    //   alias cistem-devcontainer-rebuild='devcontainer up --remove-existing-container --build-no-cache --mount type=bind,source=/scratch,target=/scratch --mount type=bind,source=/sa_shared,target=/sa_shared && devcontainer open'
+    // Usage: Run from workspace directory: cistem-devcontainer (or cistem-devcontainer-rebuild to force rebuild)
+}

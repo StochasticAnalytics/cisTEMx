@@ -16,10 +16,10 @@ Diagnose and resolve failures in cisTEMx's functional and console test suites (s
 Before any investigation, you MUST:
 
 1. **Discover Build Directory**:
-   - Use the SlashCommand tool with `/build-cistem` to determine the current build directory
-   - This command automatically extracts the build directory from VS Code tasks
+   - Use: `python .claude/skills/compile-code/scripts/run_build.py --print-build-dir`
+   - This extracts the build directory from VS Code tasks configuration
    - DO NOT hardcode paths like `build/debug/bin/` - always use the discovered build directory
-   - The build directory path will be shown in the slash command output
+   - The command outputs just the build directory path for easy parsing
 
 2. **Confirm Reproducibility**:
    - Run the failing test multiple times to verify consistent failure

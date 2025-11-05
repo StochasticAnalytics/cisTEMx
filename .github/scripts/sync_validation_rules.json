@@ -1,0 +1,27 @@
+{
+  "rules": [
+    {
+      "name": "container_version_top",
+      "description": "Container version in CI workflows and devcontainer must match the source of truth in .vscode/CONTAINER_VERSION_TOP",
+      "source": {
+        "file": ".vscode/CONTAINER_VERSION_TOP",
+        "pattern": "^(.+)$",
+        "capture_group": 1
+      },
+      "targets": [
+        {
+          "file": ".github/workflows/run_builds.yml",
+          "pattern": "image: ghcr\\.io/.*/cistem_build_env:v(.+)",
+          "capture_group": 1,
+          "context": "CI workflow container image version"
+        },
+        {
+          "file": ".devcontainer/devcontainer.json",
+          "pattern": "\"image\": \"ghcr\\.io/.*/cistem_build_env:v(.+)\"",
+          "capture_group": 1,
+          "context": "devcontainer image version"
+        }
+      ]
+    }
+  ]
+}

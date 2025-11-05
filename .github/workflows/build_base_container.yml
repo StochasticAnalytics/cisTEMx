@@ -1,0 +1,63 @@
+name: Build Base Container
+
+on:
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        description: 'Build without cache'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read version files
+        id: versions
+        run: |
+          BASE_VERSION=$(cat .vscode/CONTAINER_VERSION_BASE)
+          REPO_NAME=$(cat .vscode/CONTAINER_REPO_NAME)
+          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+          echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+          echo "Building base container: $REPO_NAME:base_image_v$BASE_VERSION"
+
+      - name: Build base container
+        working-directory: scripts/containers
+        run: |
+          if [ "${{ inputs.no_cache }}" = "true" ]; then
+            ./create_containers.sh base --no-cache
+          else
+            ./create_containers.sh base
+          fi
+
+      - name: Push to GHCR
+        run: |
+          docker push ${{ steps.versions.outputs.repo_name }}:base_image_v${{ steps.versions.outputs.base_version }}
+
+      - name: Summary
+        run: |
+          echo "### Base container built and pushed successfully! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ steps.versions.outputs.repo_name }}:base_image_v${{ steps.versions.outputs.base_version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next steps:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Make the package public at: https://github.com/orgs/stochasticanalytics/packages" >> $GITHUB_STEP_SUMMARY
+          echo "2. Build the top container using the build_top_container workflow" >> $GITHUB_STEP_SUMMARY

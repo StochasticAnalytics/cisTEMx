@@ -9,7 +9,6 @@ FROM fake_repo
 
 # Options are still somewhat restricted
 #   build-type = linking is static or dynamic
-#   build-compiler = icpc or g++
 #   build-wx-version = old (3.0.5) or new (3.1.5) NOTE: we probably want to test 3.2 instead
 #   build-npm = false [ default ] or true if specified
 #   build-ref-images = false [ default ] or true if specified
@@ -19,7 +18,6 @@ ARG TZ=America/New_York
 ARG GCC_VER=11
 # note "-" in the variable seems to break the conditional statements.
 ARG build_type="static"
-ARG build_compiler="icpc"
 ARG build_wx_version="stable"
 ARG build_npm="false"
 ARG build_ref_images="false"
@@ -81,6 +79,8 @@ RUN wget -q https://sourceforge.net/projects/wxformbuilder.mirror/files/v4.2.1/w
     rm -rf /var/lib/apt/lists/*
 
 #  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM
+# xdotool x11-utils wmctrl for a script I have to get push notifications on hooks when claude stalls (TODO add notes for others)
+# sox is for Whisper (local voice trasncription), still testing
 RUN apt-get update && apt install -y flameshot xdotool x11-utils wmctrl && rm -rf /var/lib/apt/lists/*
 
 # # Install Node 16 
@@ -110,3 +110,14 @@ WORKDIR /home/cisTEMdev
 
 RUN echo "set filename-display basename" > /home/cisTEMdev/.gdbinit
 RUN echo "build claude" && if [[ "x${build_claude}" == "xtrue" ]] ; then /tmp/install_node_22_and_claude.sh ; fi
+
+# Make sure we open claude in verbose mode (can be turned off) so the startup hook ensureing skills are loaded is clear
+RUN echo "alias claude='claude --verbose'" >> /home/cisTEMdev/.bashrc
+
+RUN echo -e "picfix() {\n  # Directory where screenshots are saved\n  screenshot_dir=/workspaces/cisTEMx/.claude/cache\n  flameshot gui --path $screenshot_dir\n}" >> /home/cisTEMdev/.bashrc
+
+
+
+
+
+

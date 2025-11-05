@@ -210,6 +210,47 @@ SKILL.md: 20 lines
 4. Performance optimization
 5. Advanced use cases
 
+## Skill Quality Validation
+
+Use these checklists to assess skill quality objectively:
+
+### Usability Test
+
+Can a new user:
+1. Understand what the skill does? (read title + purpose)
+2. Know when to use it? (read "when to use")
+3. Know when NOT to use it? (read "when NOT to use")
+4. Get started quickly? (follow quick start)
+5. Find detailed info? (use resource map)
+
+### Completeness Test
+
+Check for:
+- [ ] Frontmatter (name, description)
+- [ ] Purpose section
+- [ ] When to use
+- [ ] When NOT to use
+- [ ] At least one example
+- [ ] Progressive disclosure map
+- [ ] Version number
+
+### Progressive Disclosure Test
+
+Verify:
+- [ ] SKILL.md under 200 lines
+- [ ] Each resource under 500 lines
+- [ ] No circular dependencies
+- [ ] Clear guidance on what to load when
+- [ ] Resources are self-contained
+
+### Clarity Test
+
+Read aloud:
+- Does it sound natural?
+- Are there confusing sentences?
+- Is jargon defined?
+- Are examples clear?
+
 ## Constructive Output Format
 
 ```markdown

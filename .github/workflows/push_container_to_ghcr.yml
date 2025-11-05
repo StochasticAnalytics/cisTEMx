@@ -1,5 +1,6 @@
 name: Push Container to GHCR
 
+# DEPRECATED: Use build_base_container.yml or build_top_container.yml instead
 # This workflow helps push locally built containers to GitHub Container Registry
 # It can also be used to mirror existing DockerHub containers to GHCR
 
@@ -7,15 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       source_image:
-        description: 'Source image (e.g., cistemdashorg/cistem_build_env:v3.0.0)'
+        description: 'Source image (e.g., ghcr.io/stochasticanalytics/cistem_build_env:v3.0.1)'
         required: true
         type: string
-        default: 'cistemdashorg/cistem_build_env:v3.0.0'
+        default: 'ghcr.io/stochasticanalytics/cistem_build_env:v3.0.1'
       target_tag:
-        description: 'Target tag for GHCR (e.g., v3.0.0)'
+        description: 'Target tag for GHCR (e.g., v3.0.1)'
         required: true
         type: string
-        default: 'v3.0.0'
+        default: 'v3.0.1'
 
 jobs:
   push-to-ghcr:
@@ -45,19 +46,19 @@ jobs:
 
       - name: Tag for GHCR
         run: |
-          docker tag ${{ inputs.source_image }} ghcr.io/cistem-org/cistem_build_env:${{ inputs.target_tag }}
+          docker tag ${{ inputs.source_image }} ghcr.io/stochasticanalytics/cistem_build_env:${{ inputs.target_tag }}
 
       - name: Push to GHCR
         run: |
-          docker push ghcr.io/cistem-org/cistem_build_env:${{ inputs.target_tag }}
+          docker push ghcr.io/stochasticanalytics/cistem_build_env:${{ inputs.target_tag }}
 
       - name: Summary
         run: |
           echo "### Container pushed successfully! :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Source:** \`${{ inputs.source_image }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Target:** \`ghcr.io/cistem-org/cistem_build_env:${{ inputs.target_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Target:** \`ghcr.io/stochasticanalytics/cistem_build_env:${{ inputs.target_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Next steps:" >> $GITHUB_STEP_SUMMARY
-          echo "1. Make the package public at: https://github.com/orgs/cistem-org/packages" >> $GITHUB_STEP_SUMMARY
+          echo "1. Make the package public at: https://github.com/orgs/stochasticanalytics/packages" >> $GITHUB_STEP_SUMMARY
           echo "2. Update CI workflows to use the new GHCR image" >> $GITHUB_STEP_SUMMARY

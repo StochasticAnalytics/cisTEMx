@@ -1,0 +1,39 @@
+name: Test GHCR Push
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull minimal test image
+        run: |
+          docker pull alpine:latest
+
+      - name: Tag for GHCR
+        run: |
+          docker tag alpine:latest ghcr.io/${{ github.repository_owner }}/test-push:latest
+
+      - name: Push to GHCR
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/test-push:latest
+
+      - name: Summary
+        run: |
+          echo "### Test push succeeded! :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${{ github.repository_owner }}/test-push:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "GHCR credentials are working correctly." >> $GITHUB_STEP_SUMMARY

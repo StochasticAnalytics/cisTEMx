@@ -32,9 +32,13 @@ jobs:
     uses: ./.github/workflows/debug_build.yml
 
   # GPU tests - uncomment once gpu_runner is configured
+  # Also requires:
+  #   1. Uncommenting artifact upload in run_builds.yml
+  #   2. Renaming gpu_tests.yml to run_gpu_tests.yml
+  #   3. Deleting the build job from that workflow
   # gpu-tests:
   #   needs: build-gpu-debug
-  #   uses: ./.github/workflows/gpu_tests.yml
+  #   uses: ./.github/workflows/run_gpu_tests.yml
   #   with:
   #     build_type: GPU_debug
 

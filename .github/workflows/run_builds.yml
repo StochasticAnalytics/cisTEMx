@@ -65,7 +65,7 @@ jobs:
         fetch-depth: 0
         
     - name: regenerate_project
-      run: ./regenerate_project.b
+      run: ./regenerate_project.sh
     - name: configure
       env:
         CC: ${{ inputs.CC }}
@@ -94,11 +94,15 @@ jobs:
         rm -r src/core
         rm -r src/gui
         rm -r src/programs
+
+    # UNCOMMENT when enabling GPU tests in check_formatting.yml
+    # This uploads binaries for the gpu_tests workflow to use
     # - name: Create binary artifact
     #   uses: actions/upload-artifact@v4
-    #   with: 
+    #   with:
     #     name: cistem_binaries_${{ inputs.build_type }}
     #     path: build/${{ inputs.build_type }}/src
+    #     retention-days: 1
 
     - name: Console test
       if: ${{ inputs.run_tests }}

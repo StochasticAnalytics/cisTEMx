@@ -4,7 +4,7 @@
     "workspaceFolder": "/workspaces/cisTEMx",
     // NOTE: Container version must match .vscode/CONTAINER_VERSION_TOP
     // Update both when changing versions
-    "image": "ghcr.io/stochasticanalytics/cistem_build_env:v3.0.1",
+    "image": "ghcr.io/cistem-org/cistem_build_env:v3.0.0",
     "initializeCommand": "bash -c 'EXPECTED_VERSION=$(cat ${localWorkspaceFolder}/.vscode/CONTAINER_VERSION_TOP 2>/dev/null || echo \"unknown\"); CURRENT_VERSION=\"3.0.1\"; if [ \"$EXPECTED_VERSION\" != \"$CURRENT_VERSION\" ]; then echo \"⚠️  WARNING: devcontainer.json uses v$CURRENT_VERSION but CONTAINER_VERSION_TOP specifies v$EXPECTED_VERSION\"; echo \"   Update devcontainer.json image field to match\"; fi'",
     "remoteUser": "cisTEMdev",
     "hostRequirements": {

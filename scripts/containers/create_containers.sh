@@ -186,7 +186,7 @@ if [[ ! -f ${usr_path}/CONTAINER_REPO_NAME ]] ; then
     echo "CONTAINER_REPOSITORY file not found"
     exit 1
 else
-    container_repository=$(cat ${usr_path}/CONTAINER_REPO_NAME)
+    container_repository=$(cat ${usr_path}/CONTAINER_REPO_NAME | tr '[:upper:]' '[:lower:]')
 fi
 
 

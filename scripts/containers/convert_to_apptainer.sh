@@ -135,7 +135,7 @@ if [[ -z "$DOCKER_SOURCE" ]]; then
         echo "Please run this script from scripts/containers/ or specify --source"
         exit 1
     fi
-    REPO_NAME=$(cat "${usr_path}/CONTAINER_REPO_NAME")
+    REPO_NAME=$(cat "${usr_path}/CONTAINER_REPO_NAME" | tr '[:upper:]' '[:lower:]')
 
     # Build Docker source URI
     DOCKER_TAG="v${VERSION}"

@@ -31,6 +31,13 @@ jobs:
     needs: check-format
     uses: ./.github/workflows/debug_build.yml
 
+  # GPU tests - uncomment once gpu_runner is configured
+  # gpu-tests:
+  #   needs: build-gpu-debug
+  #   uses: ./.github/workflows/gpu_tests.yml
+  #   with:
+  #     build_type: GPU_debug
+
   build-cpu-debug:
     needs: check-format
     uses: ./.github/workflows/debug_build_cpu_only.yml
@@ -47,9 +54,9 @@ jobs:
     needs: check-format
     uses: ./.github/workflows/release_build_GNU_mkl.yml
 
-  build-gpu-release-clang-mkl:
+  build-gpu-release-no-fastfft:
     needs: check-format
-    uses: ./.github/workflows/release_build_clang_mkl.yml
+    uses: ./.github/workflows/release_build_clang_noFastFFT.yml
 
   build-gpu-release-no-experimental:
     needs: check-format

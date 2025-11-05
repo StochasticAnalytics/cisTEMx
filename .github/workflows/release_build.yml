@@ -9,10 +9,10 @@ jobs:
     with:
       build_type: "GPU_release"
       configure_options: "--with-cuda "
-      global_configure_options: " --enable-openmp --enable-experimental --disable-multiple-global-refinements  --with-wx-config=/opt/WX/wx305-icc-static-gtk2/bin/wx-config "
+      global_configure_options: " --enable-openmp --enable-experimental --disable-multiple-global-refinements  --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config "
       runs_on_os: ubuntu-latest
-      CC: icc
-      CXX: icpc
+      CC: clang
+      CXX: clang++
       cppstandard: 17
       run_tests: false
       n_threads: 4

@@ -64,14 +64,13 @@ jobs:
           VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Built version: $VERSION"
-
-      - name: Build
+      - uses: ammaraskar/gcc-problem-matcher@master
+      - name: make
         run: |
           . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
           workdir=$(pwd)
-          cd build/${{ inputs.build_type }}
+          cd build/${{ inputs.build_type }} && make -j4
           cd $workdir
-          make -j 4
           cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
       - name: Prepare artifact
         run: |

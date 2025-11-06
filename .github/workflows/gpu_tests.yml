@@ -48,16 +48,18 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
+          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
           mkdir -p build/${{ inputs.build_type }}
           cd build/${{ inputs.build_type }}
-
+          echo $CC
+          echo $CXX
           if [ "${{ inputs.build_type }}" = "GPU_debug" ]; then
             CONFIGURE_OPTS="--enable-gpu-debug --enable-debugmode"
           else
             CONFIGURE_OPTS="--enable-gpu"
           fi
 
-          ../../configure $CONFIGURE_OPTS --with-cuda --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config --enable-staticmode --enable-experimental --enable-openmp --disable-FastFFT --enable-fp16-particlestacks --disable-multiple-global-refinements --enable-profiling
+          ../../configure $CONFIGURE_OPTS --with-cuda=/usr/local/cuda --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config --enable-staticmode --enable-experimental --disable-build-all --enable-openmp --enable-fp16-particlestacks --disable-multiple-global-refinements --enable-profiling
 
           VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -65,9 +67,12 @@ jobs:
 
       - name: Build
         run: |
+          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+          workdir=$(pwd)
           cd build/${{ inputs.build_type }}
+          cd $workdir
           make -j 4
-
+          cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
       - name: Prepare artifact
         run: |
           cd build/${{ inputs.build_type }}/src
@@ -104,16 +109,19 @@ jobs:
       - name: Console test
         run: |
           cd binaries
+          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
           ./console_test
 
       - name: Samples functional testing
         run: |
           cd binaries
+          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
           ./samples_functional_testing
 
       - name: Unit tests
         run: |
           cd binaries
+          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
           ./unit_test_runner
 
       - name: Test summary

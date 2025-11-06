@@ -71,7 +71,7 @@ jobs:
         CC: ${{ inputs.CC }}
         CXX: ${{ inputs.CXX }}
       run: |
-        . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+        export PATH=/usr/bin:$PATH
         mkdir -p build/${{ inputs.build_type }}
         cd build/${{ inputs.build_type }}
         echo $CC
@@ -82,7 +82,7 @@ jobs:
     - uses: ammaraskar/gcc-problem-matcher@master
     - name: make 
       run: |
-        . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+        export PATH=/usr/bin:$PATH
         workdir=$(pwd)
         cd build/${{ inputs.build_type }} && make -j ${{ inputs.n_threads }}
         cd $workdir
@@ -106,7 +106,7 @@ jobs:
     - name: Console test
       if: ${{ inputs.run_tests }}
       run: |
-        . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+        export PATH=/usr/bin:$PATH
         cd build/${{ inputs.build_type }}/src
         chmod +x *
         ./console_test 
@@ -116,7 +116,7 @@ jobs:
     - name: Samples functional testing
       if: ${{ inputs.run_tests }}
       run: |
-        . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+        export PATH=/usr/bin:$PATH
         cd build/${{ inputs.build_type }}/src 
         chmod +x samples_functional_testing
         ./samples_functional_testing
@@ -125,7 +125,7 @@ jobs:
     - name: Unit tests
       if: ${{ inputs.run_tests }}
       run: |
-        . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+        export PATH=/usr/bin:$PATH
         cd build/${{ inputs.build_type }}/src 
         chmod +x unit_test_runner
         ./unit_test_runner

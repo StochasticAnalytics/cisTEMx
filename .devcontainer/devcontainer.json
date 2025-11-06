@@ -2,10 +2,10 @@
     "name": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/cisTEMx,type=bind,consistency=cached",
     "workspaceFolder": "/workspaces/cisTEMx",
-    // NOTE: Container version must match .vscode/CONTAINER_VERSION_TOP
-    // Update both when changing versions
-    "image": "ghcr.io/cistem-org/cistem_build_env:v3.0.1",
-    "initializeCommand": "bash -c 'EXPECTED_VERSION=$(cat ${localWorkspaceFolder}/.vscode/CONTAINER_VERSION_TOP 2>/dev/null || echo \"unknown\"); CURRENT_VERSION=\"3.0.1\"; if [ \"$EXPECTED_VERSION\" != \"$CURRENT_VERSION\" ]; then echo \"⚠️  WARNING: devcontainer.json uses v$CURRENT_VERSION but CONTAINER_VERSION_TOP specifies v$EXPECTED_VERSION\"; echo \"   Update devcontainer.json image field to match\"; fi'",
+    // NOTE: Container image must match .vscode/CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
+    // Update all three when changing container version or repository
+    "image": "ghcr.io/stochasticanalytics/cistem_build_env:v3.0.1",
+    "initializeCommand": ".devcontainer/check-version.sh",
     "remoteUser": "cisTEMdev",
     "hostRequirements": {
         "gpu": "optional"
@@ -38,15 +38,12 @@
                 "ms-vscode.cpptools-extension-pack",
                 "cschlosser.doxdocgen",
                 "eamodio.gitlens",
-                "ms-toolsai.jupyter",
                 "DavidAnson.vscode-markdownlint",
                 "ms-python.vscode-pylance",
                 "ms-python.python",
                 "frinkr.vscode-tabify",
                 "jomeinaster.bracket-peek",
                 "onnovalkering.vscode-singularity",
-                "GitHub.copilot",
-                "GitHub.copilot-chat"
             ]
         }
     }

@@ -3,7 +3,6 @@ set -e  # Exit on any error
 
 # install_documentation_deps.sh - Install all documentation system dependencies
 # Designed for Ubuntu Docker containers
-# Assumes: Python 3.10 venv at /opt/venv, clang-14 already installed in base image
 
 echo "🚀 Installing Documentation System Dependencies"
 echo "=============================================="
@@ -32,13 +31,6 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Verify we're using the venv
-print_status "Verifying Python venv..."
-if [[ "$VIRTUAL_ENV" != "/opt/venv" ]]; then
-    print_error "VIRTUAL_ENV not set to /opt/venv (current: $VIRTUAL_ENV)"
-    exit 1
-fi
-
 print_status "Using Python: $(which python) ($(python --version))"
 print_status "Using pip: $(which pip) ($(pip --version))"
 
@@ -57,7 +49,7 @@ apt-get install -y \
     libclang-common-14-dev \
     libclang1-14
 
-# Install documentation-specific Python packages using venv pip
+# Install documentation-specific Python packages using
 print_status "Installing Python documentation packages..."
 
 # Core MkDocs and extensions
@@ -148,7 +140,6 @@ else:
 print_status "Testing Clang installation..."
 clang --version || print_warning "Clang test failed"
 
-# Test mkdocs (installed via venv pip)
 print_status "Testing MkDocs installation..."
 mkdocs --version || print_warning "MkDocs test failed"
 
@@ -161,7 +152,7 @@ pip cache purge
 
 print_success "Documentation system dependencies installed successfully!"
 print_status "Available tools:"
-echo "  - Python $(python --version | cut -d' ' -f2) (venv at $VIRTUAL_ENV)"
+echo "  - Python $(python --version | cut -d' ' -f2)"
 echo "  - Clang $(clang --version | head -n1 | cut -d' ' -f3)"
 echo "  - MkDocs $(mkdocs --version)"
 echo "  - Git $(git --version | cut -d' ' -f3)"

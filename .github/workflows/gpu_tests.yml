@@ -48,7 +48,7 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
-          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+          export PATH=/usr/bin:$PATH
           mkdir -p build/${{ inputs.build_type }}
           cd build/${{ inputs.build_type }}
           echo $CC
@@ -67,7 +67,7 @@ jobs:
       - uses: ammaraskar/gcc-problem-matcher@master
       - name: make
         run: |
-          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+          export PATH=/usr/bin:$PATH
           workdir=$(pwd)
           cd build/${{ inputs.build_type }} && make -j4
           cd $workdir
@@ -76,14 +76,14 @@ jobs:
         run: |
           cd build/${{ inputs.build_type }}/src
           chmod +x *
-          # Remove object files and intermediate build products to reduce artifact size
-          rm -rf *.o core/*.o gui/*.o programs/*/*.o 2>/dev/null || true
+          mkdir artifacts
+          mv unit_test_runner samples_functional_testing console_test artifacts/
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: cistem_binaries_${{ inputs.build_type }}
-          path: build/${{ inputs.build_type }}/src
+          path: build/${{ inputs.build_type }}/src/artifacts
           retention-days: 1
 # END DELETE - Keep everything below this line
 
@@ -108,19 +108,19 @@ jobs:
       - name: Console test
         run: |
           cd binaries
-          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+          export PATH=/usr/bin:$PATH
           ./console_test
 
       - name: Samples functional testing
         run: |
           cd binaries
-          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+          export PATH=/usr/bin:$PATH
           ./samples_functional_testing
 
       - name: Unit tests
         run: |
           cd binaries
-          . /opt/intel/oneapi/setvars.sh && export PATH=/usr/bin:$PATH
+          export PATH=/usr/bin:$PATH
           ./unit_test_runner
 
       - name: Test summary

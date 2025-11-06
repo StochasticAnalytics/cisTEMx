@@ -114,20 +114,6 @@
     "remote.extensionKind": {
         "github.copilot-chat": "ui"
     },
-    "github.copilot.enable": {
-        "*": false,
-        "plaintext": false,
-        "markdown": false,
-        "scminput": false,
-        "quarto": false,
-        "yaml": false,
-        "cuda-cpp": true,
-        "shellscript": true,
-        "python": true,
-        "jsonc": true,
-        "log": false,
-        "matlab": true
-    },
     "chat.tools.terminal.autoApprove": {
         "mkdir": true,
         "echo": true,

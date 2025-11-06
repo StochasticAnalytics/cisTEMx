@@ -12,7 +12,7 @@ FROM fake_repo
 #   build-wx-version = old (3.0.5) or new (3.1.5) NOTE: we probably want to test 3.2 instead
 #   build-npm = false [ default ] or true if specified
 #   build-ref-images = false [ default ] or true if specified
-ARG n_threads=12
+ARG n_threads=16
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=America/New_York
 ARG GCC_VER=11
@@ -29,24 +29,32 @@ SHELL ["/bin/bash", "-c"]
 # some rebuild comment
 ENV CISTEM_REF_IMAGES=/cisTEMdev/cistem_reference_images
 
-# Python 3.10 is native to Ubuntu 22.04, set up virtual environment at /opt/venv
-RUN apt-get update && \
-    apt-get install -y python3.10 python3.10-venv python3.10-dev && \
-    python3.10 -m venv /opt/venv && \
-    /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
-    chmod -R a+rX /opt/venv && \
-    rm -rf /var/lib/apt/lists/*
+# Python 3.10 is native to Ubuntu 22.04, so we do NOT set up virtual environment at /opt/venv
+# RUN apt-get update && \
+#     apt-get install -y python3.10 python3.10-venv python3.10-dev && \
+#     python3.10 -m venv /opt/venv && \
+#     /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
+#     chmod -R a+rX /opt/venv && \
+#     rm -rf /var/lib/apt/lists/*
 
-# Default shell uses the venv Python for subsequent RUN steps
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+# # Default shell uses the venv Python for subsequent RUN steps
+# ENV VIRTUAL_ENV=/opt/venv
+# ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Verify
-RUN python --version && pip --version
+# # Verify
+# RUN python --version && pip --version
 
 # Install wxWidgets and Bear
 COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_bear.sh install_llm_optimization_tools.sh /tmp/
 
+# Apptainer is supposed to be cleanly backward compatible for users with older versions running our newer container provided we aren't using new features not available in older versions.
+# We don't need to do anything fancy as we use this only as a runtime distribution and it just needs very basic ability to mount specified folders outside the user home dir etc.
+RUN apt update && \
+    apt install -y software-properties-common python-is-python3 && \
+    add-apt-repository -y ppa:apptainer/ppa && \
+    apt update && \
+    apt install -y apptainer && \
+    rm -rf /var/lib/apt/lists/*
 
 # wxWidgets installations - multiple versions/compilers available in base container
 # DO NOT create /usr/bin/wx-config symlink - use explicit --with-wx-config paths
@@ -76,12 +84,7 @@ RUN wget -q https://sourceforge.net/projects/wxformbuilder.mirror/files/v4.2.1/w
     apt-get update && \
     apt-get install -y /tmp/wxformbuilder.deb || apt-get install -f -y && \
     rm -f /tmp/wxformbuilder.deb && \
-    rm -rf /var/lib/apt/lists/*
-
-#  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM
-# xdotool x11-utils wmctrl for a script I have to get push notifications on hooks when claude stalls (TODO add notes for others)
-# sox is for Whisper (local voice trasncription), still testing
-RUN apt-get update && apt install -y flameshot xdotool x11-utils wmctrl && rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/**
 
 # # Install Node 16 
 RUN echo "build npm" && if [[ "x${build_npm}" == "xtrue" ]] ; then /tmp/install_node_16.sh ; fi
@@ -113,7 +116,6 @@ RUN echo "build claude" && if [[ "x${build_claude}" == "xtrue" ]] ; then /tmp/in
 
 # Make sure we open claude in verbose mode (can be turned off) so the startup hook ensureing skills are loaded is clear
 RUN echo "alias claude='claude --verbose'" >> /home/cisTEMdev/.bashrc
-
 RUN echo -e "picfix() {\n  # Directory where screenshots are saved\n  screenshot_dir=/workspaces/cisTEMx/.claude/cache\n  flameshot gui --path $screenshot_dir\n}" >> /home/cisTEMdev/.bashrc
 
 

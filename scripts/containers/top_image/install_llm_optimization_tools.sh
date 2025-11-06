@@ -3,7 +3,6 @@ set -e  # Exit on any error
 
 # install_llm_optimization_tools.sh - Install LLM optimization dependencies (Phase 7)
 # Designed for Ubuntu Docker containers
-# Assumes: Python 3.10 venv at /opt/venv already exists
 # Required for: Phase 7 of documentation system implementation
 
 echo "🤖 Installing LLM Optimization Tools (Phase 7)"
@@ -15,7 +14,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-
 # Function to print colored output
 print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -33,12 +31,6 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Verify we're using the venv
-print_status "Verifying Python venv..."
-if [[ "$VIRTUAL_ENV" != "/opt/venv" ]]; then
-    print_error "VIRTUAL_ENV not set to /opt/venv (current: $VIRTUAL_ENV)"
-    exit 1
-fi
 
 print_status "Using Python: $(which python) ($(python --version))"
 print_status "Using pip: $(which pip) ($(pip --version))"

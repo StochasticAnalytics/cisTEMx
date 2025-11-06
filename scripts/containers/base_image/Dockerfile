@@ -8,6 +8,12 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=America/New_York
 ARG GCC_VER=11
 
+# Thin out cuda a bit removes ~ 2.8 GB from the container.
+RUN cd /usr/local/cuda/lib64 && rm -f libcuspars* libcusolver* libcublasLt* libnppif* && cd /opt/nvidia rm -rf nsight-compute
+# Once we switch to dynamic linking we can go futher (static cuda libs are about another 670 MB)
+
+
+
 # By default this will create cisTEMdev as uid==1000 which is not what we want as it is also going to be the user id
 # of a host user when building the top layer with singularity. < 1000 is reserved for system users. 814 is a somewhat random choice.
 RUN apt-get update &&\
@@ -34,6 +40,151 @@ RUN apt-get --allow-releaseinfo-change update && apt-get install -y \
     linux-tools-generic sysstat shellcheck &&\
     rm -rf /var/lib/apt/lists/*
 
+
+# ============================================================================
+# INTEL MKL MINIMAL INSTALLATION FOR CONTAINERIZED DEPLOYMENT
+# ============================================================================
+# This section installs Intel MKL and configures it for either static or
+# dynamic linking. Choose your linking strategy by passing argument to cleanup script.
+#
+# LINKING STRATEGY:
+#   - DYNAMIC: Smaller binaries, requires .so files at runtime, faster iteration
+#   - STATIC:  Larger binaries, self-contained, portable, no runtime dependencies
+#
+# For containerized deployment, EITHER approach works well.
+# Choose based on your deployment model.
+# ============================================================================
+
+# Add Intel oneAPI repository and install MKL
+RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | \
+    gpg --dearmor | tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null && \
+    echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | \
+    tee /etc/apt/sources.list.d/oneAPI.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends intel-oneapi-mkl-devel && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Similarl to CUDA we will clean up for the MK, we options for dynamic or static
+# (Currently we leave the static libs)
+COPY mkl_cleanup.sh /tmp/
+RUN chmod +x /tmp/mkl_cleanup.sh && \
+    /tmp/mkl_cleanup.sh static && \
+    rm /tmp/mkl_cleanup.sh
+
+    # Set MKL environment variables
+# These are used by both static and dynamic linking
+ENV MKLROOT=/opt/intel/oneapi/mkl/latest \
+    TBBROOT=/opt/intel/oneapi/tbb/latest
+
+    # LD_LIBRARY_PATH: Required for DYNAMIC linking at runtime (finding .so files)
+# LIBRARY_PATH: Required for linking phase (both static and dynamic)
+# CPATH: Required for compilation (finding header files)
+ENV LD_LIBRARY_PATH=${MKLROOT}/lib/intel64:/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64:${TBBROOT}/lib/intel64/gcc4.8:${LD_LIBRARY_PATH} \
+    LIBRARY_PATH=${MKLROOT}/lib/intel64:/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64:${LIBRARY_PATH} \
+    CPATH=${MKLROOT}/include:${CPATH}
+
+    # ============================================================================
+# CONFIGURE.AC / MAKEFILE CHANGES FOR MKL LINKING
+# ============================================================================
+#
+# The linking commands differ significantly between static and dynamic.
+# Update your configure.ac or Makefile as follows:
+#
+# ----------------------------------------------------------------------------
+# FOR DYNAMIC LINKING (simplest approach):
+# ----------------------------------------------------------------------------
+# In configure.ac, add to your LIBS or LDFLAGS:
+#
+#   MKL_LIBS="-L${MKLROOT}/lib/intel64 -lmkl_rt -lpthread -lm -ldl"
+#   LIBS="$LIBS $MKL_LIBS"
+#
+# Or in Makefile:
+#   LDFLAGS += -L$(MKLROOT)/lib/intel64 -lmkl_rt -lpthread -lm -ldl
+#
+# The -lmkl_rt (runtime) library automatically loads the right kernels.
+# No need to specify threading model explicitly.
+#
+# ----------------------------------------------------------------------------
+# FOR STATIC LINKING (requires explicit library specification):
+# ----------------------------------------------------------------------------
+# In configure.ac or Makefile, you must specify the three-layer model:
+#
+# For GNU OpenMP threading (recommended for g++/gcc):
+#   MKL_STATIC_LIBS="-Wl,--start-group \
+#                    ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a \
+#                    ${MKLROOT}/lib/intel64/libmkl_gnu_thread.a \
+#                    ${MKLROOT}/lib/intel64/libmkl_core.a \
+#                    -Wl,--end-group -lgomp -lpthread -lm -ldl"
+#
+# For single-threaded (sequential):
+#   MKL_STATIC_LIBS="-Wl,--start-group \
+#                    ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a \
+#                    ${MKLROOT}/lib/intel64/libmkl_sequential.a \
+#                    ${MKLROOT}/lib/intel64/libmkl_core.a \
+#                    -Wl,--end-group -lpthread -lm -ldl"
+#
+# For ILP64 interface (64-bit integers, arrays >2GB):
+#   Add -DMKL_ILP64 to CFLAGS/CXXFLAGS
+#   Use libmkl_intel_ilp64.a instead of libmkl_intel_lp64.a
+#
+# CRITICAL: The -Wl,--start-group ... -Wl,--end-group wrapper is REQUIRED
+#           for static linking to resolve circular dependencies.
+#
+# ----------------------------------------------------------------------------
+# EXAMPLE CONFIGURE.AC SNIPPET:
+# ----------------------------------------------------------------------------
+# AC_ARG_ENABLE([mkl-static],
+#   [AS_HELP_STRING([--enable-mkl-static], [Use static MKL linking])],
+#   [mkl_static=yes], [mkl_static=no])
+#
+# if test "x$mkl_static" = "xyes"; then
+#   # Static linking
+#   MKL_LIBS="-Wl,--start-group \
+#             \$MKLROOT/lib/intel64/libmkl_intel_lp64.a \
+#             \$MKLROOT/lib/intel64/libmkl_gnu_thread.a \
+#             \$MKLROOT/lib/intel64/libmkl_core.a \
+#             -Wl,--end-group -lgomp -lpthread -lm -ldl"
+# else
+#   # Dynamic linking
+#   MKL_LIBS="-L\$MKLROOT/lib/intel64 -lmkl_rt -lpthread -lm -ldl"
+# fi
+# LIBS="$LIBS $MKL_LIBS"
+#
+# ----------------------------------------------------------------------------
+# EXAMPLE MAKEFILE SNIPPET:
+# ----------------------------------------------------------------------------
+# # Set to 'yes' for static linking, 'no' for dynamic
+# MKL_STATIC := no
+#
+# ifeq ($(MKL_STATIC),yes)
+#   # Static linking
+#   LDFLAGS += -Wl,--start-group \
+#              $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a \
+#              $(MKLROOT)/lib/intel64/libmkl_gnu_thread.a \
+#              $(MKLROOT)/lib/intel64/libmkl_core.a \
+#              -Wl,--end-group -lgomp -lpthread -lm -ldl
+# else
+#   # Dynamic linking
+#   LDFLAGS += -L$(MKLROOT)/lib/intel64 -lmkl_rt -lpthread -lm -ldl
+# endif
+#
+# ----------------------------------------------------------------------------
+# INCLUDE FLAGS (same for both static and dynamic):
+# ----------------------------------------------------------------------------
+# CFLAGS += -I$(MKLROOT)/include
+# CXXFLAGS += -I$(MKLROOT)/include
+#
+# ----------------------------------------------------------------------------
+# RECOMMENDED APPROACH:
+# ----------------------------------------------------------------------------
+# Use DYNAMIC linking for development (simpler, faster iteration)
+# Use STATIC linking for production deployment (self-contained)
+#
+# You can also use Intel's MKL Link Line Advisor for customized flags:
+# https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-link-line-advisor.html
+# ============================================================================
+
+
 # Install gh to work with automating interactions with the repo
 RUN type -p wget >/dev/null || (apt update && apt-get install wget -y) &&\ 
     mkdir -p -m 755 /etc/apt/keyrings &&\ 
@@ -49,26 +200,11 @@ RUN apt-get update && apt-get install -y clang-format-14 clang-14 clang-tidy-14 
     cd /usr/bin && ln -s clang-format-14 clang-format && ln -s clang-14 clang && ln -s clang-tidy-14 clang-tidy && ln -s clang++-14 clang++ &&\
     rm -rf /var/lib/apt/lists/*
 
+# It looks like we are moving away form intel due to NVCC support, but figuring this out was a PITA so leaving for reference.
+# # Pre-empt the intel function that checks intel or not at runtime so that optimal codepaths may be used on AMD procs.
+# # This is only needed for dynamic builds. Note the lib is build in the next step.
+# ENV LD_PRELOAD=/opt/intel/libfakeIntel.so
 
-
-# Get the MKL and intel compiler: note, this is 19G by default, will try to determine minimal set needed huge waste but works well enough for now, final size is ~5gb
-# The second to last line is to ensure clang++ is used and not the one bundled with the intel compiler.
-RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null &&\
-    echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | tee /etc/apt/sources.list.d/oneAPI.list &&\
-    apt-get update && apt-get install -y intel-oneapi-compiler-dpcpp-cpp-and-cpp-classic intel-oneapi-mkl intel-oneapi-mkl-devel &&\
-    cd /opt/intel/oneapi/ && rm -rf debugger/ conda_channel/ mkl/latest/lib/intel64/*_sycl* compiler/*/linux/lib/oclfpga &&\
-    mkdir -p /opt/intel && echo 'int mkl_serv_intel_cpu_true() {return 1;}' > /opt/intel/fakeIntel.c &&\
-    gcc -shared -fPIC -o /opt/intel/libfakeIntel.so /opt/intel/fakeIntel.c &&\
-    rm -rf /var/lib/apt/lists/* 
-
-# Pre-empt the intel function that checks intel or not at runtime so that optimal codepaths may be used on AMD procs.
-# This is only needed for dynamic builds. Note the lib is build in the next step.
-ENV LD_PRELOAD=/opt/intel/libfakeIntel.so
-
-# wxWidgets builds moved to end of Dockerfile (after CUDA) to minimize layer invalidation during development
-
-
-# Install pytorch - now optional in the top layer container
 
 # CUDA 12.3.2 is provided by the nvidia/cuda:12.3.2-devel-ubuntu22.04 base image
 # No manual installation needed - CUDA toolkit and development tools are pre-installed
@@ -102,27 +238,10 @@ RUN echo 'alias lt="ls -lrth"' >> /home/cisTEMdev/.bashrc &&\
 RUN wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWidgets-3.0.5.tar.bz2 -O /tmp/wx305.tar.bz2 &&\
     wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.8.1/wxWidgets-3.2.8.1.tar.bz2 -O /tmp/wx328.tar.bz2
 
-# Build wxWidgets 3.0.5 with all 4 compilers (gtk2)
-RUN . /opt/intel/oneapi/setvars.sh &&\
-    echo "=== Building wxWidgets 3.0.5 with 4 compilers (gtk2) ===" &&\
-    # Intel Classic Compiler (icpc) - deprecated but stable
-    mkdir -p /opt/WX/wx305-icc-static-gtk2 && tar -xjf /tmp/wx305.tar.bz2 -C /opt/WX/wx305-icc-static-gtk2 &&\
-    cd /opt/WX/wx305-icc-static-gtk2/wxWidgets-3.0.5 &&\
-    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpc CC=icc ./configure --disable-precomp-headers \
-        --prefix=/opt/WX/wx305-icc-static-gtk2 --with-libnotify=no --disable-shared \
-        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
-        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
-        --without-libjbig --with-gtk=2 --disable-sys-libs &&\
-    make -j$n_threads && make install && cd /opt/WX && rm -rf wx305-icc-static-gtk2/wxWidgets-3.0.5 &&\
-    # Intel LLVM Compiler (icpx) - modern replacement for icpc
-    mkdir -p /opt/WX/wx305-icpx-static-gtk2 && tar -xjf /tmp/wx305.tar.bz2 -C /opt/WX/wx305-icpx-static-gtk2 &&\
-    cd /opt/WX/wx305-icpx-static-gtk2/wxWidgets-3.0.5 &&\
-    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpx CC=icx ./configure --disable-precomp-headers \
-        --prefix=/opt/WX/wx305-icpx-static-gtk2 --with-libnotify=no --disable-shared \
-        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
-        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
-        --without-libjbig --with-gtk=2 --disable-sys-libs &&\
-    make -j$n_threads && make install && cd /opt/WX && rm -rf wx305-icpx-static-gtk2/wxWidgets-3.0.5 &&\
+# TODO: wxWebView
+
+# Build wxWidgets 3.0.5 with all 2 compilers (gtk2)
+RUN echo "=== Building wxWidgets 3.0.5 with 2 compilers (gtk2) [intel deprecated NVCC support] ===" &&\
     # GCC Compiler
     mkdir -p /opt/WX/wx305-gcc-static-gtk2 && tar -xjf /tmp/wx305.tar.bz2 -C /opt/WX/wx305-gcc-static-gtk2 &&\
     cd /opt/WX/wx305-gcc-static-gtk2/wxWidgets-3.0.5 &&\
@@ -143,27 +262,8 @@ RUN . /opt/intel/oneapi/setvars.sh &&\
     make -j$n_threads && make install && cd /opt/WX && rm -rf wx305-clang-static-gtk2/wxWidgets-3.0.5 &&\
     rm -f /tmp/wx305.tar.bz2
 
-# Build wxWidgets 3.2.8.1 with all 4 compilers (gtk3)
-RUN . /opt/intel/oneapi/setvars.sh &&\
-    echo "=== Building wxWidgets 3.2.8.1 with 4 compilers (gtk3) ===" &&\
-    # Intel Classic Compiler (icpc)
-    mkdir -p /opt/WX/wx328-icc-static-gtk3 && tar -xjf /tmp/wx328.tar.bz2 -C /opt/WX/wx328-icc-static-gtk3 &&\
-    cd /opt/WX/wx328-icc-static-gtk3/wxWidgets-3.2.8.1 &&\
-    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpc CC=icc ./configure --disable-precomp-headers \
-        --prefix=/opt/WX/wx328-icc-static-gtk3 --with-libnotify=no --disable-shared \
-        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
-        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
-        --without-libjbig --with-gtk=3 --disable-sys-libs &&\
-    make -j$n_threads && make install && cd /opt/WX && rm -rf wx328-icc-static-gtk3/wxWidgets-3.2.8.1 &&\
-    # Intel LLVM Compiler (icpx)
-    mkdir -p /opt/WX/wx328-icpx-static-gtk3 && tar -xjf /tmp/wx328.tar.bz2 -C /opt/WX/wx328-icpx-static-gtk3 &&\
-    cd /opt/WX/wx328-icpx-static-gtk3/wxWidgets-3.2.8.1 &&\
-    CXXFLAGS=-fPIC CFLAGS=-fPIC CXX=icpx CC=icx ./configure --disable-precomp-headers \
-        --prefix=/opt/WX/wx328-icpx-static-gtk3 --with-libnotify=no --disable-shared \
-        --without-gtkprint --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin \
-        --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma \
-        --without-libjbig --with-gtk=3 --disable-sys-libs &&\
-    make -j$n_threads && make install && cd /opt/WX && rm -rf wx328-icpx-static-gtk3/wxWidgets-3.2.8.1 &&\
+# Build wxWidgets 3.2.8.1 with all 2 compilers (gtk3)
+RUN echo "=== Building wxWidgets 3.2.8.1 with 2 compilers (gtk3) [intel deprecated NVCC support] ===" &&\
     # GCC Compiler
     mkdir -p /opt/WX/wx328-gcc-static-gtk3 && tar -xjf /tmp/wx328.tar.bz2 -C /opt/WX/wx328-gcc-static-gtk3 &&\
     cd /opt/WX/wx328-gcc-static-gtk3/wxWidgets-3.2.8.1 &&\

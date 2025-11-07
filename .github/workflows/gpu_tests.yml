@@ -79,11 +79,12 @@ jobs:
           mkdir artifacts
           mv unit_test_runner samples_functional_testing console_test artifacts/
 
+
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: cistem_binaries_${{ inputs.build_type }}
-          path: build/${{ inputs.build_type }}/src/artifacts
+          path: build/${{ inputs.build_type }}/src
           retention-days: 1
 # END DELETE - Keep everything below this line
 

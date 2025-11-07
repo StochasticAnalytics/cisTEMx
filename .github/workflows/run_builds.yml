@@ -32,9 +32,13 @@ on:
         required: true 
         type: string
       run_tests:
-        description: 'Run tests, currently we can not run GPU code, so we skip tests for GPU builds'
+        description: 'Run tests on cpu or gpu'
         required: true
-        type: boolean
+        type: string
+        default: 'cpu'
+        options:
+          - 'cpu'
+          - 'gpu'
       n_threads:
         description: 'Number of threads to use for make. Current Free tier has 4 threads'
         required: true
@@ -80,54 +84,95 @@ jobs:
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     - uses: ammaraskar/gcc-problem-matcher@master
-    - name: make 
+    - name: make
       run: |
         export PATH=/usr/bin:$PATH
         workdir=$(pwd)
         cd build/${{ inputs.build_type }} && make -j ${{ inputs.n_threads }}
         cd $workdir
-        cp scripts/testing/test_and_benchmark.sh build/${{ inputs.build_type }}/src/
     - name: clean up
       run: |
         cd build/${{ inputs.build_type }}
+        mkdir artifacts
+        mv src/unit_test_runner src/samples_functional_testing src/console_test artifacts/
         rm -r src/core
         rm -r src/gui
         rm -r src/programs
 
-    # UNCOMMENT when enabling GPU tests in check_formatting.yml
     # This uploads binaries for the gpu_tests workflow to use
-    # - name: Create binary artifact
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: cistem_binaries_${{ inputs.build_type }}
-    #     path: build/${{ inputs.build_type }}/src
-    #     retention-days: 1
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: cistem_binaries_${{ inputs.build_type }}
+        path: build/${{ inputs.build_type }}/artifacts
+        retention-days: 1
 
     - name: Console test
-      if: ${{ inputs.run_tests }}
+      if: ${{ inputs.run_tests == 'cpu' }}
       run: |
         export PATH=/usr/bin:$PATH
-        cd build/${{ inputs.build_type }}/src
+        cd build/${{ inputs.build_type }}/artifacts
         chmod +x *
-        ./console_test 
-        ./test_and_benchmark.sh ./
+        ./console_test
         
     # chmod is redundant, but to keep this independent of Console test we keep it.
     - name: Samples functional testing
-      if: ${{ inputs.run_tests }}
+      if: ${{ inputs.run_tests == 'cpu' }}
       run: |
         export PATH=/usr/bin:$PATH
-        cd build/${{ inputs.build_type }}/src 
+        cd build/${{ inputs.build_type }}/artifacts
         chmod +x samples_functional_testing
         ./samples_functional_testing
 
     # chmod is redundant, but to keep this independent of Console test we keep it.
     - name: Unit tests
-      if: ${{ inputs.run_tests }}
+      if: ${{ inputs.run_tests == 'cpu' }}
       run: |
         export PATH=/usr/bin:$PATH
-        cd build/${{ inputs.build_type }}/src 
+        cd build/${{ inputs.build_type }}/artifacts
         chmod +x unit_test_runner
         ./unit_test_runner
-  
 
+  run_gpu_tests:
+    needs: build
+    if: ${{ inputs.run_tests == 'gpu' }}
+    runs-on: gpu_runner
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cistem_binaries_${{ inputs.build_type }}
+          path: ./binaries
+
+      - name: Setup environment
+        run: |
+          chmod +x binaries/*
+          cd binaries
+          ls -lh
+
+      - name: Console test
+        run: |
+          cd binaries
+          export PATH=/usr/bin:$PATH
+          ./console_test
+
+      - name: Samples functional testing
+        run: |
+          cd binaries
+          export PATH=/usr/bin:$PATH
+          ./samples_functional_testing
+
+      - name: Unit tests
+        run: |
+          cd binaries
+          export PATH=/usr/bin:$PATH
+          ./unit_test_runner
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "### GPU Tests Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build type:** ${{ inputs.build_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY

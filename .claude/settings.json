@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/sa_shared/software/push_cut.sh \"Claude Code\" \"Claude needs your input!\""
+            "command": ".claude/scripts/claude_notifications.sh \"Claude Code\" \"Claude needs your input!\""
           }
         ]
       }
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/sa_shared/software/push_cut.sh \"Claude Code waiting\" \"Claude needs your input\""
+            "command": ".claude/scripts/claude_notifications.sh \"Claude Code waiting\" \"Claude needs your input\""
           }
         ]
       }
@@ -61,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/sa_shared/software/push_cut.sh \"Claude Code Finished\" \"Claude has completed your task\""
+            "command": ".claude/scripts/claude_notifications.sh \"Claude Code Finished\" \"Claude has completed your task\""
           }
         ]
       }

@@ -17,6 +17,9 @@
         // FIXME this should just come from name
         "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}"
     },
+    "mounts": [
+    "${env:cistem_mounts}"
+    ],
     "runArgs": [
         "--rm",
         "-it",
@@ -47,6 +50,7 @@
             ]
         }
     }
+
     // For custom mounts, use devcontainer CLI with --mount flag instead of hardcoding here.
     // Example bash aliases (add to ~/.bashrc):
     //   alias cistem-devcontainer='devcontainer up --mount type=bind,source=/scratch,target=/scratch --mount type=bind,source=/sa_shared,target=/sa_shared && devcontainer open'

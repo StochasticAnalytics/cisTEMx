@@ -1,4 +1,5 @@
 # Pull Request Workflow Reference
+
 ## Creating and Managing Pull Requests for cisTEMx
 
 ### Critical: Origin vs Upstream
@@ -24,6 +25,7 @@ Before creating a pull request:
 ### Creating a Pull Request
 
 #### Step 1: Ensure Clean Branch
+
 ```bash
 # Check for uncommitted changes
 git status
@@ -33,23 +35,26 @@ git rebase -i --exec "make -j16" HEAD~<number-of-commits>
 ```
 
 #### Step 2: Push to Your Fork
+
 ```bash
 # Push your branch to origin (your fork)
 git push origin feature-branch-name
 ```
 
 #### Step 3: Create PR via GitHub CLI
+
 ```bash
-# Create PR against upstream/master
+# Create PR against upstream/main
 gh pr create \
   --repo upstream-owner/cisTEMx \
-  --base master \
+  --base main \
   --head your-username:feature-branch-name \
   --title "Brief description of changes" \
   --body "Detailed explanation"
 ```
 
 #### Step 4: Use PR Template
+
 The PR must follow the template at `.github/pull_request_template.md`:
 
 ```markdown
@@ -88,26 +93,30 @@ See `.github/workflows/CLAUDE.md` for detailed interactive workflow.
 ### Common PR Issues
 
 #### "Can't push to upstream"
+
 You don't have write access to upstream. Always push to origin first, then create PR.
 
 #### "PR shows too many commits"
-Your branch might be behind master:
+
+Your branch might be behind main:
+
 ```bash
 git fetch upstream
-git rebase upstream/master
+git rebase upstream/main
 git push --force origin feature-branch-name
 ```
 
 #### "Merge conflicts"
+
 ```bash
-# Update your local master
+# Update your local main
 git fetch upstream
-git checkout master
-git merge upstream/master
+git checkout main
+git merge upstream/main
 
 # Rebase your feature branch
 git checkout feature-branch-name
-git rebase master
+git rebase main
 # Resolve conflicts
 git push --force origin feature-branch-name
 ```
@@ -115,12 +124,14 @@ git push --force origin feature-branch-name
 ### PR Review Process
 
 #### As PR Author
+
 - Respond to all review comments
 - Mark conversations as resolved when addressed
 - Request re-review after making changes
 - Don't force-push during review unless requested
 
 #### Code Review Etiquette
+
 - Be receptive to feedback
 - Explain design decisions when questioned
 - Make requested changes promptly
@@ -129,6 +140,7 @@ git push --force origin feature-branch-name
 ### CI and Automated Checks
 
 Pull requests automatically trigger:
+
 - Compilation checks
 - Static analysis (standard tier)
 - Test suite execution
@@ -139,6 +151,7 @@ All checks must pass before merge.
 ### Merging Strategy
 
 The project typically uses:
+
 - **Squash and merge** for feature branches
 - **Merge commits** for large features with meaningful history
 - **Rebase and merge** rarely, only for linear history
@@ -146,10 +159,11 @@ The project typically uses:
 ### Post-Merge Cleanup
 
 After PR is merged:
+
 ```bash
-# Update local master
-git checkout master
-git pull upstream master
+# Update local main
+git checkout main
+git pull upstream main
 
 # Delete local feature branch
 git branch -d feature-branch-name
@@ -159,6 +173,7 @@ git push origin --delete feature-branch-name
 ```
 
 ### Related Documentation
+
 - PR template: `.github/pull_request_template.md`
 - CI workflows: `.github/workflows/`
 - Interactive workflow: `.github/workflows/CLAUDE.md`

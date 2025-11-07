@@ -281,7 +281,7 @@ find "$TENSOR_DIR" -name '*.cpp' -o -name '*.cu' | \
 set -euo pipefail
 
 BUILD_DIR="build/clang-tidy-debug"
-BASE_BRANCH="${1:-master}"
+BASE_BRANCH="${1:-main}"
 
 if [[ ! -f "$BUILD_DIR/compile_commands.json" ]]; then
     echo "Error: Compilation database not found!"
@@ -409,7 +409,7 @@ on:
       - 'src/core/tensor/**'
       - 'src/core/**/*.h'
   push:
-    branches: [master, develop]
+    branches: [main, develop]
 
 jobs:
   clang-tidy:
@@ -628,7 +628,7 @@ clang-tidy-14 -p build/clang-tidy-debug src/core/tensor/tensor.h
 run-clang-tidy-14 -p build/clang-tidy-debug src/core/tensor/
 
 # Run on changed files only
-git diff -U0 master | clang-tidy-diff-14.py -p1 -path build/clang-tidy-debug
+git diff -U0 main | clang-tidy-diff-14.py -p1 -path build/clang-tidy-debug
 
 # List available checks
 clang-tidy-14 --list-checks

@@ -13,7 +13,7 @@ When creating a pull request, follow this interactive workflow:
 Read the PR template at `.github/pull_request_template.md` and create a complete PR description that addresses all sections:
 
 1. **Description** - Explain what changed and **why** (motivation is critical)
-2. **Rebase status** - Confirm branch is rebased to current master
+2. **Rebase status** - Confirm branch is rebased to current main
 3. **Compilers tested** - List which compilers were used
 4. **Scope of changes** - Identify affected components (gui/core/gpu/programs)
 5. **Testing performed** - Describe manual and automated testing
@@ -41,7 +41,7 @@ Please select an option:
 Create the pull request immediately:
 
 ```bash
-gh pr create --title "Your PR Title" --body "$(cat .claude/cache/pr_draft.md)" --base master --repo upstream
+gh pr create --title "Your PR Title" --body "$(cat .claude/cache/pr_draft.md)" --base main --repo upstream
 ```
 
 **Important:** Always use `--repo upstream` to ensure the PR targets the upstream repository, not origin.
@@ -90,7 +90,7 @@ git remote get-url upstream
 - `origin` - Your fork (e.g., `github.com:YourUsername/cisTEMx.git`)
 - `upstream` - Main repository (e.g., `github.com:StochasticAnalytics/cisTEMx.git`)
 
-PRs must target `upstream/master`, not `origin/master`.
+PRs must target `upstream/main`, not `origin/main`.
 
 ## Best Practices
 
@@ -166,7 +166,7 @@ Claude: I've drafted the following pull request description (saved in .claude/ca
 
 # Description
 
-This PR removes leaked template matching queue code from master and improves
+This PR removes leaked template matching queue code from main and improves
 CUDA architecture targeting flexibility.
 
 **Why these changes:**
@@ -203,7 +203,7 @@ Claude: Applying edits and saving to .claude/cache/pr_draft.md...
 User: 1 (Accept)
 
 Claude: Creating pull request...
-[Executes: gh pr create --title "..." --body "$(cat .claude/cache/pr_draft.md)" --base master --repo upstream]
+[Executes: gh pr create --title "..." --body "$(cat .claude/cache/pr_draft.md)" --base main --repo upstream]
 
 PR created successfully at: https://github.com/StochasticAnalytics/cisTEMx/pull/XXX
 ```

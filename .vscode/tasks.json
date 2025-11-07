@@ -267,7 +267,7 @@
             "type": "promptString",
             "id": "base_branch",
             "description": "Base branch to compare against for clang-tidy-diff",
-            "default": "master"
+            "default": "main"
         }
     ]
 }

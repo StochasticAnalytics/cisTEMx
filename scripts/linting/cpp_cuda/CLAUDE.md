@@ -277,7 +277,7 @@ All tasks are defined in `.vscode/tasks.json`. Use `Ctrl+Shift+P` → `Tasks: Ru
 
 - Only analyzes lines changed vs. base branch
 - Very fast, ideal for large PRs
-- Prompts for base branch (default: master)
+- Prompts for base branch (default: main)
 
 **"Deep Analysis (scan-build)"**
 
@@ -359,7 +359,7 @@ Located in `scripts/linting/cpp_cuda/`:
 ./scripts/linting/cpp_cuda/analyze_diff.sh [tier] [base_branch]
 
 # Examples:
-./scripts/linting/cpp_cuda/analyze_diff.sh blocker master
+./scripts/linting/cpp_cuda/analyze_diff.sh blocker main
 ./scripts/linting/cpp_cuda/analyze_diff.sh standard origin/develop
 ./scripts/linting/cpp_cuda/analyze_diff.sh deep HEAD~5
 ```
@@ -399,10 +399,10 @@ git commit -m "Add new Tensor method"
 
 ```bash
 # 1. Check what files changed
-git diff --name-only master
+git diff --name-only main
 
 # 2. Analyze only changes (Tier 2)
-./scripts/linting/cpp_cuda/analyze_diff.sh standard master
+./scripts/linting/cpp_cuda/analyze_diff.sh standard main
 
 # 3. Or run standard tier on all Tensor code
 ./scripts/linting/cpp_cuda/analyze_standard.sh src/core/tensor/
@@ -895,7 +895,7 @@ cd build/clang-tidy-debug && bear -- make -j$(nproc)
 ./scripts/linting/cpp_cuda/analyze_deep.sh      # All tiers
 
 # Run on changed files
-./scripts/linting/cpp_cuda/analyze_diff.sh standard master
+./scripts/linting/cpp_cuda/analyze_diff.sh standard main
 
 # Run specific category
 ./scripts/linting/cpp_cuda/analyze_category.sh performance

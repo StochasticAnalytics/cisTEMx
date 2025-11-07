@@ -1,6 +1,8 @@
 /**
  * MRC File Reading Examples (cisTEM C++)
  *
+ * <!-- needs validation -->
+ *
  * Demonstrates common patterns for reading MRC files in cisTEM.
  * All data is converted to float32 in memory regardless of file MODE.
  */

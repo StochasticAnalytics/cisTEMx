@@ -1,6 +1,8 @@
 /**
  * MRC File Writing Examples (cisTEM C++)
  *
+ * <!-- needs validation -->
+ *
  * Demonstrates common patterns for writing MRC files in cisTEM.
  * cisTEM writes MODE 2 (float32) by default, or MODE 12 (float16) if requested.
  */

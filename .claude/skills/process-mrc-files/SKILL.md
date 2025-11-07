@@ -1,7 +1,7 @@
 ---
 name: process-mrc-files
 description: |
-  Process MRC (Medical Research Council) files for electron microscopy and structural biology. Use when: reading/writing MRC files in Python (mrcfile module) or C++ (cisTEM), understanding file structure and header fields, handling 2D images/3D volumes/stacks, implementing partial I/O, debugging interoperability issues between tools, or ensuring proper coordinate conventions and data type handling. Covers MRC2014 specification, Python mrcfile API, cisTEM C++ implementation, and cross-platform compatibility pitfalls.
+  MRC/MRCS file format (.mrc/.mrcs/.st/.ali files) for electron microscopy images/volumes. Use for: cryo-EM/cryo-ET data, MRC2014 format specification, parsing/reading/writing MRC files, Python mrcfile module, cisTEM C++ MRCFile/MRCHeader classes, header field extraction (MODE/MAPC/MAPR/MAPS/NX/NY/NZ), MRC-specific coordinate axis mapping, endianness/byte-order handling, stack vs volume file disambiguation, RELION/IMOD/SerialEM/cisTEM tool compatibility. NOT for: general image formats (PNG/JPEG/TIFF/HDF5), X-ray crystallography (PDB/mmCIF), other microscopy formats (DM3/TIA), general Python array/numpy usage, 3D graphics rendering.
 ---
 
 # Process MRC Files
@@ -29,6 +29,16 @@ Load this skill when you need to:
 - **Implement partial I/O** (reading/writing specific slices from stacks)
 - **Debug interoperability issues** (format compatibility between tools)
 - **Validate MRC files** or convert between formats
+
+## When NOT to Use This Skill
+
+Do NOT load this skill for:
+- General image formats (PNG, JPEG, TIFF, HDF5) - use format-specific tools
+- Other microscopy formats (DM3, TIA, proprietary vendor formats)
+- X-ray crystallography data (PDB, mmCIF) - different file formats
+- General Python array/numpy operations - not MRC-specific
+- 3D graphics rendering or coordinate transformations - not electron microscopy
+- When you just need a quick "what is MRC format?" explanation - read the What section instead
 
 ## Quick Start
 
@@ -74,23 +84,26 @@ output_file.WriteSlicesToDisk(0, 9, data);
 
 ### Core Documentation
 
-- **`resources/format_specification.md`** - MRC2014 header structure, field definitions, data types, official specification
-- **`resources/python_mrcfile_guide.md`** - Complete Python mrcfile API, reading/writing patterns, examples
-- **`resources/cistem_cpp_guide.md`** - cisTEM MRCHeader and MRCFile classes, methods, usage patterns
-- **`resources/interoperability_guide.md`** - Cross-platform pitfalls, compatibility issues, best practices
-- **`resources/coordinate_conventions.md`** - Axis ordering (X/Y/Z), origin field, pixel size, MAPC/MAPR/MAPS
-- **`resources/data_types.md`** - MODE values (0-12), byte sizes, conversion rules, precision considerations
+<!-- coupled -->
+- **[Format specification](resources/format_specification.md)** - MRC2014 header structure, field definitions, data types
+- **[Python mrcfile guide](resources/python_mrcfile_guide.md)** - Complete Python mrcfile API, reading/writing patterns
+- **[cisTEM C++ guide](resources/cistem_cpp_guide.md)** - cisTEM MRCHeader and MRCFile classes, methods
+- **[Interoperability guide](resources/interoperability_guide.md)** - Cross-platform pitfalls, compatibility issues
+- **[Coordinate conventions](resources/coordinate_conventions.md)** - Axis ordering (X/Y/Z), MAPC/MAPR/MAPS
+- **[Data types](resources/data_types.md)** - MODE values (0-12), conversion rules, precision
 
 ### Code Examples
 
-- **`templates/python_read_example.py`** - Python patterns for reading 2D/3D/stacks, partial I/O
-- **`templates/python_write_example.py`** - Python patterns for creating files, modifying headers
-- **`templates/cpp_read_example.cpp`** - C++ patterns for reading slices, handling formats
-- **`templates/cpp_write_example.cpp`** - C++ patterns for writing data, setting metadata
+<!-- coupled -->
+- **[Python read examples](templates/python_read_example.py)** - Patterns for reading 2D/3D/stacks, partial I/O
+- **[Python write examples](templates/python_write_example.py)** - Patterns for creating files, modifying headers
+- **[C++ read examples](templates/cpp_read_example.cpp)** - Patterns for reading slices, handling formats
+- **[C++ write examples](templates/cpp_write_example.cpp)** - Patterns for writing data, setting metadata
 
 ### Citations and References
 
-- **`resources/citations.md`** - MRC2014 paper, official specifications, library documentation, version tracking
+<!-- coupled -->
+- **[Citations](resources/citations.md)** - MRC2014 paper, official specifications, library documentation
 
 ## Progressive Disclosure Pattern
 
@@ -98,13 +111,15 @@ This skill follows progressive disclosure:
 
 1. **Start here (SKILL.md)** - Overview and quick start
 2. **Choose your language**:
-   - Python → `python_mrcfile_guide.md`
-   - C++ → `cistem_cpp_guide.md`
+   <!-- coupled -->
+   - Python → [Python mrcfile guide](resources/python_mrcfile_guide.md)
+   - C++ → [cisTEM C++ guide](resources/cistem_cpp_guide.md)
 3. **Dive deeper as needed**:
-   - Format details → `format_specification.md`
-   - Coordinate systems → `coordinate_conventions.md`
-   - Data types → `data_types.md`
-   - Compatibility → `interoperability_guide.md`
+   <!-- coupled -->
+   - Format details → [Format specification](resources/format_specification.md)
+   - Coordinate systems → [Coordinate conventions](resources/coordinate_conventions.md)
+   - Data types → [Data types](resources/data_types.md)
+   - Compatibility → [Interoperability guide](resources/interoperability_guide.md)
 4. **Use templates** - Copy/adapt code examples
 5. **Check citations** - Verify you're using current versions
 
@@ -125,7 +140,8 @@ float* slice = new float[file.ReturnXSize() * file.ReturnYSize()];
 file.ReadSliceFromDisk(10, slice);  # Zero-indexed
 ```
 
-**Details:** See `python_mrcfile_guide.md` or `cistem_cpp_guide.md`
+<!-- coupled -->
+**Details:** See [Python guide](resources/python_mrcfile_guide.md#reading-slices) or [C++ guide](resources/cistem_cpp_guide.md#slice-io)
 
 ### Task: Distinguish 2D stack from 3D volume
 
@@ -135,7 +151,8 @@ file.ReadSliceFromDisk(10, slice);  # Zero-indexed
 - 3D volumes: `.mrc` extension, `ISPG ≥ 1`
 - 2D stacks: `.mrcs` extension, `ISPG = 0`
 
-**Details:** See `interoperability_guide.md` → "Stack vs Volume Ambiguity"
+<!-- coupled -->
+**Details:** See [Interoperability guide](resources/interoperability_guide.md#stack-vs-volume-ambiguity)
 
 ### Task: Handle endianness
 
@@ -145,7 +162,8 @@ file.ReadSliceFromDisk(10, slice);  # Zero-indexed
 
 **Reality:** Machine stamp often unreliable; use heuristics (validate MODE field range)
 
-**Details:** See `interoperability_guide.md` → "Endianness Detection"
+<!-- coupled -->
+**Details:** See [Interoperability guide](resources/interoperability_guide.md#endianness-detection)
 
 ### Task: Convert data types
 
@@ -157,7 +175,8 @@ mrcfile.write('output.mrc', data_float32)  # MODE 2
 
 **C++:** cisTEM converts all formats to float32 in memory
 
-**Details:** See `data_types.md` for precision/range considerations
+<!-- coupled -->
+**Details:** See [Data types guide](resources/data_types.md#precision-considerations) for precision/range info
 
 ## Key Concepts
 
@@ -211,7 +230,8 @@ Common pitfalls when exchanging files between tools:
 
 **Recommendation:** Write MODE 2 (float32) files with standard axis ordering (MAPC=1, MAPR=2, MAPS=3) for maximum compatibility.
 
-See `interoperability_guide.md` for detailed analysis and solutions.
+<!-- coupled -->
+See [Interoperability guide](resources/interoperability_guide.md) for detailed analysis and solutions.
 
 ## Validation
 

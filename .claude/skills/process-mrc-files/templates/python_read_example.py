@@ -2,6 +2,8 @@
 """
 MRC File Reading Examples (Python mrcfile)
 
+<!-- needs validation -->
+
 Demonstrates common patterns for reading MRC files in Python.
 """
 

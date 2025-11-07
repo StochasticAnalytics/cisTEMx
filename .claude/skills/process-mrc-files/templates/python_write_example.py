@@ -2,6 +2,8 @@
 """
 MRC File Writing Examples (Python mrcfile)
 
+<!-- needs validation -->
+
 Demonstrates common patterns for writing MRC files in Python.
 """
 

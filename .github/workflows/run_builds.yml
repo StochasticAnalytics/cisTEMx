@@ -36,9 +36,6 @@ on:
         required: true
         type: string
         default: 'cpu'
-        options:
-          - 'cpu'
-          - 'gpu'
       n_threads:
         description: 'Number of threads to use for make. Current Free tier has 4 threads'
         required: true

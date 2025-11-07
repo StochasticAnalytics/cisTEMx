@@ -1,7 +1,21 @@
 #!/usr/bin/env python3
 """
-Skill validation script for cisTEMx skills.
-Validates YAML frontmatter constraints and skill structure.
+Skill Validator - Checks REQUIREMENTS, not guidelines
+
+Validates YAML frontmatter constraints and skill structure for cisTEMx skills.
+
+VALIDATES (errors):
+- YAML syntax validity
+- Required frontmatter fields (name, description)
+- Frontmatter character limit (1024 max)
+- Directory structure exists
+
+SHOULD NOT VALIDATE (warnings at most):
+- Line count recommendations (200-line guideline)
+- Organizational suggestions
+- Style preferences
+
+Philosophy: Distinguish "must be true" from "best practices"
 """
 
 import sys

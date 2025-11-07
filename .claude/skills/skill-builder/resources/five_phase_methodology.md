@@ -116,6 +116,44 @@ description: Structured git workflow for feature development. Use when starting 
 3. **Resources** (on demand): Detailed procedures
 4. **Templates/Scripts** (when needed): Tools and patterns
 
+### Skill Design Policies
+
+**Frontmatter Philosophy:**
+
+The 1024-character limit is a GUIDELINE, not a hard rule.
+
+**Key principle:** Preventing skill mis-invocation (false positives/negatives) saves orders of magnitude more tokens than a longer frontmatter costs.
+
+**Priorities:**
+1. Content appropriateness and specificity
+2. Including necessary keywords, negatives, and qualifiers
+3. Character count (up to 1024 acceptable if needed)
+
+**Strategy:** Over-specify rather than under-specify within topical bounds.
+
+**Time Estimations:**
+
+DO NOT include time estimates in skill documentation or reviews.
+
+**Rationale:**
+- Time estimates are never accurate
+- Waste tokens and thought
+- Create false precision
+
+**Exception:** Relative effort percentages (e.g., "20% of overhead") for trade-off analysis only.
+
+**Applies to:** All skill documentation, Red/Blue reviews, planning documents.
+
+**Line Count Guidelines:**
+
+SKILL.md ~200 line recommendation is a GUIDELINE, not a requirement.
+
+**Priority:** Content quality and clarity over hitting specific line counts.
+
+**Acceptable range:** 150-300 lines depending on complexity.
+
+**When to reduce:** If content can move to resources without losing essential context.
+
 ## Phase 3: Implementation
 
 ### Objective

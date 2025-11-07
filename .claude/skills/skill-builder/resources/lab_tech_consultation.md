@@ -98,6 +98,27 @@ subagent_type = "lab-tech-lead"
 - Risk assessment
 - Success criteria
 
+## Coordination Pattern: Serial vs Parallel
+
+**Validated pattern (2025-11-07):**
+
+**SERIAL (Recommended)**:
+1. Launch Red to identify issues
+2. Launch Blue with Red's findings to propose solutions
+3. Optional: Iterate (Red critiques Blue's proposals, Blue refines)
+
+**Why serial works:**
+- Blue receives concrete problems to solve
+- Output is actionable fixes with code/steps
+- Constructive = building solutions, not celebrating
+
+**PARALLEL (Not recommended)**:
+- Red and Blue analyze independently
+- Blue produces generic praise without addressing problems
+- Less actionable output
+
+**Note:** Single observation - continue tracking pattern effectiveness over time.
+
 ## Common Consultation Scenarios
 
 ### Scenario 1: Architecture Review

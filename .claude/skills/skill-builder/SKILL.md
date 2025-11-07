@@ -43,6 +43,19 @@ mkdir -p .claude/cache/skills/my-skill/{resources,scripts,templates}
 mv .claude/cache/skills/my-skill .claude/skills/
 ```
 
+## Complete Workflow Sequence
+
+1. **Research** - Delegate to parallel Task() agents with `model='haiku'` if broad research needed
+2. **Build in cache** - Create in `.claude/cache/skills/<skill-name>/` to avoid permission requests
+3. **Initial draft** - Write SKILL.md, resources, templates, scripts
+4. **Red/Blue review** - 1-2 iterations using serial pattern (see lab_tech_consultation.md)
+5. **Implement changes** - Apply converged proposals from review
+6. **Move to production** - `mv .claude/cache/skills/<name> .claude/skills/` (single approval)
+7. **Validation phase** - Use unit-testing skill to validate code templates (SEPARATE step)
+8. **Final commit** - Commit validated skill
+
+**Key timing:** Validation happens AFTER move to production, not before. Directory move is near end of workflow, after Red/Blue review and implementation.
+
 ## Research Pattern for Skills Requiring External Knowledge
 
 **Use parallel Task() invocations for deep, broad research:**
@@ -112,6 +125,51 @@ Before finalizing a skill:
 - [ ] Tested for discovery and execution
 - [ ] Documented in journal with lessons learned
 - [ ] Citations documented in `resources/citations.md` for maintainability
+
+## Maintenance Patterns
+
+### Coupled Reference Tracking
+
+When adding cross-file references (markdown anchor links, resource pointers):
+
+```markdown
+<!-- coupled -->
+See [Section Name](resources/file.md#section-anchor)
+```
+
+**Purpose:** Marks coupling points for future CI/linting verification when references break.
+
+**Usage:**
+- Add before resource references in SKILL.md
+- Add in progressive disclosure navigation sections
+- Enables automated maintenance burden tracking
+
+### Validation Tags for Code Templates
+
+Mark code templates requiring validation testing:
+
+```python
+#!/usr/bin/env python3
+"""
+Template description
+
+<!-- needs validation -->
+"""
+```
+
+```cpp
+/**
+ * Template description
+ *
+ * <!-- needs validation -->
+ */
+```
+
+**Purpose:** Identifies templates for validation phase with unit-testing skill.
+
+**Usage:**
+- Add to all executable code templates (Python, C++, Bash)
+- Validation happens in step 7 of workflow (after production move)
 
 ## Available Resources
 

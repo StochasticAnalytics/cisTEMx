@@ -14,5 +14,5 @@ jobs:
       CC: gcc
       CXX: g++
       cppstandard: 17
-      run_tests: false
+      run_tests: 'gpu'
       n_threads: 4

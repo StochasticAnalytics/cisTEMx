@@ -56,9 +56,12 @@ Git commits document product. Lab notebook documents:
 # Use: Bash(.claude/skills/lab-notebook/scripts/take_quick_note.py ...)
 .claude/skills/lab-notebook/scripts/take_quick_note.py --task "Implementing compile-code skill" --intent "Replace cpp-build-expert agent with flexible skill system" --observation "Decided to exclude template error guidance until C++20 migration - avoid premature optimization" --skills-used '{"name": "skill-builder", "invoker": "me", "scripts": ["validate_skill.py"], "refs": ["five_phase_methodology.md"]}' --tokens-used "83503/200000" --tools-count "42"
 
-# List recent notes
-# Use: Bash(.claude/skills/lab-notebook/scripts/list_notes.py ...)
-.claude/skills/lab-notebook/scripts/list_notes.py --last 10
+# List notes with time-based queries
+.claude/skills/lab-notebook/scripts/list_notes.py --today           # Just today's notes
+.claude/skills/lab-notebook/scripts/list_notes.py --yesterday       # Just yesterday's notes
+.claude/skills/lab-notebook/scripts/list_notes.py --since 2d        # Last 2 days
+.claude/skills/lab-notebook/scripts/list_notes.py --since 2025-11-04  # Since specific date
+.claude/skills/lab-notebook/scripts/list_notes.py --last 10         # Last 10 notes (no date filter)
 
 # Search for patterns
 # Use: Bash(.claude/skills/lab-notebook/scripts/search_notes.py ...)

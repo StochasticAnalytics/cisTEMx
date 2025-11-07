@@ -80,7 +80,8 @@ def extract_note_preview(filepath: Path, max_lines: int = 3) -> str:
 def list_notes(
     cache_dir: Path,
     last_n: Optional[int] = None,
-    since_date: Optional[datetime] = None
+    since_date: Optional[datetime] = None,
+    before_date: Optional[datetime] = None
 ) -> List[Tuple[Path, datetime]]:
     """
     List lab notes from cache directory.
@@ -88,7 +89,8 @@ def list_notes(
     Args:
         cache_dir: Directory containing lab notes
         last_n: Limit to last N notes
-        since_date: Only show notes since this date
+        since_date: Only show notes since this date (inclusive)
+        before_date: Only show notes before this date (exclusive)
 
     Returns:
         List of (filepath, timestamp) tuples, sorted newest first
@@ -101,8 +103,10 @@ def list_notes(
     for filepath in cache_dir.glob('lab_note_*.md'):
         timestamp = parse_note_timestamp(filepath.name)
         if timestamp:
-            # Filter by date if specified
+            # Filter by date range if specified
             if since_date and timestamp < since_date:
+                continue
+            if before_date and timestamp >= before_date:
                 continue
             notes.append((filepath, timestamp))
 
@@ -133,6 +137,26 @@ def format_note_list(notes: List[Tuple[Path, datetime]], show_preview: bool = Tr
     return '\n'.join(lines)
 
 
+def parse_since_argument(since_str: str) -> datetime:
+    """
+    Parse --since argument supporting multiple formats.
+
+    Formats:
+    - YYYY-MM-DD: Specific date
+    - Nd: N days ago (e.g., "2d" = 2 days ago)
+    """
+    # Try relative days format first (e.g., "2d")
+    if since_str.endswith('d') and since_str[:-1].isdigit():
+        days_ago = int(since_str[:-1])
+        return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_ago)
+
+    # Try absolute date format (YYYY-MM-DD)
+    try:
+        return datetime.strptime(since_str, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"Invalid date format: {since_str}. Expected YYYY-MM-DD or Nd (e.g., 2d)")
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -142,17 +166,21 @@ def main() -> int:
     parser.add_argument(
         '--last',
         type=int,
-        default=10,
-        help='Show last N notes (default: 10)'
+        help='Show last N notes (only applies if no date filter specified)'
     )
     parser.add_argument(
         '--since',
-        help='Show notes since date (YYYY-MM-DD)'
+        help='Show notes since date (YYYY-MM-DD or Nd for N days ago, e.g., 2d)'
     )
     parser.add_argument(
         '--today',
         action='store_true',
         help='Show only notes from today'
+    )
+    parser.add_argument(
+        '--yesterday',
+        action='store_true',
+        help='Show only notes from yesterday'
     )
     parser.add_argument(
         '--no-preview',
@@ -185,18 +213,32 @@ def main() -> int:
 
     # Parse date filter
     since_date = None
+    before_date = None
+
     if args.today:
         since_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    elif args.yesterday:
+        # Yesterday only: from yesterday midnight to today midnight
+        today_midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        since_date = today_midnight - timedelta(days=1)
+        before_date = today_midnight
     elif args.since:
         try:
-            since_date = datetime.strptime(args.since, "%Y-%m-%d")
-        except ValueError:
-            print(f"Error: Invalid date format: {args.since}", file=sys.stderr)
-            print("Expected: YYYY-MM-DD", file=sys.stderr)
+            since_date = parse_since_argument(args.since)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
+    # Determine last_n: only apply if explicitly specified AND no date filter
+    last_n = None
+    if args.last is not None:
+        last_n = args.last
+    elif since_date is None:
+        # No date filter and no --last specified: default to 10
+        last_n = 10
+
     # List notes
-    notes = list_notes(cache_dir, last_n=args.last, since_date=since_date)
+    notes = list_notes(cache_dir, last_n=last_n, since_date=since_date, before_date=before_date)
 
     # Format and display
     output = format_note_list(notes, show_preview=not args.no_preview)

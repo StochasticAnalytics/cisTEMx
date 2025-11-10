@@ -15,7 +15,7 @@
 #
 # Examples:
 #   ./convert_to_apptainer.sh                                    # Use versions from .vscode config
-#   ./convert_to_apptainer.sh --version 3.0.1                    # Specify version explicitly
+#   ./convert_to_apptainer.sh --version 3.0.2                    # Specify version explicitly
 #   ./convert_to_apptainer.sh --source docker://custom/repo:tag  # Specify custom source
 #   ./convert_to_apptainer.sh --output my-container.sif          # Custom output file name
 #########################################################################################################################################################################################
@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
       echo "  ./convert_to_apptainer.sh"
       echo ""
       echo "  # Specify version explicitly"
-      echo "  ./convert_to_apptainer.sh --version 3.0.1"
+      echo "  ./convert_to_apptainer.sh --version 3.0.2"
       echo ""
       echo "  # Use Docker Hub instead of GHCR"
       echo "  ./convert_to_apptainer.sh --registry docker.io"

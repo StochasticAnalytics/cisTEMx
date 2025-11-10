@@ -28,8 +28,9 @@ ARG build_docs="true"
 SHELL ["/bin/bash", "-c"]
 # some rebuild comment
 ENV CISTEM_REF_IMAGES=/cisTEMdev/cistem_reference_images
+ENV CLAUDE_WORKSPACE_ROOT=/workspaces/cisTEMx
 
-# Python 3.10 is native to Ubuntu 22.04, so we do NOT set up virtual environment at /opt/venv
+# Python 3.10 is native to Ubuntu 22.04, so we d/o NOT set up virtual environment at /opt/venv
 # RUN apt-get update && \
 #     apt-get install -y python3.10 python3.10-venv python3.10-dev && \
 #     python3.10 -m venv /opt/venv && \
@@ -107,6 +108,11 @@ RUN if [[ "x${build_type}" != "xstatic" ]]; then echo "export LD_RUN_PATH=/opt/l
 RUN echo 'source /opt/venv/bin/activate' >> /home/cisTEMdev/.bashrc
 
 RUN if [[ "x${build_docs}" == "xtrue" ]] ; then /tmp/install_documentation_tooling.sh  && /tmp/install_llm_optimization_tools.sh ; fi
+
+#  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM
+# xdotool x11-utils wmctrl for a script I have to get push notifications on hooks when claude stalls (TODO add notes for others)
+# sox is for Whisper (local voice trasncription), still testing
+RUN apt-get update && apt install -y flameshot xdotool x11-utils wmctrl && rm -rf /var/lib/apt/lists/*
 
 USER cisTEMdev
 WORKDIR /home/cisTEMdev

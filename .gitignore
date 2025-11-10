@@ -177,3 +177,9 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Submodule
+core_knowledge_graph/
+CLAUDE.md
+.claude
+.claude/

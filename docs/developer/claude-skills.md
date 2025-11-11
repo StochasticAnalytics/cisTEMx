@@ -98,29 +98,55 @@ This page catalogs all available skills, organized by functional purpose. Click 
 
     ---
 
-    <h2 style="color: #2E7D32; font-weight: bold;">lab_tech_red</h2>
+    <h2 style="color: #2E7D32; font-weight: bold;">red-blue-skill-review</h2>
 
     !!! warning "Sub-Agent Use Only"
-        This skill is ONLY for sub-agents. DO NOT load this skill directly. Use `red-blue-tech-coordinator` instead to invoke the lab technician review system.
+        This skill is for Task agents ONLY. DO NOT load directly. Use `red-blue-tech-coordinator` to invoke red-blue reviews.
 
     === "Overview"
-        **Description:** Provides critical, adversarial review perspective for technical discussions. This skill is automatically loaded when the main agent invokes a lab-tech-red sub-agent. Identifies gaps, weaknesses, edge cases, and potential failures. Main agent orchestrates; sub-agent loads and executes this skill.
+        **Description:** Collaborative red/blue team review framework for skill design and implementation. Combines critical analysis (red) with constructive improvement (blue). Task agents apply this methodology with frameworks provided by coordinators. Use when validating skill structure, frontmatter, resources, and implementation patterns.
 
     === "Details"
-        --8<-- "developer/skills/lab_tech_red.md"
+        --8<-- "developer/skills/red-blue-skill-review.md"
 
     ---
 
-    <h2 style="color: #2E7D32; font-weight: bold;">lab_tech_blue</h2>
+    <h2 style="color: #2E7D32; font-weight: bold;">red-blue-testing-review</h2>
 
     !!! warning "Sub-Agent Use Only"
-        This skill is ONLY for sub-agents. DO NOT load this skill directly. Use `red-blue-tech-coordinator` instead to invoke the lab technician review system.
+        This skill is for Task agents ONLY. DO NOT load directly. Use `red-blue-tech-coordinator` to invoke red-blue reviews.
 
     === "Overview"
-        **Description:** Provides constructive, improvement-focused review perspective for technical discussions. This skill is ONLY loaded by the lab-tech-blue sub-agent when invoked by lab-tech-lead. Identifies strengths, opportunities, and paths to excellence.
+        **Description:** Collaborative red/blue team review framework for test quality across all test types (unit, integration, functional). Combines critical analysis of gaps and violations with constructive improvements.
 
     === "Details"
-        --8<-- "developer/skills/lab_tech_blue.md"
+        --8<-- "developer/skills/red-blue-testing-review.md"
+
+    ---
+
+    <h2 style="color: #2E7D32; font-weight: bold;">red-blue-plan-review</h2>
+
+    !!! warning "Sub-Agent Use Only"
+        This skill is for Task agents ONLY. DO NOT load directly. Use `red-blue-tech-coordinator` to invoke red-blue reviews.
+
+    === "Overview"
+        **Description:** Collaborative red/blue team framework for plan and architecture analysis. Combines critical risk assessment with constructive opportunity identification.
+
+    === "Details"
+        --8<-- "developer/skills/red-blue-plan-review.md"
+
+    ---
+
+    <h2 style="color: #2E7D32; font-weight: bold;">red-blue-security-review</h2>
+
+    !!! warning "Sub-Agent Use Only"
+        This skill is for Task agents ONLY. DO NOT load directly. Use `red-blue-tech-coordinator` to invoke red-blue reviews.
+
+    === "Overview"
+        **Description:** Red/blue team security analysis framework for vulnerability assessment and defensive hardening.
+
+    === "Details"
+        --8<-- "developer/skills/red-blue-security-review.md"
 
 ---
 

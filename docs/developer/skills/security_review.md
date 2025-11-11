@@ -1,1 +1,0 @@
-../../../.claude/skills/security_review/SKILL.md

@@ -1,0 +1,1 @@
+../../../.claude/skills/red-blue-plan-review/SKILL.md

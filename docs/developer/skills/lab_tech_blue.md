@@ -1,1 +1,0 @@
-../../../.claude/skills/lab_tech_blue/SKILL.md

@@ -38,7 +38,6 @@ plugins:
   - meta
   - tags:
       enabled: true
-      tags_file: reference/tags.md
       tags_allowed:
         # Status
         - draft

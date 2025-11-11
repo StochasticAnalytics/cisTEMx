@@ -1,1 +1,2 @@
 configure.ac filter=configure
+.devcontainer/devcontainer.json filter=devcontainer

@@ -2,6 +2,9 @@
 
 cisTEMx is the next generation for academic research and commercial application of cryo-TEM.
 
+git config filter.devcontainer.smudge './scripts/devcontainer-filter.sh smudge'
+git config filter.devcontainer.clean './scripts/devcontainer-filter.sh clean'
+
 ## Current Status
 
 cisTEMx is in the midst of intial creation and should not be used until further notice. We refer those interested to the original project, [*cis*TEM](https://cistem.org)

@@ -17,6 +17,9 @@
         // FIXME this should just come from name
         "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}"
     },
+    // To add mounts, enable smudge/clean filters, define variable in bashrc ... export cistem_mounts="source=/path/to/src,target=/path/to/target/in/conainter,type=bind, --mount ..."
+    // Leave the following line comment, it is used as a placeholder for the devcontainer-filter.sh script to insert the mounts.
+    // mounts
     "runArgs": [
         "--rm",
         "-it",
@@ -43,13 +46,7 @@
                 "ms-python.python",
                 "frinkr.vscode-tabify",
                 "jomeinaster.bracket-peek",
-                "onnovalkering.vscode-singularity",
+                "onnovalkering.vscode-singularity"
             ]
         }
     }
-    // For custom mounts, use devcontainer CLI with --mount flag instead of hardcoding here.
-    // Example bash aliases (add to ~/.bashrc):
-    //   alias cistem-devcontainer='devcontainer up --mount type=bind,source=/scratch,target=/scratch --mount type=bind,source=/sa_shared,target=/sa_shared && devcontainer open'
-    //   alias cistem-devcontainer-rebuild='devcontainer up --remove-existing-container --build-no-cache --mount type=bind,source=/scratch,target=/scratch --mount type=bind,source=/sa_shared,target=/sa_shared && devcontainer open'
-    // Usage: Run from workspace directory: cistem-devcontainer (or cistem-devcontainer-rebuild to force rebuild)
-}

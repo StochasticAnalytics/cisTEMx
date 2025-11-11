@@ -10,7 +10,7 @@ jobs:
       build_type: "GPU_release"
       configure_options: "--with-cuda "
       global_configure_options: " --enable-openmp --enable-experimental --enable-staticmode --disable-multiple-global-refinements  --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config "
-      runs_on_os: ubuntu-latest
+      runs_on_os: cpu_2core_runner
       CC: clang
       CXX: clang++
       cppstandard: 17

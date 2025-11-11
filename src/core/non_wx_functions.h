@@ -300,8 +300,10 @@ inline bool HalfFloatsAreAlmostTheSame(const half_float::half a, const half_floa
     return (fabs(float(a) - float(b)) < cistem::half_float_epsilon);
 }
 
+// TODO: can we use std::conditional to set the default value properly
+// TODO: limit to float point types with concepst.
 template <typename T>
-bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_failed = true, T epsilon = 0.0001) {
+bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_failed = true, T epsilon = cistem::double_epsilon) {
 
     bool ret_val;
     // I'm not sure if this is the best way to guard against very small division
@@ -314,7 +316,7 @@ bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_fai
         std::cerr << "RelativeErrorIsLessThanEpsilon failed: " << reference << " " << test_value << " " << epsilon << " " << std::abs((reference - test_value) / reference) << std::endl;
     }
     return ret_val;
-};
+}
 
 inline float kDa_to_Angstrom3(float kilo_daltons) {
     return kilo_daltons * 1000.0 / 0.81;

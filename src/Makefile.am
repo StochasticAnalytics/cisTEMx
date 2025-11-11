@@ -1366,9 +1366,15 @@ endif
     unit_test_runner_SOURCES  += test/core/test_non_wx_functions.cpp
     unit_test_runner_SOURCES  += test/core/test_curve.cpp
     unit_test_runner_SOURCES  += test/core/test_randomnumbergenerator.cpp
+    unit_test_runner_SOURCES  += test/core/database/database_lifecycle.cpp
+    unit_test_runner_SOURCES  += test/core/database/database_tables.cpp
+    unit_test_runner_SOURCES  += test/core/database/database_insert.cpp
+    unit_test_runner_SOURCES  += test/core/database/database_queries.cpp
+    unit_test_runner_SOURCES  += test/core/database/database_batch_ops.cpp
+    unit_test_runner_SOURCES  += test/core/database/database_transactions.cpp
 if WANT_CISTEM_GPU_AM
     unit_test_runner_SOURCES += test/gpu/test_gpu.cpp
-                            
+
     unit_test_runner_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     unit_test_runner_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     unit_test_runner_LDADD    =  libgpucore.a libcore.a $(WX_LIBS_BASE) $(MKL_LIBS) $(CUDA_LIBS)

@@ -1,0 +1,1 @@
+../../../.claude/skills/lab-notebook/SKILL.md

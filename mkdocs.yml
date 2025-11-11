@@ -27,6 +27,65 @@ theme:
     text: Merriweather Sans
     code: Red Hat Mono
 
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/status-watermark.js
+
+plugins:
+  - search
+  - meta
+  - tags:
+      enabled: true
+      tags_file: reference/tags.md
+      tags_allowed:
+        # Status
+        - draft
+        - review
+        - published
+        - deprecated
+        - legacy
+        - placeholder
+        # Content types
+        - tutorial
+        - howto
+        - reference
+        - explanation
+        # Audiences
+        - user
+        - developer
+        - admin
+        - researcher
+        - contributor
+        # Levels
+        - beginner
+        - intermediate
+        - advanced
+        - expert
+        # Topics
+        - cryo-em
+        - image-processing
+        - gpu-acceleration
+        - workflow
+        - installation
+        - configuration
+        - troubleshooting
+        - api
+        - contributing
+        - simulation
+        - testing
+        - coverage
+        - diff-cover
+        - test-gaps
+        - quality
+        # Components
+        - gui
+        - cli
+        - database
+        - algorithms
+        - visualization
+
 markdown_extensions:
   - pymdownx.superfences:
       custom_fences:
@@ -34,6 +93,7 @@ markdown_extensions:
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
   - attr_list
+  - md_in_html
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
@@ -44,15 +104,38 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - admonition
   - pymdownx.details
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path: docs
   - pymdownx.tabbed:
       alternate_style: true
 
 copyright: Copyright &copy; 2025 Stochastic Analytics, LLC
 
 nav:
+  - Home: index.md
   - Getting Started:
-      - Overview: index.md
+      - getting-started/index.md
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+  - User Guide:
+      - user-guide/index.md
+      - Basic Usage: user-guide/basic-usage.md
+      - Tutorials: user-guide/tutorials.md
+      - Simulation: user-guide/simulation.md
+      - Workflows: user-guide/workflows.md
+  - Developer Guide:
+      - developer/index.md
+      - Claude Skills: developer/claude-skills.md
+      - Contributing: developer/contributing.md
+      - Architecture: developer/architecture.md
+      - Testing: developer/testing.md
+      - File Formats: developer/file-formats.md
+  - Reference:
+      - reference/index.md
+      - API Reference: reference/api.md
+      - Configuration: reference/configuration.md
+      - Programs: reference/programs.md
+      - Tags: reference/tags.md
   - Examples:
       - Code: code-examples.md
       - Diagrams: diagram-examples.md

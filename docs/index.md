@@ -5,7 +5,7 @@ hide:
 
 # cisTEMx Documentation
 
-cisTEMx is a high-performance cryo-EM image processing platform for structural biology. This documentation provides comprehensive guides for users and developers.
+cisTEMx is a high-performance cryoEM image processing platform for structural biology. This documentation provides comprehensive guides for users and developers.
 
 ---
 

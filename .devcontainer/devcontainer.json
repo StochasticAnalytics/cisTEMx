@@ -21,9 +21,14 @@
     // To add mounts, enable smudge/clean filters, define variable in bashrc ... export cistem_mounts="source=/path/to/src,target=/path/to/target/in/conainter,type=bind, --mount ..."
     // Leave the following line comment, it is used as a placeholder for the devcontainer-filter.sh script to insert the mounts.
     // mounts
-
+        "source=/scratch,target=/scratch,type=bind",
+        "source=/sa_shared,target=/sa_shared,type=bind"
+    ],
     // UID is set to 814 in base container, w/o the next line docker would set to 1000
     "updateRemoteUserUID": false,
+    // Network configuration: Using host networking for maximum compatibility.
+    // Whisper Assistant server runs on separate whisper-net bridge network with port 4444 exposed to host.
+    // This devcontainer accesses whisper via localhost:4444 through host network.
     "runArgs": [
         "--rm",
         "-it",

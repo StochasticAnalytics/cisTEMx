@@ -14,35 +14,51 @@ components: [gui, cli, database, algorithms]
 Overview of cisTEMx software architecture, design patterns, and system organization.
 
 === "Basic"
-    ## High-Level System Overview
+    ## System Architecture
 
     ```mermaid
     flowchart TB
-        RD[Remote Desktop<br/>Access Layer]
-        DS[Data Server<br/>Storage]
-        CT[cisTEMx<br/>Core Application]
-        USER((User))
-        CP[Compute Resources<br/>Processing]
+        %% Core vertical flow
+        ProjectFolder[Project Folder]
+        Core[cisTEMx Core + DB]
+        GUI[cisTEM GUI]
+        User((User))
 
-        RD --> CT
-        DS --> CT
-        CT --> USER
-        CP <--> CT
+        %% Supporting infrastructure
+        subgraph ComputeResources[Compute Resources]
+            Worker1[Worker 1]
+            Worker2[Worker 2]
+            Worker3[Worker N]
+        end
 
-        style CT fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
-        style USER fill:#E8F4F8,stroke:#4A90E2,stroke-width:2px
-        style RD fill:#F5F5F5,stroke:#999,stroke-width:2px
-        style DS fill:#F5F5F5,stroke:#999,stroke-width:2px
-        style CP fill:#F5F5F5,stroke:#999,stroke-width:2px
+        DataServer[Data Server]
+
+        %% Primary user interaction flow
+        ProjectFolder --> Core
+        Core --> GUI
+        GUI --> User
+
+        %% Infrastructure connections
+        ComputeResources <--> GUI
+        DataServer <--> GUI
+
+        %% Prominent styling for user-facing elements - no fill, borders only
+        style User fill:none,stroke:#388E3C,stroke-width:4px
+        style GUI fill:none,stroke:#1976D2,stroke-width:5px
+        style Core fill:none,stroke:#1565C0,stroke-width:3px
+        style ProjectFolder fill:none,stroke:#388E3C,stroke-width:4px
+        style ComputeResources fill:none,stroke:#7B1FA2,stroke-width:2px
+        style DataServer fill:none,stroke:#F57C00,stroke-width:2px
     ```
 
     **Key Components:**
 
-    - **Remote Desktop**: User interface access point
-    - **Data Server**: Cryo-EM image and metadata storage
-    - **cisTEMx Core**: Central orchestration and processing logic
-    - **Compute Resources**: Distributed processing for intensive calculations
-    - **User**: Researcher interacting with the system
+    - **User**: Researcher interacting with the system from bottom up
+    - **cisTEMx Core + Database**: Central hub for application logic and project data
+    - **cisTEM GUI**: User interface for interaction
+    - **Compute Resources**: Distributed worker nodes for parallel processing
+    - **Data Server**: Storage for MRC images and STAR metadata
+    - **Project Folder**: Local storage for project results and metadata
 
 === "Advanced"
     ## Component Architecture & Data Flow

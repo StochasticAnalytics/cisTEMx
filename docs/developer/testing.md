@@ -21,6 +21,54 @@ Comprehensive guide to testing practices in cisTEMx, including unit tests, integ
 
     Quick guide to running the existing test suites in cisTEMx.
 
+    ```mermaid
+    graph LR
+        subgraph Client["Client Layer"]
+            RD[Remote Desktop]
+            GUI[GUI Frontend]
+        end
+
+        subgraph Core["cisTEMx Core"]
+            APP[Application Logic]
+            JM[Job Manager]
+            DB[(Project Database)]
+        end
+
+        subgraph Storage["Data Layer"]
+            DS[Data Server]
+            MRC[MRC Files]
+            STAR[STAR Metadata]
+        end
+
+        subgraph Compute["Compute Layer"]
+            WN1[Worker Node 1]
+            WN2[Worker Node 2]
+            WNn[Worker Node N]
+        end
+
+        USER((User)) --> RD
+        RD --> GUI
+        GUI <--> APP
+        APP <--> DB
+        APP <--> DS
+        DS --- MRC
+        DS --- STAR
+        JM --> WN1
+        JM --> WN2
+        JM --> WNn
+        WN1 -.Results.-> JM
+        WN2 -.Results.-> JM
+        WNn -.Results.-> JM
+        APP --> JM
+
+        style Core fill:#E3F2FD,stroke:#1976D2,stroke-width:2px
+        style Storage fill:#FFF3E0,stroke:#F57C00,stroke-width:2px
+        style Compute fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
+        style Client fill:#E8F5E9,stroke:#388E3C,stroke-width:2px
+        style APP fill:#4A90E2,color:#fff
+        style JM fill:#4A90E2,color:#fff
+    ```
+
     ### Unit Tests
 
     Run the unit test suite:

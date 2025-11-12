@@ -110,13 +110,16 @@ RUN if [[ "x${build_docs}" == "xtrue" ]] ; then /tmp/install_documentation_tooli
 
 #  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM
 # xdotool x11-utils wmctrl for a script I have to get push notifications on hooks when claude stalls (TODO add notes for others)
-# sox is for Whisper (local voice trasncription), still testing
+
 RUN apt-get update && apt install -y flameshot xdotool x11-utils wmctrl && rm -rf /var/lib/apt/lists/*
 
 # Install Bear for compilation database generation (needed for clang-tidy)
 # Note: shellcheck is already available in base image
 # TODO: Move Bear installation to base container in future update
 RUN /tmp/install_bear.sh
+
+# sox is for Whisper (local voice trasncription), still testing
+RUN apt-get update && apt-get install -y sox pulseaudio pulseaudio-utils ffmpeg
 
 USER cisTEMdev
 WORKDIR /home/cisTEMdev

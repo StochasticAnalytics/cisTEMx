@@ -1,6 +1,7 @@
 /*
  * Original Copyright (c) 2017, Howard Hughes Medical Institute
  * Licensed under Janelia Research Campus Software License 1.2
+ * See license_details/LICENSE-JANELIA.txt
  *
  * Modifications Copyright (c) 2025, Stochastic Analytics, LLC
  * Modifications licensed under MPL 2.0 for academic use; 
@@ -13,10 +14,6 @@
 //#include "../core/core_headers.h"
 #include "../constants/constants.h"
 #include "../core/gui_core_headers.h"
-
-// Experimental: Enable defocus-based work division instead of angular division
-// Uncomment to test defocus parallelization vs angular parallelization
-#define cisTEMx_ENABLE_DEFOCUS_WORK_DIVISION
 
 // extern MyMovieAssetPanel *movie_asset_panel;
 extern MyImageAssetPanel*         image_asset_panel;
@@ -806,21 +803,6 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         else
             number_of_defocus_positions = 1;
 
-#ifdef cisTEMx_ENABLE_DEFOCUS_WORK_DIVISION
-        // EXPERIMENTAL: Defocus-based work division
-        // Calculate defocus planes for work division
-        int num_defocus_steps  = myround(defocus_search_range / defocus_step);
-        int num_defocus_planes = 2 * num_defocus_steps + 1;
-
-        // TESTING CONSTRAINT: Must have exact match between defocus planes and processes
-        if ( num_defocus_planes != number_of_jobs_per_image_in_gui ) {
-            wxPrintf("ERROR: Defocus work division requires exactly %d defocus planes for %d processes (currently have %d planes).\n",
-                     number_of_jobs_per_image_in_gui, number_of_jobs_per_image_in_gui, num_defocus_planes);
-            wxPrintf("Adjust defocus search range and step to match process count.\n");
-            return;
-        }
-#endif
-
         if ( PixelSizeSearchYesRadio->GetValue( ) == true )
             number_of_pixel_size_positions = 2 * myround(float(pixel_size_search_range) / float(pixel_size_step)) + 1;
         else
@@ -947,29 +929,6 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
             // NOTE: also, please keep in sync with the manual command line arguments.
             // TODO: this is a bit of a mess.
 
-#ifdef cisTEMx_ENABLE_DEFOCUS_WORK_DIVISION
-            // EXPERIMENTAL: Defocus division mode
-            // Calculate defocus offset for this job
-            int   defocus_index          = -num_defocus_steps + job_counter;
-            float defocus_offset_for_job = float(defocus_index) * defocus_step;
-
-            // Pass magic numbers to signal offset mode to match_template
-            // Negative defocus_search_range triggers offset mode in match_template
-            // The actual offset value is encoded in defocus_step
-            float job_defocus_search_range = -1.0f; // Magic number: negative signals offset mode
-            float job_defocus_step         = defocus_offset_for_job; // Offset value (can be positive, negative, or zero)
-
-            // Override angular range to search ALL angles (no angular division)
-            int job_first_search_position = 0;
-            int job_last_search_position  = current_image_euler_search->number_of_search_positions - 1;
-#else
-            // ANGULAR DIVISION MODE (current behavior)
-            float job_defocus_search_range  = defocus_search_range; // From GUI
-            float job_defocus_step          = defocus_step; // From GUI
-            int   job_first_search_position = first_search_position; // Angular division from loop
-            int   job_last_search_position  = last_search_position; // Angular division from loop
-#endif
-
             current_job_package.AddJob("ttffffffffffifffffbfftttttttttftiiiitttfbbi",
                                        input_search_image.ToUTF8( ).data( ),
                                        input_reconstruction.ToUTF8( ).data( ),
@@ -984,8 +943,8 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
                                        high_resolution_limit,
                                        wanted_out_of_plane_angular_step,
                                        best_parameters_to_keep,
-                                       job_defocus_search_range, // arg[13] - Magic number or normal
-                                       job_defocus_step, // arg[14] - Offset value or normal
+                                       defocus_search_range,
+                                       defocus_step,
                                        pixel_size_search_range,
                                        pixel_size_step,
                                        padding,
@@ -1003,8 +962,8 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
                                        wanted_symmetry.ToUTF8( ).data( ),
                                        wanted_in_plane_angular_step,
                                        output_histogram_file.ToUTF8( ).data( ),
-                                       job_first_search_position, // arg[32] - 0 for defocus mode, varies for angular
-                                       job_last_search_position, // arg[33] - max for defocus mode, varies for angular
+                                       first_search_position,
+                                       last_search_position,
                                        image_number_for_gui,
                                        number_of_jobs_per_image_in_gui,
                                        correlation_avg_output_file.ToUTF8( ).data( ),

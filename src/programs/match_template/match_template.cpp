@@ -38,7 +38,7 @@ using namespace cistem_timer_noop;
 #define TEST_LOCAL_NORMALIZATION
 
 // Testing a size optimized approach for search
-// #define MAX_SEARCH_SIZE 1024
+#define MAX_SEARCH_SIZE 1024
 
 /**
  * @class AggregatedTemplateResult
@@ -456,7 +456,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         SendInfo("Using n expected false positives: " + wxString::Format("%f", temp_double) + "\n");
         n_expected_false_positives = temp_double;
     }
-
     // This allows an override for the TEST_LOCAL_NORMALIZATION
     bool allow_rotation_for_speed{true};
     // This allows us to not use local normalization while also compiling with this option
@@ -535,20 +534,6 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
-
-    // EXPERIMENTAL: Magic number detection for defocus work division testing
-    // If defocus_search_range is negative (magic number signal), interpret as offset mode
-    // The actual offset value is encoded in defocus_step (can be positive, negative, or zero)
-    float defocus_offset{0.0f};
-    bool  use_defocus_offset{false};
-
-    if ( defocus_search_range < 0.0f ) {
-        defocus_offset       = defocus_step; // Offset value encoded in defocus_step
-        use_defocus_offset   = true;
-        defocus_search_range = 0.0f; // Disable defocus search
-        defocus_step         = 100.0f; // Reset to default (ignored)
-        SendInfo(wxString::Format("EXPERIMENTAL: Defocus offset mode enabled with offset: %.1f Angstroms\n", defocus_offset));
-    }
 
     // This condition applies to GUI and CLI - it is just a recommendation to the user.
     if ( use_gpu && max_threads <= 1 ) {
@@ -1127,30 +1112,9 @@ bool MatchTemplateApp::DoCalculation( ) {
         for ( int defocus_i = -myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i <= myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i++ ) {
 
             profile_timing.start("Ctf and whitening filter");
-            // Apply defocus with optional CLI offset
-            float actual_defocus1, actual_defocus2;
-
-            if ( use_defocus_offset ) {
-                actual_defocus1 = defocus1 + defocus_offset;
-                actual_defocus2 = defocus2 + defocus_offset;
-            }
-            else {
-                actual_defocus1 = defocus1 + float(defocus_i) * defocus_step;
-                actual_defocus2 = defocus2 + float(defocus_i) * defocus_step;
-            }
-
-            // REVERT ME - Temporary debug output for defocus offset testing
-            wxPrintf("DEBUG: actual_defocus1 = %.2f\n", actual_defocus1);
-            wxPrintf("DEBUG: actual_defocus2 = %.2f\n", actual_defocus2);
-            if ( use_defocus_offset ) {
-                wxPrintf("DEBUG: defocus_offset applied = %.2f\n", defocus_offset);
-            }
-            else {
-                wxPrintf("DEBUG: defocus search iteration = %d\n", defocus_i);
-            }
-
-            input_ctf.SetDefocus(actual_defocus1 / wanted_pre_projection_pixel_size,
-                                 actual_defocus2 / wanted_pre_projection_pixel_size,
+            // Create projection filter (CTF * whitening_filter) for current defocus
+            input_ctf.SetDefocus((defocus1 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
+                                 (defocus2 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
                                  deg_2_rad(defocus_angle));
             // Reset this bool since we will overwrite all values in the CTF image.
             projection_filter.is_fft_centered_in_box = false;
@@ -1214,7 +1178,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                     best_psi.real_values[address]                 = psi_buffer.real_values[address];
                                     best_theta.real_values[address]               = theta_buffer.real_values[address];
                                     best_phi.real_values[address]                 = phi_buffer.real_values[address];
-                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step + (use_defocus_offset ? defocus_offset : 0.0f);
+                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step;
                                     best_pixel_size.real_values[address]          = float(size_i) * pixel_size_step;
                                 }
 
@@ -1308,7 +1272,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                     best_psi.real_values[address]                 = current_psi;
                                     best_theta.real_values[address]               = global_euler_search.list_of_search_parameters[current_search_position][1];
                                     best_phi.real_values[address]                 = global_euler_search.list_of_search_parameters[current_search_position][0];
-                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step + (use_defocus_offset ? defocus_offset : 0.0f);
+                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step;
                                     best_pixel_size.real_values[address]          = float(size_i) * pixel_size_step;
                                     //                                if (size_i != 0) wxPrintf("size_i = %i\n", size_i);
                                     //                                correlation_pixel_sum[pixel_counter] = variance;

@@ -211,6 +211,7 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
     command_line_parser.AddOption("", "n-expected-false-positives", "average number of false positives per image, (defaults to 1)", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddLongSwitch("ignore-defocus-for-threshold", "assume the defocus planes are not independent locs for threshold calc, (defaults false)");
     command_line_parser.AddLongSwitch("apply-result-rescaling", "Rescale the results their original size, (defaults false)");
+    command_line_parser.AddOption("", "defocus-offset", "Single defocus offset in Angstroms to add to base defocus (only valid when defocus search is disabled)", wxCMD_LINE_VAL_DOUBLE);
 
 #ifdef TEST_LOCAL_NORMALIZATION
     command_line_parser.AddOption("", "healpix-file", "Healpix file for the input images", wxCMD_LINE_VAL_STRING);
@@ -430,6 +431,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool   apply_result_rescaling{ };
     double n_expected_false_positives{1.0};
 
+    float defocus_offset{0.0f}; // Value in Angstroms
+    bool  use_defocus_offset{false};
+
     if ( command_line_parser.FoundSwitch("apply-result-rescaling") ) {
         SendInfo("Applying result rescaling\n");
         apply_result_rescaling = true;
@@ -456,6 +460,13 @@ bool MatchTemplateApp::DoCalculation( ) {
         SendInfo("Using n expected false positives: " + wxString::Format("%f", temp_double) + "\n");
         n_expected_false_positives = temp_double;
     }
+
+    if ( command_line_parser.Found("defocus-offset", &temp_double) ) {
+        defocus_offset     = float(temp_double);
+        use_defocus_offset = true;
+        SendInfo(wxString::Format("Using defocus offset: %.1f Angstroms\n", defocus_offset));
+    }
+
     // This allows an override for the TEST_LOCAL_NORMALIZATION
     bool allow_rotation_for_speed{true};
     // This allows us to not use local normalization while also compiling with this option
@@ -862,6 +873,15 @@ bool MatchTemplateApp::DoCalculation( ) {
         defocus_step         = 100.0f;
     }
 
+    // Calculate number of defocus iterations for conflict detection
+    int n_defocus_iterations = 2 * myroundint(float(defocus_search_range) / float(defocus_step)) + 1;
+
+    // Check for conflicting parameters: both defocus offset AND defocus search
+    if ( use_defocus_offset && n_defocus_iterations > 1 ) {
+        SendError("ERROR: --defocus-offset conflicts with defocus search. Set defocus_step=0 to disable search.\n");
+        return false;
+    }
+
     if ( pixel_size_step <= 0.0f ) {
         pixel_size_search_range = 0.0f;
         pixel_size_step         = 0.02f;
@@ -1112,9 +1132,20 @@ bool MatchTemplateApp::DoCalculation( ) {
         for ( int defocus_i = -myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i <= myroundint(float(defocus_search_range) / float(defocus_step)); defocus_i++ ) {
 
             profile_timing.start("Ctf and whitening filter");
-            // Create projection filter (CTF * whitening_filter) for current defocus
-            input_ctf.SetDefocus((defocus1 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
-                                 (defocus2 + float(defocus_i) * defocus_step) / wanted_pre_projection_pixel_size,
+            // Apply defocus with optional CLI offset
+            float actual_defocus1, actual_defocus2;
+
+            if ( use_defocus_offset ) {
+                actual_defocus1 = defocus1 + defocus_offset;
+                actual_defocus2 = defocus2 + defocus_offset;
+            }
+            else {
+                actual_defocus1 = defocus1 + float(defocus_i) * defocus_step;
+                actual_defocus2 = defocus2 + float(defocus_i) * defocus_step;
+            }
+
+            input_ctf.SetDefocus(actual_defocus1 / wanted_pre_projection_pixel_size,
+                                 actual_defocus2 / wanted_pre_projection_pixel_size,
                                  deg_2_rad(defocus_angle));
             // Reset this bool since we will overwrite all values in the CTF image.
             projection_filter.is_fft_centered_in_box = false;
@@ -1178,7 +1209,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                     best_psi.real_values[address]                 = psi_buffer.real_values[address];
                                     best_theta.real_values[address]               = theta_buffer.real_values[address];
                                     best_phi.real_values[address]                 = phi_buffer.real_values[address];
-                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step;
+                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step + (use_defocus_offset ? defocus_offset : 0.0f);
                                     best_pixel_size.real_values[address]          = float(size_i) * pixel_size_step;
                                 }
 
@@ -1272,7 +1303,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                     best_psi.real_values[address]                 = current_psi;
                                     best_theta.real_values[address]               = global_euler_search.list_of_search_parameters[current_search_position][1];
                                     best_phi.real_values[address]                 = global_euler_search.list_of_search_parameters[current_search_position][0];
-                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step;
+                                    best_defocus.real_values[address]             = float(defocus_i) * defocus_step + (use_defocus_offset ? defocus_offset : 0.0f);
                                     best_pixel_size.real_values[address]          = float(size_i) * pixel_size_step;
                                     //                                if (size_i != 0) wxPrintf("size_i = %i\n", size_i);
                                     //                                correlation_pixel_sum[pixel_counter] = variance;

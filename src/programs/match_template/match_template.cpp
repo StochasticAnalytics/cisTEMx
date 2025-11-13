@@ -38,7 +38,7 @@ using namespace cistem_timer_noop;
 #define TEST_LOCAL_NORMALIZATION
 
 // Testing a size optimized approach for search
-#define MAX_SEARCH_SIZE 1024
+// #define MAX_SEARCH_SIZE 1024
 
 /**
  * @class AggregatedTemplateResult
@@ -211,7 +211,6 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
     command_line_parser.AddOption("", "n-expected-false-positives", "average number of false positives per image, (defaults to 1)", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddLongSwitch("ignore-defocus-for-threshold", "assume the defocus planes are not independent locs for threshold calc, (defaults false)");
     command_line_parser.AddLongSwitch("apply-result-rescaling", "Rescale the results their original size, (defaults false)");
-    command_line_parser.AddOption("", "defocus-offset", "Single defocus offset in Angstroms to add to base defocus (only valid when defocus search is disabled)", wxCMD_LINE_VAL_DOUBLE);
 
 #ifdef TEST_LOCAL_NORMALIZATION
     command_line_parser.AddOption("", "healpix-file", "Healpix file for the input images", wxCMD_LINE_VAL_STRING);
@@ -431,9 +430,6 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool   apply_result_rescaling{ };
     double n_expected_false_positives{1.0};
 
-    float defocus_offset{0.0f}; // Value in Angstroms
-    bool  use_defocus_offset{false};
-
     if ( command_line_parser.FoundSwitch("apply-result-rescaling") ) {
         SendInfo("Applying result rescaling\n");
         apply_result_rescaling = true;
@@ -459,12 +455,6 @@ bool MatchTemplateApp::DoCalculation( ) {
     if ( command_line_parser.Found("n-expected-false-positives", &temp_double) ) {
         SendInfo("Using n expected false positives: " + wxString::Format("%f", temp_double) + "\n");
         n_expected_false_positives = temp_double;
-    }
-
-    if ( command_line_parser.Found("defocus-offset", &temp_double) ) {
-        defocus_offset     = float(temp_double);
-        use_defocus_offset = true;
-        SendInfo(wxString::Format("Using defocus offset: %.1f Angstroms\n", defocus_offset));
     }
 
     // This allows an override for the TEST_LOCAL_NORMALIZATION
@@ -545,6 +535,20 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
+
+    // EXPERIMENTAL: Magic number detection for defocus work division testing
+    // If defocus_search_range is negative (magic number signal), interpret as offset mode
+    // The actual offset value is encoded in defocus_step (can be positive, negative, or zero)
+    float defocus_offset{0.0f};
+    bool  use_defocus_offset{false};
+
+    if ( defocus_search_range < 0.0f ) {
+        defocus_offset       = defocus_step; // Offset value encoded in defocus_step
+        use_defocus_offset   = true;
+        defocus_search_range = 0.0f; // Disable defocus search
+        defocus_step         = 100.0f; // Reset to default (ignored)
+        SendInfo(wxString::Format("EXPERIMENTAL: Defocus offset mode enabled with offset: %.1f Angstroms\n", defocus_offset));
+    }
 
     // This condition applies to GUI and CLI - it is just a recommendation to the user.
     if ( use_gpu && max_threads <= 1 ) {
@@ -873,15 +877,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         defocus_step         = 100.0f;
     }
 
-    // Calculate number of defocus iterations for conflict detection
-    int n_defocus_iterations = 2 * myroundint(float(defocus_search_range) / float(defocus_step)) + 1;
-
-    // Check for conflicting parameters: both defocus offset AND defocus search
-    if ( use_defocus_offset && n_defocus_iterations > 1 ) {
-        SendError("ERROR: --defocus-offset conflicts with defocus search. Set defocus_step=0 to disable search.\n");
-        return false;
-    }
-
     if ( pixel_size_step <= 0.0f ) {
         pixel_size_search_range = 0.0f;
         pixel_size_step         = 0.02f;
@@ -1142,6 +1137,16 @@ bool MatchTemplateApp::DoCalculation( ) {
             else {
                 actual_defocus1 = defocus1 + float(defocus_i) * defocus_step;
                 actual_defocus2 = defocus2 + float(defocus_i) * defocus_step;
+            }
+
+            // REVERT ME - Temporary debug output for defocus offset testing
+            wxPrintf("DEBUG: actual_defocus1 = %.2f\n", actual_defocus1);
+            wxPrintf("DEBUG: actual_defocus2 = %.2f\n", actual_defocus2);
+            if ( use_defocus_offset ) {
+                wxPrintf("DEBUG: defocus_offset applied = %.2f\n", defocus_offset);
+            }
+            else {
+                wxPrintf("DEBUG: defocus search iteration = %d\n", defocus_i);
             }
 
             input_ctf.SetDefocus(actual_defocus1 / wanted_pre_projection_pixel_size,

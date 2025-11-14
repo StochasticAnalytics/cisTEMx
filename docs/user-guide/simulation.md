@@ -195,7 +195,7 @@ Simulation capabilities in cisTEMx enable researchers to generate synthetic cryo
     - `--frames`: Number of movie frames
     - `--dose-rate`: Dose rate (e⁻/pixel/s)
 
-=== "Developer"
+===+ "Developer"
 
     ## Legacy cisTEM Simulation Tutorial
 

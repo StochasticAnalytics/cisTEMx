@@ -100,21 +100,22 @@
                 {
                     selector: 'node',
                     style: {
-                        'background-color': '#4CAF50',
+                        'background-color': '#ffffff',
+                        'background-opacity': 0,
                         'label': 'data(label)',
-                        'color': '#fff',
+                        'color': '#000000',
                         'text-halign': 'center',
                         'text-valign': 'center',
-                        'font-size': '12px',
+                        'font-size': '32px',
                         'font-weight': 'bold',
                         'width': 'label',
                         'height': 'label',
-                        'padding': '10px',
+                        'padding': '32px',
                         'shape': 'roundrectangle',
                         'text-wrap': 'wrap',
-                        'text-max-width': '80px',
+                        'text-max-width': '240px',
                         'border-width': 2,
-                        'border-color': '#2E7D32'
+                        'border-color': '#333333'
                     }
                 },
                 // Node hover state
@@ -137,29 +138,29 @@
                 {
                     selector: 'node[category="core"]',
                     style: {
-                        'background-color': '#2196F3',
-                        'border-color': '#1565C0'
+                        'border-color': '#2196F3',
+                        'border-width': 2
                     }
                 },
                 {
                     selector: 'node[category="gui"]',
                     style: {
-                        'background-color': '#9C27B0',
-                        'border-color': '#6A1B9A'
+                        'border-color': '#9C27B0',
+                        'border-width': 2
                     }
                 },
                 {
                     selector: 'node[category="database"]',
                     style: {
-                        'background-color': '#FF5722',
-                        'border-color': '#D84315'
+                        'border-color': '#FF5722',
+                        'border-width': 2
                     }
                 },
                 {
                     selector: 'node[category="algorithm"]',
                     style: {
-                        'background-color': '#4CAF50',
-                        'border-color': '#2E7D32'
+                        'border-color': '#4CAF50',
+                        'border-width': 2
                     }
                 },
 
@@ -211,9 +212,9 @@
                 animate: true,
                 animationDuration: 500,
                 fit: true,
-                padding: 30,
+                padding: 60,
                 nodeRepulsion: 400000,
-                idealEdgeLength: 100,
+                idealEdgeLength: 200,
                 edgeElasticity: 100,
                 nestingFactor: 5,
                 gravity: 80,
@@ -224,9 +225,10 @@
             }, graphData.layout || {}, options.layout || {}),
 
             // Interaction options
-            minZoom: 0.3,
+            minZoom: 0.2,
             maxZoom: 3,
-            wheelSensitivity: 0.001  // Default: very low (nearly disabled)
+            zoom: 0.7,  // Start zoomed out
+            wheelSensitivity: 0.5  // Reduced sensitivity for smoother scrolling
         };
 
         // Merge with custom options (excluding layout which was already merged)
@@ -243,6 +245,7 @@
         // Setup interactivity
         setupNodeInteractions(cy, container);
         setupEdgeInteractions(cy);
+        setupFullscreenButton(container);
 
         // Store cy instance globally for tab visibility handling
         if (!window.cytoscapeInstances) {
@@ -327,6 +330,70 @@
             document.body.appendChild(tooltip);
         }
         return tooltip;
+    }
+
+    /**
+     * Setup fullscreen button for graph container
+     */
+    function setupFullscreenButton(container) {
+        // Get the Cytoscape instance for this container
+        const containerId = container.id;
+
+        // Create fullscreen button
+        const button = document.createElement('button');
+        button.className = 'graph-fullscreen-btn';
+        button.innerHTML = '⛶'; // Fullscreen icon
+        button.title = 'Toggle fullscreen';
+
+        // Add button to container
+        container.style.position = 'relative';
+        container.appendChild(button);
+
+        // Handle fullscreen toggle
+        button.addEventListener('click', function() {
+            if (!document.fullscreenElement) {
+                // Enter fullscreen
+                if (container.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) {
+                    container.webkitRequestFullscreen();
+                } else if (container.msRequestFullscreen) {
+                    container.msRequestFullscreen();
+                }
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
+        });
+
+        // Handle fullscreen change event - resize graph
+        document.addEventListener('fullscreenchange', function() {
+            const cyInstance = window.cytoscapeInstances[containerId];
+            if (cyInstance && cyInstance.cy) {
+                // Give browser time to complete fullscreen transition
+                setTimeout(function() {
+                    cyInstance.cy.resize();
+                    cyInstance.cy.fit();
+                }, 100);
+            }
+        });
+
+        // Handle webkit fullscreen change
+        document.addEventListener('webkitfullscreenchange', function() {
+            const cyInstance = window.cytoscapeInstances[containerId];
+            if (cyInstance && cyInstance.cy) {
+                setTimeout(function() {
+                    cyInstance.cy.resize();
+                    cyInstance.cy.fit();
+                }, 100);
+            }
+        });
     }
 
     /**

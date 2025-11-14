@@ -35,7 +35,7 @@ Reference documentation for all command-line programs in cisTEMx.
         - Advanced parameter combinations
         - Output file specifications
 
-=== "Developer"
+===+ "Developer"
     !!! note "Coming Soon"
         Developer documentation coming soon. This section will cover:
 

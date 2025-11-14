@@ -205,7 +205,7 @@ Comprehensive guide to testing practices in cisTEMx, including unit tests, integ
     - **Keep tests fast**: Unit tests should complete in milliseconds
     - **Isolate tests**: Tests should not depend on each other
 
-=== "Developer"
+===+ "Developer"
 
     ## Legacy cisTEM Unit Test Suites
 

@@ -33,7 +33,7 @@ Overview of cisTEMx software architecture, design patterns, and system organizat
          data-level="advanced">
     </div>
 
-=== "Developer"
+===+ "Developer"
     ## System Interaction & Communication Patterns
 
     Complete technical view showing all components and communication protocols. Includes everything from Advanced plus implementation details.

@@ -34,7 +34,7 @@ Technical reference for file formats used in cisTEMx, including data formats, co
         - Custom file format extensions
         - Format conversion utilities
 
-=== "Developer"
+===+ "Developer"
     !!! note "Coming Soon"
         Developer documentation coming soon. This section will cover:
 

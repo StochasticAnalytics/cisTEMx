@@ -33,7 +33,7 @@ End-to-end cryo-EM processing workflows guide you through typical analysis pipel
         - High-throughput processing
         - Automation and scripting
 
-=== "Developer"
+===+ "Developer"
     !!! note "Coming Soon"
         Developer documentation coming soon. This section will cover:
 

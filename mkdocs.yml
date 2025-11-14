@@ -35,6 +35,7 @@ extra_javascript:
   - https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js
   - javascripts/architecture_graph.js
   - javascripts/status-watermark.js
+  - javascripts/default-tab.js
 
 plugins:
   - search

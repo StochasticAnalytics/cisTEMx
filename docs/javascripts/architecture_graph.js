@@ -22,9 +22,61 @@
     'use strict';
 
     /**
+     * Level hierarchy for progressive disclosure
+     * Higher numbers include everything from lower levels
+     */
+    const LEVEL_ORDER = {
+        'basic': 1,
+        'advanced': 2,
+        'developer': 3
+    };
+
+    /**
+     * Filter graph data by visibility level
+     * Implements progressive disclosure: basic ⊂ advanced ⊂ developer
+     *
+     * @param {Object} graphData - Complete graph data
+     * @param {string} targetLevel - Level to display ('basic', 'advanced', 'developer')
+     * @returns {Object} Filtered graph data
+     */
+    function filterByLevel(graphData, targetLevel) {
+        // If no level specified, show everything
+        if (!targetLevel) {
+            return graphData;
+        }
+
+        const maxLevel = LEVEL_ORDER[targetLevel.toLowerCase()] || 3;
+
+        // Filter nodes based on level
+        const filteredNodes = (graphData.nodes || []).filter(node => {
+            const nodeLevel = LEVEL_ORDER[node.data.level || 'basic'];
+            return nodeLevel <= maxLevel;
+        });
+
+        // Get IDs of included nodes for edge filtering
+        const includedNodeIds = new Set(filteredNodes.map(n => n.data.id));
+
+        // Filter edges: include if level appropriate AND both endpoints exist
+        const filteredEdges = (graphData.edges || []).filter(edge => {
+            const edgeLevel = LEVEL_ORDER[edge.data.level || 'basic'];
+            return edgeLevel <= maxLevel &&
+                   includedNodeIds.has(edge.data.source) &&
+                   includedNodeIds.has(edge.data.target);
+        });
+
+        // Return filtered data, explicitly removing 'elements' property if it exists
+        const { elements, ...restOfGraphData } = graphData;
+        return {
+            ...restOfGraphData,
+            nodes: filteredNodes,
+            edges: filteredEdges
+        };
+    }
+
+    /**
      * Initialize Cytoscape graph in a container
      * @param {string} containerId - DOM element ID for the graph container
-     * @param {Object} graphData - Graph data with nodes and edges
+     * @param {Object} graphData - Graph data with nodes and edges (will be filtered if level specified)
      * @param {Object} options - Optional configuration overrides
      */
     function initializeGraph(containerId, graphData, options = {}) {
@@ -153,9 +205,9 @@
                 }
             ],
 
-            layout: {
-                name: options.layout || graphData.layout || 'cose',
-                // COSE (Compound Spring Embedder) layout options
+            layout: Object.assign({
+                // Default COSE (Compound Spring Embedder) layout options
+                name: 'cose',
                 animate: true,
                 animationDuration: 500,
                 fit: true,
@@ -169,7 +221,7 @@
                 initialTemp: 200,
                 coolingFactor: 0.95,
                 minTemp: 1.0
-            },
+            }, graphData.layout || {}, options.layout || {}),
 
             // Interaction options
             minZoom: 0.3,
@@ -177,8 +229,13 @@
             wheelSensitivity: 0.001  // Default: very low (nearly disabled)
         };
 
-        // Merge with custom options
-        const config = Object.assign({}, defaultConfig, options);
+        // Merge with custom options (excluding layout which was already merged)
+        const {layout: optionsLayout, ...otherOptions} = options;
+        const config = Object.assign({}, defaultConfig, otherOptions);
+
+        // Store layout config BEFORE Cytoscape modifies it
+        // Deep copy the layout object to preserve it
+        const layoutConfig = JSON.parse(JSON.stringify(config.layout));
 
         // Initialize Cytoscape
         const cy = cytoscape(config);
@@ -186,6 +243,13 @@
         // Setup interactivity
         setupNodeInteractions(cy, container);
         setupEdgeInteractions(cy);
+
+        // Store cy instance globally for tab visibility handling
+        if (!window.cytoscapeInstances) {
+            window.cytoscapeInstances = {};
+        }
+        console.log(`[${containerId}] Storing layout config:`, layoutConfig);
+        window.cytoscapeInstances[containerId] = { cy: cy, layout: layoutConfig, resized: false };
 
         return cy;
     }
@@ -404,6 +468,7 @@
             const graphDataPath = container.getAttribute('data-graph-data');
             const layoutType = container.getAttribute('data-layout') || 'cose';
             const wheelZoomAttr = container.getAttribute('data-wheel-zoom');
+            const levelFilter = container.getAttribute('data-level');
 
             if (!containerId) {
                 console.warn('Graph container missing ID attribute');
@@ -427,7 +492,11 @@
             fetch(graphDataPath)
                 .then(response => response.json())
                 .then(graphData => {
-                    initializeGraph(containerId, graphData, initOptions);
+                    // Apply level filtering if specified
+                    const filteredData = levelFilter ? filterByLevel(graphData, levelFilter) : graphData;
+                    console.log(`[${containerId}] Level: ${levelFilter}, Nodes: ${filteredData.nodes?.length}, Edges: ${filteredData.edges?.length}`);
+                    console.log(`[${containerId}] Layout:`, filteredData.layout);
+                    initializeGraph(containerId, filteredData, initOptions);
                 })
                 .catch(error => {
                     console.error(`Failed to load graph data from ${graphDataPath}:`, error);
@@ -445,6 +514,49 @@
         document.addEventListener('DOMContentLoaded', autoInitialize);
     } else {
         autoInitialize();
+    }
+
+    /**
+     * Handle MkDocs Material tab clicks
+     * When tabs are clicked, resize Cytoscape graphs that may have been hidden
+     */
+    function setupTabHandlers() {
+        document.addEventListener('click', function(event) {
+            // Check if a tab label was clicked
+            const tabLabel = event.target.closest('.tabbed-labels label');
+            if (tabLabel) {
+                // Give the tab content time to become visible
+                setTimeout(function() {
+                    // Resize all Cytoscape instances
+                    if (window.cytoscapeInstances) {
+                        Object.keys(window.cytoscapeInstances).forEach(function(containerId) {
+                            const instance = window.cytoscapeInstances[containerId];
+                            const container = document.getElementById(containerId);
+
+                            // Only resize if container is now visible
+                            if (container && container.offsetWidth > 0 && container.offsetHeight > 0) {
+                                instance.cy.resize();
+
+                                // Only run layout on first resize (when tab first becomes visible)
+                                if (!instance.resized) {
+                                    console.log(`[${containerId}] About to run layout with:`, instance.layout);
+                                    instance.cy.layout(instance.layout).run();
+                                    instance.resized = true;
+                                    console.log(`[${containerId}] Layout run after tab visibility`);
+                                }
+                            }
+                        });
+                    }
+                }, 100); // Small delay to let tab transition complete
+            }
+        });
+    }
+
+    // Setup tab handlers after DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupTabHandlers);
+    } else {
+        setupTabHandlers();
     }
 
     // Expose API for manual initialization if needed

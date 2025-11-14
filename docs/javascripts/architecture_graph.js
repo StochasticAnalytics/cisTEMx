@@ -248,7 +248,6 @@
         if (!window.cytoscapeInstances) {
             window.cytoscapeInstances = {};
         }
-        console.log(`[${containerId}] Storing layout config:`, layoutConfig);
         window.cytoscapeInstances[containerId] = { cy: cy, layout: layoutConfig, resized: false };
 
         return cy;
@@ -494,8 +493,6 @@
                 .then(graphData => {
                     // Apply level filtering if specified
                     const filteredData = levelFilter ? filterByLevel(graphData, levelFilter) : graphData;
-                    console.log(`[${containerId}] Level: ${levelFilter}, Nodes: ${filteredData.nodes?.length}, Edges: ${filteredData.edges?.length}`);
-                    console.log(`[${containerId}] Layout:`, filteredData.layout);
                     initializeGraph(containerId, filteredData, initOptions);
                 })
                 .catch(error => {
@@ -539,10 +536,8 @@
 
                                 // Only run layout on first resize (when tab first becomes visible)
                                 if (!instance.resized) {
-                                    console.log(`[${containerId}] About to run layout with:`, instance.layout);
                                     instance.cy.layout(instance.layout).run();
                                     instance.resized = true;
-                                    console.log(`[${containerId}] Layout run after tab visibility`);
                                 }
                             }
                         });

@@ -33,6 +33,10 @@ extra_css:
 
 extra_javascript:
   - https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js
+  - https://unpkg.com/dagre@0.8.5/dist/dagre.min.js
+  - https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js
+  - https://unpkg.com/webcola@3.4.0/WebCola/cola.min.js
+  - https://unpkg.com/cytoscape-cola@2.5.1/cytoscape-cola.js
   - javascripts/architecture_graph.js
   - javascripts/status-watermark.js
   - javascripts/default-tab.js
@@ -128,7 +132,6 @@ nav:
       - Workflows: user-guide/workflows.md
   - Developer Guide:
       - developer/index.md
-      - Claude Skills: developer/claude-skills.md
       - Contributing: developer/contributing.md
       - Architecture: developer/architecture.md
       - Architecture Graph: developer/architecture-graph.md

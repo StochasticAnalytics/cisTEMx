@@ -1,1 +1,0 @@
-../../../.claude/skills/compile-code/SKILL.md

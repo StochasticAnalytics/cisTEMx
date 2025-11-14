@@ -4,15 +4,11 @@
 
 **Work in Progress**
 
-This section documents how Claude (Anthropic's AI assistant) is integrated into the cisTEMx project to support development workflows, code quality, and knowledge management.
+This section provides documentation for developers contributing to cisTEMx, including architecture overview, build instructions, and coding guidelines.
 
-## Coming Soon
+## Documentation Sections
 
-- AI-assisted development workflows
-- Integration patterns and best practices
-- Skill-based architecture overview
-- Collaboration protocols between developers and AI agents
-
-## Current Documentation
-
-For now, see the [Claude Skills](claude-skills.md) page for information about available AI capabilities within the project.
+- [Contributing Guidelines](contributing.md) - How to contribute to cisTEMx
+- [Architecture](architecture.md) - System architecture and design
+- [Testing](testing.md) - Testing frameworks and strategies
+- [File Formats](file-formats.md) - Data formats used in cisTEMx

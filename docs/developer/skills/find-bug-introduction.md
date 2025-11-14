@@ -1,1 +1,0 @@
-../../../.claude/skills/find-bug-introduction/SKILL.md

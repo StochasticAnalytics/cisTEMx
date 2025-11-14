@@ -1,1 +1,0 @@
-../../../.claude/skills/analyze-test-coverage-gaps/SKILL.md

@@ -1,1 +1,0 @@
-../../../.claude/skills/red-blue-tech-coordinator/SKILL.md

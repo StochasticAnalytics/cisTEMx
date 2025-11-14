@@ -1,1 +1,0 @@
-../../../.claude/skills/unit-testing/SKILL.md

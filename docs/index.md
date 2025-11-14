@@ -39,8 +39,6 @@ cisTEMx is a high-performance cryoEM image processing platform for structural bi
 
     [:octicons-arrow-right-24: Overview](developer/index.md)
 
-    [:octicons-arrow-right-24: Claude Skills](developer/claude-skills.md)
-
 - :material-file-document: [**Reference**](reference/index.md)
 
     ---

@@ -1,0 +1,265 @@
+{
+  "title": "cisTEMx High-Level Architecture",
+  "description": "Overview of major components and their relationships in cisTEMx",
+  "layout": "cose",
+  "nodes": [
+    {
+      "data": {
+        "id": "gui",
+        "label": "GUI Layer",
+        "category": "gui",
+        "description": "wxWidgets-based graphical user interface for interactive workflows",
+        "files": [
+          "src/gui/MyApp.cpp",
+          "src/gui/MyMain.cpp",
+          "src/gui/*.h"
+        ],
+        "dependencies": [
+          "wxWidgets 3.x",
+          "Core Engine"
+        ],
+        "docLink": "/developer/architecture/#gui-layer",
+        "metadata": {
+          "Technology": "wxWidgets",
+          "Language": "C++",
+          "Complexity": "High"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "database",
+        "label": "Database Layer",
+        "category": "database",
+        "description": "SQLite-based persistence for projects, images, parameters, and results",
+        "files": [
+          "src/core/database.cpp",
+          "src/core/database.h"
+        ],
+        "dependencies": [
+          "SQLite3"
+        ],
+        "docLink": "/developer/architecture/#database-layer",
+        "metadata": {
+          "Technology": "SQLite",
+          "Schema Version": "Dynamic",
+          "Language": "C++"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "core",
+        "label": "Core Engine",
+        "category": "core",
+        "description": "Central processing engine coordinating workflows, jobs, and data flow",
+        "files": [
+          "src/core/*.cpp",
+          "src/core/*.h"
+        ],
+        "dependencies": [
+          "FFTW3",
+          "MPI (optional)"
+        ],
+        "docLink": "/developer/architecture/#core-engine",
+        "metadata": {
+          "Language": "C++",
+          "Parallelization": "MPI, OpenMP",
+          "Architecture": "Modular"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "image-proc",
+        "label": "Image Processing",
+        "category": "algorithm",
+        "description": "Algorithms for cryo-EM image processing: CTF estimation, particle picking, alignment",
+        "files": [
+          "src/core/image.cpp",
+          "src/core/image.h",
+          "src/programs/ctffind/*"
+        ],
+        "dependencies": [
+          "FFTW3",
+          "Core Engine"
+        ],
+        "docLink": "/developer/architecture/#image-processing",
+        "metadata": {
+          "Algorithms": "CTF, Alignment, Classification",
+          "Data Format": "MRC, TIFF",
+          "Language": "C++"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "gpu-accel",
+        "label": "GPU Acceleration",
+        "category": "algorithm",
+        "description": "CUDA-based GPU acceleration for computationally intensive operations",
+        "files": [
+          "src/gpu/*.cu",
+          "src/gpu/*.cuh"
+        ],
+        "dependencies": [
+          "CUDA Toolkit",
+          "cuFFT"
+        ],
+        "docLink": "/developer/architecture/#gpu-acceleration",
+        "metadata": {
+          "Technology": "CUDA",
+          "Compute Capability": ">=3.5",
+          "Language": "CUDA C++"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "cli-programs",
+        "label": "CLI Programs",
+        "category": "core",
+        "description": "Command-line programs for batch processing and pipeline integration",
+        "files": [
+          "src/programs/*",
+          "src/programs/match_template/*"
+        ],
+        "dependencies": [
+          "Core Engine",
+          "Image Processing"
+        ],
+        "docLink": "/reference/programs/",
+        "metadata": {
+          "Interface": "Command-line",
+          "Use Case": "Batch processing, automation",
+          "Language": "C++"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "file-io",
+        "label": "File I/O",
+        "category": "core",
+        "description": "Readers and writers for MRC, TIFF, STAR, and other scientific formats",
+        "files": [
+          "src/core/mrc_file.cpp",
+          "src/core/tiff_file.cpp"
+        ],
+        "dependencies": [
+          "libtiff"
+        ],
+        "docLink": "/developer/file-formats/",
+        "metadata": {
+          "Formats": "MRC, TIFF, STAR, PDB",
+          "Endianness": "Auto-detected",
+          "Language": "C++"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "simulation",
+        "label": "Simulation",
+        "category": "algorithm",
+        "description": "Cryo-EM image simulation for testing and validation",
+        "files": [
+          "src/programs/simulate/*"
+        ],
+        "dependencies": [
+          "Core Engine",
+          "Image Processing"
+        ],
+        "docLink": "/user-guide/simulation/",
+        "metadata": {
+          "Features": "Particle projection, CTF application, noise",
+          "Purpose": "Testing, validation, method development",
+          "Language": "C++"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "data": {
+        "id": "gui-core",
+        "source": "gui",
+        "target": "core",
+        "relationship": "uses",
+        "description": "GUI invokes core engine for workflow execution"
+      }
+    },
+    {
+      "data": {
+        "id": "gui-database",
+        "source": "gui",
+        "target": "database",
+        "relationship": "uses",
+        "description": "GUI reads/writes project data via database"
+      }
+    },
+    {
+      "data": {
+        "id": "core-database",
+        "source": "core",
+        "target": "database",
+        "relationship": "uses",
+        "description": "Core engine persists state and results"
+      }
+    },
+    {
+      "data": {
+        "id": "core-image",
+        "source": "core",
+        "target": "image-proc",
+        "relationship": "uses",
+        "description": "Core engine delegates image processing tasks"
+      }
+    },
+    {
+      "data": {
+        "id": "image-gpu",
+        "source": "image-proc",
+        "target": "gpu-accel",
+        "relationship": "uses",
+        "description": "Image processing offloads to GPU when available"
+      }
+    },
+    {
+      "data": {
+        "id": "cli-core",
+        "source": "cli-programs",
+        "target": "core",
+        "relationship": "uses",
+        "description": "CLI programs built on core engine"
+      }
+    },
+    {
+      "data": {
+        "id": "core-fileio",
+        "source": "core",
+        "target": "file-io",
+        "relationship": "depends",
+        "description": "Core engine requires file I/O for data access"
+      }
+    },
+    {
+      "data": {
+        "id": "sim-image",
+        "source": "simulation",
+        "target": "image-proc",
+        "relationship": "uses",
+        "description": "Simulation uses image processing algorithms"
+      }
+    },
+    {
+      "data": {
+        "id": "sim-core",
+        "source": "simulation",
+        "target": "core",
+        "relationship": "uses",
+        "description": "Simulation built on core infrastructure"
+      }
+    }
+  ]
+}

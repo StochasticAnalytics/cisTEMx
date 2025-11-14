@@ -29,8 +29,11 @@ theme:
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/architecture_graph.css
 
 extra_javascript:
+  - https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js
+  - javascripts/architecture_graph.js
   - javascripts/status-watermark.js
 
 plugins:
@@ -127,6 +130,7 @@ nav:
       - Claude Skills: developer/claude-skills.md
       - Contributing: developer/contributing.md
       - Architecture: developer/architecture.md
+      - Architecture Graph: developer/architecture-graph.md
       - Testing: developer/testing.md
       - File Formats: developer/file-formats.md
   - Reference:
@@ -134,6 +138,7 @@ nav:
       - API Reference: reference/api.md
       - Configuration: reference/configuration.md
       - Programs: reference/programs.md
+      - Graph Authoring: reference/graph-authoring.md
       - Tags: reference/tags.md
   - Examples:
       - Code: code-examples.md

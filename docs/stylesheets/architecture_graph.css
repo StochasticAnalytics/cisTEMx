@@ -48,14 +48,14 @@
    ============================================ */
 
 .graph-tooltip {
-    position: absolute;
+    position: fixed;
     display: none;
     background-color: var(--md-default-bg-color);
     border: 1px solid var(--md-default-fg-color--lightest);
     border-radius: 6px;
     padding: 12px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    z-index: 2147483646;  /* Just below modal, above everything else */
+    z-index: 1000;
     pointer-events: none;
     max-width: 300px;
     font-size: 0.9em;
@@ -100,7 +100,7 @@
 .graph-modal {
     display: none;
     position: fixed;
-    z-index: 2147483647;  /* Maximum z-index to appear above fullscreen elements */
+    z-index: 2000;
     left: 0;
     top: 0;
     width: 100%;

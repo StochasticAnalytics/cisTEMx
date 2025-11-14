@@ -244,7 +244,7 @@
 
         // Setup interactivity
         setupNodeInteractions(cy, container);
-        setupEdgeInteractions(cy);
+        setupEdgeInteractions(cy, container);
         setupFullscreenButton(container);
 
         // Store cy instance globally for tab visibility handling
@@ -261,7 +261,7 @@
      */
     function setupNodeInteractions(cy, container) {
         // Tooltip element
-        let tooltip = createTooltip();
+        let tooltip = createTooltip(container);
 
         // Hover: show tooltip
         cy.on('mouseover', 'node', function(evt) {
@@ -296,8 +296,8 @@
     /**
      * Setup edge interactions
      */
-    function setupEdgeInteractions(cy) {
-        let tooltip = createTooltip();
+    function setupEdgeInteractions(cy, container) {
+        let tooltip = createTooltip(container);
 
         cy.on('mouseover', 'edge', function(evt) {
             const edge = evt.target;
@@ -321,13 +321,15 @@
     /**
      * Create tooltip element
      */
-    function createTooltip() {
-        let tooltip = document.getElementById('graph-tooltip');
+    function createTooltip(container) {
+        // Use container-specific ID to allow multiple graphs
+        const tooltipId = 'graph-tooltip-' + container.id;
+        let tooltip = document.getElementById(tooltipId);
         if (!tooltip) {
             tooltip = document.createElement('div');
-            tooltip.id = 'graph-tooltip';
+            tooltip.id = tooltipId;
             tooltip.className = 'graph-tooltip';
-            document.body.appendChild(tooltip);
+            container.appendChild(tooltip);
         }
         return tooltip;
     }
@@ -402,11 +404,12 @@
     function showNodeModal(node, container) {
         const data = node.data();
 
-        // Create modal if it doesn't exist
-        let modal = document.getElementById('graph-modal');
+        // Use container-specific ID to allow multiple graphs
+        const modalId = 'graph-modal-' + container.id;
+        let modal = document.getElementById(modalId);
         if (!modal) {
             modal = document.createElement('div');
-            modal.id = 'graph-modal';
+            modal.id = modalId;
             modal.className = 'graph-modal';
             modal.innerHTML = `
                 <div class="graph-modal-content">
@@ -414,7 +417,7 @@
                     <div class="graph-modal-body"></div>
                 </div>
             `;
-            document.body.appendChild(modal);
+            container.appendChild(modal);
 
             // Close button handler
             modal.querySelector('.graph-modal-close').onclick = function() {
@@ -422,7 +425,7 @@
             };
 
             // Click outside to close
-            window.onclick = function(event) {
+            modal.onclick = function(event) {
                 if (event.target == modal) {
                     modal.style.display = 'none';
                 }

@@ -1,0 +1,149 @@
+{
+  "title": "cisTEMx Basic System Architecture",
+  "description": "High-level view of system components and their relationships",
+  "layout": {
+    "name": "breadthfirst",
+    "directed": true,
+    "spacingFactor": 1.5,
+    "avoidOverlap": true
+  },
+  "nodes": [
+    {
+      "data": {
+        "id": "user",
+        "label": "User",
+        "category": "core",
+        "description": "Researcher interacting with the system",
+        "metadata": {
+          "Role": "Primary system actor",
+          "Interaction": "Via GUI interface",
+          "Access": "Remote desktop or local"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "gui",
+        "label": "cisTEM GUI",
+        "category": "gui",
+        "description": "wxWidgets-based graphical user interface",
+        "files": [
+          "src/gui/MyApp.cpp",
+          "src/gui/MyMainFrame.cpp"
+        ],
+        "dependencies": ["wxWidgets 3.x"],
+        "docLink": "/developer/architecture/#gui-layer",
+        "metadata": {
+          "Technology": "wxWidgets",
+          "Platform": "Cross-platform (Linux, macOS, Windows)",
+          "Features": "Project management, job submission, visualization"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "core",
+        "label": "Core + Database",
+        "category": "core",
+        "description": "Central application logic and project database",
+        "files": [
+          "src/core/*.cpp",
+          "src/core/database.cpp"
+        ],
+        "dependencies": ["SQLite3", "FFTW3"],
+        "docLink": "/developer/architecture/#core-layer",
+        "metadata": {
+          "Components": "Application logic, Job manager, Project DB",
+          "Database": "SQLite for project metadata",
+          "Language": "C++"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "project-folder",
+        "label": "Project Folder",
+        "category": "database",
+        "description": "Local storage for project results and metadata",
+        "metadata": {
+          "Contains": "Results, parameters, database files",
+          "Location": "User-specified directory",
+          "Format": "SQLite DB + output files"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "data-server",
+        "label": "Data Server",
+        "category": "database",
+        "description": "Storage for MRC images and STAR metadata files",
+        "metadata": {
+          "File Types": "MRC (images), STAR (metadata)",
+          "Access": "Network file system or local",
+          "Size": "Typically terabytes of cryo-EM data"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "compute-nodes",
+        "label": "Compute Resources",
+        "category": "algorithm",
+        "description": "Distributed worker nodes for parallel processing",
+        "metadata": {
+          "Configuration": "Multiple worker nodes",
+          "Hardware": "CPU and GPU acceleration",
+          "Distribution": "SSH-based task execution"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "data": {
+        "id": "user-gui",
+        "source": "user",
+        "target": "gui",
+        "relationship": "uses",
+        "description": "User interacts with system via GUI"
+      }
+    },
+    {
+      "data": {
+        "id": "gui-core",
+        "source": "gui",
+        "target": "core",
+        "relationship": "uses",
+        "description": "GUI communicates with core via socket IPC"
+      }
+    },
+    {
+      "data": {
+        "id": "core-project",
+        "source": "core",
+        "target": "project-folder",
+        "relationship": "uses",
+        "description": "Core reads/writes project data and results"
+      }
+    },
+    {
+      "data": {
+        "id": "core-data",
+        "source": "core",
+        "target": "data-server",
+        "relationship": "uses",
+        "description": "Core accesses input images and metadata"
+      }
+    },
+    {
+      "data": {
+        "id": "core-compute",
+        "source": "core",
+        "target": "compute-nodes",
+        "relationship": "uses",
+        "description": "Core distributes processing tasks to workers"
+      }
+    }
+  ]
+}

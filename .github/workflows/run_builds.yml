@@ -51,7 +51,7 @@ jobs:
       # NOTE: Container version must match .vscode/CONTAINER_VERSION_TOP
       # GitHub Actions does not support dynamic container images at job level
       # When updating the version, change both files
-      image: ghcr.io/stochasticanalytics/cistem_build_env:v3.0.1
+      image: ghcr.io/stochasticanalytics/cistem_build_env:v3.0.2
       options: --user root --rm
       # options: --user root --rm --gpus all
     outputs:

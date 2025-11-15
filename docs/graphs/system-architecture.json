@@ -1,0 +1,434 @@
+{
+  "title": "cisTEMx System Architecture - All Levels",
+  "description": "Progressive disclosure architecture: basic ⊂ advanced ⊂ developer",
+  "layout": {
+    "name": "breadthfirst",
+    "directed": true,
+    "spacingFactor": 1.5,
+    "avoidOverlap": true
+  },
+  "nodes": [
+    {
+      "data": {
+        "id": "user",
+        "label": "User",
+        "category": "core",
+        "level": "basic",
+        "description": "Researcher interacting with the system",
+        "metadata": {
+          "Role": "Primary system actor",
+          "Interaction": "Via GUI interface",
+          "Access": "Remote desktop or local"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "remote-desktop",
+        "label": "Remote Desktop",
+        "category": "gui",
+        "level": "advanced",
+        "description": "VNC/X11 remote access to GUI",
+        "metadata": {
+          "Protocol": "VNC, X11 forwarding",
+          "Purpose": "Remote access to GUI",
+          "Common Tools": "TigerVNC, X2Go"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "gui",
+        "label": "cisTEM GUI",
+        "category": "gui",
+        "level": "basic",
+        "description": "wxWidgets-based graphical user interface",
+        "files": [
+          "src/gui/MyApp.cpp",
+          "src/gui/MyMainFrame.cpp",
+          "src/gui/*.h"
+        ],
+        "dependencies": ["wxWidgets 3.x"],
+        "docLink": "/developer/architecture/#gui-layer",
+        "metadata": {
+          "Technology": "wxWidgets",
+          "Platform": "Cross-platform",
+          "Features": "Project management, job submission, visualization"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "app-logic",
+        "label": "Application Logic",
+        "category": "core",
+        "level": "advanced",
+        "description": "Core application orchestration and workflow management",
+        "files": [
+          "src/core/*.cpp"
+        ],
+        "docLink": "/developer/architecture/#core-layer",
+        "metadata": {
+          "Responsibilities": "Workflow orchestration, data coordination",
+          "Language": "C++",
+          "Architecture": "Event-driven with socket IPC"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "socket-ipc",
+        "label": "Socket IPC",
+        "category": "core",
+        "level": "developer",
+        "description": "wxWidgets socket-based inter-process communication between GUI and core",
+        "files": [
+          "src/gui/SocketCommunicator.cpp"
+        ],
+        "metadata": {
+          "Mechanism": "wxWidgets sockets",
+          "Direction": "Bidirectional",
+          "Purpose": "GUI-Core communication"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "job-manager",
+        "label": "Job Manager",
+        "category": "core",
+        "level": "advanced",
+        "description": "Manages distributed job execution and worker coordination",
+        "files": [
+          "src/core/job_*.cpp"
+        ],
+        "metadata": {
+          "Tasks": "Job distribution, worker management, result aggregation",
+          "Protocol": "SSH-based task execution"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "core",
+        "label": "Core + Database",
+        "category": "core",
+        "level": "basic",
+        "description": "Central application logic and project database (simplified view)",
+        "files": [
+          "src/core/*.cpp",
+          "src/core/database.cpp"
+        ],
+        "dependencies": ["SQLite3", "FFTW3"],
+        "docLink": "/developer/architecture/#core-layer",
+        "metadata": {
+          "Note": "Simplified for basic view - see Advanced for components",
+          "Contains": "App Logic + Job Manager + Database",
+          "Language": "C++"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "database",
+        "label": "Project Database",
+        "category": "database",
+        "level": "advanced",
+        "description": "SQLite database storing project metadata and parameters",
+        "files": [
+          "src/core/database.cpp",
+          "src/core/database.h"
+        ],
+        "dependencies": ["SQLite3"],
+        "metadata": {
+          "Technology": "SQLite",
+          "Schema": "Dynamic, version-aware",
+          "Contents": "Project config, job parameters, results metadata"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "project-folder",
+        "label": "Project Folder",
+        "category": "database",
+        "level": "basic",
+        "description": "Local storage for project results and metadata",
+        "metadata": {
+          "Contains": "Results, parameters, database files",
+          "Location": "User-specified directory",
+          "Format": "SQLite DB + output files"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "data-server",
+        "label": "Data Server",
+        "category": "database",
+        "level": "basic",
+        "description": "Storage for MRC images and STAR metadata files",
+        "metadata": {
+          "File Types": "MRC (images), STAR (metadata)",
+          "Access": "Network file system or local",
+          "Size": "Typically terabytes of cryo-EM data"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "mrc-files",
+        "label": "MRC Files",
+        "category": "database",
+        "level": "advanced",
+        "description": "Medical Research Council image format for cryo-EM data",
+        "files": [
+          "src/core/mrc_file.cpp"
+        ],
+        "metadata": {
+          "Format": "MRC2014 standard",
+          "Contents": "Micrographs, particle stacks, volumes",
+          "Typical Size": "GB to TB per dataset"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "star-files",
+        "label": "STAR Metadata",
+        "category": "database",
+        "level": "advanced",
+        "description": "RELION STAR format for particle parameters and metadata",
+        "metadata": {
+          "Format": "Self-defining ASCII tables",
+          "Contents": "Particle coordinates, orientations, CTF parameters",
+          "Compatibility": "RELION format conventions"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "compute-nodes",
+        "label": "Compute Resources",
+        "category": "algorithm",
+        "level": "basic",
+        "description": "Distributed worker nodes for parallel processing",
+        "metadata": {
+          "Configuration": "Multiple worker nodes",
+          "Hardware": "CPU and GPU acceleration",
+          "Distribution": "SSH-based task execution"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "worker-node",
+        "label": "Worker Nodes",
+        "category": "algorithm",
+        "level": "advanced",
+        "description": "Individual compute nodes executing processing tasks",
+        "metadata": {
+          "Hardware": "CPU + optional GPU",
+          "Communication": "SSH connections",
+          "Processing": "Image analysis, reconstruction, classification"
+        }
+      }
+    },
+    {
+      "data": {
+        "id": "ssh-protocol",
+        "label": "SSH Protocol",
+        "category": "algorithm",
+        "level": "developer",
+        "description": "SSH-based job distribution and file transfer to workers",
+        "metadata": {
+          "Mechanism": "SSH + scp/rsync",
+          "Authentication": "Key-based",
+          "Data Transfer": "Results returned via SSH"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "data": {
+        "id": "user-gui",
+        "source": "user",
+        "target": "gui",
+        "relationship": "uses",
+        "level": "basic",
+        "description": "User interacts with system via GUI"
+      }
+    },
+    {
+      "data": {
+        "id": "user-remote",
+        "source": "user",
+        "target": "remote-desktop",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "User connects via remote desktop"
+      }
+    },
+    {
+      "data": {
+        "id": "remote-gui",
+        "source": "remote-desktop",
+        "target": "gui",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "Remote desktop provides access to GUI"
+      }
+    },
+    {
+      "data": {
+        "id": "gui-core-basic",
+        "source": "gui",
+        "target": "core",
+        "relationship": "uses",
+        "level": "basic",
+        "description": "GUI communicates with core (simplified)"
+      }
+    },
+    {
+      "data": {
+        "id": "gui-app",
+        "source": "gui",
+        "target": "app-logic",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "GUI communicates with application logic"
+      }
+    },
+    {
+      "data": {
+        "id": "gui-socket",
+        "source": "gui",
+        "target": "socket-ipc",
+        "relationship": "uses",
+        "level": "developer",
+        "description": "GUI uses socket IPC for core communication"
+      }
+    },
+    {
+      "data": {
+        "id": "socket-app",
+        "source": "socket-ipc",
+        "target": "app-logic",
+        "relationship": "uses",
+        "level": "developer",
+        "description": "Socket IPC connects to application logic"
+      }
+    },
+    {
+      "data": {
+        "id": "app-db",
+        "source": "app-logic",
+        "target": "database",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "Application logic reads/writes project database"
+      }
+    },
+    {
+      "data": {
+        "id": "app-job",
+        "source": "app-logic",
+        "target": "job-manager",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "Application logic delegates to job manager"
+      }
+    },
+    {
+      "data": {
+        "id": "core-project-basic",
+        "source": "core",
+        "target": "project-folder",
+        "relationship": "uses",
+        "level": "basic",
+        "description": "Core reads/writes project data"
+      }
+    },
+    {
+      "data": {
+        "id": "core-data-basic",
+        "source": "core",
+        "target": "data-server",
+        "relationship": "uses",
+        "level": "basic",
+        "description": "Core accesses image data"
+      }
+    },
+    {
+      "data": {
+        "id": "app-data",
+        "source": "app-logic",
+        "target": "data-server",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "Application logic accesses data server"
+      }
+    },
+    {
+      "data": {
+        "id": "data-mrc",
+        "source": "data-server",
+        "target": "mrc-files",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "Data server contains MRC image files"
+      }
+    },
+    {
+      "data": {
+        "id": "data-star",
+        "source": "data-server",
+        "target": "star-files",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "Data server contains STAR metadata"
+      }
+    },
+    {
+      "data": {
+        "id": "core-compute-basic",
+        "source": "core",
+        "target": "compute-nodes",
+        "relationship": "uses",
+        "level": "basic",
+        "description": "Core distributes work to compute resources"
+      }
+    },
+    {
+      "data": {
+        "id": "job-worker",
+        "source": "job-manager",
+        "target": "worker-node",
+        "relationship": "uses",
+        "level": "advanced",
+        "description": "Job manager distributes tasks to workers"
+      }
+    },
+    {
+      "data": {
+        "id": "job-ssh",
+        "source": "job-manager",
+        "target": "ssh-protocol",
+        "relationship": "uses",
+        "level": "developer",
+        "description": "Job manager uses SSH for task distribution"
+      }
+    },
+    {
+      "data": {
+        "id": "ssh-worker",
+        "source": "ssh-protocol",
+        "target": "worker-node",
+        "relationship": "uses",
+        "level": "developer",
+        "description": "SSH protocol communicates with workers"
+      }
+    }
+  ]
+}

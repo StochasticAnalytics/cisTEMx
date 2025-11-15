@@ -7,6 +7,7 @@ The `install_llm_optimization_tools.sh` script installs lightweight dependencies
 ## When to Enable
 
 **Enable this script when you're ready for Phase 7**, which includes:
+
 - Token counting for LLM context window management
 - Semantic embeddings for code similarity search
 - LLM-friendly JSON schema generation
@@ -49,6 +50,7 @@ COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh \
 ```
 
 Build with:
+
 ```bash
 ./regenerate_containers.sh --build-llm-tools=true
 ```
@@ -59,7 +61,7 @@ If you want to test without rebuilding the container:
 
 ```bash
 # Inside the container
-source /opt/venv/bin/activate
+source ${HOME}/venv/bin/activate
 bash /tmp/install_llm_optimization_tools.sh
 ```
 
@@ -86,6 +88,7 @@ python -c "from fastembed import TextEmbedding; print('✓ fastembed works')"
 ## Alternative: Skip LLM Optimization
 
 Phase 7 (LLM Optimization) is **optional**. The documentation system works perfectly well with:
+
 - Tag-based hierarchical search
 - Full-text search via MkDocs
 - Metadata filtering (complexity, GPU/CPU, etc.)
@@ -95,7 +98,8 @@ You can implement Phases 1-6 and decide later if you need semantic search and to
 ## Dependencies
 
 These packages require:
-- Python 3.10+ (already in container via /opt/venv)
+
+- Python 3.10+ (already in container via /home/cisTEMdev/venv)
 - ONNX Runtime (installed automatically)
 - No CUDA or GPU needed
 

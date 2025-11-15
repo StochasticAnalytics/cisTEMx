@@ -61,7 +61,3 @@ jobs:
   build-gpu-release-no-fastfft:
     needs: check-format
     uses: ./.github/workflows/release_build_clang_noFastFFT.yml
-
-  build-gpu-release-no-experimental:
-    needs: check-format
-    uses: ./.github/workflows/release_build_full_no_experimental.yml

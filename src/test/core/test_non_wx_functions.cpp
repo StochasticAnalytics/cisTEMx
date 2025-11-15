@@ -194,11 +194,22 @@ TEST_CASE("HalfFloatsAreAlmostTheSame returns true if the difference between the
 
 TEST_CASE("RelativeErrorIsLessThanEpsilon returns true if the relative error between the reference and test values is less than epsilon", "[RelativeErrorIsLessThanEpsilon]") {
     constexpr bool print_message_if_failed = false;
+
+    // Test with float values (uses float_epsilon = 0.0001)
+    REQUIRE(RelativeErrorIsLessThanEpsilon(1.0f, 1.0f, print_message_if_failed) == true);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(1.0f, 1.0f + cistem::float_epsilon * 0.99f, print_message_if_failed) == true);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(1.0f, 1.0f + cistem::float_epsilon * 1.01f, print_message_if_failed) == false);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(0.0f, 0.0f, print_message_if_failed) == true);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(0.0f, 0.0f + cistem::float_epsilon * 0.99f, print_message_if_failed) == true);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(0.0f, 0.0f + cistem::float_epsilon * 1.01f, print_message_if_failed) == false);
+
+    // Test with double values (uses double_epsilon = 0.000001)
     REQUIRE(RelativeErrorIsLessThanEpsilon(1.0, 1.0, print_message_if_failed) == true);
-    REQUIRE(RelativeErrorIsLessThanEpsilon(1.0, 1.0001, print_message_if_failed) == true);
-    REQUIRE(RelativeErrorIsLessThanEpsilon(1.0, 1.001, print_message_if_failed) == false);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(1.0, 1.0 + cistem::double_epsilon * 0.99, print_message_if_failed) == true);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(1.0, 1.0 + cistem::double_epsilon * 1.01, print_message_if_failed) == false);
     REQUIRE(RelativeErrorIsLessThanEpsilon(0.0, 0.0, print_message_if_failed) == true);
-    REQUIRE(RelativeErrorIsLessThanEpsilon(0.0, 0.0001, print_message_if_failed) == false);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(0.0, 0.0 + cistem::double_epsilon * 0.99, print_message_if_failed) == true);
+    REQUIRE(RelativeErrorIsLessThanEpsilon(0.0, 0.0 + cistem::double_epsilon * 1.01, print_message_if_failed) == false);
 }
 
 TEST_CASE("kDa_to_Angstrom3 converts kilo daltons to cubic angstroms", "[kDa_to_Angstrom3]") {

@@ -14,14 +14,12 @@ RUN cd /usr/local/cuda/lib64 && rm -f libcuspars* libcusolver* libcublasLt* libn
 
 
 
-# By default this will create cisTEMdev as uid==1000 which is not what we want as it is also going to be the user id
-# of a host user when building the top layer with singularity. < 1000 is reserved for system users. 814 is a somewhat random choice.
 RUN apt-get update &&\
     apt-get -y install tzdata sudo &&\
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &&\
     apt-get install -y locales &&\
     localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8 &&\
-    useradd --uid 814 -ms /bin/bash cisTEMdev &&\
+    useradd -ms /bin/bash cisTEMdev &&\
     echo "cisTEMdev:cisTEMdev" | chpasswd && adduser cisTEMdev sudo &&\
     rm -rf /var/lib/apt/lists/*
 

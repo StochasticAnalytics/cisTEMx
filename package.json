@@ -1,0 +1,32 @@
+{
+  "name": "cistemx-docs",
+  "version": "1.0.0",
+  "description": "JavaScript dependencies for cisTEMx documentation knowledge graphs",
+  "private": true,
+  "scripts": {
+    "install-docs": "bash scripts/docs/install_js_deps.sh"
+  },
+  "dependencies": {
+    "cytoscape": "3.33.1",
+    "dagre": "0.8.5",
+    "cytoscape-dagre": "2.5.0",
+    "webcola": "3.4.0",
+    "cytoscape-cola": "2.5.1",
+    "layout-base": "2.0.1",
+    "cose-base": "2.2.0",
+    "cytoscape-fcose": "2.2.0",
+    "cytoscape-grid-guide": "2.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/StochasticAnalytics/cisTEMx"
+  },
+  "keywords": [
+    "documentation",
+    "knowledge-graphs",
+    "cytoscape",
+    "mkdocs"
+  ],
+  "author": "cisTEMx Team",
+  "license": "SEE LICENSE IN SA-HEADER.txt"
+}

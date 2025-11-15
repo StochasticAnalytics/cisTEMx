@@ -1,0 +1,164 @@
+/* Enhanced hover effects for grid cards - Medium style */
+
+/* Base card styling with transition */
+.md-typeset .grid.cards > ul > li {
+  transition: all 0.3s ease;
+  border-left: 3px solid transparent;
+}
+
+/* Hover effect: lift + shadow + border */
+.md-typeset .grid.cards > ul > li:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+  border-left: 3px solid var(--md-primary-fg-color);
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover {
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Hide navigation tabs on pages with grid cards - cards provide navigation */
+body:has(.grid.cards) .md-tabs {
+  display: none !important;
+}
+
+/* Custom color for Home nav tab - try multiple selectors */
+.md-tabs__item:first-child .md-tabs__link {
+  color: var(--md-accent-fg-color) !important;
+}
+
+/* Maintain accent color on hover/active */
+.md-tabs__item:first-child .md-tabs__link:hover,
+.md-tabs__item:first-child .md-tabs__link:focus {
+  color: var(--md-accent-fg-color) !important;
+}
+
+/* ========================================
+   LEGACY CONTENT MARKING SYSTEM
+   ======================================== */
+
+/* Apply watermark to pages marked as legacy/deprecated/draft/placeholder */
+.md-content article[data-status="legacy"],
+.md-content article[data-status="deprecated"],
+.md-content article[data-status="draft"],
+.md-content article[data-status="placeholder"] {
+  position: relative;
+}
+
+/* Legacy watermark - AMBER/YELLOW (exclusive color for legacy) */
+.md-content article[data-status="legacy"]::before {
+  content: "LEGACY";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: rgba(255, 193, 7, 0.08);  /* Amber - ONLY used for legacy */
+  pointer-events: none;  /* Don't block user interaction */
+  z-index: 0;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Deprecated watermark - orange tint */
+.md-content article[data-status="deprecated"]::before {
+  content: "DEPRECATED";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: rgba(255, 152, 0, 0.08);  /* Orange */
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Draft watermark - blue */
+.md-content article[data-status="draft"]::before {
+  content: "DRAFT";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: rgba(33, 150, 243, 0.08);  /* Blue */
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Placeholder watermark - gray */
+.md-content article[data-status="placeholder"]::before {
+  content: "PLACEHOLDER";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 6rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: rgba(158, 158, 158, 0.08);  /* Gray */
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Dark mode adjustments - slightly more visible */
+[data-md-color-scheme="slate"] .md-content article[data-status]::before {
+  opacity: 0.15;
+}
+
+/* Ensure content stays above watermark */
+.md-content article > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ========================================
+   LEGACY CONTENT ADMONITIONS
+   ======================================== */
+
+/* Custom admonition for legacy/deprecated content notice */
+.md-typeset .admonition.legacy {
+  border-color: #ff9800;  /* Orange border */
+}
+
+.md-typeset .legacy > .admonition-title {
+  background-color: rgba(255, 152, 0, 0.1);
+}
+
+.md-typeset .legacy > .admonition-title::before {
+  background-color: #ff9800;
+  -webkit-mask-image: var(--md-admonition-icon--legacy,
+    url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>'));
+  mask-image: var(--md-admonition-icon--legacy,
+    url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>'));
+}
+
+/* Deprecated admonition */
+.md-typeset .admonition.deprecated {
+  border-color: #ff5722;  /* Deep orange border */
+}
+
+.md-typeset .deprecated > .admonition-title {
+  background-color: rgba(255, 87, 34, 0.1);
+}
+
+.md-typeset .deprecated > .admonition-title::before {
+  background-color: #ff5722;
+  -webkit-mask-image: var(--md-admonition-icon--deprecated,
+    url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>'));
+  mask-image: var(--md-admonition-icon--deprecated,
+    url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>'));
+}

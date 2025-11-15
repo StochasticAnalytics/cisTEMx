@@ -35,3 +35,7 @@ scikit-learn>=1.3.0
 
 # For 2DTM post processing
 joblib>=1.3.0
+
+# Regex pattern building and parsing (for claude_core.regex_utils)
+pregex>=2.3.3
+pyparsing>=3.2.5

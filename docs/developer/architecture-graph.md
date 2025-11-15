@@ -16,8 +16,57 @@ This interactive visualization shows the high-level architecture of cisTEMx, inc
 
 <div id="cistemx-arch-graph" class="architecture-graph"
      data-graph-data="/graphs/cistemx-overview.json"
-     data-layout="cose">
+     data-layout="preset"
+     data-saved-layout="/javascripts/saved-layouts/architecture-graph.json">
 </div>
+
+<script>
+// Load saved positions for refined architecture graph layout
+(function() {
+  function applySavedPositions() {
+    const container = document.getElementById('cistemx-arch-graph');
+    if (!container || !window.cytoscapeInstances) {
+      setTimeout(applySavedPositions, 100);
+      return;
+    }
+
+    const cy = window.cytoscapeInstances['cistemx-arch-graph']?.cy;
+    if (!cy) {
+      setTimeout(applySavedPositions, 100);
+      return;
+    }
+
+    // Load saved positions from JSON file
+    const layoutPath = container.getAttribute('data-saved-layout');
+    if (layoutPath) {
+      fetch(layoutPath)
+        .then(response => response.json())
+        .then(positions => {
+          cy.nodes().forEach(node => {
+            if (positions[node.id()]) {
+              node.position(positions[node.id()]);
+            }
+          });
+          // Fit viewport with padding
+          cy.fit(null, 40);
+          console.log('✓ Applied saved layout positions for architecture graph');
+        })
+        .catch(error => {
+          console.error('Could not load saved positions:', error);
+          // Fallback to algorithmic layout if saved positions fail
+          cy.layout({ name: 'cose' }).run();
+        });
+    }
+  }
+
+  // Start initialization when page loads
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applySavedPositions);
+  } else {
+    applySavedPositions();
+  }
+})();
+</script>
 
 ## Legend
 

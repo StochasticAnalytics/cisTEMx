@@ -32,11 +32,20 @@ extra_css:
   - stylesheets/architecture_graph.css
 
 extra_javascript:
-  - https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js
-  - https://unpkg.com/dagre@0.8.5/dist/dagre.min.js
-  - https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js
-  - https://unpkg.com/webcola@3.4.0/WebCola/cola.min.js
-  - https://unpkg.com/cytoscape-cola@2.5.1/cytoscape-cola.js
+  # Cytoscape.js core library (local vendor files for offline capability)
+  - javascripts/vendor/cytoscape.min.js
+  # Layout algorithms
+  - javascripts/vendor/dagre.min.js
+  - javascripts/vendor/cytoscape-dagre.js
+  - javascripts/vendor/cola.min.js
+  - javascripts/vendor/cytoscape-cola.js
+  # fCoSE layout (force-directed with constraints)
+  - javascripts/vendor/layout-base.js
+  - javascripts/vendor/cose-base.js
+  - javascripts/vendor/cytoscape-fcose.js
+  # Grid-guide (manual layout refinement)
+  - javascripts/vendor/cytoscape-grid-guide.js
+  # Custom cisTEMx scripts
   - javascripts/architecture_graph.js
   - javascripts/status-watermark.js
   - javascripts/default-tab.js

@@ -164,6 +164,10 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# Node.js dependencies (JavaScript for docs)
+node_modules/
+package-lock.json
+
 # mypy
 .mypy_cache/
 .dmypy.json

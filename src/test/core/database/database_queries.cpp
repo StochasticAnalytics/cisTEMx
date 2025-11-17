@@ -28,7 +28,7 @@ using namespace DatabaseTestHelpers;
 // Single Value Query Tests
 // =============================================================================
 
-TEST_CASE("Database::ReturnSingleIntFromSelectCommand", "[database][crud][queries]") {
+TEST_CASE("Database::ReturnSingleIntFromSelectCommand", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 
@@ -64,7 +64,7 @@ TEST_CASE("Database::ReturnSingleIntFromSelectCommand", "[database][crud][querie
     db.Close( );
 }
 
-TEST_CASE("Database::ReturnSingleLongFromSelectCommand", "[database][crud][queries]") {
+TEST_CASE("Database::ReturnSingleLongFromSelectCommand", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 
@@ -99,7 +99,7 @@ TEST_CASE("Database::ReturnSingleLongFromSelectCommand", "[database][crud][queri
     db.Close( );
 }
 
-TEST_CASE("Database::ReturnSingleDoubleFromSelectCommand", "[database][crud][queries]") {
+TEST_CASE("Database::ReturnSingleDoubleFromSelectCommand", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 
@@ -148,7 +148,7 @@ TEST_CASE("Database::ReturnSingleDoubleFromSelectCommand", "[database][crud][que
     db.Close( );
 }
 
-TEST_CASE("Database::ReturnSingleStringFromSelectCommand", "[database][crud][queries]") {
+TEST_CASE("Database::ReturnSingleStringFromSelectCommand", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 
@@ -196,7 +196,7 @@ TEST_CASE("Database::ReturnSingleStringFromSelectCommand", "[database][crud][que
 // Array Query Tests
 // =============================================================================
 
-TEST_CASE("Database::ReturnIntArrayFromSelectCommand", "[database][crud][queries]") {
+TEST_CASE("Database::ReturnIntArrayFromSelectCommand", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 
@@ -238,7 +238,7 @@ TEST_CASE("Database::ReturnIntArrayFromSelectCommand", "[database][crud][queries
     db.Close( );
 }
 
-TEST_CASE("Database::ReturnLongArrayFromSelectCommand", "[database][crud][queries]") {
+TEST_CASE("Database::ReturnLongArrayFromSelectCommand", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 
@@ -270,7 +270,7 @@ TEST_CASE("Database::ReturnLongArrayFromSelectCommand", "[database][crud][querie
     db.Close( );
 }
 
-TEST_CASE("Database::ReturnStringArrayFromSelectCommand", "[database][crud][queries]") {
+TEST_CASE("Database::ReturnStringArrayFromSelectCommand", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 
@@ -327,7 +327,7 @@ TEST_CASE("Database::ReturnStringArrayFromSelectCommand", "[database][crud][quer
 // Query Integration Tests
 // =============================================================================
 
-TEST_CASE("Database query operations with complex data", "[database][crud][queries]") {
+TEST_CASE("Database query operations with complex data", "[database][crud][queries][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 

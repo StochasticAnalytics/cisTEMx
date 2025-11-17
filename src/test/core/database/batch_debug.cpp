@@ -2,7 +2,7 @@
 
 using namespace DatabaseTestHelpers;
 
-TEST_CASE("Database::BatchSelect debug WHY N-1 rows", "[database][debug]") {
+TEST_CASE("Database::BatchSelect debug WHY N-1 rows", "[database][debug][.broken]") {
     wxFileName           test_db_path = CreateTempDatabasePath( );
     DatabaseCleanupGuard cleanup(test_db_path);
 

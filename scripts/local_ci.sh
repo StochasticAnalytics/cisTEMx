@@ -1,0 +1,271 @@
+#!/bin/bash
+#
+# Local CI Emulation Script for cisTEMx
+#
+# This script emulates the GitHub Actions CI pipeline locally using Docker.
+# It runs formatting checks followed by all 6 build configurations with tests.
+#
+# Features:
+# - Fail-fast behavior (stops on first failure)
+# - Full detailed logs + clean summary log
+# - Uses same Docker container as GitHub Actions
+# - Builds in /tmp/cistemx_ci for speed
+# - Uses 8 cores for builds
+#
+
+set -e  # Exit on any error
+set -o pipefail
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONTAINER_VERSION=$(cat "$REPO_ROOT/.vscode/CONTAINER_VERSION_TOP" | tr -d '\n')
+DOCKER_IMAGE="ghcr.io/stochasticanalytics/cistem_build_env:v${CONTAINER_VERSION}"
+BUILD_BASE="/tmp/cistemx_ci"
+LOG_DIR="$REPO_ROOT/ci_logs"
+N_THREADS=8
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Create log directory
+mkdir -p "$LOG_DIR"
+
+# Initialize summary log
+SUMMARY_LOG="$LOG_DIR/summary_${TIMESTAMP}.log"
+echo "=====================================" > "$SUMMARY_LOG"
+echo "cisTEMx Local CI Run - $TIMESTAMP" >> "$SUMMARY_LOG"
+echo "=====================================" >> "$SUMMARY_LOG"
+echo "" >> "$SUMMARY_LOG"
+
+# Helper functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+    echo "[INFO] $1" >> "$SUMMARY_LOG"
+}
+
+log_success() {
+    echo -e "${GREEN}[✓]${NC} $1"
+    echo "[✓] $1" >> "$SUMMARY_LOG"
+}
+
+log_error() {
+    echo -e "${RED}[✗]${NC} $1"
+    echo "[✗] $1" >> "$SUMMARY_LOG"
+}
+
+log_step() {
+    echo ""
+    echo -e "${YELLOW}==>${NC} $1"
+    echo "" >> "$SUMMARY_LOG"
+    echo "==> $1" >> "$SUMMARY_LOG"
+}
+
+# Check if Docker is available
+if ! command -v docker &> /dev/null; then
+    log_error "Docker is not installed or not in PATH"
+    exit 1
+fi
+
+# Pull the Docker image
+log_step "Pulling Docker image: $DOCKER_IMAGE"
+if docker pull "$DOCKER_IMAGE" &> "$LOG_DIR/docker_pull.log"; then
+    log_success "Docker image pulled successfully"
+else
+    log_error "Failed to pull Docker image"
+    cat "$LOG_DIR/docker_pull.log"
+    exit 1
+fi
+
+# Step 1: Formatting Check
+log_step "Step 1: Formatting Check"
+
+FORMAT_DIR="$BUILD_BASE/format_check"
+FORMAT_LOG="$LOG_DIR/format_check_${TIMESTAMP}.log"
+
+# Clean up any previous formatting check
+rm -rf "$FORMAT_DIR"
+mkdir -p "$FORMAT_DIR"
+
+log_info "Cloning repository to $FORMAT_DIR"
+{
+    cd "$FORMAT_DIR"
+    git clone --depth 1 "$REPO_ROOT" repo
+    cd repo
+
+    log_info "Running clang-format-14 check"
+
+    # Use the same sources and excludes as the GitHub Action
+    SOURCES="src/**/*.cpp src/**/*.h src/**/*.cc src/**/*.cxx src/**/*.hpp src/**/*.cu src/**/*.cuh"
+    EXCLUDES="include/**/* src/gui/wxformbuilder/**/* src/gui/*ProjectX_gui*"
+
+    # Run clang-format check in Docker
+    docker run --rm \
+        -v "$FORMAT_DIR/repo:/workspace" \
+        -w /workspace \
+        "$DOCKER_IMAGE" \
+        bash -c "
+            set -e
+            find src -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.cu' -o -name '*.cuh' \) \
+                ! -path 'include/**/*' \
+                ! -path 'src/gui/wxformbuilder/**/*' \
+                ! -path 'src/gui/*ProjectX_gui*' \
+                -print0 | xargs -0 clang-format-14 --dry-run --Werror
+        "
+} &> "$FORMAT_LOG"
+
+if [ $? -eq 0 ]; then
+    log_success "Formatting check passed"
+else
+    log_error "Formatting check failed"
+    echo ""
+    echo "See full log: $FORMAT_LOG"
+    tail -n 50 "$FORMAT_LOG"
+    exit 1
+fi
+
+# Clean up formatting check directory
+rm -rf "$FORMAT_DIR"
+
+# Step 2: Build all configurations
+log_step "Step 2: Building all configurations"
+
+# Define build configurations
+# Format: "build_type|CC|CXX|configure_options|run_tests_on"
+declare -a BUILD_CONFIGS=(
+    "GPU_release|clang|clang++|--with-cuda --enable-openmp --enable-experimental --enable-staticmode --disable-multiple-global-refinements --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config|gpu"
+    "GPU_release_GNU_MKL|gcc|g++|--with-cuda --disable-FastFFT --enable-openmp --enable-experimental --enable-staticmode --with-wx-config=/opt/WX/wx305-gcc-static-gtk2/bin/wx-config --disable-multiple-global-refinements|gpu"
+    "GPU_release_no_FastFFT|clang|clang++|--with-cuda --disable-FastFFT --enable-openmp --enable-experimental --enable-staticmode --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config --disable-multiple-global-refinements|cpu"
+    "GPU_debug|clang|clang++|--enable-gpu-debug --enable-debugmode --with-cuda --disable-FastFFT --enable-openmp --enable-experimental --enable-staticmode --disable-multiple-global-refinements --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config|gpu"
+    "cpu_release|clang|clang++|--disable-FastFFT --enable-openmp --enable-experimental --enable-staticmode --disable-multiple-global-refinements --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config|cpu"
+    "cpu_debug|clang|clang++|--enable-debugmode --disable-FastFFT --enable-openmp --enable-experimental --enable-staticmode --disable-multiple-global-refinements --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config|cpu"
+)
+
+TOTAL_BUILDS=${#BUILD_CONFIGS[@]}
+CURRENT_BUILD=0
+
+for config in "${BUILD_CONFIGS[@]}"; do
+    CURRENT_BUILD=$((CURRENT_BUILD + 1))
+
+    # Parse configuration
+    IFS='|' read -r BUILD_TYPE CC CXX CONFIGURE_OPTS RUN_TESTS <<< "$config"
+
+    log_step "Build $CURRENT_BUILD/$TOTAL_BUILDS: $BUILD_TYPE"
+
+    BUILD_DIR="$BUILD_BASE/$BUILD_TYPE"
+    FULL_LOG="$LOG_DIR/${BUILD_TYPE}_full_${TIMESTAMP}.log"
+
+    # Clean up any previous build
+    rm -rf "$BUILD_DIR"
+    mkdir -p "$BUILD_DIR"
+
+    START_TIME=$(date +%s)
+
+    {
+        echo "======================================"
+        echo "Building: $BUILD_TYPE"
+        echo "CC: $CC"
+        echo "CXX: $CXX"
+        echo "Configure options: $CONFIGURE_OPTS"
+        echo "======================================"
+        echo ""
+
+        log_info "Cloning repository to $BUILD_DIR"
+        cd "$BUILD_DIR"
+        git clone --depth 1 "$REPO_ROOT" repo
+        cd repo
+
+        log_info "Running build in Docker container"
+
+        # Run the full build and test process in Docker
+        docker run --rm \
+            --user root \
+            -v "$BUILD_DIR/repo:/workspace" \
+            -w /workspace \
+            -e CC="$CC" \
+            -e CXX="$CXX" \
+            -e PATH="/usr/bin:\$PATH" \
+            "$DOCKER_IMAGE" \
+            bash -c "
+                set -e
+
+                echo '=== Running regenerate_project.sh ==='
+                ./regenerate_project.sh
+
+                echo ''
+                echo '=== Creating build directory ==='
+                mkdir -p build/${BUILD_TYPE}
+                cd build/${BUILD_TYPE}
+
+                echo ''
+                echo '=== Running configure ==='
+                ../../configure $CONFIGURE_OPTS
+
+                echo ''
+                echo '=== Building with make -j ${N_THREADS} ==='
+                mkdir -p tmp
+                export TMPDIR=\$(pwd)/tmp
+                make -j ${N_THREADS}
+
+                echo ''
+                echo '=== Preparing test binaries ==='
+                mkdir -p artifacts
+                mv src/unit_test_runner src/samples_functional_testing src/console_test artifacts/
+                chmod +x artifacts/*
+
+                echo ''
+                echo '=== Cleaning up build artifacts ==='
+                rm -rf src/core src/gui src/programs tmp
+
+                echo ''
+                echo '=== Running tests ==='
+                cd artifacts
+
+                echo 'Running console_test...'
+                ./console_test
+
+                echo ''
+                echo 'Running samples_functional_testing...'
+                ./samples_functional_testing
+
+                echo ''
+                echo 'Running unit_test_runner...'
+                ./unit_test_runner
+
+                echo ''
+                echo '=== All tests passed for ${BUILD_TYPE} ==='
+            "
+    } &> "$FULL_LOG"
+
+    BUILD_EXIT_CODE=$?
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
+
+    if [ $BUILD_EXIT_CODE -eq 0 ]; then
+        log_success "$BUILD_TYPE: Build and tests passed (${DURATION}s)"
+        # Clean up successful build
+        rm -rf "$BUILD_DIR"
+    else
+        log_error "$BUILD_TYPE: Build or tests failed (${DURATION}s)"
+        echo ""
+        echo "Full log: $FULL_LOG"
+        echo ""
+        echo "Last 100 lines of output:"
+        tail -n 100 "$FULL_LOG"
+        exit 1
+    fi
+done
+
+# Final summary
+log_step "CI Run Complete"
+log_success "All formatting checks, builds, and tests passed!"
+echo ""
+echo "Summary log: $SUMMARY_LOG"
+echo "Detailed logs: $LOG_DIR/*_${TIMESTAMP}.log"
+echo ""
+
+exit 0

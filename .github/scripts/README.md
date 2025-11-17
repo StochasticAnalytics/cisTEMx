@@ -11,6 +11,7 @@ The sync validation system ensures hardcoded values across the codebase stay syn
 Some values in the codebase must be hardcoded in multiple locations (e.g., container versions in CI workflows and devcontainer configs). GitHub Actions doesn't support dynamic container images, and other constraints make it impractical to reference these values programmatically everywhere.
 
 The sync validator:
+
 1. Maintains a **rules database** (JSON) describing WHERE source and target values are, and HOW to extract them
 2. **Does NOT store the actual values** - only the structural metadata (file paths and regex patterns)
 3. Reads current values from source files and compares to target locations
@@ -25,15 +26,18 @@ The sync validator:
 ### Running Validation
 
 **Automatic:**
+
 - Runs in pre-push hook (installed by `./regenerate_project.sh`)
 - Runs in CI on every push and pull request
 
 **Manual:**
+
 ```bash
 python3 .github/scripts/validate_sync.py
 ```
 
 Exit codes:
+
 - `0` - All values in sync
 - `1` - One or more values out of sync
 - `2` - Configuration or file read error
@@ -67,6 +71,7 @@ To add a new synchronization rule, edit `sync_validation_rules.json`:
 ```
 
 **Key principles:**
+
 - **Source** is the single source of truth for the value
 - **Targets** are locations that must match the source
 - **Patterns** are Python regex with capture groups to extract values
@@ -75,10 +80,11 @@ To add a new synchronization rule, edit `sync_validation_rules.json`:
 ### Example
 
 The `container_version_top` rule ensures the container version in `.vscode/CONTAINER_VERSION_TOP` matches:
+
 - CI workflow container image (`.github/workflows/run_builds.yml`)
 - Devcontainer image (`.devcontainer/devcontainer.json`)
 
-When the source version changes to `3.0.2`, targets must be updated manually, and the validator will catch if any are missed.
+When the source version changes to `3.0.3`, targets must be updated manually, and the validator will catch if any are missed.
 
 ### Regex Pattern Tips
 
@@ -93,6 +99,7 @@ When the source version changes to `3.0.2`, targets must be updated manually, an
 This system embodies a key principle: **when you can't make it dynamic, make it validated**.
 
 Rather than fight constraints (GitHub Actions, JSON configs, etc.) that prevent dynamic value references, we:
+
 1. Accept that some values must be hardcoded
 2. Document the relationships in machine-readable form
 3. Validate automatically that changes propagate correctly

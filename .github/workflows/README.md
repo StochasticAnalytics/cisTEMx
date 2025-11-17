@@ -41,6 +41,7 @@ The workflow system uses three types of runners strategically to minimize costs:
 ### Entry Point & Orchestration
 
 #### `check_formatting.yml`
+
 - **Purpose**: Entry point for all CI/CD builds
 - **Triggers**: On push to main, branches ending with `_with_ci`, or any PR
 - **Runner**: `ubuntu-latest` (free tier)
@@ -53,8 +54,9 @@ The workflow system uses three types of runners strategically to minimize costs:
 ### Reusable Build Template
 
 #### `run_builds.yml`
+
 - **Purpose**: Parameterized workflow template for all build configurations
-- **Container**: `ghcr.io/stochasticanalytics/cistem_build_env:v3.0.2`
+- **Container**: `ghcr.io/stochasticanalytics/cistem_build_env:v3.0.3`
 - **Parameters**:
   - `run_tests`: `'cpu'` or `'gpu'` - Determines test execution strategy
   - `compiler_cc` / `compiler_cxx`: Compiler selection (clang/gcc)
@@ -134,6 +136,7 @@ This pattern minimizes expensive GPU runner usage by only using it for test exec
 ## Container Management Workflows
 
 ### `build_base_container.yml`
+
 - **Purpose**: Builds base container with OS-level dependencies
 - **Trigger**: Manual dispatch only
 - **Version Source**: `.vscode/CONTAINER_VERSION_BASE`
@@ -141,6 +144,7 @@ This pattern minimizes expensive GPU runner usage by only using it for test exec
 - **Output**: Pushes to GitHub Container Registry (GHCR)
 
 ### `build_top_container.yml`
+
 - **Purpose**: Builds application container with wxWidgets, libtorch, etc.
 - **Trigger**: Manual dispatch only
 - **Version Source**: `.vscode/CONTAINER_VERSION_TOP`
@@ -151,6 +155,7 @@ This pattern minimizes expensive GPU runner usage by only using it for test exec
   - Builds on top of base container
 
 ### `push_container_to_ghcr.yml` (DEPRECATED)
+
 - **Status**: ⚠️ DEPRECATED - Use `build_base_container.yml` or `build_top_container.yml` instead
 - **Purpose**: Legacy workflow for pushing containers
 - **Trigger**: Manual dispatch only
@@ -158,6 +163,7 @@ This pattern minimizes expensive GPU runner usage by only using it for test exec
 ## Validation Workflows
 
 ### `validate_sync.yml`
+
 - **Purpose**: Ensures hardcoded values match their source of truth
 - **Trigger**: On every push and PR
 - **Runner**: `ubuntu-latest`
@@ -170,6 +176,7 @@ This pattern minimizes expensive GPU runner usage by only using it for test exec
 ## Maintenance Workflows
 
 ### `cleanup_actions.yml`
+
 - **Purpose**: Delete workflow runs older than specified days
 - **Trigger**: Manual dispatch only
 - **Runner**: `ubuntu-latest`
@@ -226,6 +233,7 @@ All workflows that run tests execute three test suites:
 2. Use `run_builds.yml` as template via `uses: ./.github/workflows/run_builds.yml`
 3. Set appropriate parameters for your configuration
 4. Add trigger job to `check_formatting.yml`:
+
    ```yaml
    build-my-configuration:
      needs: check-format

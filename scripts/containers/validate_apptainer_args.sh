@@ -101,7 +101,7 @@ validate_version() {
     if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
         echo "Error: Invalid version format: $VERSION"
         echo "Expected format: X.Y.Z or X.Y.Z-suffix"
-        echo "Examples: 3.0.2, 1.0.0-beta, 2.1.3-rc1"
+        echo "Examples: 3.0.3, 1.0.0-beta, 2.1.3-rc1"
         return 1
     fi
 
@@ -125,7 +125,7 @@ validate_docker_source() {
         echo "Error: Invalid Docker source format: $DOCKER_SOURCE"
         echo "Expected format: docker://registry/repo:tag"
         echo "Examples:"
-        echo "  docker://ghcr.io/stochasticanalytics/cistemx:v3.0.2"
+        echo "  docker://ghcr.io/stochasticanalytics/cistemx:v3.0.3"
         echo "  docker://docker.io/library/ubuntu:22.04"
         return 1
     fi

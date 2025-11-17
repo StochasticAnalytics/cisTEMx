@@ -8,15 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       source_image:
-        description: 'Source image (e.g., ghcr.io/stochasticanalytics/cistem_build_env:v3.0.2)'
+        description: 'Source image (e.g., ghcr.io/stochasticanalytics/cistem_build_env:v3.0.3)'
         required: true
         type: string
-        default: 'ghcr.io/stochasticanalytics/cistem_build_env:v3.0.2'
+        default: 'ghcr.io/stochasticanalytics/cistem_build_env:v3.0.3'
       target_tag:
-        description: 'Target tag for GHCR (e.g., v3.0.2)'
+        description: 'Target tag for GHCR (e.g., v3.0.3)'
         required: true
         type: string
-        default: 'v3.0.2'
+        default: 'v3.0.3'
 
 jobs:
   push-to-ghcr:

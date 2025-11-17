@@ -23,7 +23,6 @@ ARG build_compiler="icpc"
 ARG build_wx_version="stable"
 ARG build_npm="false"
 ARG build_ref_images="false"
-ARG build_claude="false"
 ARG build_libtorch="true"
 ARG build_docs="true"
 
@@ -44,7 +43,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN python --version && pip --version
 
 # Install wxWidgets
-COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_llm_optimization_tools.sh /tmp/
+COPY install_wx_3.1.5.sh install_node_16.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_llm_optimization_tools.sh /tmp/
 
 
 # If we do not do this, we want to link the static or dynamic libs from /opt/WX to /usr/bin so we don't need to set it on configure lines and also so that wxformbuilder can find them
@@ -95,4 +94,3 @@ USER cisTEMdev
 WORKDIR /home/cisTEMdev
 
 RUN echo "set filename-display basename" > /home/cisTEMdev/.gdbinit
-RUN echo "build claude" && if [[ "x${build_claude}" == "xtrue" ]] ; then /tmp/install_node_22_and_claude.sh ; fi

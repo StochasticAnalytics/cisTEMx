@@ -39,5 +39,4 @@ configure~
 __pycache__/
 include/Eigen
 
-.claude/cache/
 worktrees/

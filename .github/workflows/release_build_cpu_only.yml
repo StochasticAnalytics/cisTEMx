@@ -5,6 +5,9 @@ on:
     workflows: ["Check C++ Formatting"]
     types:
       - completed
+    branches:
+      - main
+      - '*_with_ci'
 
 jobs:
   run_build:

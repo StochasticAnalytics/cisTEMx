@@ -10,7 +10,7 @@ jobs:
       build_type: "cpu_release"
       configure_options: ""
       global_configure_options: " --disable-FastFFT --enable-openmp --enable-experimental --enable-staticmode --disable-multiple-global-refinements  --disable-multiple-global-refinements --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config"
-      runs_on_os: ubuntu-latest
+      runs_on_os: cpu_2core_runner
       CC: clang
       CXX: clang++
       cppstandard: 17

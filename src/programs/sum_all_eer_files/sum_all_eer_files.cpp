@@ -20,8 +20,8 @@ void SumAllEer::DoInteractiveUserInput( ) {
     int         max_threads;
     std::string output_dark_filename;
     std::string output_gain_filename;
-    int eer_super_res_factor;
-	int eer_frames_per_image;
+    int         eer_super_res_factor;
+    int         eer_frames_per_image;
 
     UserInput* my_input = new UserInput("SumAllEerfiles", 1.0);
 
@@ -34,20 +34,20 @@ void SumAllEer::DoInteractiveUserInput( ) {
         output_gain_filename = my_input->GetFilenameFromUser("Output gain file name", "Filename of output gain image", "gain_image.mrc", false);
     }
 
-    max_threads = my_input->GetIntFromUser("Max number of threads to use", "maximum number of threads to use for processing.", "1", 1);
-    eer_super_res_factor = my_input-> GetIntFromUser("EER super resolution factor", "super resolution factor for pixels.", "1", 1);
+    max_threads          = my_input->GetIntFromUser("Max number of threads to use", "maximum number of threads to use for processing.", "1", 1);
+    eer_super_res_factor = my_input->GetIntFromUser("EER super resolution factor", "super resolution factor for pixels.", "1", 1);
     eer_frames_per_image = my_input->GetIntFromUser("EER frames per image", "frames per image in eer file type", "0", 0);
 
     delete my_input;
 
     my_current_job.Reset(7);
     my_current_job.ManualSetArguments("tbttiii", output_filename.c_str( ),
-    		make_dark_and_gain,
-			output_dark_filename.c_str( ),
-			output_gain_filename.c_str( ),
-			max_threads,
-			eer_super_res_factor,
-			eer_frames_per_image);
+                                      make_dark_and_gain,
+                                      output_dark_filename.c_str( ),
+                                      output_gain_filename.c_str( ),
+                                      max_threads,
+                                      eer_super_res_factor,
+                                      eer_frames_per_image);
 }
 
 // override the do calculation method which will be what is actually run..
@@ -67,8 +67,8 @@ bool SumAllEer::DoCalculation( ) {
     std::string output_dark_filename = my_current_job.arguments[2].ReturnStringArgument( );
     std::string output_gain_filename = my_current_job.arguments[3].ReturnStringArgument( );
     int         max_threads          = my_current_job.arguments[4].ReturnIntegerArgument( );
-    int			eer_super_res_factor = my_current_job.arguments[5].ReturnIntegerArgument( );
-    int 		eer_frames_per_image = my_current_job.arguments[6].ReturnIntegerArgument( );
+    int         eer_super_res_factor = my_current_job.arguments[5].ReturnIntegerArgument( );
+    int         eer_frames_per_image = my_current_job.arguments[6].ReturnIntegerArgument( );
 
     wxArrayString all_files;
     wxDir::GetAllFiles(".", &all_files, "*.eer", wxDIR_FILES);
@@ -92,7 +92,7 @@ bool SumAllEer::DoCalculation( ) {
 
     wxPrintf("\nThere are %li eer files in this directory.\n", all_files.GetCount( ));
 
-    current_input_file = new EerFile();
+    current_input_file = new EerFile( );
     current_input_file->OpenFile(all_files.Item(0).ToStdString( ), false, false, false, eer_super_res_factor, eer_frames_per_image);
 
     file_x_size = current_input_file->ReturnXSize( );
@@ -141,9 +141,9 @@ bool SumAllEer::DoCalculation( ) {
 #pragma omp for
         for ( file_counter = 0; file_counter < all_files.GetCount( ); file_counter++ ) {
             //wxPrintf("Summing file %s...\n", all_files.Item(file_counter));
-        	//wxPrintf("Summing File %ld\n", file_counter);
-        	current_input_file = new EerFile();
-        	current_input_file->OpenFile(all_files.Item(file_counter).ToStdString( ), false, false, false, eer_super_res_factor, eer_frames_per_image);
+            //wxPrintf("Summing File %ld\n", file_counter);
+            current_input_file = new EerFile( );
+            current_input_file->OpenFile(all_files.Item(file_counter).ToStdString( ), false, false, false, eer_super_res_factor, eer_frames_per_image);
 
             for ( frame_counter = 0; frame_counter < current_input_file->ReturnNumberOfSlices( ); frame_counter++ ) {
                 buffer_image.ReadSlice(current_input_file, frame_counter + 1);

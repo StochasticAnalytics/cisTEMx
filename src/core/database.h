@@ -129,7 +129,7 @@ class Database {
 
     bool CreateTable(const char* table_name, const char* column_format, ...);
     bool CreateTable(const char* table_name, const char* column_format, std::vector<wxString> columns);
-    bool DeleteTable(const char* table_name);
+    int  DeleteTable(const char* table_name); // Returns SQLITE_OK (0) on success; return value not used in production
     bool AddColumnToTable(wxString table_name, wxString column_name, wxString column_format, wxString default_value);
     //bool DeleteTable(const char *table_name);
     bool InsertOrReplace(const char* table_name, const char* column_format, ...);

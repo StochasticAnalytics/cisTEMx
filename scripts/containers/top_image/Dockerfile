@@ -26,23 +26,29 @@ ARG build_libtorch="true"
 ARG build_docs="true"
 
 SHELL ["/bin/bash", "-c"]
+
+# We had been setting the UID for cisTEMDev to something other than 1000.
+# To get local venv working it seems like we need to put the venv in cisTEMDev home, but if we 
+# Set UID to be 814 in the container, it doesn't match the default of 1000
+# This is broken then b/c it will only work for a single user system (i.e. that defaults to 1000)
+# Need to fix, but for now, I set the base back to 1000 and until I rebuild overwride here
+# FIXME
+RUN usermod -u 1000 cisTEMdev
+
+
 # some rebuild comment
 ENV CISTEM_REF_IMAGES=/cisTEMdev/cistem_reference_images
+ENV CLAUDE_WORKSPACE_ROOT=/workspaces/cisTEMx
+ENV VIRTUAL_ENV=/home/cisTEMdev/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Python 3.10 is native to Ubuntu 22.04, so we do NOT set up virtual environment at /opt/venv
-# RUN apt-get update && \
-#     apt-get install -y python3.10 python3.10-venv python3.10-dev && \
-#     python3.10 -m venv /opt/venv && \
-#     /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
-#     chmod -R a+rX /opt/venv && \
-#     rm -rf /var/lib/apt/lists/*
 
-# # Default shell uses the venv Python for subsequent RUN steps
-# ENV VIRTUAL_ENV=/opt/venv
-# ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+# Python 3.10 is native to Ubuntu 22.04, set up virtual environment at /home/cisTEMdev/venv
+RUN apt-get update && \
+    apt-get install -y python3.10 python3.10-venv python3.10-dev && \
+    pip3 install gdown && \
+    rm -rf /var/lib/apt/lists/*
 
-# # Verify
-# RUN python --version && pip --version
 
 # Install wxWidgets and Bear
 COPY install_wx_3.1.5.sh install_node_16.sh install_node_22_and_claude.sh requirements.txt install_libtorch.sh install_documentation_tooling.sh install_bear.sh install_llm_optimization_tools.sh /tmp/
@@ -66,13 +72,7 @@ RUN apt update && \
 RUN echo "wxWidgets multi-version/multi-compiler matrix available in /opt/WX/" && \
     if [[ "x${build_wx_version}" == "xdev" ]]; then echo "ERROR: build_wx_version=dev is obsolete and installs system wx packages!" && exit 1; fi
 
-# Install Python packages from requirements.txt
-RUN pip3 install -r /tmp/requirements.txt
 
-# Install Bear for compilation database generation (needed for clang-tidy)
-# Note: shellcheck is already available in base image
-# TODO: Move Bear installation to base container in future update
-RUN /tmp/install_bear.sh
 
 # Get reference images for testing and debugging
 RUN mkdir -p /opt && cd /opt && gdown --fuzzy https://drive.google.com/file/d/1QqeDbv9dUrl6FertvKbDukJ6wjG2PsDi/view?usp=sharing && unzip FastFFT.zip && rm FastFFT.zip
@@ -104,12 +104,34 @@ RUN if [[ "x${build_type}" != "xstatic" ]]; then echo "export LD_RUN_PATH=/opt/l
 # RUN ls /usr/local/cuda/lib64/lib*_static.a | grep -v cufft_static.a | while read a; do rm -rf /usr/local/cuda/lib64/$(basename $a); done && \
 #     rm -rf /usr/local/cuda/lib64/libcufft_static_nocallback.a
 
-RUN echo 'source /opt/venv/bin/activate' >> /home/cisTEMdev/.bashrc
+
 
 RUN if [[ "x${build_docs}" == "xtrue" ]] ; then /tmp/install_documentation_tooling.sh  && /tmp/install_llm_optimization_tools.sh ; fi
 
+#  TODO: move this to the base container. Very nice screen shot tool for layout editing with LLM
+# xdotool x11-utils wmctrl for a script I have to get push notifications on hooks when claude stalls (TODO add notes for others)
+
+RUN apt-get update && apt install -y flameshot xdotool x11-utils wmctrl && rm -rf /var/lib/apt/lists/*
+
+# Install Bear for compilation database generation (needed for clang-tidy)
+# Note: shellcheck is already available in base image
+# TODO: Move Bear installation to base container in future update
+RUN /tmp/install_bear.sh
+
+# sox is for Whisper (local voice trasncription), still testing
+RUN apt-get update && apt-get install -y sox pulseaudio pulseaudio-utils ffmpeg
+
 USER cisTEMdev
 WORKDIR /home/cisTEMdev
+
+RUN python3.10 -m venv ${VIRTUAL_ENV} && \
+    python -m pip install --upgrade pip setuptools wheel && \
+    pip install -r /tmp/requirements.txt
+
+RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /home/cisTEMdev/.bashrc
+
+
+
 
 RUN echo "set filename-display basename" > /home/cisTEMdev/.gdbinit
 RUN echo "build claude" && if [[ "x${build_claude}" == "xtrue" ]] ; then /tmp/install_node_22_and_claude.sh ; fi

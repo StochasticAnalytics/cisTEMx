@@ -4,7 +4,7 @@
     "workspaceFolder": "/workspaces/cisTEMx",
     // NOTE: Container image must match .vscode/CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
     // Update all three when changing container version or repository
-    "image": "ghcr.io/stochasticanalytics/cistem_build_env:v3.0.1",
+    "image": "ghcr.io/stochasticanalytics/cistem_build_env:v3.0.3",
     "initializeCommand": ".devcontainer/check-version.sh",
     "remoteUser": "cisTEMdev",
     "hostRequirements": {
@@ -15,11 +15,20 @@
         // then xdotool get_desktop_for_window <windowID> to get the desktop number
         // then later compare to xdotool get_desktop to see if the window is on the current desktop, if not we can run a hook to push notify if claude is read.
         // FIXME this should just come from name
+        "WORKSPACE_BASENAME": "${localWorkspaceFolderBasename}",
         "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}"
     },
     // To add mounts, enable smudge/clean filters, define variable in bashrc ... export cistem_mounts="source=/path/to/src,target=/path/to/target/in/conainter,type=bind, --mount ..."
     // Leave the following line comment, it is used as a placeholder for the devcontainer-filter.sh script to insert the mounts.
     // mounts
+        "source=/scratch,target=/scratch,type=bind",
+        "source=/sa_shared,target=/sa_shared,type=bind"
+    ],
+    // UID is set to 814 in base container, w/o the next line docker would set to 1000
+    "updateRemoteUserUID": false,
+    // Network configuration: Using host networking for maximum compatibility.
+    // Whisper Assistant server runs on separate whisper-net bridge network with port 4444 exposed to host.
+    // This devcontainer accesses whisper via localhost:4444 through host network.
     "runArgs": [
         "--rm",
         "-it",

@@ -15,12 +15,15 @@
 #
 # Examples:
 #   ./convert_to_apptainer.sh                                    # Use versions from .vscode config
-#   ./convert_to_apptainer.sh --version 3.0.1                    # Specify version explicitly
+#   ./convert_to_apptainer.sh --version 3.0.3                    # Specify version explicitly
 #   ./convert_to_apptainer.sh --source docker://custom/repo:tag  # Specify custom source
 #   ./convert_to_apptainer.sh --output my-container.sif          # Custom output file name
 #########################################################################################################################################################################################
 
 set -e  # Exit on error
+
+# Source shared validation library
+source "$(dirname "$0")/validate_apptainer_args.sh"
 
 usr_path="../../.vscode"
 
@@ -54,7 +57,7 @@ while [[ $# -gt 0 ]]; do
       echo "  ./convert_to_apptainer.sh"
       echo ""
       echo "  # Specify version explicitly"
-      echo "  ./convert_to_apptainer.sh --version 3.0.1"
+      echo "  ./convert_to_apptainer.sh --version 3.0.3"
       echo ""
       echo "  # Use Docker Hub instead of GHCR"
       echo "  ./convert_to_apptainer.sh --registry docker.io"
@@ -69,10 +72,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --version)
       VERSION="$2"
+      validate_version "$VERSION" || exit 1
       shift 2
       ;;
     --source)
       DOCKER_SOURCE="$2"
+      validate_docker_source "$DOCKER_SOURCE" || exit 1
       shift 2
       ;;
     --registry)
@@ -99,23 +104,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Check if apptainer or singularity is installed
-if command -v apptainer &> /dev/null; then
-    CONTAINER_CMD="apptainer"
-elif command -v singularity &> /dev/null; then
-    CONTAINER_CMD="singularity"
-else
-    echo "Error: Neither 'apptainer' nor 'singularity' command found"
-    echo "Please install Apptainer/Singularity to use this script"
-    echo ""
-    echo "Installation instructions:"
-    echo "  Ubuntu/Debian: https://apptainer.org/docs/admin/main/installation.html#install-ubuntu-packages"
-    echo "  RHEL/CentOS: https://apptainer.org/docs/admin/main/installation.html#install-rpm"
-    echo "  From source: https://apptainer.org/docs/admin/main/installation.html#install-from-source"
-    exit 1
+# Validate OUTPUT_FILE if specified
+if [[ -n "$OUTPUT_FILE" ]]; then
+    validate_output_file "$OUTPUT_FILE" || exit 1
 fi
 
-echo "Using container command: $CONTAINER_CMD"
+# Check if apptainer or singularity is installed
+check_container_command || exit 1
 
 # If no custom source specified, build from repository and version
 if [[ -z "$DOCKER_SOURCE" ]]; then
@@ -136,6 +131,11 @@ if [[ -z "$DOCKER_SOURCE" ]]; then
         exit 1
     fi
     REPO_NAME=$(cat "${usr_path}/CONTAINER_REPO_NAME" | tr '[:upper:]' '[:lower:]')
+
+    # Strip registry from REPO_NAME if present (it may already include registry/org/name)
+    # Remove leading ghcr.io/ or docker.io/ if present
+    REPO_NAME="${REPO_NAME#ghcr.io/}"
+    REPO_NAME="${REPO_NAME#docker.io/}"
 
     # Build Docker source URI
     DOCKER_TAG="v${VERSION}"
@@ -176,15 +176,22 @@ echo "Note: This may take several minutes and produce a large file (several GB)"
 echo "The .sif file will contain all layers of the Docker container"
 echo ""
 
+# Check available disk space (warn if less than 10GB)
+check_disk_space 10 || exit 1
+
 # Perform the conversion
 # The 'build' command creates a SIF file from a Docker URI
 echo "Running: $CONTAINER_CMD build $OUTPUT_FILE $DOCKER_SOURCE"
 echo ""
 
+# Disable set -e temporarily to capture build exit code
+set +e
 $CONTAINER_CMD build "$OUTPUT_FILE" "$DOCKER_SOURCE"
+BUILD_EXIT_CODE=$?
+set -e
 
 # Check if successful
-if [[ $? -eq 0 ]]; then
+if [[ $BUILD_EXIT_CODE -eq 0 ]]; then
     echo ""
     echo "==================================================================="
     echo "SUCCESS: Container converted successfully"
@@ -205,8 +212,15 @@ if [[ $? -eq 0 ]]; then
 else
     echo ""
     echo "==================================================================="
-    echo "ERROR: Container conversion failed"
+    echo "ERROR: Container conversion failed (exit code: $BUILD_EXIT_CODE)"
     echo "==================================================================="
-    echo "Please check the error messages above"
+    echo "Please check the error messages above from $CONTAINER_CMD"
+    echo ""
+    echo "Common issues:"
+    echo "  - Docker source not accessible or doesn't exist"
+    echo "  - Network connectivity problems"
+    echo "  - Insufficient disk space for .sif file"
+    echo "  - Invalid Docker URI format"
+    echo ""
     exit 1
 fi

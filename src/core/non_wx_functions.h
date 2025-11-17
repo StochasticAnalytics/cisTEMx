@@ -13,6 +13,7 @@
 #include <complex>
 #include <iostream>
 #include <string>
+#include <type_traits>
 #include "../constants/constants.h"
 #include "../../include/ieee-754-half/half.hpp"
 
@@ -300,10 +301,23 @@ inline bool HalfFloatsAreAlmostTheSame(const half_float::half a, const half_floa
     return (fabs(float(a) - float(b)) < cistem::half_float_epsilon);
 }
 
+// TODO: limit to floating point types with concepts when C++20 is available or make a concepts
+// FIXME: 0.0 is effectively a magic number and while it should work fine, this is not a practice I am trying to propagate.
 template <typename T>
-bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_failed = true, T epsilon = 0.0001) {
+bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_failed = true, T wanted_epsilon = 0.0) {
 
-    bool ret_val;
+    T    epsilon;
+    bool ret_val = false;
+    if ( wanted_epsilon == 0.0 ) {
+        if constexpr ( std::is_same_v<T, float> )
+            epsilon = cistem::float_epsilon;
+        else
+            epsilon = cistem::double_epsilon;
+    }
+    else {
+        epsilon = wanted_epsilon;
+    }
+
     // I'm not sure if this is the best way to guard against very small division
     if ( abs(reference) < epsilon || abs(test_value) < epsilon )
         ret_val = (std::abs((reference - test_value)) < epsilon);
@@ -314,7 +328,7 @@ bool RelativeErrorIsLessThanEpsilon(T reference, T test_value, bool print_if_fai
         std::cerr << "RelativeErrorIsLessThanEpsilon failed: " << reference << " " << test_value << " " << epsilon << " " << std::abs((reference - test_value) / reference) << std::endl;
     }
     return ret_val;
-};
+}
 
 inline float kDa_to_Angstrom3(float kilo_daltons) {
     return kilo_daltons * 1000.0 / 0.81;

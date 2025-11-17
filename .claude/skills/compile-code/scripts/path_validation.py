@@ -1,1 +1,0 @@
-../../../scripts/common/path_validation.py

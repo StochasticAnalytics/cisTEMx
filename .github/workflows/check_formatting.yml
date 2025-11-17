@@ -26,10 +26,33 @@ jobs:
           excludes: "include/**/*,src/gui/wxformbuilder/**/*,src/gui/*ProjectX_gui*"
           style: file
 
-  # Build workflows - only run if formatting check passes
+  # Build workflows - prioritized execution: 2 jobs at a time
+  # Tier 1: Most important builds (GPU debug + GPU release)
   build-gpu-debug:
     needs: check-format
     uses: ./.github/workflows/debug_build.yml
+
+  build-gpu-release:
+    needs: check-format
+    uses: ./.github/workflows/release_build.yml
+
+  # Tier 2: Secondary builds (requires Tier 1 to complete)
+  build-gpu-release-gnu-mkl:
+    needs: [build-gpu-debug, build-gpu-release]
+    uses: ./.github/workflows/release_build_GNU_mkl.yml
+
+  build-gpu-release-no-fastfft:
+    needs: [build-gpu-debug, build-gpu-release]
+    uses: ./.github/workflows/release_build_clang_noFastFFT.yml
+
+  # Tier 3: CPU-only builds (requires Tier 2 to complete)
+  build-cpu-debug:
+    needs: [build-gpu-release-gnu-mkl, build-gpu-release-no-fastfft]
+    uses: ./.github/workflows/debug_build_cpu_only.yml
+
+  build-cpu-release:
+    needs: [build-gpu-release-gnu-mkl, build-gpu-release-no-fastfft]
+    uses: ./.github/workflows/release_build_cpu_only.yml
 
   # GPU tests - uncomment once gpu_runner is configured
   # Also requires:
@@ -41,23 +64,3 @@ jobs:
   #   uses: ./.github/workflows/run_gpu_tests.yml
   #   with:
   #     build_type: GPU_debug
-
-  build-cpu-debug:
-    needs: check-format
-    uses: ./.github/workflows/debug_build_cpu_only.yml
-
-  build-cpu-release:
-    needs: check-format
-    uses: ./.github/workflows/release_build_cpu_only.yml
-
-  build-gpu-release:
-    needs: check-format
-    uses: ./.github/workflows/release_build.yml
-
-  build-gpu-release-gnu-mkl:
-    needs: check-format
-    uses: ./.github/workflows/release_build_GNU_mkl.yml
-
-  build-gpu-release-no-fastfft:
-    needs: check-format
-    uses: ./.github/workflows/release_build_clang_noFastFFT.yml

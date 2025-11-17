@@ -163,6 +163,11 @@ venv.bak/
 
 # mkdocs documentation
 /site
+mkdocs.yml
+
+# Node.js dependencies (JavaScript for docs)
+node_modules/
+package-lock.json
 
 # mypy
 .mypy_cache/
@@ -177,3 +182,9 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Submodule
+core_knowledge_graph/
+CLAUDE.md
+.claude
+.claude/

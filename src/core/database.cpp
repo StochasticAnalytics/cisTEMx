@@ -666,7 +666,7 @@ bool Database::CopyDatabaseFile(wxFileName backup_db) {
     return true;
 }
 
-bool Database::DeleteTable(const char* table_name) {
+int Database::DeleteTable(const char* table_name) {
     wxString sql_command = "DROP TABLE IF EXISTS ";
     sql_command += table_name;
 

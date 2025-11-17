@@ -2,12 +2,9 @@ name: cisTEMx GPU release
 
 on:
   workflow_run:
-    workflows: ["check_cpp_formatting"]
+    workflows: ["Check C++ Formatting"]
     types:
       - completed
-    branches:
-      - main
-      - '*_with_ci'
 
 jobs:
   run_build:

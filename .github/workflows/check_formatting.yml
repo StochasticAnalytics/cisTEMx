@@ -1,4 +1,4 @@
-name: check_cpp_formatting
+name: Check C++ Formatting
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: check_cpp_formatting
+      - name: Check C++ formatting
         uses: RafikFarhad/clang-format-github-action@v3
         with:
           sources: "src/**/*.cpp,src/**/*.h,src/**/*.cc,src/**/*.cxx,src/**/*.hpp,src/**/*.cu,src/**/*.cuh"

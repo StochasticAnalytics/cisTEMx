@@ -28,7 +28,7 @@ fi
 mkdir -p .devcontainer
 cd  .devcontainer
 if [[ ! -L .devcontainer.json ]] ; then
-    ln -s ../.vscode/devcontainer.json .devcontainer.json
+    ln -s ../.vscode/devcontainer.json devcontainer.json
 fi
 cd ..
 

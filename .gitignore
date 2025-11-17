@@ -163,6 +163,7 @@ venv.bak/
 
 # mkdocs documentation
 /site
+mkdocs.yml
 
 # Node.js dependencies (JavaScript for docs)
 node_modules/

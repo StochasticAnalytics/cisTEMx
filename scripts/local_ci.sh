@@ -353,7 +353,7 @@ for config in "${BUILD_CONFIGS[@]}"; do
         fi
 
         docker run --rm \
-            --user root \
+            --user $(id -u):$(id -g) \
             $GPU_ARG \
             -v "$BUILD_DIR/repo:/workspace" \
             -w /workspace \

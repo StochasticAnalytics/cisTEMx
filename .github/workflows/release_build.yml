@@ -15,4 +15,4 @@ jobs:
       CXX: clang++
       cppstandard: 17
       run_tests: 'gpu'
-      n_threads: 4
+      n_threads: 2

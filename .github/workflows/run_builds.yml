@@ -65,6 +65,20 @@ jobs:
     - name: Configure git safe directory
       run: git config --global --add safe.directory /__w/cisTEMx/cisTEMx
 
+    - name: Resource usage baseline
+      run: |
+        echo "=== Disk Usage ==="
+        df -h
+        echo ""
+        echo "=== /tmp filesystem type ==="
+        mount | grep /tmp || echo "/tmp not separately mounted"
+        echo ""
+        echo "=== Memory Usage ==="
+        free -h
+        echo ""
+        echo "=== Workspace disk usage ==="
+        du -sh ${{ github.workspace }} 2>/dev/null || echo "Workspace check skipped"
+
     - name: regenerate_project
       run: ./regenerate_project.sh
     - name: configure
@@ -80,13 +94,49 @@ jobs:
         ../../configure   ${{ inputs.configure_options }}  ${{ inputs.global_configure_options }}
         VERSION=$(cat config.log | grep CISTEM_VERSION_TEXT | cut -d' ' -f3 | tr -d '"')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Resource usage after configure
+      run: |
+        echo "=== Disk Usage ==="
+        df -h
+        echo ""
+        echo "=== Memory Usage ==="
+        free -h
+        echo ""
+        echo "=== Build directory size ==="
+        du -sh build/${{ inputs.build_type }} 2>/dev/null || echo "Build dir check skipped"
+
     - uses: ammaraskar/gcc-problem-matcher@master
     - name: make
+      env:
+        TMPDIR: ${{ github.workspace }}/build/${{ inputs.build_type }}/tmp
       run: |
         export PATH=/usr/bin:$PATH
+        mkdir -p $TMPDIR
         workdir=$(pwd)
         cd build/${{ inputs.build_type }} && make -j ${{ inputs.n_threads }}
         cd $workdir
+
+    - name: Resource usage after make (peak usage)
+      run: |
+        echo "=== Disk Usage ==="
+        df -h
+        echo ""
+        echo "=== /tmp usage (if tmpfs) ==="
+        du -sh /tmp 2>/dev/null || echo "/tmp check skipped"
+        echo ""
+        echo "=== TMPDIR usage ==="
+        du -sh build/${{ inputs.build_type }}/tmp 2>/dev/null || echo "TMPDIR empty or not created"
+        echo ""
+        echo "=== Memory Usage ==="
+        free -h
+        echo ""
+        echo "=== Build directory size ==="
+        du -sh build/${{ inputs.build_type }} 2>/dev/null || echo "Build dir check skipped"
+        echo ""
+        echo "=== Largest subdirectories in build ==="
+        du -h build/${{ inputs.build_type }} 2>/dev/null | sort -rh | head -10 || echo "Size check skipped"
+
     - name: clean up
       run: |
         cd build/${{ inputs.build_type }}
@@ -95,6 +145,21 @@ jobs:
         rm -r src/core
         rm -r src/gui
         rm -r src/programs
+        rm -rf tmp
+
+    - name: Resource usage after cleanup
+      run: |
+        echo "=== Disk Usage ==="
+        df -h
+        echo ""
+        echo "=== Memory Usage ==="
+        free -h
+        echo ""
+        echo "=== Build directory size after cleanup ==="
+        du -sh build/${{ inputs.build_type }} 2>/dev/null || echo "Build dir check skipped"
+        echo ""
+        echo "=== Verify TMPDIR removed ==="
+        ls -la build/${{ inputs.build_type }}/tmp 2>&1 || echo "TMPDIR successfully removed"
 
     # This uploads binaries for the gpu_tests workflow to use
     - name: Upload binary artifact

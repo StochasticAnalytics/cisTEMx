@@ -38,6 +38,9 @@ worktrees/
 
 compile_commands.json
 
+# Local CI logs
+ci_logs/
+
 # Python
 # Byte-compiled / optimized / DLL files
 __pycache__/

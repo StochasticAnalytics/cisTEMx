@@ -1583,6 +1583,20 @@ void AutoRefinementManager::ProcessJobResult(JobResult* result_to_process) {
         //		wxPrintf("Received a refinement result for class #%i, particle %li\n", current_class + 1, current_particle + 1);
         //wxPrintf("output refinement has %i classes and %li particles\n", output_refinement->number_of_classes, output_refinement->number_of_particles);
 
+        /**
+         * @brief Update refinement parameters from auto-refinement worker results
+         *
+         * Updates all refinement parameters from the worker result array during auto-refinement.
+         * Includes angles, shifts, CTF parameters (when enabled), and scores.
+         * Multi-view data is preserved from input_refinement as it doesn't change during refinement.
+         *
+         * @note Similar parameter update code exists in:
+         *  - MyRefine3DPanel.cpp:~1895
+         *  - AbInitio3DPanel.cpp:~2204
+         *  - RefineCTFPanel.cpp:~1394 (CTF-specific)
+         *
+         * @todo Refactor into centralized RefinementResult::UpdateFromWorkerResult() method
+         */
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].position_in_stack                  = long(result_to_process->result_data[1] + 0.5);
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].image_is_active                    = int(result_to_process->result_data[2]);
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].psi                                = result_to_process->result_data[3];
@@ -1607,6 +1621,16 @@ void AutoRefinementManager::ProcessJobResult(JobResult* result_to_process) {
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].image_shift_y                      = result_to_process->result_data[23];
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].amplitude_contrast                 = result_to_process->result_data[24];
         output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].assigned_subset                    = result_to_process->result_data[25];
+
+        // Copy multi-view data from input_refinement (not modified by refinement)
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group =
+                input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].beam_tilt_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group =
+                input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].particle_group;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure =
+                input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].pre_exposure;
+        output_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure =
+                input_refinement->class_refinement_results[current_class].particle_refinement_results[current_particle].total_exposure;
 
         number_of_received_particle_results++;
         //wxPrintf("received result!\n");
@@ -1796,6 +1820,24 @@ void AutoRefinementManager::ProcessAllJobsFinished( ) {
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].image_shift_y                      = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].image_shift_y;
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].amplitude_contrast                 = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].amplitude_contrast;
                     output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].assigned_subset                    = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].assigned_subset;
+
+                    /**
+                     * @brief Copy multi-view data between classes
+                     *
+                     * When copying particle data from class 0 to other classes, preserve the multi-view
+                     * parameters that are particle-specific and don't vary between classes.
+                     *
+                     * @note Similar complete parameter copying exists in:
+                     *  - ResampleDialog.cpp:~207-233
+                     *  - CombineRefinementPackagesWizard.cpp:~334-361, ~371-398
+                     *
+                     * @todo Refactor into centralized RefinementResult::CopyAllFrom() method
+                     */
+                    // Copy multi-view data between classes
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].beam_tilt_group;
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group  = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].particle_group;
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure    = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].pre_exposure;
+                    output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure  = output_refinement->class_refinement_results[0].particle_refinement_results[particle_counter].total_exposure;
                 }
 
                 output_refinement->class_refinement_results[class_counter].average_occupancy = 100.0f / output_refinement->number_of_classes;

@@ -5,6 +5,11 @@
 # This script emulates the GitHub Actions CI pipeline locally using Docker.
 # It runs formatting checks followed by all 6 build configurations with tests.
 #
+# Usage:
+#   ./scripts/local_ci.sh          Run full CI pipeline
+#   ./scripts/local_ci.sh --cleanup Clean up old build directories
+#   ./scripts/local_ci.sh --help    Show this help
+#
 # Features:
 # - Fail-fast behavior (stops on first failure)
 # - Full detailed logs + clean summary log
@@ -15,6 +20,25 @@
 
 set -e  # Exit on any error
 set -o pipefail
+
+# Parse command line arguments
+if [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
+    echo "Local CI Emulation Script for cisTEMx"
+    echo ""
+    echo "Usage:"
+    echo "  $0           Run full CI pipeline"
+    echo "  $0 --cleanup  Clean up old build directories in /tmp/cistemx_ci"
+    echo "  $0 --help     Show this help"
+    echo ""
+    echo "Environment variables:"
+    echo "  GPU_DEVICE    GPU device to use (default: 0, can be 'all' or specific device number)"
+    echo ""
+    echo "Examples:"
+    echo "  GPU_DEVICE=1 $0              # Use GPU 1"
+    echo "  GPU_DEVICE=all $0            # Use all GPUs"
+    echo ""
+    exit 0
+fi
 
 # Color codes for output
 RED='\033[0;31m'
@@ -31,6 +55,10 @@ BUILD_BASE="/tmp/cistemx_ci"
 LOG_DIR="$REPO_ROOT/ci_logs"
 N_THREADS=8
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# GPU configuration (can be overridden via environment variable)
+# Examples: GPU_DEVICE=0 (default), GPU_DEVICE=1, GPU_DEVICE=all
+GPU_DEVICE="${GPU_DEVICE:-0}"
 
 # Create log directory
 mkdir -p "$LOG_DIR"
@@ -65,6 +93,74 @@ log_step() {
     echo "==> $1" >> "$SUMMARY_LOG"
 }
 
+# Safe remove function with sanity checks
+safe_remove() {
+    local target="$1"
+
+    # Sanity checks to prevent accidental deletion of wrong directories
+    if [ -z "$target" ]; then
+        log_error "safe_remove: Empty path provided"
+        return 1
+    fi
+
+    # Must be under /tmp/cistemx_ci or be a temp directory
+    if [[ "$target" != /tmp/cistemx_ci* ]] && [[ "$target" != /tmp/tmp.* ]]; then
+        log_error "safe_remove: Path '$target' is not in allowed cleanup locations"
+        return 1
+    fi
+
+    # Prevent deleting root directories
+    if [ "$target" == "/" ] || [ "$target" == "/tmp" ] || [ "$target" == "/tmp/" ]; then
+        log_error "safe_remove: Refusing to delete root directory '$target'"
+        return 1
+    fi
+
+    # Only remove if it exists
+    if [ -e "$target" ]; then
+        rm -rf "$target"
+        return 0
+    fi
+
+    return 0
+}
+
+# Cleanup function for --cleanup option
+cleanup_old_builds() {
+    echo "Cleaning up old CI build directories..."
+
+    if [ ! -d "$BUILD_BASE" ]; then
+        echo "Nothing to clean - $BUILD_BASE does not exist"
+        exit 0
+    fi
+
+    # Calculate total size before cleanup
+    TOTAL_SIZE=$(du -sh "$BUILD_BASE" 2>/dev/null | cut -f1)
+    echo "Current size of $BUILD_BASE: $TOTAL_SIZE"
+
+    # List what will be removed
+    echo ""
+    echo "Directories to be removed:"
+    find "$BUILD_BASE" -mindepth 1 -maxdepth 1 -type d -exec du -sh {} \; 2>/dev/null || echo "  (none)"
+
+    echo ""
+    read -p "Proceed with cleanup? [y/N] " -n 1 -r
+    echo
+
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        safe_remove "$BUILD_BASE"
+        echo "Cleanup complete!"
+    else
+        echo "Cleanup cancelled"
+    fi
+
+    exit 0
+}
+
+# Handle --cleanup option
+if [ "$1" == "--cleanup" ]; then
+    cleanup_old_builds
+fi
+
 # Check if Docker is available
 if ! command -v docker &> /dev/null; then
     log_error "Docker is not installed or not in PATH"
@@ -88,7 +184,7 @@ FORMAT_DIR="$BUILD_BASE/format_check"
 FORMAT_LOG="$LOG_DIR/format_check_${TIMESTAMP}.log"
 
 # Clean up any previous formatting check
-rm -rf "$FORMAT_DIR"
+safe_remove "$FORMAT_DIR"
 mkdir -p "$FORMAT_DIR"
 
 log_info "Cloning repository to $FORMAT_DIR"
@@ -196,7 +292,7 @@ else
 fi
 
 # Clean up formatting check directory
-rm -rf "$FORMAT_DIR"
+safe_remove "$FORMAT_DIR"
 
 # Step 2: Build all configurations
 log_step "Step 2: Building all configurations"
@@ -227,7 +323,7 @@ for config in "${BUILD_CONFIGS[@]}"; do
     FULL_LOG="$LOG_DIR/${BUILD_TYPE}_full_${TIMESTAMP}.log"
 
     # Clean up any previous build
-    rm -rf "$BUILD_DIR"
+    safe_remove "$BUILD_DIR"
     mkdir -p "$BUILD_DIR"
 
     START_TIME=$(date +%s)
@@ -249,8 +345,16 @@ for config in "${BUILD_CONFIGS[@]}"; do
         log_info "Running build in Docker container"
 
         # Run the full build and test process in Docker
+        # Configure GPU access based on GPU_DEVICE setting
+        if [ "$GPU_DEVICE" == "all" ]; then
+            GPU_ARG="--gpus all"
+        else
+            GPU_ARG="--gpus \"device=$GPU_DEVICE\""
+        fi
+
         docker run --rm \
             --user root \
+            $GPU_ARG \
             -v "$BUILD_DIR/repo:/workspace" \
             -w /workspace \
             -e CC="$CC" \
@@ -315,7 +419,7 @@ for config in "${BUILD_CONFIGS[@]}"; do
     if [ $BUILD_EXIT_CODE -eq 0 ]; then
         log_success "$BUILD_TYPE: Build and tests passed (${DURATION}s)"
         # Clean up successful build
-        rm -rf "$BUILD_DIR"
+        safe_remove "$BUILD_DIR"
     else
         log_error "$BUILD_TYPE: Build or tests failed (${DURATION}s)"
         echo ""

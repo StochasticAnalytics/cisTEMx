@@ -465,6 +465,7 @@ class Image {
     void QuickAndDirtyReadSlices(std::string filename, int first_slice_to_read, int last_slice_to_read);
 
     bool IsConstant(bool compare_to_constant = false, float constant_to_compare = 0.0f);
+    bool IsFinite( );
     bool HasNan( );
     bool HasNegativeRealValue( );
     void SetToConstant(float wanted_value);

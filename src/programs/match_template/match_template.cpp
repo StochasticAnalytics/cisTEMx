@@ -37,9 +37,6 @@ using namespace cistem_timer_noop;
 // FIXME: Probably need to disable resizing, or make sure it is handled
 #define TEST_LOCAL_NORMALIZATION
 
-// Testing a size optimized approach for search
-#define MAX_SEARCH_SIZE 1024
-
 /**
  * @class AggregatedTemplateResult
  * @brief Stores and aggregates template matching results from multiple processing units (e.g., worker threads or nodes).
@@ -146,12 +143,12 @@ class
      * @param N The total number of pixels in the sum/sum_of_sqs arrays (image_real_memory_allocated).
      */
     template <typename StatsType>
-    void CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
-                                    double&     global_ccc_std_dev,
-                                    StatsType*  sum,
-                                    StatsType*  sum_of_sqs,
-                                    const float n_angles_in_search,
-                                    const int   N);
+    void CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
+                                    double&      global_ccc_std_variance,
+                                    StatsType*   sum,
+                                    StatsType*   sum_of_sqs,
+                                    const float  n_angles_in_search,
+                                    const Image& mip_image);
 
     /**
      * @brief Resamples the histogram data based on global CCC mean and standard deviation.
@@ -211,6 +208,7 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
     command_line_parser.AddOption("", "n-expected-false-positives", "average number of false positives per image, (defaults to 1)", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddLongSwitch("ignore-defocus-for-threshold", "assume the defocus planes are not independent locs for threshold calc, (defaults false)");
     command_line_parser.AddLongSwitch("apply-result-rescaling", "Rescale the results their original size, (defaults false)");
+    command_line_parser.AddOption("", "max-search-size", "Maximum search size in pixels (must be > 32 if specified, 0 = no limit)", wxCMD_LINE_VAL_NUMBER);
 
 #ifdef TEST_LOCAL_NORMALIZATION
     command_line_parser.AddOption("", "healpix-file", "Healpix file for the input images", wxCMD_LINE_VAL_STRING);
@@ -429,6 +427,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool   ignore_defocus_for_threshold = false;
     bool   apply_result_rescaling{ };
     double n_expected_false_positives{1.0};
+    long   max_search_size = 0; // 0 means no limit
 
     if ( command_line_parser.FoundSwitch("apply-result-rescaling") ) {
         SendInfo("Applying result rescaling\n");
@@ -456,12 +455,24 @@ bool MatchTemplateApp::DoCalculation( ) {
         SendInfo("Using n expected false positives: " + wxString::Format("%f", temp_double) + "\n");
         n_expected_false_positives = temp_double;
     }
+
+    // Parse max-search-size argument
+    if ( command_line_parser.Found("max-search-size", &temp_long) ) {
+        max_search_size = temp_long;
+        if ( max_search_size > 0 && max_search_size <= 32 ) {
+            SendError("max-search-size must be greater than 32 if specified (provided: " + wxString::Format("%ld", max_search_size) + ")\n");
+            return false;
+        }
+        if ( max_search_size > 0 ) {
+            SendInfo("Using maximum search size: " + wxString::Format("%ld", max_search_size) + " pixels\n");
+        }
+    }
     // This allows an override for the TEST_LOCAL_NORMALIZATION
     bool allow_rotation_for_speed{true};
     // This allows us to not use local normalization while also compiling with this option
     bool  use_local_normalization{false};
     float min_counter_val{std::numeric_limits<float>::max( )}; // This way, if we aren't using it, we short-circute the calculation of the SD every pixel in the OR clause
-    float threshold_val{3.0f};
+    float threshold_val{0.0f}; // no threshold by default
 
 #ifdef TEST_LOCAL_NORMALIZATION
     wxString healpix_file;
@@ -639,18 +650,17 @@ bool MatchTemplateApp::DoCalculation( ) {
     profile_timing.start("PreProcessInputImage");
     TemplateMatchingDataSizer data_sizer(this, input_image, input_reconstruction, input_pixel_size, padding);
 
-#ifdef MAX_SEARCH_SIZE
-
-    if ( input_image.logical_x_dimension > MAX_SEARCH_SIZE || input_image.logical_y_dimension > MAX_SEARCH_SIZE ) {
-        // Work out how much we have to change the high_resolution limit_search to make the image smaller
-        float high_limit_x = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_x_dimension, MAX_SEARCH_SIZE);
-        float high_limit_y = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_y_dimension, MAX_SEARCH_SIZE);
-        wxPrintf("Your input image is %i x %i pixels. To fit within the max search size of %i, the high resolution limit for the search has been changed from %3.2fA to %3.2fA\n",
-                 input_image.logical_x_dimension, input_image.logical_y_dimension, MAX_SEARCH_SIZE, high_resolution_limit_search, std::max(high_limit_x, high_limit_y));
-        high_resolution_limit_search = std::max(high_limit_x, high_limit_y);
+    // Apply max-search-size limit if specified
+    if ( max_search_size > 0 ) {
+        if ( input_image.logical_x_dimension > max_search_size || input_image.logical_y_dimension > max_search_size ) {
+            // Work out how much we have to change the high_resolution limit_search to make the image smaller
+            float high_limit_x = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_x_dimension, max_search_size);
+            float high_limit_y = data_sizer.GetRealizedHighResolutionLimitBasedOnWantedSize(input_pixel_size, input_image.logical_y_dimension, max_search_size);
+            wxPrintf("Your input image is %i x %i pixels. To fit within the max search size of %ld, the high resolution limit for the search has been changed from %3.2fA to %3.2fA\n",
+                     input_image.logical_x_dimension, input_image.logical_y_dimension, max_search_size, high_resolution_limit_search, std::max(high_limit_x, high_limit_y));
+            high_resolution_limit_search = std::max(high_limit_x, high_limit_y);
+        }
     }
-
-#endif
 
     if ( use_local_normalization && data_sizer.IsResamplingNeeded( ) ) {
         SendError("Local normalization is not yet supported with resampling.");
@@ -780,8 +790,10 @@ bool MatchTemplateApp::DoCalculation( ) {
     else
         mask_radius_search = particle_radius_angstroms;
 
+    bool calculated_angular_step = false;
     if ( angular_step <= 0 ) {
-        angular_step = CalculateAngularStep(high_resolution_limit_search, mask_radius_search);
+        calculated_angular_step = true;
+        angular_step            = CalculateAngularStep(high_resolution_limit_search, mask_radius_search);
     }
 
     if ( in_plane_angular_step <= 0 ) {
@@ -791,6 +803,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     else {
         psi_step = in_plane_angular_step;
     }
+
+    if ( calculated_angular_step )
+        wxPrintf("Out-of-plane step (%3.1f) and in-plane step (%3.1f) calculated automatically because the inputs were zero\n");
 
     psi_start = 0.0f;
     psi_max   = 360.0f;
@@ -862,13 +877,16 @@ bool MatchTemplateApp::DoCalculation( ) {
         defocus_step         = 100.0f;
     }
 
+    if ( pixel_size_search_range > 0.f && use_gpu )
+        SendErrorAndCrash("The gpu implementation is not set to work with pixel size search. FIXME: we should just disable this in the GUI options or fix the problem.");
+
     if ( pixel_size_step <= 0.0f ) {
         pixel_size_search_range = 0.0f;
         pixel_size_step         = 0.02f;
     }
 
     float n_defocus_steps = (2.f * myroundint(float(defocus_search_range) / float(defocus_step)) + 1.f);
-    if ( ignore_defocus_for_threshold ) {
+    if ( ignore_defocus_for_threshold && n_defocus_steps > 0 ) {
         fraction_of_search_positions_that_are_independent /= n_defocus_steps;
     }
 
@@ -2282,13 +2300,14 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
  * @param N Total number of elements in sum and sum_of_sqs arrays (image_real_memory_allocated).
  */
 template <typename StatsType>
-void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
-                                                  double&     global_ccc_std_dev,
-                                                  StatsType*  sum,
-                                                  StatsType*  sum_of_sqs,
-                                                  const float n_angles_in_search,
-                                                  const int   N) {
+void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
+                                                  double&      global_ccc_std_variance,
+                                                  StatsType*   sum,
+                                                  StatsType*   sum_of_sqs,
+                                                  const float  n_angles_in_search,
+                                                  const Image& mip_image) {
 
+    const long N = mip_image.real_memory_allocated;
     MyDebugAssertTrue(N > 0, "N must be greater than 0");
 
     double global_sum            = 0.0;
@@ -2296,20 +2315,26 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&     global_ccc_mean,
 
     long counted_values = 0;
     long address        = 0;
-
-    for ( int address = 0; address < N; address++ ) {
-        if ( sum_of_sqs[address] > cistem::float_epsilon ) {
-            global_sum += double(sum[address]);
-            global_sum_of_squares += double(sum_of_sqs[address]);
-            counted_values++;
+    for ( int y = 0; y < mip_image.logical_y_dimension; y++ ) {
+        for ( int x = 0; x < mip_image.logical_x_dimension; x++ ) {
+            if ( sum_of_sqs[address] > cistem::float_epsilon ) {
+                global_sum += double(sum[address]);
+                global_sum_of_squares += double(sum_of_sqs[address]);
+                counted_values++;
+            }
+            address++;
         }
+        address += mip_image.padding_jump_value;
     }
 
     const double total_number_of_ccs = double(n_angles_in_search) * double(counted_values);
     std::cerr << "Counted Values: " << counted_values << " out of " << N << " fractions: " << float(counted_values) / float(N) << std::endl;
 
-    global_ccc_mean    = global_sum / total_number_of_ccs;
-    global_ccc_std_dev = sqrt(global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean));
+    MyDebugAssertTrue(counted_values > 0, "No valid pixels counted - all correlation_pixel_sum_of_squares below epsilon");
+
+    global_ccc_mean = global_sum / total_number_of_ccs;
+
+    global_ccc_std_variance = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
 
     return;
 }
@@ -2392,10 +2417,11 @@ void MatchTemplateApp::RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(Image
                                                                            long*       histogram,
                                                                            const float n_angles_in_search,
                                                                            const bool  disable_flat_fielding) {
+    MyDebugAssertTrue(n_angles_in_search > 0, "n_angles_in_search must be > = zero");
 
     double global_ccc_mean    = 0.0;
     double global_ccc_std_dev = 0.0;
-    CalcGlobalCCCScalingFactor(global_ccc_mean, global_ccc_std_dev, correlation_pixel_sum, correlation_pixel_sum_of_squares, n_angles_in_search, mip_image->real_memory_allocated);
+    CalcGlobalCCCScalingFactor(global_ccc_mean, global_ccc_std_dev, correlation_pixel_sum, correlation_pixel_sum_of_squares, n_angles_in_search, *mip_image);
 
     std::cerr << "Over n_cccs " << n_angles_in_search << " the Global mean and std_dev are " << global_ccc_mean << " and " << global_ccc_std_dev << std::endl;
     // Use the global statistics to resample the histogram from a smoothed curve fit to the measured data.

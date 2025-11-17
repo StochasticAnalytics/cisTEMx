@@ -2,7 +2,7 @@ name: cisTEMx GPU debug
 
 on:
   workflow_run:
-    workflows: ["Check C++ Formatting"]
+    workflows: ["check_cpp_formatting"]
     types:
       - completed
     branches:

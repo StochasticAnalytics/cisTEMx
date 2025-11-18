@@ -342,7 +342,7 @@ create_worktree() {
 
     log_info "DEBUG: git worktree add exit code: ${worktree_exitcode:-0}"
     log_info "DEBUG: git worktree add output:"
-    echo "$worktree_output"
+    echo "$worktree_output" >&2
 
     # Check if worktree directory was actually created
     if [[ -d "$target_dir" ]]; then

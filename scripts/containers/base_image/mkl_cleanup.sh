@@ -56,15 +56,16 @@ rm -rf mkl/latest/examples 2>/dev/null || true
 rm -rf debugger/ 2>/dev/null || true
 rm -rf conda_channel/ 2>/dev/null || true
 
-# Remove licensing and modulefiles
-rm -rf */latest/licensing 2>/dev/null || true
+# Remove modulefiles
 rm -rf */latest/modulefiles 2>/dev/null || true
 
 # Remove documentation
 find . -type d -name 'documentation' -exec rm -rf {} + 2>/dev/null || true
 
 # Clean up compiler directory but keep OpenMP runtime
-find compiler/latest/linux/lib -type f \
+rm -rf compiler/latest/bin/compiler 2>/dev/null || true
+
+find compiler/latest/lib -type f \
      ! -name 'libiomp5*' \
      ! -name 'libgomp*' \
      ! -name 'libtbb*' \

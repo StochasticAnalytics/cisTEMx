@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.3.2-devel-ubuntu22.04
+FROM ubuntu:22.04
 
 # /groups/himesb/.config/Code\ -\ Insiders/User/globalStorage/ms-vscode-remote.remote-containers/cli-bin/code-insiders build --image-name bhimesbhimes/cistem_build_env:latest ./.devcontainer_build
 
@@ -7,10 +7,6 @@ ARG n_threads=16
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=America/New_York
 ARG GCC_VER=11
-
-# Thin out cuda a bit removes ~ 2.8 GB from the container.
-RUN cd /usr/local/cuda/lib64 && rm -f libcuspars* libcusolver* libcublasLt* libnppif* && cd /opt/nvidia rm -rf nsight-compute
-# Once we switch to dynamic linking we can go futher (static cuda libs are about another 670 MB)
 
 
 
@@ -203,10 +199,19 @@ RUN apt-get update && apt-get install -y clang-format-14 clang-14 clang-tidy-14 
 # # This is only needed for dynamic builds. Note the lib is build in the next step.
 # ENV LD_PRELOAD=/opt/intel/libfakeIntel.so
 
+# wxWidgets builds moved to end of Dockerfile (after CUDA) to minimize layer invalidation during development
 
-# CUDA 12.3.2 is provided by the nvidia/cuda:12.3.2-devel-ubuntu22.04 base image
-# No manual installation needed - CUDA toolkit and development tools are pre-installed
-# NOTE: the MINIMUM driver version for CUDA 12.3.2 is >=525.60.13
+
+# Install cuda (when the web is live)
+# NOTE: the MINIMUM driver verions is >=525.60.13
+ARG CUDA_VER=12.3.2
+ARG DRIVER_VER=545.23.08
+
+# Install cuda (when the web is live)
+RUN cd /tmp && wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/cuda_${CUDA_VER}_${DRIVER_VER}_linux.run &&\
+    sh cuda_${CUDA_VER}_${DRIVER_VER}_linux.run --silent --toolkit &&\
+    rm cuda_${CUDA_VER}_${DRIVER_VER}_linux.run &&\
+    cd /usr/local/cuda/lib64 && rm -rf libcuspars* libcusolver* libcublasLt* libnppif* nsight-compute-* nsight-systems-* nsightee_plugins
 
 # Note that for dynamic builds, the base container will be larger than the top layer because we defer removing the static cuda libs until the end
 

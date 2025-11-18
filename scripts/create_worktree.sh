@@ -4,12 +4,41 @@
 
 set -euo pipefail
 
-# Configuration
-if [[ -z "${cistemx_main_repo}" ]]; then
-    echo "cistemx_main_repo not set, using default"
-    exit 1
-else
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Auto-detect repository root
+detect_repo_root() {
+    local detected_root
+
+    # Try to detect using git
+    if detected_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+        # Validate this is actually cisTEMx repo by checking for marker files
+        # We check for core_headers.h and scripts directory as cisTEMx-specific markers
+        if [[ -f "$detected_root/src/core/core_headers.h" ]] && [[ -d "$detected_root/scripts" ]]; then
+            echo "$detected_root"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# Configuration - Auto-detect repo root
+# Try auto-detection first, fall back to environment variable for backward compatibility
+if MAIN_REPO=$(detect_repo_root); then
+    echo -e "${YELLOW}INFO: Auto-detected repository root: $MAIN_REPO${NC}"
+elif [[ -n "${cistemx_main_repo:-}" ]]; then
     MAIN_REPO="$cistemx_main_repo"
+    echo -e "${YELLOW}INFO: Using cistemx_main_repo environment variable: $MAIN_REPO${NC}"
+else
+    echo -e "${RED}ERROR: Could not detect cisTEMx repository root.${NC}" >&2
+    echo -e "${RED}Please run this script from within the cisTEMx repository,${NC}" >&2
+    echo -e "${RED}or set the cistemx_main_repo environment variable.${NC}" >&2
+    exit 1
 fi
 WORKTREE_DIR="$MAIN_REPO/worktrees"
 
@@ -17,12 +46,6 @@ WORKTREE_DIR="$MAIN_REPO/worktrees"
 UNOFFICIAL_SUBMODULES=(
     "git@github.com:StochasticAnalytics/core_knowledge_graph.git:core_knowledge_graph"
 )
-
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
 
 # Track what we've created for cleanup
 CREATED_WORKTREE=""
@@ -67,6 +90,83 @@ fail_with_cleanup() {
 
 # Set up trap for cleanup on any error
 trap 'cleanup_on_failure' ERR
+
+# Validate/Fix helper functions for setup verification
+validate_ckg_exists() {
+    local ckg_path="$MAIN_REPO/core_knowledge_graph"
+    local validation_failed=0
+
+    if [[ ! -d "$ckg_path" ]]; then
+        log_error "core_knowledge_graph directory not found at: $ckg_path"
+        return 1
+    fi
+
+    if [[ ! -d "$ckg_path/.git" ]]; then
+        log_error "core_knowledge_graph exists but is not a git repository"
+        return 1
+    fi
+
+    log_success "core_knowledge_graph exists and is a git repository"
+    return 0
+}
+
+validate_symlinks() {
+    local validation_failed=0
+
+    cd "$MAIN_REPO"
+
+    for item in .claude CLAUDE.md; do
+        local expected_target="core_knowledge_graph/$item"
+
+        if [[ ! -e "$item" ]]; then
+            log_error "$item does not exist (should link to $expected_target)"
+            validation_failed=1
+        elif [[ ! -L "$item" ]]; then
+            log_error "$item exists but is not a symlink (should link to $expected_target)"
+            validation_failed=1
+        else
+            local actual_target=$(readlink "$item")
+            if [[ "$actual_target" != "$expected_target" ]]; then
+                log_error "$item points to '$actual_target' but should point to '$expected_target'"
+                validation_failed=1
+            else
+                log_success "$item -> $actual_target (correct)"
+            fi
+        fi
+    done
+
+    return $validation_failed
+}
+
+fix_symlinks() {
+    cd "$MAIN_REPO"
+
+    log_info "Fixing symlinks..."
+
+    for item in .claude CLAUDE.md; do
+        local target="core_knowledge_graph/$item"
+
+        # Remove existing item if it's not a correct symlink
+        if [[ -e "$item" || -L "$item" ]]; then
+            if [[ -L "$item" ]]; then
+                local current_target=$(readlink "$item")
+                if [[ "$current_target" == "$target" ]]; then
+                    log_info "$item already correctly linked"
+                    continue
+                fi
+            fi
+            log_info "Removing incorrect $item"
+            rm -f "$item"
+        fi
+
+        # Create the symlink
+        log_info "Creating $item -> $target"
+        ln -sf "$target" "$item"
+    done
+
+    log_success "Symlinks fixed"
+    return 0
+}
 
 # Validation functions
 check_main_repo() {
@@ -333,18 +433,96 @@ setup_worktree_symlinks() {
     log_success "Symlinks configured"
 }
 
-# Main script
-main() {
-    if [[ $# -ne 1 ]]; then
-        log_error "Usage: $0 branch_name"
-        log_error "Example: $0 my_new_feature"
-        exit 1
+# Mode functions
+show_usage() {
+    cat << EOF
+Usage: $0 <mode> [arguments]
+
+Modes:
+  validate              Check cisTEMx setup (repo root, core_knowledge_graph, symlinks)
+  fix                   Validate and automatically fix any issues
+  worktree <branch> [base]   Create a new worktree
+                        - branch: Name for the new branch (snake_case)
+                        - base: Optional base branch (defaults to main)
+
+Examples:
+  $0 validate
+  $0 fix
+  $0 worktree my_feature
+  $0 worktree my_feature main
+
+For worktree mode, the script will:
+  1. Validate the current setup
+  2. Create a new git worktree with the specified branch name
+  3. Clone core_knowledge_graph into the worktree
+  4. Set up symlinks for .claude and CLAUDE.md
+EOF
+}
+
+mode_validate() {
+    echo "========================================"
+    echo "cisTEMx Setup Validation"
+    echo "========================================"
+    echo ""
+
+    local validation_passed=0
+
+    # Check core_knowledge_graph
+    if ! validate_ckg_exists; then
+        validation_passed=1
     fi
 
+    # Check symlinks
+    if ! validate_symlinks; then
+        validation_passed=1
+    fi
+
+    echo ""
+    if [[ $validation_passed -eq 0 ]]; then
+        log_success "All validation checks passed"
+        return 0
+    else
+        log_error "Some validation checks failed"
+        echo ""
+        echo "Run '$0 fix' to automatically fix these issues"
+        return 1
+    fi
+}
+
+mode_fix() {
+    echo "========================================"
+    echo "cisTEMx Setup Fix"
+    echo "========================================"
+    echo ""
+
+    # Check core_knowledge_graph (cannot auto-fix if missing)
+    if ! validate_ckg_exists; then
+        echo ""
+        log_error "core_knowledge_graph is missing or not a git repository"
+        log_error "This must be fixed manually. Please clone core_knowledge_graph:"
+        echo ""
+        echo "  git clone git@github.com:StochasticAnalytics/core_knowledge_graph.git $MAIN_REPO/core_knowledge_graph"
+        echo ""
+        return 1
+    fi
+
+    # Fix symlinks
+    if ! fix_symlinks; then
+        log_error "Failed to fix symlinks"
+        return 1
+    fi
+
+    echo ""
+    log_success "Setup fixed successfully"
+    return 0
+}
+
+mode_worktree() {
     local branch_name="$1"
+    local base_branch="${2:-}"
 
     echo "========================================"
-    echo "cisTEMx Worktree Creation Script"
+    echo "cisTEMx Worktree Creation"
     echo "========================================"
     echo ""
 
@@ -356,18 +534,25 @@ main() {
     check_branch_not_exists "$branch_name"
     check_dir_not_exists "$branch_name"
 
-    # Get the current branch of the main repo
+    # Determine the base branch
     cd "$MAIN_REPO"
-    local main_branch=$(git branch --show-current)
-
-    if [[ -z "$main_branch" ]]; then
-        fail_with_cleanup "Main repository is in detached HEAD state. Please checkout a branch first."
+    if [[ -n "$base_branch" ]]; then
+        # Verify the specified base branch exists
+        if ! git show-ref --verify --quiet "refs/heads/$base_branch"; then
+            fail_with_cleanup "Specified base branch does not exist: $base_branch"
+        fi
+        log_info "Using specified base branch: $base_branch"
+    else
+        # Default to main
+        base_branch="main"
+        if ! git show-ref --verify --quiet "refs/heads/$base_branch"; then
+            fail_with_cleanup "Default base branch 'main' does not exist. Please specify a base branch."
+        fi
+        log_info "Using default base branch: $base_branch"
     fi
 
-    log_info "Main repository is on branch: $main_branch"
-
     # Check sub-repository state (core_knowledge_graph)
-    check_subrepo_state "core_knowledge_graph" "$main_branch"
+    check_subrepo_state "core_knowledge_graph" "$base_branch"
 
     echo ""
     log_info "All validations passed. Creating worktree..."
@@ -378,7 +563,7 @@ main() {
     worktree_path=$(create_worktree "$branch_name")
 
     # Checkout unofficial submodules with branch synchronization
-    checkout_unofficial_submodules "$worktree_path" "$main_branch" "$branch_name"
+    checkout_unofficial_submodules "$worktree_path" "$base_branch" "$branch_name"
 
     # Setup symlinks in the new worktree
     setup_worktree_symlinks "$worktree_path"
@@ -393,7 +578,7 @@ main() {
     echo ""
     echo "Worktree location: $worktree_path"
     echo "Branch (main repo): $branch_name"
-    echo "Branch (sub-repos): $branch_name (based on $main_branch)"
+    echo "Branch (sub-repos): $branch_name (based on $base_branch)"
     echo ""
     echo "To start working:"
     echo "  cd $worktree_path"
@@ -402,6 +587,45 @@ main() {
     echo "  git worktree remove $worktree_path"
     echo "  git branch -d $branch_name  # if you want to delete the branch too"
     echo ""
+}
+
+# Main script
+main() {
+    if [[ $# -lt 1 ]]; then
+        show_usage
+        exit 1
+    fi
+
+    local mode="$1"
+    shift
+
+    case "$mode" in
+        validate)
+            mode_validate
+            ;;
+        fix)
+            mode_fix
+            ;;
+        worktree)
+            if [[ $# -lt 1 ]]; then
+                log_error "worktree mode requires a branch name"
+                echo ""
+                show_usage
+                exit 1
+            fi
+            mode_worktree "$@"
+            ;;
+        -h|--help|help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            log_error "Unknown mode: $mode"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
 }
 
 main "$@"

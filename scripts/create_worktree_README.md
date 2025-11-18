@@ -2,53 +2,123 @@
 
 ## Overview
 
-This script automates the creation of git worktrees for cisTEMx development, handling the complexities of:
+This script provides three modes for managing cisTEMx development environment:
+1. **validate** - Verify repository setup (core_knowledge_graph, symlinks)
+2. **fix** - Automatically repair common setup issues
+3. **worktree** - Create git worktrees with proper submodule synchronization
+
+Features:
+- Auto-detection of repository root (no environment variables required)
 - Symlink management for `.claude` and `CLAUDE.md`
 - Unofficial submodule checkout (e.g., `core_knowledge_graph`)
 - Proper validation and error handling with automatic cleanup
+- Optional base branch specification for worktrees
 
 ## Requirements
 
-- Must be run from `/sa_shared/git/cisTEMx`
-- Git working tree must be clean (no uncommitted changes)
-- `/sa_shared/git/cisTEMx/worktrees` directory must exist and be writable
+- Run from anywhere within the cisTEMx repository (auto-detects root)
+- For worktree mode: Git working tree must be clean (no uncommitted changes)
+- For worktree mode: `worktrees/` directory must exist and be writable
 - SSH access to unofficial submodule repositories
 
 ## Usage
 
 ```bash
-./create_worktree.sh branch_name
+./create_worktree.sh <mode> [arguments]
 ```
 
-Where `branch_name` must be in snake_case format (lowercase, underscores, starting with a letter).
+### Modes
 
-### Example
+#### validate mode
+Check cisTEMx setup without making changes:
 
 ```bash
-cd /sa_shared/git/cisTEMx
-./create_worktree.sh my_new_feature
+./create_worktree.sh validate
 ```
 
-This creates:
+Validates:
+- Repository root detection
+- core_knowledge_graph exists and is a git repository
+- .claude and CLAUDE.md symlinks point to correct targets
+
+#### fix mode
+Validate and automatically fix issues:
+
+```bash
+./create_worktree.sh fix
+```
+
+Fixes:
+- Broken or missing .claude and CLAUDE.md symlinks
+- Reports if core_knowledge_graph is missing (requires manual clone)
+
+#### worktree mode
+Create a new worktree with branch synchronization:
+
+```bash
+./create_worktree.sh worktree <branch_name> [base_branch]
+```
+
+Arguments:
+- `branch_name` - Name for new branch (must be snake_case)
+- `base_branch` - Optional base branch (defaults to main)
+
+### Examples
+
+```bash
+# Validate current setup
+./create_worktree.sh validate
+
+# Fix symlink issues
+./create_worktree.sh fix
+
+# Create worktree from current branch
+./create_worktree.sh worktree my_new_feature
+
+# Create worktree from specific base branch
+./create_worktree.sh worktree my_feature main
+
+# Show help
+./create_worktree.sh --help
+```
+
+### Worktree Mode Creates:
 - New branch: `my_new_feature`
-- New worktree at: `/sa_shared/git/cisTEMx/worktrees/my_new_feature`
+- New worktree at: `<repo_root>/worktrees/my_new_feature`
 - Cloned submodules in the worktree
 - Proper symlinks for `.claude` and `CLAUDE.md`
 
 ## What It Does
 
-### 1. Validation Phase
-- Confirms current directory is `/sa_shared/git/cisTEMx`
+### Auto-Detection Phase
+- Uses `git rev-parse --show-toplevel` to find repository root
+- Validates this is cisTEMx by checking for marker files (`src/core/core_headers.h`, `scripts/`)
+- Falls back to `cistemx_main_repo` environment variable if needed (backward compatibility)
+- Works from any subdirectory within the repository
+
+### validate Mode
+1. Checks core_knowledge_graph directory exists and is a git repository
+2. Verifies .claude and CLAUDE.md symlinks point to correct targets
+3. Reports status without making changes
+
+### fix Mode
+1. Runs validation checks
+2. Automatically fixes broken or missing symlinks
+3. Reports if core_knowledge_graph needs manual cloning
+
+### worktree Mode
+
+#### 1. Validation Phase
 - Checks git state is clean
 - Validates branch name format (snake_case)
 - Verifies worktrees directory exists and is writable
 - Ensures branch name doesn't already exist
 - Ensures target directory doesn't already exist
-- Verifies main repository is not in detached HEAD state
+- Verifies base branch exists (defaults to main, or uses specified base branch)
 - Checks `core_knowledge_graph` sub-repository is clean (no uncommitted changes)
-- Verifies `core_knowledge_graph` is on the same branch as the main repository
+- Verifies `core_knowledge_graph` is on the same branch as the base branch
 
-### 2. Worktree Creation
+#### 2. Worktree Creation
 - Temporarily unlinks `.claude` and `CLAUDE.md` in main repo (if they exist as symlinks)
 - Creates new git worktree with `git worktree add -b branch_name worktrees/branch_name`
 - Restores symlinks in main repo
@@ -87,6 +157,15 @@ git branch -d branch_name  # or -D to force
 
 ## Configuration
 
+### Repository Auto-Detection
+
+The script automatically detects the cisTEMx repository root, so no environment variables are required. It:
+1. Uses `git rev-parse --show-toplevel` to find the git root
+2. Validates cisTEMx-specific marker files exist
+3. Falls back to `cistemx_main_repo` environment variable if set (for backward compatibility)
+
+This means you can run the script from any directory within cisTEMx.
+
 ### Adding New Unofficial Submodules
 
 Edit the `UNOFFICIAL_SUBMODULES` array at the top of the script:
@@ -99,12 +178,6 @@ UNOFFICIAL_SUBMODULES=(
 ```
 
 Format: `"ssh_url:target_directory"`
-
-### Changing Paths
-
-Edit these variables at the top of the script:
-- `MAIN_REPO`: Path to main repository
-- `WORKTREE_DIR`: Path to worktrees directory
 
 ## Symlink Behavior
 

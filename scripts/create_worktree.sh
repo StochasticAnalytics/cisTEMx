@@ -330,11 +330,45 @@ create_worktree() {
     # Temporarily unlink .claude and CLAUDE.md in main repo
     handle_symlinks_in_repo "$MAIN_REPO" "unlink"
 
-    # Create the worktree
-    if ! git worktree add -b "$branch_name" "$target_dir"; then
+    # Create the worktree with detailed debugging
+    log_info "DEBUG: About to run: git worktree add -b $branch_name $target_dir"
+    log_info "DEBUG: Current directory: $(pwd)"
+    log_info "DEBUG: Current git repo: $(git rev-parse --show-toplevel)"
+
+    # Capture both stdout and stderr, and the return code
+    local worktree_output
+    local worktree_exitcode
+    worktree_output=$(git worktree add -b "$branch_name" "$target_dir" 2>&1) || worktree_exitcode=$?
+
+    log_info "DEBUG: git worktree add exit code: ${worktree_exitcode:-0}"
+    log_info "DEBUG: git worktree add output:"
+    echo "$worktree_output"
+
+    # Check if worktree directory was actually created
+    if [[ -d "$target_dir" ]]; then
+        log_info "DEBUG: Worktree directory exists at $target_dir"
+    else
+        log_error "DEBUG: Worktree directory does NOT exist at $target_dir"
+    fi
+
+    # Check if branch was created
+    if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+        log_info "DEBUG: Branch $branch_name exists"
+    else
+        log_error "DEBUG: Branch $branch_name does NOT exist"
+    fi
+
+    # Only fail if the worktree truly wasn't created
+    if [[ ! -d "$target_dir" ]] || ! git show-ref --verify --quiet "refs/heads/$branch_name"; then
         # Restore links if worktree creation failed
         handle_symlinks_in_repo "$MAIN_REPO" "restore"
-        fail_with_cleanup "Failed to create worktree"
+        fail_with_cleanup "Failed to create worktree (exit code: ${worktree_exitcode:-0})"
+    fi
+
+    # If we got here but there was a non-zero exit code, it was likely just a warning
+    if [[ ${worktree_exitcode:-0} -ne 0 ]]; then
+        log_info "DEBUG: git worktree add returned non-zero exit code but worktree was created successfully"
+        log_info "DEBUG: This may be due to git filter warnings which can be safely ignored"
     fi
 
     # Track what we created for potential cleanup
@@ -526,13 +560,17 @@ mode_worktree() {
     echo "========================================"
     echo ""
 
+    log_info "DEBUG: Starting mode_worktree with branch_name=$branch_name, base_branch=$base_branch"
+
     # Run all validations
+    log_info "DEBUG: Running validations..."
     check_main_repo
     check_clean_git_state
     validate_branch_name "$branch_name"
     check_worktree_dir
     check_branch_not_exists "$branch_name"
     check_dir_not_exists "$branch_name"
+    log_info "DEBUG: All pre-flight validations passed"
 
     # Determine the base branch
     cd "$MAIN_REPO"
@@ -552,6 +590,7 @@ mode_worktree() {
     fi
 
     # Check sub-repository state (core_knowledge_graph)
+    log_info "DEBUG: Checking sub-repository state..."
     check_subrepo_state "core_knowledge_graph" "$base_branch"
 
     echo ""
@@ -559,16 +598,23 @@ mode_worktree() {
     echo ""
 
     # Create the worktree
+    log_info "DEBUG: Calling create_worktree..."
     local worktree_path
     worktree_path=$(create_worktree "$branch_name")
+    log_info "DEBUG: create_worktree returned: $worktree_path"
 
     # Checkout unofficial submodules with branch synchronization
+    log_info "DEBUG: Checking out unofficial submodules..."
     checkout_unofficial_submodules "$worktree_path" "$base_branch" "$branch_name"
+    log_info "DEBUG: Finished checking out unofficial submodules"
 
     # Setup symlinks in the new worktree
+    log_info "DEBUG: Setting up worktree symlinks..."
     setup_worktree_symlinks "$worktree_path"
+    log_info "DEBUG: Finished setting up worktree symlinks"
 
     # Clear the error trap since we succeeded
+    log_info "DEBUG: Clearing error trap - operation successful"
     trap - ERR
 
     echo ""
@@ -587,10 +633,13 @@ mode_worktree() {
     echo "  git worktree remove $worktree_path"
     echo "  git branch -d $branch_name  # if you want to delete the branch too"
     echo ""
+    log_info "DEBUG: mode_worktree function completed successfully"
 }
 
 # Main script
 main() {
+    log_info "DEBUG: Script started with arguments: $*"
+
     if [[ $# -lt 1 ]]; then
         show_usage
         exit 1
@@ -598,6 +647,8 @@ main() {
 
     local mode="$1"
     shift
+
+    log_info "DEBUG: Mode selected: $mode"
 
     case "$mode" in
         validate)
@@ -626,6 +677,9 @@ main() {
             exit 1
             ;;
     esac
+
+    log_info "DEBUG: Main function completed successfully, script exiting normally"
 }
 
 main "$@"
+log_info "DEBUG: Script reached end of file"

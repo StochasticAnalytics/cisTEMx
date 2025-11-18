@@ -57,11 +57,11 @@ log_error() {
 }
 
 log_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
+    echo -e "${GREEN}SUCCESS: $1${NC}" >&2
 }
 
 log_info() {
-    echo -e "${YELLOW}INFO: $1${NC}"
+    echo -e "${YELLOW}INFO: $1${NC}" >&2
 }
 
 cleanup_on_failure() {

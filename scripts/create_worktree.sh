@@ -10,6 +10,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+CLONE_DEPTH="24"
+
 # Auto-detect repository root
 detect_repo_root() {
     local detected_root
@@ -400,9 +402,8 @@ checkout_unofficial_submodules() {
             log_info "$subdir already exists, skipping"
             continue
         fi
-
         # Clone from the matching branch
-        if ! git clone --branch "$source_branch" "$repo_url" "$subdir"; then
+        if ! git clone --depth ${CLONE_DEPTH} --branch "$source_branch" "$repo_url" "$subdir"; then
             log_error "Failed to clone $repo_url (branch: $source_branch) into $subdir"
             continue
         fi

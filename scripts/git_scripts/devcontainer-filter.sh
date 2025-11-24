@@ -11,6 +11,7 @@ if [ -f ${HOME}/.bashrc ] ; then
     fi
 fi
 
+
 # Usage: 
 # For smudge: .git/filters/devcontainer-filter.sh smudge
 # For clean:  .git/filters/devcontainer-filter.sh clean
@@ -47,9 +48,10 @@ if [ "$MODE" = "smudge" ]; then
     fi
     
     # Smudge: Replace // mount with actual mounts
-
+    in_ mounts=false
     while IFS= read -r line; do
         if check_begin_mounts "$line"; then
+            in_mounts=true
             # Start of mounts array was empyty mounts : [] set to open the bracket
             echo "    ${begin_tag}"
             echo "    \"mounts\": ["
@@ -64,9 +66,15 @@ if [ "$MODE" = "smudge" ]; then
                 fi
             done
             echo "    ],"
-            echo "    ${end_tag}"
         else
-            continue
+            if [ $in_mounts == true ] ; then
+                if check_end_mounts "$line"; then
+                    echo "    ${end_tag}"
+                fi
+                in_mounts=false
+                # Skip all lines in mounts block
+                continue
+            fi
             echo "$line"
         fi
     done

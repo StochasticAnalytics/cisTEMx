@@ -393,9 +393,10 @@ checkout_unofficial_submodules() {
 
     log_info "Checking out unofficial submodules..."
 
+    # FIXME we should ensure it is ssh probably, this colon thing is weak
     for submodule_entry in "${UNOFFICIAL_SUBMODULES[@]}"; do
-        IFS=':' read -r repo_url subdir <<< "$submodule_entry"
-
+        IFS=':' read -r git_addr repo_url subdir <<< "$submodule_entry"
+        repo_url="${git_addr}:${repo_url}"
         log_info "Cloning $subdir from $repo_url (branch: $source_branch)..."
 
         if [[ -d "$subdir" ]]; then

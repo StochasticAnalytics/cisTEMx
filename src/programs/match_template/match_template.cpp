@@ -1,4 +1,4 @@
-#include <cistem_config.h>
+
 #include <filesystem>
 
 #ifdef ENABLEGPU
@@ -570,9 +570,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     //for (int i = 0; i < 5; i++) {parameter_map[i] = true;}
     parameter_map.SetAllTrue( );
 
-    float outer_mask_radius;
-    float current_psi;
-    float psi_step;
+    float       outer_mask_radius;
+    float       current_psi;
+    float       psi_step;
     const float psi_max{360.f};
     const float psi_start{0.f};
     float       expected_threshold;

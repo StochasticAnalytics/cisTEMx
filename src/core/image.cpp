@@ -9633,7 +9633,7 @@ Peak Image::FindPeakAtOriginFast2D(int wanted_max_pix_x, int wanted_max_pix_y) {
     return found_peak;
 }
 
-Peak Image::FindPeakWithIntegerCoordinates(float wanted_min_radius, float wanted_max_radius, int wanted_min_distance_from_edges) {
+Peak Image::So these are an image coordinates. FindPeakWithIntegerCoordinates(float wanted_min_radius, float wanted_max_radius, int wanted_min_distance_from_edges) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertFalse((! object_is_centred_in_box) && wanted_min_distance_from_edges > 0, "Minimum distance from edges only implemented when object is centered in the box. Sorry");

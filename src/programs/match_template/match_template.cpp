@@ -674,6 +674,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     data_sizer.PrintImageSizes( );
 
     // Apply padding to the reconstruction if specified
+    // FIXME: remove this
     if ( padding != 1.0f ) {
         input_reconstruction.Resize(input_reconstruction.logical_x_dimension * padding, input_reconstruction.logical_y_dimension * padding, input_reconstruction.logical_z_dimension * padding, input_reconstruction.ReturnAverageOfRealValuesOnEdges( ));
     }
@@ -2007,6 +2008,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         // if we used a resampled search and have elected to skip resampling the results images, this border region is already removed.
         // this should be true for any binning > 1
+        // FIXME: if this is clipped and not masked then the correspondence to the original image will be incorrect as we are storing offsets from the origin not the center
+        //        it seems this is not happening, the template padding is not considered in the valid roi
         if ( input_binning_factor > 1.0f ) {
             exclusion_radius = 0;
         }

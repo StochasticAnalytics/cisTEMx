@@ -151,8 +151,6 @@ void TemplateMatchingCore::Init(MyApp*                    parent_pointer,
     d_statistical_buffers_ptrs.push_back(&d_padded_reference);
     d_statistical_buffers_ptrs.push_back(&d_sum1);
     d_statistical_buffers_ptrs.push_back(&d_sumSq1);
-    d_statistical_buffers_ptrs.push_back(&d_sum2);
-    d_statistical_buffers_ptrs.push_back(&d_sumSq2);
     int n_2d_buffers = 0;
     for ( auto& buffer : d_statistical_buffers_ptrs ) {
         buffer->Allocate(d_input_image->dims.x, d_input_image->dims.y, 1, true);
@@ -356,9 +354,7 @@ void TemplateMatchingCore::ClearL2AccessPolicy( ) {
  */
 void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
                                         int         threadIDX,
-                                        long&       current_correlation_position,
-                                        const float min_counter_val,
-                                        const float threshold_val) {
+                                        long&       current_correlation_position) {
     total_number_of_cccs_calculated = 0;
 
     bool this_is_the_first_run_on_inner_loop = my_dist ? false : true;
@@ -366,8 +362,6 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
     if ( this_is_the_first_run_on_inner_loop ) {
         d_padded_reference.CopyFP32toFP16buffer(false);
         my_dist = std::make_unique<TM_EmpiricalDistribution<__half, __half2>>(d_input_image.get( ), pre_padding, roi);
-        my_dist->SetTrimmingAlgoMinCounterVal(min_counter_val);
-        my_dist->SetTrimmingAlgoThresholdVal(threshold_val);
     }
     else {
         my_dist->ZeroHistogram( );
@@ -666,10 +660,6 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
     // We've queued up all the work for the current stack, so record the event that will be used to block the host until the stack is ready
     my_dist->RecordTmEmpricalDist_Event( );
     my_dist->MakeHostWaitOnTmEmpricalDist_Stream( );
-
-    // FIXME: we can get rid of these sum images since we are using Kahan summation now
-    d_sum2.AddImage(d_sum1);
-    d_sumSq2.AddImage(d_sumSq1);
 
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaFreeAsync(secondary_peaks, cudaStreamPerThread));

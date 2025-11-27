@@ -123,27 +123,7 @@ class TM_EmpiricalDistribution {
     cudaEvent_t  mip_stack_is_ready_event_[1];
     cudaEvent_t  ccf_dbl_buffer_ready_event_[2]; ///< Signals CCF writes complete for each double buffer
 
-    // For the testing of trimmed local variance
-    float min_counter_val_{10.f};
-    float threshold_val_{3.0f};
-
   public:
-    /**
-     * @brief Sets the minimum counter value for the trimming algorithm.
-     * @param min_counter_val The minimum counter value.
-     */
-    void SetTrimmingAlgoMinCounterVal(float min_counter_val) {
-        min_counter_val_ = min_counter_val;
-    }
-
-    /**
-     * @brief Sets the threshold value for the trimming algorithm.
-     * @param threshold_val The threshold value.
-     */
-    void SetTrimmingAlgoThresholdVal(float threshold_val) {
-        threshold_val_ = threshold_val;
-    }
-
     /**
      * @brief Construct a new TM_EmpiricalDistribution object.
      *

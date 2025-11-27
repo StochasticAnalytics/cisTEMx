@@ -55,15 +55,37 @@ inline __device__ __host__ bool test_gt_zero(T value) {
 }
 
 /**
+ * @brief Determines optimal batch size based on image memory footprint.
+ *
+ * Larger images require smaller batches to fit in GPU memory, while smaller
+ * images can be processed more efficiently in larger batches.
+ *
+ * @param real_memory_allocated The allocated memory size (includes +2 FFTW padding in X dimension)
+ * @return Optimal number of images to process per batch
+ */
+inline int DetermineBatchSizeFromImageMemory(int real_memory_allocated) {
+    // Thresholds account for FFTW padding (+2 in X dimension)
+    constexpr int threshold_4k = 4098 * 4096; // ~16.8M elements
+    constexpr int threshold_2k = 2050 * 2048; // ~4.2M elements
+    constexpr int threshold_1k = 1026 * 1024; // ~1.05M elements
+
+    if ( real_memory_allocated > threshold_4k )
+        return 10;
+    else if ( real_memory_allocated > threshold_2k )
+        return 20;
+    else if ( real_memory_allocated > threshold_1k )
+        return 40;
+    else
+        return 60;
+}
+
+/**
  * @brief Construct a new TM_EmpiricalDistribution
  * Note: both histogram_min and histogram step must be > 0 or no histogram will be created
  * Note: the number of histogram bins is fixed by TM::histogram_number_of_points
- * 
+ *
  * @param reference_image - used to determine the size of the input images and set gpu launch configurations
- * @param histogram_min - the minimum value of the histogram
- * @param histogram_step - the step size of the histogram
- * @param n_imgs_to_process_at_once_ - the number of images to accumulate concurrently
- * 
+ *
  */
 
 template <typename ccfType, typename mipType>
@@ -72,7 +94,8 @@ TM_EmpiricalDistribution<ccfType, mipType>::TM_EmpiricalDistribution(GpuImage* r
                                                                      int2      roi) : pre_padding_{pre_padding},
                                                                                  roi_{roi},
                                                                                  higher_order_moments_{false},
-                                                                                 image_plane_mem_allocated_{reference_image->real_memory_allocated} {
+                                                                                 image_plane_mem_allocated_{reference_image->real_memory_allocated},
+                                                                                 n_imgs_to_process_at_once_{DetermineBatchSizeFromImageMemory(reference_image->real_memory_allocated)} {
 
     // Design Note: This constructor initializes all necessary GPU resources.
     // - A dedicated CUDA stream (`calc_stream_`) is created for all operations within this class instance.
@@ -667,9 +690,9 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution( ) {
                 sum_counter,
                 mip_psi,
                 theta_phi,
-                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
-                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
-                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx( )],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx( )],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx( )],
                 min_counter_val_,
                 threshold_val_);
         postcheck(calc_stream_[0]);
@@ -691,9 +714,9 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution( ) {
                 sum_counter,
                 mip_psi,
                 theta_phi,
-                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
-                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
-                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx( )],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx( )],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx( )],
                 min_counter_val_,
                 threshold_val_);
         postcheck(calc_stream_[0]);

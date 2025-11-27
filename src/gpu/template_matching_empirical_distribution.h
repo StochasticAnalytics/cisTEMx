@@ -41,16 +41,6 @@
  * like the cpu version of EmpiricalDistribution or per pixel across many images.
  */
 
-/** @brief Number of images to process in a single batch on the GPU. */
-constexpr int n_imgs_to_process_at_once_ = 40;
-
-/** @brief Index offset for psi angle data within batched angle arrays. */
-constexpr int psi_idx = 0;
-/** @brief Index offset for theta angle data within batched angle arrays. */
-constexpr int theta_idx = 1 * n_imgs_to_process_at_once_;
-/** @brief Index offset for phi angle data within batched angle arrays. */
-constexpr int phi_idx = 2 * n_imgs_to_process_at_once_;
-
 /** @brief Data type used for storing histogram bins. */
 using histogram_storage_t = float;
 
@@ -95,6 +85,10 @@ class TM_EmpiricalDistribution {
 
     const int image_plane_mem_allocated_;
 
+    /** @brief Number of images to process in a single batch on the GPU.
+     *  Automatically sized based on image dimensions to balance memory usage. */
+    const int n_imgs_to_process_at_once_;
+
     float*   sum_array;
     float*   sum_sq_array;
     float*   sum_counter;
@@ -127,7 +121,7 @@ class TM_EmpiricalDistribution {
 
     cudaStream_t calc_stream_[1];
     cudaEvent_t  mip_stack_is_ready_event_[1];
-    cudaEvent_t  ccf_dbl_buffer_ready_event_[2];  ///< Signals CCF writes complete for each double buffer
+    cudaEvent_t  ccf_dbl_buffer_ready_event_[2]; ///< Signals CCF writes complete for each double buffer
 
     // For the testing of trimmed local variance
     float min_counter_val_{10.f};
@@ -215,7 +209,16 @@ class TM_EmpiricalDistribution {
      * @brief Gets the number of images processed at once in a batch.
      * @return The batch size.
      */
-    inline int n_imgs_to_process_at_once( ) { return n_imgs_to_process_at_once_; }
+    inline int n_imgs_to_process_at_once( ) const { return n_imgs_to_process_at_once_; }
+
+    /** @brief Index offset for psi angle data within batched angle arrays. */
+    inline int psi_idx( ) const { return 0; }
+
+    /** @brief Index offset for theta angle data within batched angle arrays. */
+    inline int theta_idx( ) const { return n_imgs_to_process_at_once_; }
+
+    /** @brief Index offset for phi angle data within batched angle arrays. */
+    inline int phi_idx( ) const { return 2 * n_imgs_to_process_at_once_; }
 
     /**
      * @brief Gets a device pointer to the CCF array for the current slice in the active buffer.
@@ -332,14 +335,14 @@ class TM_EmpiricalDistribution {
         // This buffer is then copied asynchronously to the device.
         // The `mip_dbl_buffer_idx_` ensures writing to the correct buffer in the double-buffering scheme.
         if constexpr ( std::is_same_v<ccfType, __half> ) {
-            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + psi_idx]   = __float2half_rn(current_psi);
-            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + theta_idx] = __float2half_rn(current_theta);
-            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + phi_idx]   = __float2half_rn(current_phi);
+            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + psi_idx( )]   = __float2half_rn(current_psi);
+            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + theta_idx( )] = __float2half_rn(current_theta);
+            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + phi_idx( )]   = __float2half_rn(current_phi);
         }
         else {
-            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + psi_idx]   = __float2bfloat16_rn(current_psi);
-            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + theta_idx] = __float2bfloat16_rn(current_theta);
-            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + phi_idx]   = __float2bfloat16_rn(current_phi);
+            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + psi_idx( )]   = __float2bfloat16_rn(current_psi);
+            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + theta_idx( )] = __float2bfloat16_rn(current_theta);
+            host_angle_arrays_.at(mip_dbl_buffer_idx_)[current_mip_to_process + phi_idx( )]   = __float2bfloat16_rn(current_phi);
         }
         IncrementCurrentMip_idx( );
     }

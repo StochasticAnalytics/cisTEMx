@@ -101,7 +101,7 @@ class TM_EmpiricalDistribution {
     std::array<int, 2> mip_active_slice_{ };
 
     std::array<ccfType*, 2> host_angle_arrays_;
-    std::array<ccfType*, 2> device_host_angle_arrays_;
+    std::array<ccfType*, 2> device_angle_arrays_;
 
     std::array<ccfType*, 2> ccf_array_;
 
@@ -316,9 +316,9 @@ class TM_EmpiricalDistribution {
     // This would probably be better if all the arrays were contiguous in memory so we only have one api call per round FIXME
     inline void UpdateDeviceAngleArrays( ) {
         // Asynchronously copies the entire batch of angle data (psi, theta, phi for all images in the batch)
-        // from the host-pinned memory (`host_angle_arrays_`) to the corresponding device memory (`device_host_angle_arrays_`).
+        // from the host-pinned memory (`host_angle_arrays_`) to the corresponding device memory (`device_angle_arrays_`).
         // This operation is enqueued in `calc_stream_[0]`.
-        cudaErr(cudaMemcpyAsync(device_host_angle_arrays_.at(mip_dbl_buffer_idx_), host_angle_arrays_.at(mip_dbl_buffer_idx_), n_imgs_to_process_at_once_ * sizeof(ccfType) * 3, cudaMemcpyHostToDevice, calc_stream_[0]));
+        cudaErr(cudaMemcpyAsync(device_angle_arrays_.at(mip_dbl_buffer_idx_), host_angle_arrays_.at(mip_dbl_buffer_idx_), n_imgs_to_process_at_once_ * sizeof(ccfType) * 3, cudaMemcpyHostToDevice, calc_stream_[0]));
     }
 
     /**

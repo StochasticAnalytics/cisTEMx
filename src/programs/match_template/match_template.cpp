@@ -573,11 +573,10 @@ bool MatchTemplateApp::DoCalculation( ) {
     float outer_mask_radius;
     float current_psi;
     float psi_step;
-    float psi_max;
-    float psi_start;
-
-    float expected_threshold;
-    float actual_number_of_angles_searched{0.f};
+    const float psi_max{360.f};
+    const float psi_start{0.f};
+    float       expected_threshold;
+    float       actual_number_of_angles_searched{0.f};
 
     long* histogram_data;
 
@@ -797,6 +796,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     }
 
     if ( in_plane_angular_step <= 0 ) {
+        SendErrorAndCrash("In-plane angular step cannot be zero or negative");
         psi_step = rad_2_deg(data_sizer.GetSearchPixelSize( ) / mask_radius_search);
         psi_step = 360.0 / int(360.0 / psi_step + 0.5);
     }
@@ -807,8 +807,6 @@ bool MatchTemplateApp::DoCalculation( ) {
     if ( calculated_angular_step )
         wxPrintf("Out-of-plane step (%3.1f) and in-plane step (%3.1f) calculated automatically because the inputs were zero\n");
 
-    psi_start = 0.0f;
-    psi_max   = 360.0f;
     if ( use_local_normalization ) {
 #ifdef TEST_LOCAL_NORMALIZATION
 
@@ -829,6 +827,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     else {
         // search grid
         // Note: resolution limit is only used in euler search in particle extraction and whitening. It does not affect template matching.
+        // Note: psi angles are not impacked without using ::Run
         global_euler_search.InitGrid(my_symmetry, angular_step, 0.0f, 0.0f, psi_max, psi_step, psi_start, data_sizer.GetSearchPixelSize( ) / high_resolution_limit_search, parameter_map, best_parameters_to_keep);
 
         // TODO 2x check me - w/o this O symm at least is broken
@@ -917,19 +916,14 @@ bool MatchTemplateApp::DoCalculation( ) {
     // These vars are only needed in the GPU code, but also need to be set out here to compile.
     std::vector<bool> first_gpu_loop(max_threads, true);
 
-    int nThreads = 2;
-    int nGPUs    = 1;
-    int nJobs    = last_search_position - first_search_position + 1; // Number of primary Euler angles
+    int nGPUs = 1;
+    int nJobs = last_search_position - first_search_position + 1; // Number of primary Euler angles
     if ( use_gpu && max_threads > nJobs ) {
         SendInfo(wxString::Format("\n\tWarning, you request more threads (%d) than there are search positions (%d)\n", max_threads, nJobs));
         max_threads = nJobs; // Cap threads to number of jobs if over-requested
     }
 
-    int minPos = first_search_position;
-    int maxPos = last_search_position;
     int incPos = (nJobs) / (max_threads); // Increment for distributing jobs to threads
-
-    //    wxPrintf("First last and inc %d, %d, %d\n", minPos, maxPos, incPos);
 
 #ifdef ENABLEGPU
     profile_timing.start("Init GPU");
@@ -999,7 +993,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         GPU = new TemplateMatchingCore[max_threads];
         gpuDev.Init(nGPUs, this);
         profile_timing.lap("Init GPU");
-        //    wxPrintf("Host: %s is running\nnThreads: %d\nnGPUs: %d\n:nSearchPos %d \n",hostNameBuffer,nThreads, nGPUs, maxPos);
 
         //    TemplateMatchingCore GPU(number_of_jobs_per_image_in_gui);
 #endif
@@ -1055,7 +1048,7 @@ bool MatchTemplateApp::DoCalculation( ) {
             data_sizer.whitening_filter_ptr->MakeThreadSafeForNThreads(max_threads);
             size_t L2_window_size;
             // note that we need the firstprivate so the shared ptr is intialized the first time it is encountered
-#pragma omp parallel num_threads(max_threads) default(none) shared(L2_window_size, first_gpu_loop, GPU, first_search_position, incPos, maxPos, max_threads,                                      \
+#pragma omp parallel num_threads(max_threads) default(none) shared(L2_window_size, first_gpu_loop, GPU, first_search_position, last_search_position, incPos, max_threads,                        \
                                                                    d_input_image, angles, my_progress, template_reconstruction, use_fast_fft, projection_filter,                                 \
                                                                    min_counter_val, profile_timing, current_projection, psi_start, psi_step, psi_max,                                            \
                                                                    global_euler_search, number_of_search_positions, number_of_search_positions_per_thread, use_gpu_prj,                          \
@@ -1078,7 +1071,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                     int t_first_search_position = first_search_position + (tIDX * incPos);
                     int t_last_search_position  = first_search_position + (incPos - 1) + (tIDX * incPos);
                     if ( tIDX == (max_threads - 1) ) // Last thread takes any remaining positions
-                        t_last_search_position = maxPos;
+                        t_last_search_position = last_search_position;
                     profile_timing.start("Init GPU");
                     // Initialize the TemplateMatchingCore instance for this thread
                     GPU[tIDX].Init(this,

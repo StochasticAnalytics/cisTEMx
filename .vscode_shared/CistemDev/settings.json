@@ -103,7 +103,8 @@
         "stream_ref": "cpp",
         "core": "cpp",
         "__verbose_abort": "cpp",
-        "barrier": "cpp"
+        "barrier": "cpp",
+        "__threading_support": "cpp"
     },
     "C_Cpp.clang_format_path": "/usr/bin/clang-format-14",
     "editor.formatOnSave": true,

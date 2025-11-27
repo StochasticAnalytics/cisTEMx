@@ -762,6 +762,12 @@ CPPFLAGS="$CPPFLAGS -I$CISTEM_CONFIG_DIR"
 WX_CPPFLAGS="$WX_CPPFLAGS -I$CISTEM_CONFIG_DIR"
 WX_CPPFLAGS_BASE="$WX_CPPFLAGS_BASE -I$CISTEM_CONFIG_DIR"
 
+# Force inclusion of cistem_config.h in all compilation units
+# This ensures configuration defines from configure.ac are available everywhere
+# Supported by GCC, Clang, and Intel icpc compilers
+CXXFLAGS="$CXXFLAGS -include $CISTEM_CONFIG_DIR/cistem_config.h"
+CPPFLAGS="$CPPFLAGS -include $CISTEM_CONFIG_DIR/cistem_config.h"
+
 # Make sure the host compiler gets all flags when called from nvcc
 CUDA_TO_CPP="`echo $CPPFLAGS $WX_CPPFLAGS | sed -e 's/\s\+/,/g' | awk '{print "-Xcompiler " $0}'`"
 CUDA_TO_CXX="`echo $CXXFLAGS $WX_CXXFLAGS | sed -e 's/\s\+/,/g' | awk '{print "-Xcompiler " $0}'`"

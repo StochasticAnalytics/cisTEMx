@@ -127,6 +127,7 @@ class TM_EmpiricalDistribution {
 
     cudaStream_t calc_stream_[1];
     cudaEvent_t  mip_stack_is_ready_event_[1];
+    cudaEvent_t  ccf_dbl_buffer_ready_event_[2];  ///< Signals CCF writes complete for each double buffer
 
     // For the testing of trimmed local variance
     float min_counter_val_{10.f};
@@ -288,6 +289,31 @@ class TM_EmpiricalDistribution {
     MakeHostWaitOnTmEmpricalDist_Stream( ) {
         // Blocks the calling host thread until the mip_stack_is_ready_event_[0] has been recorded.
         cudaErr(cudaEventSynchronize(mip_stack_is_ready_event_[0]));
+    }
+
+    /**
+     * @brief Records an event signaling that CCF writes to the current double buffer are complete.
+     *
+     * This should be called after the final FFT of a batch writes to the CCF buffer.
+     * The event is recorded on the stream where CCF writes occur (typically cudaStreamPerThread).
+     * AccumulateDistribution will wait on this event before the kernel reads the CCF data.
+     *
+     * @param ccf_write_stream The CUDA stream on which CCF data was written (e.g., cudaStreamPerThread).
+     */
+    inline void
+    RecordCCFBufferReadyEvent(cudaStream_t ccf_write_stream) {
+        cudaErr(cudaEventRecord(ccf_dbl_buffer_ready_event_[mip_dbl_buffer_idx_], ccf_write_stream));
+    }
+
+    /**
+     * @brief Makes calc_stream_ wait for CCF buffer writes to complete before kernel reads.
+     *
+     * Called internally at the start of AccumulateDistribution to ensure the kernel
+     * does not read CCF data before it has been fully written by the FFT operations.
+     */
+    inline void
+    WaitOnCCFBufferReady( ) {
+        cudaErr(cudaStreamWaitEvent(calc_stream_[0], ccf_dbl_buffer_ready_event_[mip_dbl_buffer_idx_], cudaEventWaitDefault));
     }
 
     /**

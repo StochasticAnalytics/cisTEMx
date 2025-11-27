@@ -542,11 +542,6 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
                 // projection_queue.gpu_projection_stream[current_projection_idx] before doing work
                 projection_queue.StreamPerThreadWaitOnGpuProjection(current_projection_idx);
 
-                // Host can be signaled that this projection slot is now free for another CPU projection
-                // to be copied into, as the GPU data has been processed up to normalization and cast to fp16.
-                // The actual FFT (FwdImageInvFFT) will use the fp16 buffer.
-                projection_queue.RecordProjectionReadyBlockingHost_Event(current_projection_idx, projection_queue.gpu_projection_stream[current_projection_idx]);
-
                 // Core CCF calculation (FFT, complex multiply, IFFT) enqueued on cudaStreamPerThread.
                 // Input: d_current_projection[idx].real_values_fp16 (from normalization)
                 //        d_input_image->complex_values_fp16 (pre-loaded shared input)
@@ -557,6 +552,13 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
                                   noop,
                                   conj_mul_then_scale,
                                   noop);
+
+                // CRITICAL: Mark projection slot as free AFTER the FFT completes reading from it.
+                // The event must be recorded on cudaStreamPerThread (where the FFT runs), not on
+                // gpu_projection_stream (where normalization ran). Recording on the wrong stream
+                // caused a race condition where slots were reused while FFT was still reading,
+                // resulting in PSI angle errors at 30-degree multiples (20 slots × 1.5° step).
+                projection_queue.RecordProjectionReadyBlockingHost_Event(current_projection_idx, cudaStreamPerThread);
 
 #endif // cisTEM_USING_FastFFT
             }
@@ -589,6 +591,9 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
                 // --- Process a Batch of CCFs ---
                 // If we fill up the alternate buffer before we have finished processing the current buffer we need to make the host wait.
                 my_dist->MakeHostWaitOnTmEmpricalDist_Stream( );
+
+                // Signal that all CCF writes for this batch are complete on cudaStreamPerThread
+                my_dist->RecordCCFBufferReadyEvent(cudaStreamPerThread);
 
                 total_mip_processed += my_dist->GetCurrentMip_idx( );
                 // current_mip_to_process only matters after the main loop, the TM empirical dist will also update the mip_dbl_buffer_idx_ before returning from Accumulate distribution
@@ -639,6 +644,9 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
     my_dist->MakeHostWaitOnTmEmpricalDist_Stream( );
     // Now see if there is any partial work we need to do
     if ( my_dist->GetCurrentMip_idx( ) > 0 ) {
+
+        // Signal that all CCF writes for this partial batch are complete on cudaStreamPerThread
+        my_dist->RecordCCFBufferReadyEvent(cudaStreamPerThread);
 
         // On the first loop this will not do anything, so we can change the active_idx, and move forward to calculate the alternate stack of ccfs while the mip works on this one
         total_mip_processed += my_dist->GetCurrentMip_idx( );

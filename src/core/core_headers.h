@@ -33,7 +33,7 @@ typedef struct CurvePoint {
 } CurvePoint;
 
 // All the defines set in configure.ac
-#include <cistem_config.h>
+
 #ifndef _LARGE_FILE_SOURCE
 #define _LARGE_FILE_SOURCE
 #endif

@@ -91,6 +91,10 @@ TM_EmpiricalDistribution<ccfType, mipType>::TM_EmpiricalDistribution(GpuImage* r
     cudaErr(cudaDeviceGetStreamPriorityRange(&least_priority, &highest_priority));
     cudaErr(cudaStreamCreateWithPriority(&calc_stream_[0], cudaStreamNonBlocking, least_priority));
     cudaErr(cudaEventCreateWithFlags(&mip_stack_is_ready_event_[0], cudaEventBlockingSync | cudaEventDisableTiming)); // blocking sync makes the host wait if calling cudaEventSynchronize
+    // Events for synchronizing CCF buffer writes (on cudaStreamPerThread) with kernel reads (on calc_stream_)
+    for ( int i = 0; i < 2; i++ ) {
+        cudaErr(cudaEventCreateWithFlags(&ccf_dbl_buffer_ready_event_[i], cudaEventDisableTiming));
+    }
 
     image_dims_.x = reference_image->dims.x;
     image_dims_.y = reference_image->dims.y;
@@ -220,8 +224,11 @@ void TM_EmpiricalDistribution<ccfType, mipType>::Delete( ) {
     // Explicitly synchronize stream before destroying resources
     cudaErr(cudaStreamSynchronize(calc_stream_[0]));
 
-    // Destroy event first, then stream
+    // Destroy events first, then stream
     cudaErr(cudaEventDestroy(mip_stack_is_ready_event_[0]));
+    for ( int i = 0; i < 2; i++ ) {
+        cudaErr(cudaEventDestroy(ccf_dbl_buffer_ready_event_[i]));
+    }
     cudaErr(cudaStreamDestroy(calc_stream_[0]));
 
     object_initialized_ = false;
@@ -639,6 +646,9 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution( ) {
 
     // Copy the host angle arrays to the device (async in calc_stream_[0])
     UpdateDeviceAngleArrays( );
+
+    // Ensure CCF writes on cudaStreamPerThread complete before kernel reads them on calc_stream_
+    WaitOnCCFBufferReady( );
 
     if ( threshold_val_ > 0.f ) {
         precheck;

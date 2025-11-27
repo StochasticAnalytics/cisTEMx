@@ -44,6 +44,7 @@ noinst_HEADERS = core/stopwatch.h \
                  core/template_matches_package.h \
                  core/refinement.h \
                  core/database.h \
+                 core/database_schema.h \
                  core/project.h \
                  core/socket_communication_utils/job_packager.h \
                  core/job_tracker.h \

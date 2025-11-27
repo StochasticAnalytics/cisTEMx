@@ -125,7 +125,7 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AllocateAndZeroStatisticalArray
     cudaErr(cudaMallocAsync(&theta_phi, image_plane_mem_allocated_ * sizeof(mipType), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&psi, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&theta, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
-    cudaErr(cudaMallocAsync(&phi, image_plane_mem_allocated_ * sizeof(decltype(phi)), calc_stream_[0]));
+    cudaErr(cudaMallocAsync(&phi, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&ccf_array_.at(0), image_plane_mem_allocated_ * n_imgs_to_process_at_once_ * sizeof(ccfType), calc_stream_[0]));
     cudaErr(cudaMallocAsync(&ccf_array_.at(1), image_plane_mem_allocated_ * n_imgs_to_process_at_once_ * sizeof(ccfType), calc_stream_[0]));
 
@@ -147,8 +147,8 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AllocateAndZeroStatisticalArray
         host_angle_arrays_.at(i) = new ccfType[n_imgs_to_process_at_once_ * 3];
         std::memset(host_angle_arrays_.at(i), 0, n_imgs_to_process_at_once_ * 3 * sizeof(ccfType));
 
-        cudaErr(cudaMallocAsync(&device_host_angle_arrays_.at(i), n_imgs_to_process_at_once_ * 3 * sizeof(ccfType), calc_stream_[0]));
-        cudaErr(cudaMemcpyAsync(device_host_angle_arrays_.at(i), host_angle_arrays_.at(i), n_imgs_to_process_at_once_ * 3 * sizeof(ccfType), cudaMemcpyHostToDevice, calc_stream_[0]));
+        cudaErr(cudaMallocAsync(&device_angle_arrays_.at(i), n_imgs_to_process_at_once_ * 3 * sizeof(ccfType), calc_stream_[0]));
+        cudaErr(cudaMemcpyAsync(device_angle_arrays_.at(i), host_angle_arrays_.at(i), n_imgs_to_process_at_once_ * 3 * sizeof(ccfType), cudaMemcpyHostToDevice, calc_stream_[0]));
     }
 
     // TODO: higher_order_moments_
@@ -197,7 +197,7 @@ void TM_EmpiricalDistribution<ccfType, mipType>::Delete( ) {
 
     for ( int i = 0; i < 2; i++ ) {
         delete[] host_angle_arrays_.at(i);
-        cudaErr(cudaFreeAsync(device_host_angle_arrays_.at(i), calc_stream_[0]));
+        cudaErr(cudaFreeAsync(device_angle_arrays_.at(i), calc_stream_[0]));
     }
 
     // Check if stream has pending work (diagnostic)
@@ -425,7 +425,6 @@ inline __device__ void write_mip_and_stats(float*      sum_array,
             }
         }
     }
-
     return;
 }
 
@@ -613,7 +612,7 @@ FinalAccumulateKernel(histogram_storage_t* input_ptr, const int n_bins, const in
  * - Asynchronously copies the current batch's angle data from host-pinned memory to device memory
  *   using `UpdateDeviceAngleArrays()`, which enqueues the copy on `calc_stream_[0]`.
  * - Launches `AccumulateDistributionKernel` on `calc_stream_[0]`. This kernel reads from
- *   `ccf_array_.at(mip_dbl_buffer_idx_)` and `device_host_angle_arrays_.at(mip_dbl_buffer_idx_)`.
+ *   `ccf_array_.at(mip_dbl_buffer_idx_)` and `device_angle_arrays_.at(mip_dbl_buffer_idx_)`.
  * - After launching the kernel, it calls `ToggleActiveDoubleBufferIdx()` to switch the `mip_dbl_buffer_idx_`.
  *   This allows the host to start filling the *next* `ccf_array_` buffer and `host_angle_arrays_`
  *   while the current batch is being processed on the GPU, achieving H2D-D2D overlap.
@@ -647,9 +646,9 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution( ) {
                 sum_counter,
                 mip_psi,
                 theta_phi,
-                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
-                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
-                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
                 min_counter_val_,
                 threshold_val_);
         postcheck(calc_stream_[0]);
@@ -671,9 +670,9 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AccumulateDistribution( ) {
                 sum_counter,
                 mip_psi,
                 theta_phi,
-                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
-                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
-                (ccfType*)&device_host_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[psi_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[theta_idx],
+                (ccfType*)&device_angle_arrays_.at(mip_dbl_buffer_idx_)[phi_idx],
                 min_counter_val_,
                 threshold_val_);
         postcheck(calc_stream_[0]);
@@ -843,6 +842,7 @@ void TM_EmpiricalDistribution<ccfType, mipType>::CopySumAndSumSqAndZero(GpuImage
  * @note The use of `cudaStreamPerThread` in the calling function `MipToImage` has similar
  *       concerns as in `CopySumAndSumSqAndZero` regarding synchronization with `calc_stream_`.
  */
+// FIXME: this would break with float or bfloat16 mipType, need to static assert or something
 template <typename mipType>
 __global__ void MipToImageKernel(const mipType* __restrict__ mip_psi,
                                  const mipType* __restrict__ theta_phi,

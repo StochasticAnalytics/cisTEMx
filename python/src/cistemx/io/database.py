@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Template Matching Analysis Module
 
@@ -46,31 +45,18 @@ Supporting tables for image metadata and grouping. See database_schema.h for det
 Usage Example
 =============
 
-    import template_match_analysis as tma
+    from cistemx.io.database import TemplateMatchAnalyzer
 
-    # Create analyzer for job ID 1
-    analyzer = tma.TemplateMatchAnalyzer(
-        db_path='/path/to/project.db',
-        job_id=1
-    )
+    # Create analyzer for database
+    analyzer = TemplateMatchAnalyzer(db_path='/path/to/project.db')
 
     # Get basic counts
-    num_images = analyzer.get_completed_results_count()
+    num_images = analyzer.get_result_count(job_id=1)
     print(f"Analyzed {num_images} images")
 
-    # Get comprehensive statistics
-    stats = analyzer.get_peak_statistics()
-    print(f"Total peaks: {stats['total_peaks']}")
-    print(f"Mean SNR: {stats['global_stats']['mean_score']:.3f}")
-
-    # Find which image groups match these results
-    groups = analyzer.find_matching_groups()
-    for group in groups['exact_matches']:
-        print(f"Exact match: {group['group_name']}")
-
-    # Access cached DataFrames directly for custom analysis
-    peaks_df = analyzer.all_peaks
-    high_snr_peaks = peaks_df[peaks_df['PEAK_HEIGHT'] > 5.0]
+    # Load peaks for analysis
+    peaks = analyzer.load_all_peaks_for_jobs([1, 2, 3])
+    high_snr_peaks = peaks[peaks['PEAK_HEIGHT'] > 5.0]
 
 Dependencies
 ============
@@ -81,9 +67,11 @@ Dependencies
 """
 
 import sqlite3
+import os
+from typing import Dict, Set, List, Tuple
+
 import pandas as pd
 import numpy as np
-from typing import Dict, Set, List, Tuple
 
 
 class TemplateMatchAnalyzer:
@@ -107,8 +95,6 @@ class TemplateMatchAnalyzer:
             FileNotFoundError: If database file doesn't exist
             sqlite3.Error: If file exists but is not a valid SQLite database
         """
-        import os
-
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"Database file not found: {db_path}")
 
@@ -510,7 +496,9 @@ class TemplateMatchAnalyzer:
             - IMAGE_ASSET_ID: Which image this result is for
             - TEMPLATE_MATCH_ID: Unique ID for this result (links to peak table)
             - MIP_OUTPUT_FILE: Maximum intensity projection (raw scores)
-            - SCALED_MIP_OUTPUT_FILE: Normalized/scaled MIP
+            - SCALED_MIP_OUTPUT_FILE: Normalized/scaled MIP = (MIP - AVG) / STD
+            - AVG_OUTPUT_FILE: Per-pixel average across all correlations
+            - STD_OUTPUT_FILE: Per-pixel standard deviation
             - PSI_OUTPUT_FILE: Best in-plane rotation angle per pixel
             - THETA_OUTPUT_FILE: Best out-of-plane tilt per pixel
             - PHI_OUTPUT_FILE: Best azimuthal angle per pixel
@@ -528,6 +516,8 @@ class TemplateMatchAnalyzer:
             'TEMPLATE_MATCH_ID',
             'MIP_OUTPUT_FILE',
             'SCALED_MIP_OUTPUT_FILE',
+            'AVG_OUTPUT_FILE',
+            'STD_OUTPUT_FILE',
             'PSI_OUTPUT_FILE',
             'THETA_OUTPUT_FILE',
             'PHI_OUTPUT_FILE',
@@ -663,7 +653,7 @@ class TemplateMatchAnalyzer:
 
         Filtering applied before analysis:
         - Removes lowest 3 peaks per image
-        - Removes outliers beyond ±2.5 SD from per-image mean
+        - Removes outliers beyond +/-2.5 SD from per-image mean
 
         Args:
             peaks_df: DataFrame with peaks (must include USED_DEFOCUS1, USED_DEFOCUS2,
@@ -693,8 +683,6 @@ class TemplateMatchAnalyzer:
             import matplotlib.pyplot as plt
         except ImportError:
             raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
-
-        import os
 
         # Validate required columns
         required_cols = ['IMAGE_ASSET_ID', 'PEAK_HEIGHT', 'USED_DEFOCUS1',

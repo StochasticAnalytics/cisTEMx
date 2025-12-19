@@ -26,7 +26,7 @@ import os
 import numpy as np
 import pandas as pd
 import mrcfile
-import template_match_analysis as tma
+from cistemx.io import database as tma
 
 try:
     import matplotlib.pyplot as plt
@@ -348,7 +348,8 @@ def compare_searches(analyzer: tma.TemplateMatchAnalyzer,
                      angle_tolerance: float = 15.0,
                      debug: bool = False,
                      exclude_edge_search: int = None,
-                     template_size_pixels: int = None) -> pd.DataFrame:
+                     template_size_pixels: int = None,
+                     min_peaks: int = 3) -> tuple[pd.DataFrame, dict]:
     """
     Compare peaks from search1 against search2 output images.
 
@@ -395,9 +396,39 @@ def compare_searches(analyzer: tma.TemplateMatchAnalyzer,
     threshold1 = float(peaks1['USED_THRESHOLD'].iloc[0]) if len(peaks1) > 0 else 0.0
     threshold2 = float(peaks2['USED_THRESHOLD'].iloc[0]) if len(peaks2) > 0 else 0.0
 
-    print(f"Search1 (job {job_id1}): {len(peaks1)} peaks across {peaks1['IMAGE_ASSET_ID'].nunique()} images")
-    print(f"Search2 (job {job_id2}): {len(peaks2)} peaks across {peaks2['IMAGE_ASSET_ID'].nunique()} images")
+    images_with_s1_peaks = set(peaks1['IMAGE_ASSET_ID'].unique())
+    images_with_s2_peaks = set(peaks2['IMAGE_ASSET_ID'].unique())
+    images_s1_only = images_with_s1_peaks - images_with_s2_peaks
+    images_s2_only = images_with_s2_peaks - images_with_s1_peaks
+
+    print(f"Search1 (job {job_id1}): {len(peaks1)} peaks across {len(images_with_s1_peaks)} images")
+    print(f"Search2 (job {job_id2}): {len(peaks2)} peaks across {len(images_with_s2_peaks)} images")
     print(f"Thresholds: search1={threshold1:.2f}, search2={threshold2:.2f}")
+
+    if images_s1_only:
+        print(f"  Note: {len(images_s1_only)} image(s) have search1 peaks but NO search2 peaks: {sorted(images_s1_only)}")
+    if images_s2_only:
+        print(f"  Note: {len(images_s2_only)} image(s) have search2 peaks but NO search1 peaks: {sorted(images_s2_only)}")
+
+    # Filter to images with minimum peaks in BOTH searches
+    if min_peaks > 0:
+        s1_counts = peaks1.groupby('IMAGE_ASSET_ID').size()
+        s2_counts = peaks2.groupby('IMAGE_ASSET_ID').size()
+
+        # Images meeting minimum in both searches
+        valid_images = set(s1_counts[s1_counts >= min_peaks].index) & \
+                       set(s2_counts[s2_counts >= min_peaks].index)
+
+        excluded_count = len(overlap) - len(valid_images)
+        if excluded_count > 0:
+            print(f"  Filtering: excluded {excluded_count} image(s) with <{min_peaks} peaks in either search")
+
+        # Filter peaks to only valid images
+        peaks1 = peaks1[peaks1['IMAGE_ASSET_ID'].isin(valid_images)]
+        peaks2 = peaks2[peaks2['IMAGE_ASSET_ID'].isin(valid_images)]
+        overlap = list(valid_images)
+
+        print(f"  After filtering: {len(peaks1)} search1 peaks, {len(peaks2)} search2 peaks across {len(valid_images)} images")
 
     # Build lookup for file paths by IMAGE_ASSET_ID
     paths1_lookup = paths1.set_index('IMAGE_ASSET_ID').to_dict('index')
@@ -1222,6 +1253,8 @@ Example:
                         help='Apply edge exclusion to this search ID (requires --template-size)')
     parser.add_argument('--template-size', type=int, default=None, metavar='PIXELS',
                         help='Template box size in pixels for edge exclusion (requires --exclude-edge)')
+    parser.add_argument('--min-peaks', type=int, default=3, metavar='N',
+                        help='Minimum peaks per image in BOTH searches to include (default: 3)')
 
     args = parser.parse_args()
 
@@ -1240,6 +1273,7 @@ Example:
     if args.exclude_edge is not None:
         edge_margin = args.template_size // 4 + 1
         print(f"Edge exclusion: search {args.exclude_edge}, template={args.template_size}px, margin={edge_margin}px")
+    print(f"Minimum peaks per image: {args.min_peaks}")
     print()
 
     try:
@@ -1259,7 +1293,8 @@ Example:
             angle_tolerance=args.angle_tolerance,
             debug=args.debug,
             exclude_edge_search=args.exclude_edge,
-            template_size_pixels=args.template_size
+            template_size_pixels=args.template_size,
+            min_peaks=args.min_peaks
         )
 
         if len(results_df) == 0:

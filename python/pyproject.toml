@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cistemx"
+version = "0.1.0"
+description = "Python utilities for cisTEMx cryo-EM analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MPL-2.0"}
+authors = [
+    {name = "Benjamin Himes", email = "info@clearnoise.org"},
+    {name = "Kexin Zhang"},
+]
+keywords = ["cryo-em", "template-matching", "image-processing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "mrcfile",
+    "matplotlib",
+    "joblib",
+    "tqdm",
+    "scikit-image",
+    "starfile",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.scripts]
+# Kexin's CLI tools (from calculate_2dtm_p_value package)
+cistemx-extract-particles = "cistemx.calculate_2dtm_p_value.cli.extract_particles:main"
+cistemx-filter-particles = "cistemx.calculate_2dtm_p_value.cli.filter_particles:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md"]

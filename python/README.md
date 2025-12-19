@@ -2,6 +2,18 @@
 
 Python utilities for cisTEMx cryo-EM analysis.
 
+## Purpose
+
+This package serves two goals:
+
+1. **Accessible tools**: Provide researchers with Python interfaces to cisTEMx
+   algorithms, enabling result reproduction and workflow customization without
+   requiring C++/CUDA expertise.
+
+2. **Reference implementations**: Even if core C++/CUDA code becomes proprietary,
+   this package documents algorithm behavior through working Python code and
+   validated test fixtures.
+
 ## Installation
 
 ```bash
@@ -39,6 +51,11 @@ After installation, these commands are available:
 
 Analysis scripts in `experimental_scripts/` are working but untested research code.
 They demonstrate usage patterns and may be promoted to proper modules later.
+
+## Testing Strategy
+
+See `tests/README.md` for the parity testing approach that validates Python
+implementations against C++/CUDA ground truth using Catch2-generated fixtures.
 
 ## Known Issues / TODO
 

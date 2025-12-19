@@ -26,7 +26,7 @@ import os
 import numpy as np
 import pandas as pd
 import mrcfile
-from cistemx.io import database as tma
+from cistemx.db import database as tma
 
 try:
     import matplotlib.pyplot as plt

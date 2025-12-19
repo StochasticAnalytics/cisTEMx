@@ -23,7 +23,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import mrcfile
-from cistemx.io import database as tma
+from cistemx.db import database as tma
 
 
 def parse_search_range(range_str: str) -> list[int]:

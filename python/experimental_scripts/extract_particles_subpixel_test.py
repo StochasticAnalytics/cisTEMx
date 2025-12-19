@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import mrcfile
 import starfile
-from cistemx.io import database as tma
+from cistemx.db import database as tma
 
 
 def apply_circular_mask(image: np.ndarray, cx: int, cy: int, radius: int):

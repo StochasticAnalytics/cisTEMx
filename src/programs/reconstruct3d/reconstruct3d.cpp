@@ -782,7 +782,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 float        dose_filter[input_particle.ctf_image->real_memory_allocated / 2];
 
                 ZeroFloatArray(dose_filter, input_particle.ctf_image->real_memory_allocated / 2);
-                my_electron_dose.CalculateDoseFilterAs1DArray(&input_image_local, dose_filter, 0.0f, input_parameters.total_exposure);
+                my_electron_dose.CalculateDoseFilterAs1DArray(input_particle.ctf_image, dose_filter, 0.0f, input_parameters.total_exposure);
 
                 for ( int pixel_counter = 0; pixel_counter < input_particle.ctf_image->real_memory_allocated / 2; pixel_counter++ ) {
                     input_particle.ctf_image->complex_values[pixel_counter] *= dose_filter[pixel_counter];
@@ -971,8 +971,9 @@ bool Reconstruct3DApp::DoCalculation( ) {
                     }
                 }
             }
-            else // no cropping
-            {
+            else {
+                // no cropping
+
                 if ( binning_factor != 1.0 ) {
                     //				temp_image_local.ReadSlice(&input_stack, input_particle.location_in_stack);
                     temp_image_local.CopyFrom(&input_image_local);
@@ -1054,6 +1055,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                     }
                 }
                 else {
+
                     //				input_particle.particle_image->ReadSlice(&input_stack, input_particle.location_in_stack);
                     input_particle.particle_image->CopyFrom(&input_image_local);
                     if ( invert_contrast )

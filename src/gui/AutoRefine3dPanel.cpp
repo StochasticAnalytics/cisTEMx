@@ -8,6 +8,10 @@ extern MyMainFrame*                   main_frame;
 
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_COMPLETED, wxThreadEvent);
 
+// for testing skipping the global search (for running autorefine on multi_view/tomo stacks, e.g. automated local refine.
+// "works" but the results are no good, i.e. they diverge, so search space must be different thatn running Refine3d manually several times. NOT enabled)
+// #define cisTEM_skip_global_search
+
 AutoRefine3DPanel::AutoRefine3DPanel(wxWindow* parent)
     : AutoRefine3DPanelParent(parent) {
 
@@ -836,13 +840,16 @@ void AutoRefinementManager::BeginRefinementCycle( ) {
     class_high_res_limits.Clear( );
     class_next_high_res_limits.Clear( );
 
+#ifdef cisTEM_skip_global_search
+    wxPrintf("Not randmoizing orientation params becase cisTEM_skip_global_search is enabled\n");
+#endif
     for ( class_counter = 0; class_counter < number_of_classes; class_counter++ ) {
         for ( particle_counter = 0; particle_counter < number_of_particles; particle_counter++ ) {
             if ( number_of_classes == 1 )
                 input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].occupancy = 100.0;
             else
                 input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].occupancy = 100.00 / input_refinement->number_of_classes;
-
+#ifndef cisTEM_skip_global_search
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].phi             = global_random_number_generator.GetUniformRandom( ) * 180.0;
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].theta           = global_random_number_generator.GetUniformRandom( ) * 180.0;
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].psi             = global_random_number_generator.GetUniformRandom( ) * 180.0;
@@ -851,6 +858,7 @@ void AutoRefinementManager::BeginRefinementCycle( ) {
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].score           = 0.0;
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].image_is_active = 1;
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].sigma           = 1.0;
+#endif
         }
 
         input_refinement->class_refinement_results[class_counter].class_resolution_statistics.GenerateDefaultStatistics(active_refinement_package->estimated_particle_weight_in_kda);
@@ -871,6 +879,9 @@ void AutoRefinementManager::BeginRefinementCycle( ) {
     if ( start_percent_used > 100.0 )
         start_percent_used = 100.0;
 
+#ifdef cisTEM_skip_global_search
+    start_percent_used = 100.f;
+#endif
     current_percent_used = start_percent_used;
     max_percent_used     = current_percent_used;
 
@@ -950,6 +961,23 @@ void AutoRefinementManager::RunRefinementJob( ) {
     //expected_number_of_results = input_refinement->number_of_particles * input_refinement->number_of_classes;
 
     output_refinement->SizeAndFillWithEmpty(input_refinement->number_of_particles, input_refinement->number_of_classes);
+
+    // Pre-copy multi-view parameters for all particles before refinement
+    // This is necessary because some particles may not be refined (image_is_active = 0)
+    // and thus won't have their parameters copied in ProcessJobResult()
+    for ( int class_counter = 0; class_counter < input_refinement->number_of_classes; class_counter++ ) {
+        for ( long particle_counter = 0; particle_counter < input_refinement->number_of_particles; particle_counter++ ) {
+            output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group =
+                    input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group;
+            output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group =
+                    input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group;
+            output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure =
+                    input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure;
+            output_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure =
+                    input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure;
+        }
+    }
+
     //wxPrintf("Output refinement has %li particles and %i classes\n", output_refinement->number_of_particles, input_refinement->number_of_classes);
     current_output_refinement_id = main_frame->current_project.database.ReturnHighestRefinementID( ) + 1;
 
@@ -1211,6 +1239,11 @@ void AutoRefinementManager::SetupReconstructionJob( ) {
             bool  split_even_odd       = false;
             bool  centre_mass          = my_parent->AutoCenterYesRadioButton->GetValue( );
 
+#ifdef cisTEM_skip_global_search
+            wxPrintf("Override centre mass to false b/c cisTEM_skip_global_search is enabled\n ");
+            centre_mass = false;
+#endif
+
             bool threshold_input_3d = true;
             int  max_threads        = 1;
 
@@ -1340,6 +1373,15 @@ void AutoRefinementManager::SetupRefinementJob( ) {
             else
                 do_global_for_this_particle = false;
         }
+
+#ifdef DISABLE_MUTLI_GLOBAL_REFINEMENTS
+        if ( number_of_rounds_run != 0 )
+            do_global_for_this_particle = false;
+#endif
+
+#ifdef cisTEM_skip_global_search
+        do_global_for_this_particle = false;
+#endif
 
         for ( int class_counter = 0; class_counter < input_refinement->number_of_classes; class_counter++ ) {
             if ( number_of_global_alignments[particle_counter] == 0 )

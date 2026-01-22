@@ -493,8 +493,7 @@ bool RefineTemplateApp::DoCalculation( ) {
     while ( current_peak.value >= wanted_threshold ) {
         // look for a peak..
 
-        current_peak = best_scaled_mip.FindPeakWithIntegerCoordinates(0.0, FLT_MAX,
-                                                                      input_reconstruction_file.ReturnXSize( ) / cistem::fraction_of_box_size_to_exclude_for_border + 1);
+        current_peak = best_scaled_mip.FindPeakWithIntegerCoordinates(0.0, FLT_MAX);
         if ( current_peak.value < wanted_threshold )
             break;
         found_peaks[number_of_peaks_found] = current_peak;

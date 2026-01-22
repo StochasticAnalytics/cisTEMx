@@ -140,8 +140,6 @@ void TemplateMatchingCore::Init(MyApp*                    parent_pointer,
     d_statistical_buffers_ptrs.push_back(&d_padded_reference);
     d_statistical_buffers_ptrs.push_back(&d_sum1);
     d_statistical_buffers_ptrs.push_back(&d_sumSq1);
-    d_statistical_buffers_ptrs.push_back(&d_sum2);
-    d_statistical_buffers_ptrs.push_back(&d_sumSq2);
     int n_2d_buffers = 0;
     for ( auto& buffer : d_statistical_buffers_ptrs ) {
         buffer->Allocate(d_input_image->dims.x, d_input_image->dims.y, 1, true);
@@ -343,11 +341,9 @@ void TemplateMatchingCore::ClearL2AccessPolicy( ) {
  *   of major phases or the entire loop.
  * 
  */
-void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
-                                        int         threadIDX,
-                                        long&       current_correlation_position,
-                                        const float min_counter_val,
-                                        const float threshold_val) {
+void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
+                                        int    threadIDX,
+                                        long&  current_correlation_position) {
     total_number_of_cccs_calculated = 0;
 
     bool this_is_the_first_run_on_inner_loop = my_dist ? false : true;
@@ -355,8 +351,6 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
     if ( this_is_the_first_run_on_inner_loop ) {
         d_padded_reference.CopyFP32toFP16buffer(false);
         my_dist = std::make_unique<TM_EmpiricalDistribution<__half, __half2>>(d_input_image.get( ), pre_padding, roi);
-        my_dist->SetTrimmingAlgoMinCounterVal(min_counter_val);
-        my_dist->SetTrimmingAlgoThresholdVal(threshold_val);
     }
     else {
         my_dist->ZeroHistogram( );
@@ -531,11 +525,6 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
                 // projection_queue.gpu_projection_stream[current_projection_idx] before doing work
                 projection_queue.StreamPerThreadWaitOnGpuProjection(current_projection_idx);
 
-                // Host can be signaled that this projection slot is now free for another CPU projection
-                // to be copied into, as the GPU data has been processed up to normalization and cast to fp16.
-                // The actual FFT (FwdImageInvFFT) will use the fp16 buffer.
-                projection_queue.RecordProjectionReadyBlockingHost_Event(current_projection_idx, projection_queue.gpu_projection_stream[current_projection_idx]);
-
                 // Core CCF calculation (FFT, complex multiply, IFFT) enqueued on cudaStreamPerThread.
                 // Input: d_current_projection[idx].real_values_fp16 (from normalization)
                 //        d_input_image->complex_values_fp16 (pre-loaded shared input)
@@ -546,6 +535,13 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
                                   noop,
                                   conj_mul_then_scale,
                                   noop);
+
+                // CRITICAL: Mark projection slot as free AFTER the FFT completes reading from it.
+                // The event must be recorded on cudaStreamPerThread (where the FFT runs), not on
+                // gpu_projection_stream (where normalization ran). Recording on the wrong stream
+                // caused a race condition where slots were reused while FFT was still reading,
+                // resulting in PSI angle errors at 30-degree multiples (20 slots × 1.5° step).
+                projection_queue.RecordProjectionReadyBlockingHost_Event(current_projection_idx, cudaStreamPerThread);
 
 #endif // cisTEM_USING_FastFFT
             }
@@ -578,6 +574,9 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
                 // --- Process a Batch of CCFs ---
                 // If we fill up the alternate buffer before we have finished processing the current buffer we need to make the host wait.
                 my_dist->MakeHostWaitOnTmEmpricalDist_Stream( );
+
+                // Signal that all CCF writes for this batch are complete on cudaStreamPerThread
+                my_dist->RecordCCFBufferReadyEvent(cudaStreamPerThread);
 
                 total_mip_processed += my_dist->GetCurrentMip_idx( );
                 // current_mip_to_process only matters after the main loop, the TM empirical dist will also update the mip_dbl_buffer_idx_ before returning from Accumulate distribution
@@ -629,6 +628,9 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
     // Now see if there is any partial work we need to do
     if ( my_dist->GetCurrentMip_idx( ) > 0 ) {
 
+        // Signal that all CCF writes for this partial batch are complete on cudaStreamPerThread
+        my_dist->RecordCCFBufferReadyEvent(cudaStreamPerThread);
+
         // On the first loop this will not do anything, so we can change the active_idx, and move forward to calculate the alternate stack of ccfs while the mip works on this one
         total_mip_processed += my_dist->GetCurrentMip_idx( );
         // current_mip_to_process only matters after the main loop, the TM empirical dist will also update the mip_dbl_buffer_idx_ before returning from Accumulate distribution
@@ -647,10 +649,6 @@ void TemplateMatchingCore::RunInnerLoop(Image&      projection_filter,
     // We've queued up all the work for the current stack, so record the event that will be used to block the host until the stack is ready
     my_dist->RecordTmEmpricalDist_Event( );
     my_dist->MakeHostWaitOnTmEmpricalDist_Stream( );
-
-    // FIXME: we can get rid of these sum images since we are using Kahan summation now
-    d_sum2.AddImage(d_sum1);
-    d_sumSq2.AddImage(d_sumSq1);
 
     if ( n_global_search_images_to_save > 1 ) {
         cudaErr(cudaFreeAsync(secondary_peaks, cudaStreamPerThread));

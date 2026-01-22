@@ -1,4 +1,20 @@
 
+
+// BATCH_HIGH_RES_EXPERIMENT: Uncomment to enable batch iteration over high-res limit values
+// When enabled, clicking StartEstimation will automatically cycle through values:
+// - First run: GUI value as-is
+// - Subsequent runs: 0.5A steps landing on half/whole numbers up to end_value
+// #define BATCH_HIGH_RES_EXPERIMENT
+
+#ifdef BATCH_HIGH_RES_EXPERIMENT
+#include <cmath>
+// File-static variables for batch experiment state (confined to this translation unit)
+static bool  s_batch_experiment_active    = false;
+static bool  s_batch_experiment_first_run = true;
+static float s_batch_experiment_end_value = 8.0f; // Stop after this value
+static float s_batch_experiment_step      = 0.5f; // Step size in Angstroms
+#endif
+
 //#include "../core/core_headers.h"
 #include "../constants/constants.h"
 #include "../core/gui_core_headers.h"
@@ -566,6 +582,25 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
+#ifdef BATCH_HIGH_RES_EXPERIMENT
+    if ( ! s_batch_experiment_active ) {
+        // First click - activate batch mode
+        s_batch_experiment_active    = true;
+        s_batch_experiment_first_run = true;
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run from %.2f to %.2f in %.1fA steps",
+                                       HighResolutionLimitNumericCtrl->ReturnValue( ),
+                                       s_batch_experiment_end_value,
+                                       s_batch_experiment_step));
+    }
+
+    if ( ! s_batch_experiment_first_run ) {
+        // Log what we're running (value was already set in ProcessAllJobsFinished)
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
+                                       HighResolutionLimitNumericCtrl->ReturnValue( )));
+    }
+    s_batch_experiment_first_run = false;
+#endif
+
     active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
 
     // Check if this is a resume job. If yes, get the job id and set the active
@@ -1039,6 +1074,15 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     ProgressPanel->Layout( );
     cached_results.Clear( );
 
+#ifdef BATCH_HIGH_RES_EXPERIMENT
+    // Cancel batch experiment on user termination
+    if ( s_batch_experiment_active ) {
+        s_batch_experiment_active    = false;
+        s_batch_experiment_first_run = true;
+        WriteInfoText("BATCH EXPERIMENT: Cancelled by user");
+    }
+#endif
+
     //running_job = false;
 }
 
@@ -1164,6 +1208,42 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 
     // Kill the job (in case it isn't already dead)
     main_frame->job_controller.KillJob(my_job_id);
+
+#ifdef BATCH_HIGH_RES_EXPERIMENT
+    if ( s_batch_experiment_active ) {
+        float current_value = HighResolutionLimitNumericCtrl->ReturnValue( );
+
+        // Calculate next value: round up to next 0.5 boundary
+        float next_value = std::ceil(current_value * 2.0f) / 2.0f;
+        if ( next_value <= current_value ) {
+            next_value = current_value + s_batch_experiment_step;
+        }
+        // Ensure it lands on 0.5 boundary
+        next_value = std::round(next_value * 2.0f) / 2.0f;
+
+        if ( next_value <= s_batch_experiment_end_value ) {
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: Completed %.2f, next = %.2f",
+                                           current_value, next_value));
+            HighResolutionLimitNumericCtrl->ChangeValueFloat(next_value);
+
+            // Use CallAfter for safe event loop handling
+            CallAfter([this]( ) {
+                if ( s_batch_experiment_active ) {
+                    wxCommandEvent dummy_event;
+                    StartEstimationClick(dummy_event);
+                }
+            });
+            return; // Don't show Finish button yet
+        }
+        else {
+            // Done with all values
+            s_batch_experiment_active    = false;
+            s_batch_experiment_first_run = true;
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: All values completed (ended at %.2f)!",
+                                           current_value));
+        }
+    }
+#endif
 
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);

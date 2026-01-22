@@ -21,7 +21,9 @@ template <bool, typename T = void>
 struct EnableIfT {};
 
 template <typename T>
-struct EnableIfT<true, T> { using Type = T; };
+struct EnableIfT<true, T> {
+    using Type = T;
+};
 
 template <bool cond, typename T = void>
 using EnableIf = typename EnableIfT<cond, T>::Type;
@@ -32,8 +34,7 @@ constexpr float  float_epsilon      = 0.0001f;
 constexpr float  half_float_epsilon = 0.001f;
 
 // The default border to exclude when choosing peaks, e.g. in match_template, refine_template, prepare_stack_matchtemplate, make_template_result.
-constexpr const int fraction_of_box_size_to_exclude_for_border = 4;
-constexpr const int maximum_number_of_detections               = 1000;
+constexpr const int maximum_number_of_detections = 1000;
 
 namespace match_template {
 

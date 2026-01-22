@@ -524,10 +524,10 @@ bool Reconstruct3DApp::DoCalculation( ) {
         noise_power_spectrum.MakeThreadSafeForNThreads(max_threads);
         number_of_terms.MakeThreadSafeForNThreads(max_threads);
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(input_star_file, first_particle, last_particle, my_progress, percentage, exclude_blank_edges, input_stack,                                                                                                                                            \
-                                                                   outer_mask_radius, pixel_size, mask_falloff, number_of_blank_edges, sum_power, current_image, global_random_number_generator, random_reset_count, random_reset_counter,                                                                               \
-                                                                   outer_mask_in_pixels, apply_exposure_filter_during_reconstruction) private(current_image_local, input_parameters, image_counter, number_of_blank_edges_local, variance, temp3_image_local, sum_power_local, input_image_local, temp_float, file_read, \
-                                                                                                                                              mask_radius_for_noise)
+#pragma omp parallel num_threads(max_threads) default(none) shared(input_star_file, first_particle, last_particle, my_progress, percentage, exclude_blank_edges, input_stack,                                                                                                                                                    \
+                                                                           outer_mask_radius, pixel_size, mask_falloff, number_of_blank_edges, sum_power, current_image, global_random_number_generator, random_reset_count, random_reset_counter,                                                                               \
+                                                                           outer_mask_in_pixels, apply_exposure_filter_during_reconstruction) private(current_image_local, input_parameters, image_counter, number_of_blank_edges_local, variance, temp3_image_local, sum_power_local, input_image_local, temp_float, file_read, \
+                                                                                                                                                              mask_radius_for_noise)
         {
 
             image_counter               = 0;
@@ -679,14 +679,14 @@ bool Reconstruct3DApp::DoCalculation( ) {
         my_progress = new ProgressBar(images_to_process_per_thread);
     current_image = 0;
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(input_3d, input_star_file, input_stack, resolution_limit_rec, original_box_size, box_size,                                                                                                                                                       \
-                                                                   first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, crop_images, symmetry_weight, score_threshold, use_input_reconstruction,                                                                     \
-                                                                   pixel_size, my_progress, outer_mask_radius, mask_falloff, current_image, padded_box_size, binning_factor,                                                                                                                                        \
-                                                                   rotational_blurring, number_of_rotations, psi_step, psi_start, smoothing_factor, intermediate_box_size, original_pixel_size, calculate_complex_ctf, parameter_averages,                                                                          \
-                                                                   parameter_variances, fsc_particle_repeat, score_weight_conversion, my_symmetry, correct_ewald_sphere, my_reconstruction_1, my_reconstruction_2, center_mass,                                                                                     \
-                                                                   images_to_process_per_thread, apply_exposure_filter_during_reconstruction) private(i, j, image_counter, input_particle, current_image_local, input_parameters, temp_float, input_ctf, variance, average, current_ctf,                            \
-                                                                                                                                                      input_image_local, projection_image, padded_projection_image, temp3_image_local, padded_image, cropped_projection_image, temp_image_local, temp2_image_local, \
-                                                                                                                                                      current_ctf_image, current_beamtilt_image, unmasked_image, ssq_X, psi, rotation_angle, rotation_cache)
+#pragma omp parallel num_threads(max_threads) default(none) shared(input_3d, input_star_file, input_stack, resolution_limit_rec, original_box_size, box_size,                                                                                                                                                                       \
+                                                                           first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, crop_images, symmetry_weight, score_threshold, use_input_reconstruction,                                                                             \
+                                                                           pixel_size, my_progress, outer_mask_radius, mask_falloff, current_image, padded_box_size, binning_factor,                                                                                                                                                \
+                                                                           rotational_blurring, number_of_rotations, psi_step, psi_start, smoothing_factor, intermediate_box_size, original_pixel_size, calculate_complex_ctf, parameter_averages,                                                                                  \
+                                                                           parameter_variances, fsc_particle_repeat, score_weight_conversion, my_symmetry, correct_ewald_sphere, my_reconstruction_1, my_reconstruction_2, center_mass,                                                                                             \
+                                                                           images_to_process_per_thread, apply_exposure_filter_during_reconstruction) private(i, j, image_counter, input_particle, current_image_local, input_parameters, temp_float, input_ctf, variance, average, current_ctf,                                    \
+                                                                                                                                                                      input_image_local, projection_image, padded_projection_image, temp3_image_local, padded_image, cropped_projection_image, temp_image_local, temp2_image_local, \
+                                                                                                                                                                      current_ctf_image, current_beamtilt_image, unmasked_image, ssq_X, psi, rotation_angle, rotation_cache)
     { // for omp
 
         Curve noise_power_spectrum_local;
@@ -782,7 +782,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 float        dose_filter[input_particle.ctf_image->real_memory_allocated / 2];
 
                 ZeroFloatArray(dose_filter, input_particle.ctf_image->real_memory_allocated / 2);
-                my_electron_dose.CalculateDoseFilterAs1DArray(&input_image_local, dose_filter, 0.0f, input_parameters.total_exposure);
+                my_electron_dose.CalculateDoseFilterAs1DArray(input_particle.ctf_image, dose_filter, 0.0f, input_parameters.total_exposure);
 
                 for ( int pixel_counter = 0; pixel_counter < input_particle.ctf_image->real_memory_allocated / 2; pixel_counter++ ) {
                     input_particle.ctf_image->complex_values[pixel_counter] *= dose_filter[pixel_counter];
@@ -971,8 +971,9 @@ bool Reconstruct3DApp::DoCalculation( ) {
                     }
                 }
             }
-            else // no cropping
-            {
+            else {
+                // no cropping
+
                 if ( binning_factor != 1.0 ) {
                     //				temp_image_local.ReadSlice(&input_stack, input_particle.location_in_stack);
                     temp_image_local.CopyFrom(&input_image_local);
@@ -1054,6 +1055,7 @@ bool Reconstruct3DApp::DoCalculation( ) {
                     }
                 }
                 else {
+
                     //				input_particle.particle_image->ReadSlice(&input_stack, input_particle.location_in_stack);
                     input_particle.particle_image->CopyFrom(&input_image_local);
                     if ( invert_contrast )

@@ -2,6 +2,8 @@
 
 #include "../../constants/constants.h"
 
+#include "../match_template/template_matching_peak_extractor.h"
+
 class
         MakeTemplateResult : public MyApp {
   public:
@@ -127,7 +129,7 @@ bool MakeTemplateResult::DoCalculation( ) {
     Image defocus_image;
     Image pixel_size_image;
     Image input_reconstruction;
-    Image binned_reconstruction;
+    Image binned_3d_reconstruction;
     Image rotated_reconstruction;
     Image current_projection;
     Image padded_projection;
@@ -145,8 +147,8 @@ bool MakeTemplateResult::DoCalculation( ) {
 
     int   number_of_peaks_found = 0;
     int   slab_thickness_in_pixels;
-    int   binned_dimension_3d;
-    float binned_pixel_size;
+    int   binned_3d_dimension;
+    float binned_3d_pixel_size;
     float max_density;
     float sq_dist_x, sq_dist_y;
     long  address;
@@ -159,8 +161,13 @@ bool MakeTemplateResult::DoCalculation( ) {
     else
         text_file_access_type = OPEN_TO_WRITE;
     NumericTextFile coordinate_file(xyz_coords_filename, text_file_access_type, 8);
+    // Read MIP pixel size from header to get search_pixel_size
+    float search_pixel_size;
     if ( ! read_coordinates ) {
         coordinate_file.WriteCommentLine("         Psi          Theta            Phi              X              Y              Z      PixelSize           Peak");
+
+        ImageFile mip_file(input_mip_filename.ToStdString( ), false);
+        search_pixel_size = mip_file.ReturnPixelSize( );
 
         mip_image.QuickAndDirtyReadSlice(input_mip_filename.ToStdString( ), result_number);
         psi_image.QuickAndDirtyReadSlice(input_best_psi_filename.ToStdString( ), result_number);
@@ -173,41 +180,42 @@ bool MakeTemplateResult::DoCalculation( ) {
 
         min_peak_radius = powf(min_peak_radius, 2);
     }
+    else {
+        // In read mode, assume pixel_size is the search pixel size
+        search_pixel_size = pixel_size;
+    }
 
     output_image.Allocate(mip_x_dimension, mip_y_dimension, 1);
     output_image.SetToConstant(0.0f);
 
+    // Read reconstruction - will be resized in peak extractor constructor if needed
     input_reconstruction.ReadSlices(&input_reconstruction_file, 1, input_reconstruction_file.ReturnNumberOfSlices( ));
-    binned_reconstruction.CopyFrom(&input_reconstruction);
-    binned_dimension_3d = myroundint(float(input_reconstruction.logical_x_dimension) / binning_factor);
-    if ( IsOdd(binned_dimension_3d) )
-        binned_dimension_3d++;
-    binning_factor           = float(input_reconstruction.logical_x_dimension) / float(binned_dimension_3d);
-    binned_pixel_size        = pixel_size * binning_factor;
-    slab_thickness_in_pixels = myroundint(slab_thickness / binned_pixel_size);
+
+    // Setup binned reconstruction for slab
+    binned_3d_reconstruction.CopyFrom(&input_reconstruction);
+    binned_3d_dimension = myroundint(float(input_reconstruction.logical_x_dimension) / binning_factor);
+    if ( IsOdd(binned_3d_dimension) )
+        binned_3d_dimension++;
+    binning_factor           = float(input_reconstruction.logical_x_dimension) / float(binned_3d_dimension);
+    binned_3d_pixel_size     = pixel_size * binning_factor;
+    slab_thickness_in_pixels = myroundint(slab_thickness / binned_3d_pixel_size);
     wxPrintf("\nSlab dimensions = %i %i %i\n", myroundint(mip_x_dimension / binning_factor), myroundint(mip_y_dimension / binning_factor), slab_thickness_in_pixels);
 
     slab.Allocate(myroundint(mip_x_dimension / binning_factor), myroundint(mip_y_dimension / binning_factor), slab_thickness_in_pixels);
     slab.SetToConstant(0.0f);
 
-    if ( binned_dimension_3d != input_reconstruction.logical_x_dimension ) {
-        binned_reconstruction.ForwardFFT( );
-        binned_reconstruction.Resize(binned_dimension_3d, binned_dimension_3d, binned_dimension_3d);
-        binned_reconstruction.BackwardFFT( );
+    if ( binned_3d_dimension != input_reconstruction.logical_x_dimension ) {
+        binned_3d_reconstruction.ForwardFFT( );
+        binned_3d_reconstruction.Resize(binned_3d_dimension, binned_3d_dimension, binned_3d_dimension);
+        binned_3d_reconstruction.BackwardFFT( );
     }
-    max_density = binned_reconstruction.ReturnAverageOfMaxN( );
-    binned_reconstruction.DivideByConstant(max_density);
+    max_density = binned_3d_reconstruction.ReturnAverageOfMaxN( );
+    binned_3d_reconstruction.DivideByConstant(max_density);
 
+    // Apply padding to reconstruction if needed
     if ( padding != 1.0f ) {
         input_reconstruction.Resize(input_reconstruction.logical_x_dimension * padding, input_reconstruction.logical_y_dimension * padding, input_reconstruction.logical_z_dimension * padding, input_reconstruction.ReturnAverageOfRealValuesOnEdges( ));
     }
-    input_reconstruction.ForwardFFT( );
-    input_reconstruction.MultiplyByConstant(sqrtf(input_reconstruction.logical_x_dimension * input_reconstruction.logical_y_dimension * sqrtf(input_reconstruction.logical_z_dimension)));
-    //input_reconstruction.CosineMask(0.1, 0.01, true);
-    //input_reconstruction.Whiten();
-    //if (first_search_position == 0) input_reconstruction.QuickAndDirtyWriteSlices("/tmp/filter.mrc", 1, input_reconstruction.logical_z_dimension);
-    input_reconstruction.ZeroCentralPixel( );
-    input_reconstruction.SwapRealSpaceQuadrants( );
 
     // assume cube
 
@@ -215,107 +223,58 @@ bool MakeTemplateResult::DoCalculation( ) {
     if ( padding != 1.0f )
         padded_projection.Allocate(input_reconstruction_file.ReturnXSize( ) * padding, input_reconstruction_file.ReturnXSize( ) * padding, false);
 
+    // Adding this for simplicity
+    Image masked_mip;
+    masked_mip = mip_image;
+
     // loop until the found peak is below the threshold
+    // Use TemplateMatchingPeakExtractor to handle peak finding, masking, and projection insertion
+
+    TemplateMatchingPeakExtractor peak_extractor(
+            masked_mip,
+            phi_image,
+            theta_image,
+            psi_image,
+            defocus_image,
+            pixel_size_image,
+            output_image,
+            input_reconstruction,
+            current_projection,
+            (padding != 1.0f) ? &padded_projection : nullptr,
+            &slab,
+            &binned_3d_reconstruction,
+            read_coordinates ? &coordinate_file : nullptr,
+            wanted_threshold,
+            min_peak_radius,
+            pixel_size, // input_pixel_size (unbinned)
+            search_pixel_size, // search_pixel_size (from MIP header)
+            binned_3d_pixel_size,
+            true); // enable peak correction for make_template_result
 
     wxPrintf("\n");
-    while ( 1 == 1 ) {
+    while ( true ) {
+        auto [new_peak_found, peak_info] = peak_extractor.ProcessNextPeak(angles, number_of_peaks_found);
+
+        if ( ! new_peak_found )
+            break;
+
+        // Convert peak_info to coordinates array for file writing (search mode only)
         if ( ! read_coordinates ) {
-            // look for a peak..
-
-            current_peak = mip_image.FindPeakWithIntegerCoordinates(0.0, FLT_MAX);
-            if ( current_peak.value < wanted_threshold )
-                break;
-
-            // ok we have peak..
-
-            number_of_peaks_found++;
-
-            // get angles and mask out the local area so it won't be picked again..
-
-            address = 0;
-
-            current_peak.x = current_peak.x + mip_image.physical_address_of_box_center_x;
-            current_peak.y = current_peak.y + mip_image.physical_address_of_box_center_y;
-
-            //			wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
-
-            for ( j = 0; j < mip_y_dimension; j++ ) {
-                sq_dist_y = float(pow(j - current_peak.y, 2));
-                for ( i = 0; i < mip_x_dimension; i++ ) {
-                    sq_dist_x = float(pow(i - current_peak.x, 2));
-
-                    // The square centered at the pixel
-                    if ( sq_dist_x + sq_dist_y <= min_peak_radius ) {
-                        mip_image.real_values[address] = -FLT_MAX;
-                    }
-
-                    if ( sq_dist_x == 0 && sq_dist_y == 0 ) {
-                        current_phi        = phi_image.real_values[address];
-                        current_theta      = theta_image.real_values[address];
-                        current_psi        = psi_image.real_values[address];
-                        current_defocus    = defocus_image.real_values[address];
-                        current_pixel_size = pixel_size_image.real_values[address];
-                    }
-
-                    address++;
-                }
-                address += mip_image.padding_jump_value;
-            }
-            coordinates[0] = current_psi;
-            coordinates[1] = current_theta;
-            coordinates[2] = current_phi;
-            coordinates[3] = current_peak.x * pixel_size;
-            coordinates[4] = current_peak.y * pixel_size;
-            //			coordinates[5] = binned_pixel_size * (slab.physical_address_of_box_center_z - binned_reconstruction.physical_address_of_box_center_z) - current_defocus;
-            //			coordinates[5] = binned_pixel_size * slab.physical_address_of_box_center_z - current_defocus;
-            coordinates[5] = current_defocus;
-            coordinates[6] = current_pixel_size;
-            coordinates[7] = current_peak.value;
+            coordinates[0] = peak_info.psi;
+            coordinates[1] = peak_info.theta;
+            coordinates[2] = peak_info.phi;
+            coordinates[3] = peak_info.x_pos;
+            coordinates[4] = peak_info.y_pos;
+            coordinates[5] = peak_info.defocus;
+            coordinates[6] = peak_info.pixel_size;
+            coordinates[7] = peak_info.peak_height;
             coordinate_file.WriteLine(coordinates);
         }
-        else {
-            coordinate_file.ReadLine(coordinates);
-            number_of_peaks_found++;
-            current_psi        = coordinates[0];
-            current_theta      = coordinates[1];
-            current_phi        = coordinates[2];
-            current_peak.x     = coordinates[3] / pixel_size;
-            current_peak.y     = coordinates[4] / pixel_size;
-            current_defocus    = coordinates[5];
-            current_pixel_size = coordinates[6];
-            current_peak.value = coordinates[7];
-        }
 
-        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x * pixel_size, current_peak.y * pixel_size, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
-
-        // ok get a projection
-
-        angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
-
-        if ( padding != 1.0f ) {
-            input_reconstruction.ExtractSlice(padded_projection, angles, 1.0f, false);
-            padded_projection.SwapRealSpaceQuadrants( );
-            padded_projection.BackwardFFT( );
-            padded_projection.ClipInto(&current_projection);
-            current_projection.ForwardFFT( );
-        }
-        else {
-            input_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
-            current_projection.SwapRealSpaceQuadrants( );
-        }
-
-        angles.Init(-current_psi, -current_theta, -current_phi, 0.0, 0.0);
-        rotated_reconstruction.CopyFrom(&binned_reconstruction);
-        rotated_reconstruction.Rotate3DByRotationMatrixAndOrApplySymmetry(angles.euler_matrix);
-
-        current_projection.MultiplyByConstant(sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension));
-        current_projection.BackwardFFT( );
-        current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges( ));
-
-        // insert it into the output image
-
-        output_image.InsertOtherImageAtSpecifiedPosition(&current_projection, current_peak.x - output_image.physical_address_of_box_center_x, current_peak.y - output_image.physical_address_of_box_center_y, 0, 0.0f);
-        slab.InsertOtherImageAtSpecifiedPosition(&rotated_reconstruction, myroundint((current_peak.x - output_image.physical_address_of_box_center_x) / binning_factor), myroundint((current_peak.y - output_image.physical_address_of_box_center_y) / binning_factor), -myroundint(current_defocus / binned_pixel_size), 0.0f);
+        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n",
+                 number_of_peaks_found, peak_info.x_pos, peak_info.y_pos, peak_info.psi,
+                 peak_info.theta, peak_info.phi, peak_info.defocus,
+                 peak_info.pixel_size, peak_info.peak_height);
 
         if ( read_coordinates && coordinate_file.number_of_lines == number_of_peaks_found )
             break;
@@ -323,8 +282,8 @@ bool MakeTemplateResult::DoCalculation( ) {
 
     // save the output image
 
-    output_image.QuickAndDirtyWriteSlice(output_result_image_filename.ToStdString( ), 1, true, pixel_size);
-    slab.QuickAndDirtyWriteSlices(output_slab_filename.ToStdString( ), 1, slab_thickness_in_pixels, true, binned_pixel_size);
+    output_image.QuickAndDirtyWriteSlice(output_result_image_filename.ToStdString( ), 1, true, search_pixel_size);
+    slab.QuickAndDirtyWriteSlices(output_slab_filename.ToStdString( ), 1, slab_thickness_in_pixels, true, binned_3d_pixel_size);
 
     if ( is_running_locally == true ) {
         wxPrintf("\nFound %i peaks.\n\n", number_of_peaks_found);

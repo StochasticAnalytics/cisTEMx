@@ -165,8 +165,13 @@ bool MakeParticleStack::DoCalculation( ) {
     // Preallocate space: number of peaks not known, so assume large enough number
     output_star_file.PreallocateMemoryAndBlank(1000000);
 
+    // Read search pixel size from MIP header to handle binned searches
+    float search_pixel_size = pixel_size; // default to input pixel size
     if ( ! read_coordinates ) {
         coordinate_file.WriteCommentLine("         Psi          Theta            Phi              X              Y              Z      PixelSize           Peak");
+
+        ImageFile mip_file(input_mip_filename.ToStdString( ), false);
+        search_pixel_size = mip_file.ReturnPixelSize( );
 
         mip_image.QuickAndDirtyReadSlice(input_mip_filename.ToStdString( ), result_number);
         psi_image.QuickAndDirtyReadSlice(input_best_psi_filename.ToStdString( ), result_number);
@@ -178,6 +183,7 @@ bool MakeParticleStack::DoCalculation( ) {
 
         min_peak_radius = powf(min_peak_radius, 2);
     }
+    float mip_to_micrograph_scale = search_pixel_size / pixel_size;
 
     micrograph.QuickAndDirtyReadSlice(input_image_filename.ToStdString( ), 1);
     micrograph_mean = micrograph.ReturnAverageOfRealValues( );
@@ -241,6 +247,12 @@ bool MakeParticleStack::DoCalculation( ) {
                 }
                 address += mip_image.padding_jump_value;
             }
+
+            // Scale peak coordinates from MIP pixels to micrograph pixels
+            // This handles the case where template matching was done at a binned resolution
+            current_peak.x *= mip_to_micrograph_scale;
+            current_peak.y *= mip_to_micrograph_scale;
+
             coordinates[0] = current_psi;
             coordinates[1] = current_theta;
             coordinates[2] = current_phi;

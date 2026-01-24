@@ -7,13 +7,33 @@
 #error "cistem_config.h must be included! Check build system configuration (configure.ac)."
 #endif
 
-typedef struct Peak {
+struct Peak {
     float x;
     float y;
     float z;
     float value;
     long  physical_address_within_image;
-} Peak;
+
+    Peak( ) = default; // Peak () {}; would also work
+
+    // We could skip both ctors but by declaring this one it (helps) to avoid a mixup in ordering
+    Peak(float x_, long y_, float z_, float value_, long physical_address_within_image_)
+        : x(x_), y(y_), z(z_), value(value_), physical_address_within_image(physical_address_within_image_) {}
+};
+
+struct Sortable2dPeak {
+    float value;
+    long  physical_address_within_image;
+
+    Sortable2dPeak( ) = default;
+
+    Sortable2dPeak(float v, long addr)
+        : value(v), physical_address_within_image(addr) {}
+
+    bool operator<(const Sortable2dPeak& other) const {
+        return value < other.value; // defines a max-heap behavior if used by priority_queue
+    }
+};
 
 typedef struct Kernel2D {
     int   pixel_index[4];

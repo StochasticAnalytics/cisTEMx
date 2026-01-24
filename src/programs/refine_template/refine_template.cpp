@@ -245,7 +245,7 @@ bool RefineTemplateApp::DoCalculation( ) {
     float    defocus_angle                 = my_current_job.arguments[8].ReturnFloatArgument( );
     ;
     float    low_resolution_limit            = my_current_job.arguments[9].ReturnFloatArgument( );
-    float    high_resolution_limit_search    = my_current_job.arguments[10].ReturnFloatArgument( );
+    float    high_resolution_limit_search    = my_current_job.arguments[10].ReturnFloatArgument( ); // NOTE: this is not currently used.
     float    angular_range                   = my_current_job.arguments[11].ReturnFloatArgument( );
     float    angular_step                    = my_current_job.arguments[12].ReturnFloatArgument( );
     int      best_parameters_to_keep         = my_current_job.arguments[13].ReturnIntegerArgument( );
@@ -347,6 +347,18 @@ bool RefineTemplateApp::DoCalculation( ) {
     best_defocus_input_file.OpenFile(best_defocus_input_filename.ToStdString( ), false);
     best_pixel_size_input_file.OpenFile(best_pixel_size_input_filename.ToStdString( ), false);
     input_reconstruction_file.OpenFile(input_reconstruction_filename.ToStdString( ), false);
+
+    // Check that search pixel size matches input pixel size
+    float search_pixel_size = mip_input_file.ReturnPixelSize( );
+    if ( ! FloatsAreAlmostTheSame(pixel_size, search_pixel_size) ) {
+        wxPrintf("\nError: Search pixel size (%.4f A) does not match input pixel size (%.4f A).\n", search_pixel_size, pixel_size);
+        wxPrintf("This indicates the template matching was performed at a binned resolution.\n");
+        wxPrintf("To refine results from a binned search, please:\n");
+        wxPrintf("  1. Create a Template Matches Refinement Package from these results\n");
+        wxPrintf("  2. Import it into cisTEM\n");
+        wxPrintf("  3. Use the single particle tools for further refinement\n\n");
+        SendErrorAndCrash("Pixel size mismatch: refine_template requires unbinned search results");
+    }
 
     Image input_image;
     Image windowed_particle;
@@ -1016,8 +1028,8 @@ bool RefineTemplateApp::DoCalculation( ) {
         }
 
         // tell the gui that this result is available...
-
-        SendTemplateMatchingResultToSocket(controller_socket, image_number_for_gui, threshold_for_result_plotting, all_peak_infos, all_peak_changes);
+        float high_res_limit_used = 2.0f * pixel_size;
+        SendTemplateMatchingResultToSocket(controller_socket, image_number_for_gui, high_res_limit_used, threshold_for_result_plotting, all_peak_infos, all_peak_changes);
         result_image.QuickAndDirtyWriteSlice(filename_for_gui_result_image.ToStdString( ), 1, true);
     }
 

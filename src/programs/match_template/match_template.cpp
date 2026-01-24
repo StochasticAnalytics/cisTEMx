@@ -20,6 +20,7 @@
 #endif
 
 #include "template_matching_data_sizer.h"
+#include "template_matching_peak_extractor.h"
 
 // The profiling for development is under conrtol of --enable-profiling.
 #ifdef CISTEM_PROFILING
@@ -1567,6 +1568,10 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // All parts of the result for this image are now collected. Proceed to finalize.
         // TODO send the result back to the GUI, for now hack mode to save the files to the directory..
 
+        cistem_timer::StopWatch timer;
+
+        timer.start("Initialize objects");
+
         wxString directory_for_writing_results = current_job_package.jobs[0].arguments[37].ReturnStringArgument( );
 
         // Image objects for storing and processing results
@@ -1614,6 +1619,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         bool using_binned_ref = input_binning_factor > 1.0f ? true : false;
 
+        timer.lap("Initialize objects");
+        timer.start("Initialize volume and mip");
         ImageFile input_reconstruction_file;
         input_reconstruction_file.OpenFile(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[1].ReturnStringArgument( ), false);
 
@@ -1625,6 +1632,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         }
 
         scaled_mip.CopyFrom(&temp_image);
+        timer.lap("Initialize volume and mip");
+        timer.start("Rescale mip and stats");
         RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(&temp_image,
                                                             &scaled_mip,
                                                             aggregated_results[array_location].collated_pixel_sums,
@@ -1638,7 +1647,9 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             aggregated_results[array_location].collated_mip_data[pixel_counter] = temp_image.real_values[pixel_counter];
         }
+        timer.lap("Rescale mip and stats");
 
+        timer.start("Write output images");
         MRCFile mip_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[21].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         mip_output_file.SetOutputToFP16( );
@@ -1749,6 +1760,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         temp_image.WriteSlice(&square_sum_output_file, 1);
         square_sum_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
 
+        timer.lap("Write output images");
+        timer.start("Set and write histogram");
         // Write histogram text file
         //NumericTextFile histogram_file(wxString::Format("%s/histogram_%i.txt", directory_for_writing_results, aggregated_results[array_location].image_number), OPEN_TO_WRITE, 4);
         NumericTextFile histogram_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( ), OPEN_TO_WRITE, 4);
@@ -1814,7 +1827,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         }
 
         histogram_file.Close( );
-
+        timer.lap("Set and write histogram");
+        timer.start("Initialize results image");
         // Calculate the result image, and keep the peak info to send back...
 
         int   min_peak_radius         = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[39].ReturnFloatArgument( );
@@ -1848,119 +1862,122 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // assume cube
 
         current_projection.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_x_dimension, false);
+        timer.lap("Initialize results image");
 
         // loop until the found peak is below the threshold
+        // Use TemplateMatchingPeakExtractor to handle peak finding, masking, and projection insertion
 
-        long nTrys = 0;
-        while ( 1 == 1 ) {
-            // look for a peak..
-            nTrys++;
-            //            wxPrintf("Trying the %ld'th peak\n",nTrys);
-            // FIXME min-distance from edges would be better to set dynamically.
-            current_peak = scaled_mip.FindPeakWithIntegerCoordinates(0.0, FLT_MAX);
-            if ( current_peak.value < expected_threshold )
-                break;
+        const float resample_search_ratio = 1.0f;
+        // TemplateMatchingPeakExtractor peak_extractor(
+        //         scaled_mip,
+        //         phi_image,
+        //         theta_image,
+        //         psi_image,
+        //         defocus_image,
+        //         pixel_size_image,
+        //         result_image,
+        //         input_reconstruction,
+        //         current_projection,
+        //         nullptr, // no padded_projection (match_template doesn't use padding)
+        //         nullptr, // no slab (match_template doesn't create slab)
+        //         nullptr, // no binned_reconstruction
+        //         nullptr, // no coordinate_file (search mode, not read mode)
+        //         expected_threshold,
+        //         min_peak_radius_squared,
+        //         search_pixel_size / input_binning_factor,
+        //         search_pixel_size,
+        //         0.0f, // binned_pixel_size not needed without slab
+        //         resample_search_ratio != 1.f,
+        //         resample_search_ratio);
 
-            // ok we have peak..
+        Image copy_for_extraction;
+        copy_for_extraction = scaled_mip;
+        std::vector<Peak> peak_list;
 
-            number_of_peaks_found++;
+        timer.start("Extract New");
+        scaled_mip.FindPeakWithIntegerCoordinatesForManyPeaks(peak_list, expected_threshold, resample_search_ratio, sqrtf(min_peak_radius_squared), 4);
+        timer.lap("Extract New");
+        for ( auto& peak : peak_list ) {
+            temp_peak_info.x_pos       = peak.x * search_pixel_size;
+            temp_peak_info.y_pos       = peak.y * search_pixel_size;
+            temp_peak_info.phi         = phi_image.real_values[peak.physical_address_within_image];
+            temp_peak_info.theta       = theta_image.real_values[peak.physical_address_within_image];
+            temp_peak_info.psi         = psi_image.real_values[peak.physical_address_within_image];
+            temp_peak_info.defocus     = defocus_image.real_values[peak.physical_address_within_image];
+            temp_peak_info.pixel_size  = pixel_size_image.real_values[peak.physical_address_within_image];
+            temp_peak_info.peak_height = peak.value;
+            all_peak_infos.Add(temp_peak_info);
 
-            // get angles and mask out the local area so it won't be picked again..
+            angles.Init(temp_peak_info.phi,
+                        temp_peak_info.theta,
+                        temp_peak_info.psi,
+                        0.0,
+                        0.0);
 
-            address = 0;
+            // Standard workflow (match_template)
+            input_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
+            current_projection.SwapRealSpaceQuadrants( );
 
-            current_peak.x = current_peak.x + scaled_mip.physical_address_of_box_center_x;
-            current_peak.y = current_peak.y + scaled_mip.physical_address_of_box_center_y;
+            current_projection.MultiplyByConstant(sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension));
+            current_projection.BackwardFFT( );
+            current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges( ));
 
-            // arguments[2] = search_pixel_size
-            temp_peak_info.x_pos = current_peak.x * search_pixel_size; // RETURNING IN ANGSTROMS (also takes care of binning if present)
-            temp_peak_info.y_pos = current_peak.y * search_pixel_size; // RETURNING IN ANGSTROMS
-
-            //            wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
-
-            for ( j = std::max(myroundint(current_peak.y) - min_peak_radius, 0); j < std::min(myroundint(current_peak.y) + min_peak_radius, scaled_mip.logical_y_dimension); j++ ) {
-                sq_dist_y = float(j) - current_peak.y;
-                sq_dist_y *= sq_dist_y;
-
-                for ( i = std::max(myroundint(current_peak.x) - min_peak_radius, 0); i < std::min(myroundint(current_peak.x) + min_peak_radius, scaled_mip.logical_x_dimension); i++ ) {
-                    sq_dist_x = float(i) - current_peak.x;
-                    sq_dist_x *= sq_dist_x;
-                    address = phi_image.ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
-
-                    // The square centered at the pixel
-                    if ( sq_dist_x == 0 && sq_dist_y == 0 ) {
-                        current_phi   = phi_image.real_values[address];
-                        current_theta = theta_image.real_values[address];
-                        current_psi   = psi_image.real_values[address];
-
-                        temp_peak_info.phi   = phi_image.real_values[address];
-                        temp_peak_info.theta = theta_image.real_values[address];
-                        temp_peak_info.psi   = psi_image.real_values[address];
-
-                        temp_peak_info.defocus     = defocus_image.real_values[address]; // RETURNING MINUS
-                        temp_peak_info.pixel_size  = pixel_size_image.real_values[address];
-                        temp_peak_info.peak_height = scaled_mip.real_values[address];
-                    }
-
-                    if ( sq_dist_x + sq_dist_y <= min_peak_radius_squared ) {
-                        scaled_mip.real_values[address] = -FLT_MAX;
-                    }
-
-                    //                    address++;
-                }
-                //                address += scaled_mip.padding_jump_value;
-            }
-
-            //        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x, current_peak.y, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
-            //        coordinates[0] = current_peak.x * search_pixel_size;
-            //        coordinates[1] = current_peak.y * search_pixel_size;
-            ////        coordinates[2] = binned_pixel_size * (slab.physical_address_of_box_center_z - binned_reconstruction.physical_address_of_box_center_z) - current_defocus;
-            //        coordinates[2] = binned_pixel_size * slab.physical_address_of_box_center_z - current_defocus;
-            //        coordinate_file.WriteLine(coordinates);
-
-            // ok get a projection
-
-            //////////////////////////////////////////////
-            // CURRENTLY HARD CODED TO ONLY DO 1000 MAX //
-            //////////////////////////////////////////////
-
-            if ( number_of_peaks_found <= cistem::maximum_number_of_detections ) {
-
-                angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
-
-                input_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
-                current_projection.SwapRealSpaceQuadrants( );
-
-                current_projection.MultiplyByConstant(sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension));
-                current_projection.BackwardFFT( );
-                current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges( ));
-
-                // insert it into the output image
-
-                result_image.InsertOtherImageAtSpecifiedPosition(&current_projection, current_peak.x - result_image.physical_address_of_box_center_x, current_peak.y - result_image.physical_address_of_box_center_y, 0, 0.0f);
-                all_peak_infos.Add(temp_peak_info);
-            }
-            else {
-                SendInfo("WARNING: More than 1000 peaks above threshold were found. Limiting results to 1000 peaks.\n");
-                break;
-            }
+            // Step 4: Insert projection into result image
+            result_image.InsertOtherImageAtSpecifiedPosition(&current_projection,
+                                                             peak.x - result_image.physical_address_of_box_center_x,
+                                                             peak.y - result_image.physical_address_of_box_center_y,
+                                                             0, 0.0f);
         }
 
+        // while ( true ) {
+        //     auto [new_peak_found, peak_info] = peak_extractor.ProcessNextPeak(angles, number_of_peaks_found);
+
+        //     if ( ! new_peak_found )
+        //         break;
+
+        //     //////////////////////////////////////////////
+        //     // CURRENTLY HARD CODED TO ONLY DO 1000 MAX //
+        //     //////////////////////////////////////////////
+
+        //     if ( number_of_peaks_found <= cistem::maximum_number_of_detections ) {
+        //         all_peak_infos.Add(peak_info);
+        //     }
+        //     else {
+        //         SendInfo("WARNING: More than 1000 peaks above threshold were found. Limiting results to 1000 peaks.\n");
+        //         break;
+        //     }
+        // }
+        // timer.lap("Extract Peaks");
+
+        // timer.start("Sort Peaks");
+        // // If we resampled the peaks we need to sort the output list as it will not necessarily be descending
+        // // I don't want to deal with wxArray
+        // if ( resample_peaks )
+        //     peak_extractor.SortPeakInfoByPeakHeight(all_peak_infos);
+        // timer.lap("Sort Peaks");
         // save the output image
 
+        timer.start("Save result image");
         result_image.QuickAndDirtyWriteSlice(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[38].ReturnStringArgument( ), 1, true, search_pixel_size);
+        timer.lap("Save result image");
 
+        timer.start("Send results to GUI");
         // tell the gui that this result is available...
 
         ArrayOfTemplateMatchFoundPeakInfos blank_changes;
-        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, expected_threshold, all_peak_infos, blank_changes);
-
+        float                              high_res_limit_used = 2.0f * search_pixel_size;
+        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, high_res_limit_used, expected_threshold, all_peak_infos, blank_changes);
+        timer.lap("Send results to GUI");
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it
 
+        timer.start("Cleanup");
         aggregated_results.RemoveAt(array_location);
         delete[] expected_survival_histogram;
         delete[] survival_histogram;
+        timer.lap("Send results to GUI");
+        timer.print_times( );
+        wxPrintf("Pre print times\n");
     }
 }
 

@@ -1,6 +1,7 @@
 //BEGIN_FOR_STAND_ALONE_CTFFIND
 #include "core_headers.h"
 #include <memory>
+#include <queue>
 
 using namespace cistem;
 
@@ -8097,10 +8098,12 @@ void Image::ClipInto(Image* other_image, float wanted_padding_value, bool fill_w
         }
 
         // When we are clipping into a larger volume in Fourier space, there is a half-plane (vol) or half-line (2D image) at Nyquist for which FFTW
-        // does not explicitly tell us the values. We need to fill them in.
+        // does not explicitly tell us the values. We need to fill them in, if the image has even dimensions.
+        // Note: Even dimension check added 2025-01-23. Only confirmed for odd clipinto even
+
         if ( logical_y_dimension < other_image->logical_y_dimension || logical_z_dimension < other_image->logical_z_dimension ) {
             // For a 2D image
-            if ( logical_z_dimension == 1 ) {
+            if ( logical_z_dimension == 1 && IsEven(logical_y_dimension) ) {
                 jj = physical_index_of_first_negative_frequency_y;
                 for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
                     other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, 0)] = complex_values[ReturnFourier1DAddressFromPhysicalCoord(ii, jj, 0)];
@@ -8108,42 +8111,38 @@ void Image::ClipInto(Image* other_image, float wanted_padding_value, bool fill_w
             }
             // For a 3D volume
             else {
-
                 // Deal with the positive Nyquist of the 2nd dimension
-                for ( kk_logi = logical_lower_bound_complex_z; kk_logi <= logical_upper_bound_complex_z; kk_logi++ ) {
-                    jj      = physical_index_of_first_negative_frequency_y;
-                    jj_logi = logical_lower_bound_complex_y;
-                    for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
-                        other_image->complex_values[other_image->ReturnFourier1DAddressFromLogicalCoord(ii, jj, kk_logi)] = complex_values[ReturnFourier1DAddressFromLogicalCoord(ii, jj_logi, kk_logi)];
+                if ( IsEven(logical_y_dimension) ) {
+                    for ( kk_logi = logical_lower_bound_complex_z; kk_logi <= logical_upper_bound_complex_z; kk_logi++ ) {
+                        jj      = physical_index_of_first_negative_frequency_y;
+                        jj_logi = logical_lower_bound_complex_y;
+                        for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
+                            other_image->complex_values[other_image->ReturnFourier1DAddressFromLogicalCoord(ii, jj, kk_logi)] = complex_values[ReturnFourier1DAddressFromLogicalCoord(ii, jj_logi, kk_logi)];
+                        }
                     }
                 }
 
                 // Deal with the positive Nyquist in the 3rd dimension
-                kk            = physical_index_of_first_negative_frequency_z;
-                int kk_mirror = other_image->logical_z_dimension - physical_index_of_first_negative_frequency_z;
-                //wxPrintf("\nkk = %i; kk_mirror = %i\n",kk,kk_mirror);
-                int jj_mirror;
-                //wxPrintf("Will loop jj from %i to %i\n",1,physical_index_of_first_negative_frequency_y);
-                for ( jj = 1; jj <= physical_index_of_first_negative_frequency_y; jj++ ) {
-                    //jj_mirror = other_image->logical_y_dimension - jj;
-                    jj_mirror = jj;
-                    for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
-                        //wxPrintf("(1) ii = %i; jj = %i; kk = %i; jj_mirror = %i; kk_mirror = %i\n",ii,jj,kk,jj_mirror,kk_mirror);
-                        other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk)] = other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj_mirror, kk_mirror)];
+                if ( IsEven(logical_z_dimension) ) {
+                    kk            = physical_index_of_first_negative_frequency_z;
+                    int kk_mirror = other_image->logical_z_dimension - physical_index_of_first_negative_frequency_z;
+                    int jj_mirror;
+                    for ( jj = 1; jj <= physical_index_of_first_negative_frequency_y; jj++ ) {
+                        jj_mirror = jj;
+                        for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
+                            other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk)] = other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj_mirror, kk_mirror)];
+                        }
                     }
-                }
-                //wxPrintf("Will loop jj from %i to %i\n", other_image->logical_y_dimension - physical_index_of_first_negative_frequency_y, other_image->logical_y_dimension - 1);
-                for ( jj = other_image->logical_y_dimension - physical_index_of_first_negative_frequency_y; jj <= other_image->logical_y_dimension - 1; jj++ ) {
-                    //jj_mirror = other_image->logical_y_dimension - jj;
-                    jj_mirror = jj;
-                    for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
-                        //wxPrintf("(2) ii = %i; jj = %i; kk = %i; jj_mirror = %i; kk_mirror = %i\n",ii,jj,kk,jj_mirror,kk_mirror);
-                        other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk)] = other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj_mirror, kk_mirror)];
+                    for ( jj = other_image->logical_y_dimension - physical_index_of_first_negative_frequency_y; jj <= other_image->logical_y_dimension - 1; jj++ ) {
+                        jj_mirror = jj;
+                        for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
+                            other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk)] = other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj_mirror, kk_mirror)];
+                        }
                     }
-                }
-                jj = 0;
-                for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
-                    other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk)] = other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk_mirror)];
+                    jj = 0;
+                    for ( ii = 0; ii <= physical_upper_bound_complex_x; ii++ ) {
+                        other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk)] = other_image->complex_values[other_image->ReturnFourier1DAddressFromPhysicalCoord(ii, jj, kk_mirror)];
+                    }
                 }
             }
         }
@@ -9871,6 +9870,166 @@ Peak Image::FindPeakWithIntegerCoordinates(float wanted_min_radius, float wanted
     }
 
     return found_peak;
+}
+
+/**
+ * @brief Notes here
+ * 
+ * @param wanted_min_radius 
+ * @param wanted_max_radius 
+ * @param wanted_min_distance_from_edges 
+ * @return Peak 
+ */
+void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_list,
+                                                       float              peak_threshold,
+                                                       float              peak_threshold_scale, // < 1 to examine lower peaks for correction
+                                                       float              exclusion_radius,
+                                                       int                wanted_min_distance_from_edges) {
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
+    MyDebugAssertTrue(object_is_centred_in_box, "This method is specialized for objects centered in the box");
+    MyDebugAssertTrue(logical_z_dimension == 1, "This method is specialized for 2d");
+    MyDebugAssertTrue(exclusion_radius >= 0.f, "Exclusion radius must be zero or positive");
+    MyDebugAssertTrue(wanted_min_distance_from_edges >= 0, "wanted_min_distance_from_edges must be zero or positive");
+    MyDebugAssertTrue(2 * wanted_min_distance_from_edges < logical_x_dimension, "No pixels to search in X!");
+    MyDebugAssertTrue(2 * wanted_min_distance_from_edges < logical_y_dimension, "No pixels to search in Y!");
+
+    // Start with a clear vector, but assume we'll have around 100 peaks to start
+    peak_list.clear( );
+    peak_list.reserve(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS / 10);
+
+    const int original_peak_size = 8;
+    const int upsample_peak_size = 64;
+
+    Image original_peak;
+    Image upsample_peak;
+
+    bool  do_upsampling    = peak_threshold_scale == 1.0f ? false : true;
+    float search_threshold = peak_threshold_scale * peak_threshold;
+
+    if ( do_upsampling ) {
+        original_peak.Allocate(original_peak_size, original_peak_size, 1, true);
+        upsample_peak.Allocate(upsample_peak_size, upsample_peak_size, 1, true);
+    }
+
+    // We'll use a priority queue to loop over, get all potential peaks > threshold just one time
+    std::priority_queue<Sortable2dPeak> peak_queue;
+    long                                address = 0;
+    for ( int j = 0 + wanted_min_distance_from_edges; j < logical_y_dimension - wanted_min_distance_from_edges; j++ ) {
+        for ( int i = 0 + wanted_min_distance_from_edges; i < logical_x_dimension - wanted_min_distance_from_edges; i++ ) {
+            address = ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
+            if ( real_values[address] > search_threshold ) {
+                // Explicit variable to avoid Intel compiler pack expansion bug.
+                peak_queue.emplace(real_values[address], address);
+            }
+        }
+    }
+
+    float exclusion_radius_sq  = exclusion_radius * exclusion_radius;
+    int   exclusion_radius_int = int(std::ceil(exclusion_radius)) + 1;
+
+    // Now loop over the priority queue
+    Sortable2dPeak current_peak;
+    int            x, y;
+    const int      mip_stride                        = logical_x_dimension + padding_jump_value;
+    const int      original_peakfirst_element_offset = (original_peak_size / 2) * (mip_stride) + original_peak_size / 2;
+
+    while ( ! peak_queue.empty( ) && peak_list.size( ) < cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS ) {
+        current_peak = peak_queue.top( );
+        peak_queue.pop( );
+
+        // Lazy deletion, see if we haven't already masked out this value
+        if ( real_values[current_peak.physical_address_within_image] != current_peak.value )
+            continue;
+
+        // If we got here, we have may have a good peak (yes if no upsampling, else we need to check.)
+        ////////////
+        if ( do_upsampling ) {
+            // Extract base peak region
+            long peak_address_mip = current_peak.physical_address_within_image - original_peakfirst_element_offset;
+            int  peak_address     = 0;
+
+            if ( peak_address_mip > 0 && peak_address_mip + original_peak_size * mip_stride + original_peak_size < real_memory_allocated ) {
+                for ( int peak_j = 0; peak_j < original_peak_size; peak_j++ ) {
+                    for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
+                        original_peak.real_values[peak_address] = real_values[peak_address_mip];
+                        peak_address++;
+                        peak_address_mip++;
+                    }
+                    peak_address += original_peak.padding_jump_value;
+                    peak_address_mip += mip_stride - original_peak_size;
+                }
+
+                // original_peak.QuickAndDirtyWriteSlice(stack_fn, number_of_peaks_found + 1);
+                // original_peak.GaussianLowPassFilter(5.f / search_pixel_size_);
+                // Resample peak to higher resolution
+                upsample_peak.is_in_real_space = false;
+                upsample_peak.SetToConstant(0.f);
+                original_peak.ForwardFFT( );
+
+                original_peak.ClipInto(&upsample_peak);
+                upsample_peak.BackwardFFT( );
+                // upsample_peak.MultiplyByConstant(4.f);
+
+                int   max_counter = 0;
+                float max_val     = -std::numeric_limits<float>::max( );
+                for ( int j = 0; j < upsample_peak.logical_y_dimension; j++ ) {
+                    for ( int i = 0; i < upsample_peak.logical_x_dimension; i++ ) {
+                        max_val = std::max(max_val, upsample_peak.real_values[max_counter]);
+                        max_counter++;
+                    }
+                    max_counter += upsample_peak.padding_jump_value;
+                }
+
+                // Only accept the corrected peak if it exceeds the original threshold
+                if ( max_val > peak_threshold ) {
+                    current_peak.value = max_val;
+                }
+
+                // Clean up
+                original_peak.is_in_real_space = true;
+                original_peak.SetToConstant(0.f);
+            }
+            // No need for an else clause. If we cannot extract the peak because it is out of bounds,
+            // then peak_corrected_and_gt_thr remains false. We do need to catch the case that the orignal peak was
+            // already > the threshold below when we check acceptance
+        }
+
+        // Since we may have upsampled and dealt with another threshold, we need to check here again
+        // and only erase values if >. With no resampling, this will always be true because our original
+        // queue is all > peak_threshold. With resampling if it is lower or the peak was OOB then we don't do anything
+        // as we already popped it off the queue.
+        if ( current_peak.value > peak_threshold ) {
+            ///////////
+            x = current_peak.physical_address_within_image % (logical_x_dimension + padding_jump_value);
+            y = current_peak.physical_address_within_image / (logical_x_dimension + padding_jump_value);
+            peak_list.emplace_back(float(x),
+                                   float(y),
+                                   1.f,
+                                   current_peak.value,
+                                   current_peak.physical_address_within_image);
+
+            for ( int j = std::max(0, y - exclusion_radius_int); j < std::min(logical_y_dimension, y + exclusion_radius_int + 1); j++ ) {
+                long  y_offset = j * (logical_x_dimension + padding_jump_value);
+                float y_sq     = float(j) - y;
+                y_sq *= y_sq;
+                for ( int i = std::max(0, x - exclusion_radius_int); i < std::min(logical_x_dimension, x + exclusion_radius_int) + 1; i++ ) {
+                    float x_sq = float(i) - x;
+                    if ( x_sq * x_sq + y_sq <= exclusion_radius_sq )
+                        real_values[y_offset + i] = -std::numeric_limits<float>::max( );
+                }
+            }
+        }
+        else
+            real_values[current_peak.physical_address_within_image] = -std::numeric_limits<float>::max( );
+    }
+
+    std::sort(peak_list.begin( ), peak_list.end( ),
+              [](const Peak& a, const Peak& b) {
+                  return a.value > b.value;
+              });
+
+    return;
 }
 
 float Image::FindBeamTilt(CTF& input_ctf, float pixel_size, Image& phase_error_output, Image& beamtilt_output, Image& difference_image, float& beamtilt_x, float& beamtilt_y, float& particle_shift_x, float& particle_shift_y, float phase_multiplier, bool progress_bar, int first_position_to_search, int last_position_to_search, MyApp* app_for_result) {

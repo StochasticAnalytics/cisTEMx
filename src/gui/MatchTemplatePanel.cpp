@@ -5,14 +5,22 @@
 // - First run: GUI value as-is
 // - Subsequent runs: 0.5A steps landing on half/whole numbers up to end_value
 // #define BATCH_HIGH_RES_EXPERIMENT
+#define BATCH_ALL_TEMPLATES
 
-#ifdef BATCH_HIGH_RES_EXPERIMENT
+// Mutually exclusive hacks
+#if defined(BATCH_HIGH_RES_EXPERIMENT) && defined(BATCH_ALL_TEMPLATES)
+#error "BATCH_HIGH_RES_EXPERIMENT && BATCH_ALL_TEMPLATES cannot be defined together"
+#endif
+
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
 #include <cmath>
 // File-static variables for batch experiment state (confined to this translation unit)
 static bool  s_batch_experiment_active    = false;
-static bool  s_batch_experiment_first_run = true;
 static float s_batch_experiment_end_value = 8.0f; // Stop after this value
 static float s_batch_experiment_step      = 0.5f; // Step size in Angstroms
+static int   s_first_volume_asset_idx     = 0;
+static int   s_number_of_volume_asset_idx = 0;
+static int   s_current_volume_asset_idx   = 0;
 #endif
 
 //#include "../core/core_headers.h"
@@ -89,6 +97,10 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     SymmetryComboBox->SetSelection(0);
 
     GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MatchTemplatePanel::OnGroupComboBox, this);
+
+#ifdef BATCH_ALL_TEMPLATES
+    s_number_of_volume_asset_idx = volume_asset_panel->all_assets_list->number_of_assets;
+#endif
 }
 
 /*
@@ -582,24 +594,36 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
-#ifdef BATCH_HIGH_RES_EXPERIMENT
-    if ( ! s_batch_experiment_active ) {
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
+
+    // We are running already, print the update
+    if ( s_batch_experiment_active ) {
+#ifdef BATCH_ALL_TEMPLATES
+        // Log what we're running (value was already set in ProcessAllJobsFinished)
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running ref index %d/%d: %s\n",
+                                       s_current_volume_asset_idx,
+                                       s_number_of_volume_asset_idx,
+                                       volume_asset_panel->ReturnAssetShortFilename(s_current_volume_asset_idx).ToUTF8( ).data( )));
+#else
+        // Log what we're running (value was already set in ProcessAllJobsFinished)
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
+                                       HighResolutionLimitNumericCtrl->ReturnValue( )));
+#endif
+    }
+    else {
         // First click - activate batch mode
-        s_batch_experiment_active    = true;
-        s_batch_experiment_first_run = true;
+        // Print starting message
+        s_batch_experiment_active = true;
+#ifdef BATCH_ALL_TEMPLATES
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run all templates in dropdown"));
+#else
         WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run from %.2f to %.2f in %.1fA steps",
                                        HighResolutionLimitNumericCtrl->ReturnValue( ),
                                        s_batch_experiment_end_value,
                                        s_batch_experiment_step));
-    }
-
-    if ( ! s_batch_experiment_first_run ) {
-        // Log what we're running (value was already set in ProcessAllJobsFinished)
-        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
-                                       HighResolutionLimitNumericCtrl->ReturnValue( )));
-    }
-    s_batch_experiment_first_run = false;
 #endif
+    }
+#endif // print info block
 
     active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
 
@@ -711,7 +735,8 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
     current_image              = image_asset_panel->ReturnAssetPointer(active_group.members[0]);
     current_image_euler_search = new EulerSearch;
-    // WARNING: resolution_limit below is used before its value is set
+    // NOTE: resolution limit is not actually used here
+    resolution_limit = 1.f;
     current_image_euler_search->InitGrid(wanted_symmetry, wanted_out_of_plane_angular_step, 0.0, 0.0, 360.0, wanted_in_plane_angular_step, 0.0, current_image->pixel_size / resolution_limit, parameter_map, 1);
 
     if ( wanted_symmetry.StartsWith("C") ) {
@@ -1018,12 +1043,13 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     ProgressBar->Pulse( );
 }
 
-void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
     // result is available for an image..
 
     cached_results[image_number - 1].found_peaks.Clear( );
     cached_results[image_number - 1].found_peaks    = peak_infos;
     cached_results[image_number - 1].used_threshold = threshold_used;
+    cached_results[image_number - 1].high_res_limit = high_res_limit_used;
 
     ResultsPanel->SetActiveResult(cached_results[image_number - 1]);
 
@@ -1074,11 +1100,10 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     ProgressPanel->Layout( );
     cached_results.Clear( );
 
-#ifdef BATCH_HIGH_RES_EXPERIMENT
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
     // Cancel batch experiment on user termination
     if ( s_batch_experiment_active ) {
-        s_batch_experiment_active    = false;
-        s_batch_experiment_first_run = true;
+        s_batch_experiment_active = false;
         WriteInfoText("BATCH EXPERIMENT: Cancelled by user");
     }
 #endif
@@ -1209,6 +1234,8 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     // Kill the job (in case it isn't already dead)
     main_frame->job_controller.KillJob(my_job_id);
 
+// Key section to advance to the next experiment in the batch
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
 #ifdef BATCH_HIGH_RES_EXPERIMENT
     if ( s_batch_experiment_active ) {
         float current_value = HighResolutionLimitNumericCtrl->ReturnValue( );
@@ -1224,6 +1251,8 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         if ( next_value <= s_batch_experiment_end_value ) {
             WriteInfoText(wxString::Format("BATCH EXPERIMENT: Completed %.2f, next = %.2f",
                                            current_value, next_value));
+
+            // Update the GUI so the Call after has the updated state
             HighResolutionLimitNumericCtrl->ChangeValueFloat(next_value);
 
             // Use CallAfter for safe event loop handling
@@ -1237,13 +1266,43 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         }
         else {
             // Done with all values
-            s_batch_experiment_active    = false;
-            s_batch_experiment_first_run = true;
+            s_batch_experiment_active = false;
             WriteInfoText(wxString::Format("BATCH EXPERIMENT: All values completed (ended at %.2f)!",
                                            current_value));
         }
     }
 #endif
+
+#ifdef BATCH_ALL_TEMPLATES
+    if ( s_batch_experiment_active ) {
+
+        if ( s_current_volume_asset_idx + 1 < s_number_of_volume_asset_idx ) {
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: Completed template idx %d, next = %d/%d",
+                                           s_current_volume_asset_idx,
+                                           s_current_volume_asset_idx + 1,
+                                           s_number_of_volume_asset_idx));
+
+            // Update the GUI so the Call after has the updated state
+            s_current_volume_asset_idx++;
+            ReferenceSelectPanel->SetSelection(s_current_volume_asset_idx);
+
+            // Use CallAfter for safe event loop handling
+            CallAfter([this]( ) {
+                if ( s_batch_experiment_active ) {
+                    wxCommandEvent dummy_event;
+                    StartEstimationClick(dummy_event);
+                }
+            });
+            return; // Don't show Finish button yet
+        }
+        else {
+            // Done with all values
+            s_batch_experiment_active = false;
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: All templates are completed!"));
+        }
+    }
+#endif
+#endif // batch block
 
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);

@@ -9269,6 +9269,9 @@ void Image::SwapFourierSpaceQuadrants(bool also_swap_real_space_quadrants, bool 
     if ( also_swap_real_space_quadrants ) {
         // For convenience, just do the real space swap here. This is of course inefficient, and could be implemented at the end of this method, but
         // the price of an extra round of FFTs seems to be low, given the assumed low frequency use of this method, relative to projection.
+        // FIXME: for fast searches (like apoferritin experiments) this  method can take up to half as long as the rest of the search.
+        // Moving the logic to the GPU with CopyHostToDeviceTextureComplex makes sense in terms of cutting down on allocations
+        // And as for this FFT pair, we also swap quadrants when we ExtractSlices, so that seems redundant. Can we get rid of both?
         ForwardFFT( );
         SwapRealSpaceQuadrants( );
         BackwardFFT( );

@@ -613,9 +613,13 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     else {
         // First click - activate batch mode
         // Print starting message
-        s_batch_experiment_active = true;
+        s_batch_experiment_active  = true;
+        s_current_volume_asset_idx = ReferenceSelectPanel->GetSelection( );
+        VolumeAsset* temp_volume   = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection( ));
 #ifdef BATCH_ALL_TEMPLATES
-        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run all templates in dropdown"));
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run all templates in dropdown starting from %d (%s)",
+                                       s_current_volume_asset_idx,
+                                       temp_volume->filename.GetName( )));
 #else
         WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run from %.2f to %.2f in %.1fA steps",
                                        HighResolutionLimitNumericCtrl->ReturnValue( ),

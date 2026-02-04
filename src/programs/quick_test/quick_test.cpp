@@ -68,5 +68,17 @@ bool QuickTestApp::DoCalculation( ) {
     // quick_test_gpu.callHelloFromGPU(idx);
 #endif
 
+    Image test_img;
+    test_img.QuickAndDirtyReadSlice("/tmp/og_peak.mrc", 1);
+
+    wxPrintf("\n Printing image:\n");
+    for ( int i = 0; i < test_img.logical_x_dimension; i++ ) {
+        for ( int j = 0; j < test_img.logical_y_dimension; j++ ) {
+            float val = test_img.ReturnRealPixelFromPhysicalCoord(i, j, 0);
+            wxPrintf("%2.2f  ", val);
+        }
+        wxPrintf("\n");
+    }
+
     return true;
 }

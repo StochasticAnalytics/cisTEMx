@@ -489,66 +489,37 @@ bool RefineTemplateApp::DoCalculation( ) {
     input_image.DivideByConstant(sqrt(input_image.ReturnSumOfSquares( )));
     input_image.BackwardFFT( );
 
-    Peak* found_peaks = new Peak[input_image.logical_x_dimension * input_image.logical_y_dimension / 100];
-    //	long *addresses = new long[input_image.logical_x_dimension * input_image.logical_y_dimension / 100];
+    // FindPeakWithIntegerCoordinatesForManyPeaks returns physical pixel coordinates;
+    // the OMP loop below expects center-offset coordinates for RealSpaceIntegerShift,
+    // so we convert after extraction.
+    std::vector<Peak> peak_list;
+    best_scaled_mip.CopyFrom(&scaled_mip_image);
+    best_scaled_mip.FindPeakWithIntegerCoordinatesForManyPeaks(
+            peak_list, wanted_threshold, 1.0f, sqrtf(min_peak_radius2), 0);
+
+    number_of_peaks_found = peak_list.size( );
+
+    Peak* found_peaks = new Peak[number_of_peaks_found];
+    wxPrintf("\n");
+    for ( int pk = 0; pk < number_of_peaks_found; pk++ ) {
+        // Convert from physical to center-offset coordinates for the OMP loop
+        found_peaks[pk].x     = peak_list[pk].x - best_scaled_mip.physical_address_of_box_center_x;
+        found_peaks[pk].y     = peak_list[pk].y - best_scaled_mip.physical_address_of_box_center_y;
+        found_peaks[pk].value = peak_list[pk].value;
+
+        // Print peak info (look up angles at physical address for display)
+        long addr = peak_list[pk].physical_address_within_image;
+        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size =  %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n",
+                 pk + 1,
+                 peak_list[pk].x * pixel_size, peak_list[pk].y * pixel_size,
+                 psi_image.real_values[addr], theta_image.real_values[addr],
+                 phi_image.real_values[addr], defocus_image.real_values[addr],
+                 pixel_size_image.real_values[addr], peak_list[pk].value);
+    }
 
     // count total searches (lazy)
-
     total_correlation_positions  = 0;
     current_correlation_position = 0;
-
-    // if running locally, search over all of them
-
-    best_scaled_mip.CopyFrom(&scaled_mip_image);
-    current_peak.value = FLT_MAX;
-    wxPrintf("\n");
-    while ( current_peak.value >= wanted_threshold ) {
-        // look for a peak..
-
-        current_peak = best_scaled_mip.FindPeakWithIntegerCoordinates(0.0, FLT_MAX);
-        if ( current_peak.value < wanted_threshold )
-            break;
-        found_peaks[number_of_peaks_found] = current_peak;
-
-        // ok we have peak..
-
-        // get angles and mask out the local area so it won't be picked again..
-
-        float sq_dist_x, sq_dist_y;
-        address = 0;
-
-        current_peak.x = current_peak.x + best_scaled_mip.physical_address_of_box_center_x;
-        current_peak.y = current_peak.y + best_scaled_mip.physical_address_of_box_center_y;
-
-        //		wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
-
-        for ( j = 0; j < best_scaled_mip.logical_y_dimension; j++ ) {
-            sq_dist_y = float(pow(j - current_peak.y, 2));
-            for ( i = 0; i < best_scaled_mip.logical_x_dimension; i++ ) {
-                sq_dist_x = float(pow(i - current_peak.x, 2));
-
-                // The square centered at the pixel
-                if ( sq_dist_x + sq_dist_y <= min_peak_radius2 ) {
-                    best_scaled_mip.real_values[address] = -FLT_MAX;
-                }
-
-                if ( sq_dist_x == 0.0f && sq_dist_y == 0.0f ) {
-                    current_phi                          = phi_image.real_values[address];
-                    current_theta                        = theta_image.real_values[address];
-                    current_psi                          = psi_image.real_values[address];
-                    current_defocus                      = defocus_image.real_values[address];
-                    current_pixel_size_offet_in_angstrom = pixel_size_image.real_values[address];
-                }
-
-                address++;
-            }
-            address += best_scaled_mip.padding_jump_value;
-        }
-
-        number_of_peaks_found++;
-
-        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size =  %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x * pixel_size, current_peak.y * pixel_size, current_psi, current_theta, current_phi, current_defocus, current_pixel_size_offet_in_angstrom, current_peak.value);
-    }
 
     if ( defocus_refine_step <= 0.0 ) {
         defocus_search_range = 0.0f;

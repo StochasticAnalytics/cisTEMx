@@ -17,7 +17,7 @@ struct Peak {
     Peak( ) = default; // Peak () {}; would also work
 
     // We could skip both ctors but by declaring this one it (helps) to avoid a mixup in ordering
-    Peak(float x_, long y_, float z_, float value_, long physical_address_within_image_)
+    Peak(float x_, float y_, float z_, float value_, long physical_address_within_image_)
         : x(x_), y(y_), z(z_), value(value_), physical_address_within_image(physical_address_within_image_) {}
 };
 

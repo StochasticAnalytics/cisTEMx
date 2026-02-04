@@ -1,302 +1,403 @@
 #include "template_matching_peak_extractor.h"
 
+/**
+ * @brief Construct a peak extractor that references MIP and parameter images for metadata lookup.
+ *
+ * The constructor is intentionally lightweight - it does not modify any images. Reconstruction
+ * preparation (downsampling, FFT) is deferred to `PrepareReconstruction` which is called lazily
+ * by `CreateResultImages`. This allows the caller to modify the reconstruction (e.g. apply padding
+ * in make_template_result) between constructing the extractor and creating result images.
+ *
+ * `pixel_size_image` is a pointer rather than a reference because prepare_stack_matchtemplate
+ * does not have a pixel size image - it stores pixel size per-micrograph, not per-peak.
+ * When null, `TransferPeakInfo` uses `search_pixel_size` for all peaks instead.
+ *
+ * Dimension assertions catch mismatched parameter images early rather than producing
+ * silent corruption when looking up metadata at peak addresses.
+ */
 TemplateMatchingPeakExtractor::TemplateMatchingPeakExtractor(
-        Image&           mip_image,
-        Image&           phi_image,
-        Image&           theta_image,
-        Image&           psi_image,
-        Image&           defocus_image,
-        Image&           pixel_size_image,
-        Image&           result_image,
-        Image&           input_reconstruction,
-        Image&           current_projection,
-        Image*           padded_projection,
-        Image*           slab,
-        Image*           binned_reconstruction,
-        NumericTextFile* coordinate_file,
-        float            threshold,
-        float            min_peak_radius_squared,
-        float            input_pixel_size,
-        float            search_pixel_size,
-        float            binned_3d_pixel_size,
-        bool             enable_peak_correction,
-        float            peak_search_threshold_scale)
+        Image& mip_image,
+        Image& phi_image,
+        Image& theta_image,
+        Image& psi_image,
+        Image& defocus_image,
+        Image* pixel_size_image,
+        float  input_pixel_size,
+        float  search_pixel_size)
     : mip_image_(mip_image),
       phi_image_(phi_image),
       theta_image_(theta_image),
       psi_image_(psi_image),
       defocus_image_(defocus_image),
       pixel_size_image_(pixel_size_image),
-      result_image_(result_image),
-      input_reconstruction_(input_reconstruction),
-      current_projection_(current_projection),
-      padded_projection_(padded_projection),
-      slab_(slab),
-      binned_reconstruction_(binned_reconstruction),
-      coordinate_file_(coordinate_file),
-      threshold_(threshold),
-      min_peak_radius_squared_(min_peak_radius_squared),
       input_pixel_size_(input_pixel_size),
       search_pixel_size_(search_pixel_size),
-      binned_3d_pixel_size_(binned_3d_pixel_size),
-      enable_peak_correction_(enable_peak_correction),
-      peak_search_threshold_scale_(peak_search_threshold_scale) {
+      needs_downsampling_(! FloatsAreAlmostTheSame(search_pixel_size, input_pixel_size) && search_pixel_size > input_pixel_size),
+      has_downsampled_(false),
+      downsampled_reconstruction_(nullptr) {
 
-    // Verify all parameter images have the same dimensions as the MIP
     MyDebugAssertTrue(phi_image_.HasSameDimensionsAs(&mip_image_), "Phi image must have same dimensions as MIP");
     MyDebugAssertTrue(theta_image_.HasSameDimensionsAs(&mip_image_), "Theta image must have same dimensions as MIP");
     MyDebugAssertTrue(psi_image_.HasSameDimensionsAs(&mip_image_), "Psi image must have same dimensions as MIP");
     MyDebugAssertTrue(defocus_image_.HasSameDimensionsAs(&mip_image_), "Defocus image must have same dimensions as MIP");
-    MyDebugAssertTrue(pixel_size_image_.HasSameDimensionsAs(&mip_image_), "Pixel size image must have same dimensions as MIP");
-
-    // Calculate binning factor and resize reconstruction if needed
-    float binning_factor = search_pixel_size_ / input_pixel_size_;
-
-    if ( binning_factor > 1.0f ) {
-        // Resize reconstruction to match search pixel size
-        int new_size = int(input_reconstruction_.logical_x_dimension / binning_factor + 0.5f);
-        if ( IsOdd(new_size) )
-            new_size++;
-        input_reconstruction_.ForwardFFT( );
-        input_reconstruction_.Resize(new_size, new_size, new_size);
-        input_reconstruction_.BackwardFFT( );
-    }
-
-    // Normalize reconstruction
-    float max_density = input_reconstruction_.ReturnAverageOfMaxN( );
-    input_reconstruction_.DivideByConstant(max_density);
-
-    // Prepare reconstruction for projection extraction
-    input_reconstruction_.ForwardFFT( );
-    input_reconstruction_.MultiplyByConstant(sqrtf(input_reconstruction_.logical_x_dimension * input_reconstruction_.logical_y_dimension * sqrtf(input_reconstruction_.logical_z_dimension)));
-    input_reconstruction_.ZeroCentralPixel( );
-    input_reconstruction_.SwapRealSpaceQuadrants( );
-
-    masked_mip_.CopyFrom(&mip_image_);
-
-    const int base_peak_size      = 7;
-    const int resampled_peak_size = 10 * base_peak_size;
-    base_peak_size_               = base_peak_size;
-    resampled_peak_size_          = resampled_peak_size;
-    int neighborhood              = base_peak_size / 2;
-
-    min_peak_radius_squared_ = std::max(min_peak_radius_squared_, float(pow(neighborhood, 2)));
-
-    int mip_stride                  = mip_image_.logical_x_dimension + mip_image_.padding_jump_value;
-    base_peak_first_element_offset_ = neighborhood * mip_stride + neighborhood;
-
-    if ( enable_peak_correction_ ) {
-        base_peak_.Allocate(base_peak_size, base_peak_size_, 1, true);
-        resampled_peak_.Allocate(resampled_peak_size, resampled_peak_size, 1, false);
+    if ( pixel_size_image_ != nullptr ) {
+        MyDebugAssertTrue(pixel_size_image_->HasSameDimensionsAs(&mip_image_), "Pixel size image must have same dimensions as MIP");
     }
 }
 
-std::pair<bool, TemplateMatchFoundPeakInfo> TemplateMatchingPeakExtractor::ProcessNextPeak(AnglesAndShifts& angles, int& number_of_peaks_found) {
+bool TemplateMatchingPeakExtractor::NeedsDownsampling( ) const {
+    return needs_downsampling_;
+}
+
+/**
+ * @brief Look up angles, defocus, and pixel size at each peak's physical address in the
+ *        parameter images and populate an output array of TemplateMatchFoundPeakInfo.
+ *
+ * Peaks from `FindPeakWithIntegerCoordinatesForManyPeaks` carry a `physical_address_within_image`
+ * that directly indexes into the parameter images' `real_values` arrays since all images share the
+ * same dimensions and memory layout. This avoids recomputing 2D->1D address mappings.
+ *
+ * Bounds and NaN checks are included because edge peaks can have addresses near or beyond
+ * the FFTW padding boundary, and corrupted MIP values (e.g. from numerical issues in the
+ * stats images) could produce NaN peak values that would propagate through downstream code.
+ * Invalid peaks are skipped with a warning rather than aborting, since losing one peak is
+ * preferable to losing the entire result set.
+ */
+void TemplateMatchingPeakExtractor::TransferPeakInfo(const std::vector<Peak>& peak_list, ArrayOfTemplateMatchFoundPeakInfos& output) const {
 
     TemplateMatchFoundPeakInfo peak_info;
-    Peak                       current_peak;
-    float                      current_phi;
-    float                      current_theta;
-    float                      current_psi;
-    float                      current_defocus;
-    float                      current_pixel_size;
 
-    // Step 1: Get peak information (either by searching or reading from file)
-    if ( coordinate_file_ != nullptr ) {
-        // Read coordinates from file
-        float coordinates[8];
-        coordinate_file_->ReadLine(coordinates);
-        number_of_peaks_found++;
+    for ( const auto& peak : peak_list ) {
+        int px = myroundint(peak.x);
+        int py = myroundint(peak.y);
+        if ( px < 0 || px >= mip_image_.logical_x_dimension || py < 0 || py >= mip_image_.logical_y_dimension ) {
+            wxPrintf("WARNING: Peak at (%f, %f) is out of bounds, skipping.\n", peak.x, peak.y);
+            continue;
+        }
+        if ( peak.physical_address_within_image < 0 || peak.physical_address_within_image >= mip_image_.real_memory_allocated ) {
+            wxPrintf("WARNING: Peak physical address %ld is out of bounds, skipping.\n", peak.physical_address_within_image);
+            continue;
+        }
 
-        current_psi        = coordinates[0];
-        current_theta      = coordinates[1];
-        current_phi        = coordinates[2];
-        current_peak.x     = coordinates[3] / search_pixel_size_;
-        current_peak.y     = coordinates[4] / search_pixel_size_;
-        current_defocus    = coordinates[5];
-        current_pixel_size = coordinates[6];
-        current_peak.value = coordinates[7];
+        if ( std::isnan(peak.value) || peak.value <= std::numeric_limits<float>::lowest( ) ) {
+            continue;
+        }
+
+        long address = peak.physical_address_within_image;
+
+        peak_info.x_pos       = peak.x * search_pixel_size_;
+        peak_info.y_pos       = peak.y * search_pixel_size_;
+        peak_info.phi         = phi_image_.real_values[address];
+        peak_info.theta       = theta_image_.real_values[address];
+        peak_info.psi         = psi_image_.real_values[address];
+        peak_info.defocus     = defocus_image_.real_values[address];
+        peak_info.pixel_size  = (pixel_size_image_ != nullptr) ? pixel_size_image_->real_values[address] : search_pixel_size_;
+        peak_info.peak_height = peak.value;
+
+        output.Add(peak_info);
     }
-    else {
-        // Search for peak in MIP - loop until we find a valid peak or run out
-        // When peak correction is enabled, use scaled threshold for initial search
-        float search_threshold = enable_peak_correction_ ? (threshold_ * peak_search_threshold_scale_) : threshold_;
-        int   min_peak_radius  = int(sqrtf(min_peak_radius_squared_));
-        bool  peak_accepted    = false;
+}
 
-        while ( ! peak_accepted ) {
-            peak_timer.start("Find Peak");
-            current_peak = masked_mip_.FindPeakWithIntegerCoordinates(0.0, std::numeric_limits<float>::max( ));
-            peak_timer.lap("Find Peak");
+/**
+ * @brief Read peaks from a coordinate file and populate both a Peak vector and a peak_infos array.
+ *
+ * The coordinate file format is 8 columns: psi, theta, phi, x_ang, y_ang, defocus, pixel_size, peak_height.
+ * Coordinates are stored in Angstroms in the file and converted to MIP pixel coordinates here
+ * by dividing by `search_pixel_size_`. This matches the convention used when writing the file
+ * in make_template_result and prepare_stack_matchtemplate.
+ *
+ * Both `peak_list` and `peak_infos` are populated so that downstream code (CreateResultImages,
+ * CreateParticleStack) receives the same data structures regardless of whether peaks came from
+ * a search or a file. The Peak struct needs `physical_address_within_image` set correctly
+ * because `CreateResultImages` uses the x/y pixel coordinates for projection insertion, and
+ * the address is needed if the caller wants to do further lookups.
+ *
+ * The same bounds/NaN checks as TransferPeakInfo are applied - coordinate files can contain
+ * stale entries from previous runs at different binning levels.
+ */
+void TemplateMatchingPeakExtractor::ReadPeaksFromCoordinateFile(NumericTextFile&                    coordinate_file,
+                                                                std::vector<Peak>&                  peak_list,
+                                                                ArrayOfTemplateMatchFoundPeakInfos& peak_infos) const {
 
-            if ( current_peak.value < search_threshold )
-                return {false, peak_info};
+    float                      coordinates[8];
+    TemplateMatchFoundPeakInfo peak_info;
 
-            // Adjust peak coordinates
-            current_peak.x = current_peak.x + mip_image_.physical_address_of_box_center_x;
-            current_peak.y = current_peak.y + mip_image_.physical_address_of_box_center_y;
+    for ( int line = 0; line < coordinate_file.number_of_lines; line++ ) {
+        coordinate_file.ReadLine(coordinates);
 
-            // Extract angles and metadata using efficient loop from match_template
-            float sq_dist_x, sq_dist_y;
-            long  address;
-            bool  peak_corrected_and_gt_thr = false;
-            bool  peak_out_of_bounds        = false;
+        float x_px = coordinates[3] / search_pixel_size_;
+        float y_px = coordinates[4] / search_pixel_size_;
 
-            for ( int j = std::max(myroundint(current_peak.y) - min_peak_radius, 0); j < std::min(myroundint(current_peak.y) + min_peak_radius, mip_image_.logical_y_dimension); j++ ) {
-                sq_dist_y = float(j) - current_peak.y;
-                sq_dist_y *= sq_dist_y;
+        int px = myroundint(x_px);
+        int py = myroundint(y_px);
+        if ( px < 0 || px >= mip_image_.logical_x_dimension || py < 0 || py >= mip_image_.logical_y_dimension ) {
+            wxPrintf("WARNING: Coordinate file peak at (%f, %f) px is out of bounds, skipping.\n", x_px, y_px);
+            continue;
+        }
 
-                for ( int i = std::max(myroundint(current_peak.x) - min_peak_radius, 0); i < std::min(myroundint(current_peak.x) + min_peak_radius, mip_image_.logical_x_dimension); i++ ) {
-                    sq_dist_x = float(i) - current_peak.x;
-                    sq_dist_x *= sq_dist_x;
-                    address = phi_image_.ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
+        long address = mip_image_.ReturnReal1DAddressFromPhysicalCoord(px, py, 0);
+        if ( address < 0 || address >= mip_image_.real_memory_allocated ) {
+            wxPrintf("WARNING: Coordinate file peak address %ld is out of bounds, skipping.\n", address);
+            continue;
+        }
 
-                    // Extract metadata at peak center
-                    if ( sq_dist_x == 0 && sq_dist_y == 0 ) {
-                        peak_timer.start("Read stats");
-                        current_phi        = phi_image_.real_values[address];
-                        current_theta      = theta_image_.real_values[address];
-                        current_psi        = psi_image_.real_values[address];
-                        current_defocus    = defocus_image_.real_values[address];
-                        current_pixel_size = pixel_size_image_.real_values[address];
-                        peak_timer.lap("Read stats");
-                        if ( enable_peak_correction_ ) {
-                            // Extract base peak region
-                            long peak_address_mip = address - base_peak_first_element_offset_;
-                            int  peak_address     = 0;
-                            int  mip_stride       = mip_image_.logical_x_dimension + mip_image_.padding_jump_value;
-                            peak_timer.start("Resample peak stats");
-                            if ( peak_address_mip > 0 && peak_address_mip + base_peak_size_ * mip_stride + base_peak_size_ < mip_image_.real_memory_allocated ) {
-                                for ( int peak_j = 0; peak_j < base_peak_size_; peak_j++ ) {
-                                    for ( int peak_i = 0; peak_i < base_peak_size_; peak_i++ ) {
-                                        base_peak_.real_values[peak_address] = mip_image_.real_values[peak_address_mip];
-                                        peak_address++;
-                                        peak_address_mip++;
-                                    }
-                                    peak_address += base_peak_.padding_jump_value;
-                                    peak_address_mip += mip_stride - base_peak_size_;
-                                }
+        if ( std::isnan(coordinates[7]) || coordinates[7] <= std::numeric_limits<float>::lowest( ) ) {
+            continue;
+        }
 
-                                // base_peak_.QuickAndDirtyWriteSlice(stack_fn, number_of_peaks_found + 1);
-                                // base_peak_.GaussianLowPassFilter(5.f / search_pixel_size_);
-                                // Resample peak to higher resolution
-                                resampled_peak_.is_in_real_space = false;
-                                resampled_peak_.SetToConstant(0.f);
-                                base_peak_.ForwardFFT( );
+        peak_info.psi         = coordinates[0];
+        peak_info.theta       = coordinates[1];
+        peak_info.phi         = coordinates[2];
+        peak_info.x_pos       = coordinates[3];
+        peak_info.y_pos       = coordinates[4];
+        peak_info.defocus     = coordinates[5];
+        peak_info.pixel_size  = coordinates[6];
+        peak_info.peak_height = coordinates[7];
 
-                                base_peak_.ClipInto(&resampled_peak_);
-                                resampled_peak_.BackwardFFT( );
-                                // resampled_peak_.MultiplyByConstant(4.f);
+        peak_infos.Add(peak_info);
 
-                                Peak resampled_peak_val = resampled_peak_.FindPeakWithIntegerCoordinates(0.0, std::numeric_limits<float>::max( ));
+        peak_list.emplace_back(x_px, long(y_px), 1.f, coordinates[7], address);
+    }
+}
 
-                                // Only accept the corrected peak if it exceeds the original threshold
-                                if ( resampled_peak_val.value >= threshold_ ) {
-                                    current_peak.value        = resampled_peak_val.value;
-                                    peak_corrected_and_gt_thr = true;
-                                }
+/**
+ * @brief Downsample (if needed), normalize, and FFT-prepare a reconstruction for projection extraction.
+ *
+ * When the search was run at a binned pixel size, we need to downsample the reconstruction to
+ * match. This is done out-of-place into `downsampled_reconstruction_` so the caller's original
+ * reconstruction is not modified - important because make_template_result may have already
+ * applied padding to it and we don't want to interfere with that.
+ *
+ * The downsampled copy is cached via `has_downsampled_` so that if CreateResultImages were
+ * called multiple times (not current usage but defensive), we don't redundantly downsample.
+ *
+ * Normalization uses `ReturnAverageOfMaxN()` rather than the global max to be more robust
+ * against single-voxel outliers - this has been the historical approach for result image
+ * visualization in cisTEM.
+ *
+ * The sqrt(Nx * Ny * sqrt(Nz)) scaling factor after FFT compensates for the FFTW normalization
+ * convention so that extracted 2D projections have correct relative intensities. ZeroCentralPixel
+ * removes the DC component, and SwapRealSpaceQuadrants prepares for ExtractSlice which expects
+ * the quadrants in this arrangement.
+ *
+ * Important: This method modifies the working reconstruction in-place (the downsampled copy if
+ * downsampling was needed, otherwise the passed-in reconstruction). After calling this, the
+ * reconstruction is in Fourier space and should only be used via ExtractSlice.
+ */
+void TemplateMatchingPeakExtractor::PrepareReconstruction(Image& reconstruction) {
 
-                                // Clean up
-                                base_peak_.is_in_real_space = true;
-                                base_peak_.SetToConstant(0.f);
-                            }
-                            peak_timer.start("Resample peak stats");
-                            // No need for an else clause. If we cannot extract the peak because it is out of bounds,
-                            // then peak_corrected_and_gt_thr remains false. We do need to catch the case that the orignal peak was
-                            // already > the threshold below when we check acceptance
-                        }
-                    }
+    Image* working_reconstruction = &reconstruction;
 
-                    peak_timer.start("Zero out radius");
-                    // Mask out the region around this peak
-                    if ( sq_dist_x + sq_dist_y <= min_peak_radius_squared_ ) {
-                        masked_mip_.real_values[address] = -std::numeric_limits<float>::max( );
-                    }
-                    peak_timer.lap("Zero out radius");
-                }
-            }
+    if ( needs_downsampling_ && ! has_downsampled_ ) {
+        downsampled_reconstruction_ = std::make_unique<Image>( );
+        downsampled_reconstruction_->CopyFrom(&reconstruction);
 
-            // Accept peak if: no correction enabled then we already checked the third condition (peak > thr), otherwise check the bool to
-            // see if we have a corrected peak > threshold
-            if ( ! enable_peak_correction_ || peak_corrected_and_gt_thr || current_peak.value > threshold_ ) {
-                peak_accepted = true;
-                number_of_peaks_found++;
-            }
-            // Otherwise loop continues to search for next peak
+        float binning_factor = search_pixel_size_ / input_pixel_size_;
+        int   new_size       = int(reconstruction.logical_x_dimension / binning_factor + 0.5f);
+        if ( IsOdd(new_size) )
+            new_size++;
+
+        downsampled_reconstruction_->ForwardFFT( );
+        downsampled_reconstruction_->Resize(new_size, new_size, new_size);
+        downsampled_reconstruction_->BackwardFFT( );
+        has_downsampled_ = true;
+    }
+
+    if ( downsampled_reconstruction_ != nullptr ) {
+        working_reconstruction = downsampled_reconstruction_.get( );
+    }
+
+    float max_density = working_reconstruction->ReturnAverageOfMaxN( );
+    working_reconstruction->DivideByConstant(max_density);
+
+    working_reconstruction->ForwardFFT( );
+    working_reconstruction->MultiplyByConstant(sqrtf(working_reconstruction->logical_x_dimension * working_reconstruction->logical_y_dimension * sqrtf(working_reconstruction->logical_z_dimension)));
+    working_reconstruction->ZeroCentralPixel( );
+    working_reconstruction->SwapRealSpaceQuadrants( );
+}
+
+/**
+ * @brief Extract projections from a 3D reconstruction at each peak's orientation and insert
+ *        them into a 2D result montage image. Optionally insert rotated reconstructions into
+ *        a 3D slab volume.
+ *
+ * This consolidates the projection extraction loop that was previously duplicated across
+ * match_template.cpp and make_template_result.cpp (via the old ProcessNextPeak method).
+ *
+ * The method first calls PrepareReconstruction, which handles downsampling and FFT setup.
+ * When `padded_projection` is non-null (make_template_result with padding > 1), the extraction
+ * goes through a larger padded image first: extract into padded -> BFFT -> clip into projection
+ * size -> FFFT. This produces higher-quality projections at the cost of the larger FFT.
+ * When null (match_template), we extract directly at the projection size.
+ *
+ * The edge-average subtraction after BFFT removes the mean background from each projection
+ * so that when inserted into the result image, projections don't create visible rectangular
+ * boundaries at their edges.
+ *
+ * Slab insertion (make_template_result only) rotates the binned reconstruction by the inverse
+ * angles to place the template in the orientation it was found at, then inserts it at the
+ * peak position scaled to the slab's coarser pixel size. The z-offset uses the defocus value
+ * to position the particle at the correct depth in the slab.
+ *
+ * The `binned_reconstruction` for the slab must be pre-prepared by the caller (copied, resized,
+ * normalized) before passing it here. This is because the slab binning is independent of the
+ * search binning handled by PrepareReconstruction.
+ */
+void TemplateMatchingPeakExtractor::CreateResultImages(
+        const std::vector<Peak>&                  peak_list,
+        const ArrayOfTemplateMatchFoundPeakInfos& peak_infos,
+        Image&                                    input_reconstruction,
+        Image&                                    current_projection,
+        Image&                                    result_image,
+        bool                                      create_slab,
+        Image*                                    padded_projection,
+        Image*                                    slab,
+        Image*                                    binned_reconstruction,
+        float                                     binned_pixel_size) {
+
+    PrepareReconstruction(input_reconstruction);
+
+    Image* working_reconstruction = (downsampled_reconstruction_ != nullptr)
+                                            ? downsampled_reconstruction_.get( )
+                                            : &input_reconstruction;
+
+    AnglesAndShifts angles;
+    size_t          num_peaks = std::min(peak_list.size( ), static_cast<size_t>(peak_infos.GetCount( )));
+    num_peaks                 = std::min(num_peaks, static_cast<size_t>(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS));
+
+    for ( int i = 0; i < num_peaks; i++ ) {
+        const Peak&                       peak = peak_list[i];
+        const TemplateMatchFoundPeakInfo& info = peak_infos[i];
+
+        angles.Init(info.phi, info.theta, info.psi, 0.0, 0.0);
+
+        if ( padded_projection != nullptr ) {
+            working_reconstruction->ExtractSlice(*padded_projection, angles, 1.0f, false);
+            padded_projection->SwapRealSpaceQuadrants( );
+            padded_projection->BackwardFFT( );
+            padded_projection->ClipInto(&current_projection);
+            current_projection.ForwardFFT( );
+        }
+        else {
+            working_reconstruction->ExtractSlice(current_projection, angles, 1.0f, false);
+            current_projection.SwapRealSpaceQuadrants( );
+        }
+
+        current_projection.MultiplyByConstant(sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension));
+        current_projection.BackwardFFT( );
+        current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges( ));
+
+        result_image.InsertOtherImageAtSpecifiedPosition(&current_projection,
+                                                         peak.x - result_image.physical_address_of_box_center_x,
+                                                         peak.y - result_image.physical_address_of_box_center_y,
+                                                         0, 0.0f);
+
+        if ( create_slab && slab != nullptr && binned_reconstruction != nullptr ) {
+            Image rotated_reconstruction;
+            angles.Init(-info.psi, -info.theta, -info.phi, 0.0, 0.0);
+            rotated_reconstruction.CopyFrom(binned_reconstruction);
+            rotated_reconstruction.Rotate3DByRotationMatrixAndOrApplySymmetry(angles.euler_matrix);
+
+            slab->InsertOtherImageAtSpecifiedPosition(&rotated_reconstruction,
+                                                      myroundint((peak.x - result_image.physical_address_of_box_center_x) / (search_pixel_size_ / binned_pixel_size)),
+                                                      myroundint((peak.y - result_image.physical_address_of_box_center_y) / (search_pixel_size_ / binned_pixel_size)),
+                                                      -myroundint(info.defocus / binned_pixel_size),
+                                                      0.0f);
         }
     }
-
-    // Step 2: Populate peak_info structure
-    peak_info.x_pos       = current_peak.x * search_pixel_size_;
-    peak_info.y_pos       = current_peak.y * search_pixel_size_;
-    peak_info.phi         = current_phi;
-    peak_info.theta       = current_theta;
-    peak_info.psi         = current_psi;
-    peak_info.defocus     = current_defocus;
-    peak_info.pixel_size  = current_pixel_size;
-    peak_info.peak_height = current_peak.value;
-
-    // Step 3: Extract projection from reconstruction
-    angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
-
-    peak_timer.start("extract result slice");
-    if ( padded_projection_ != nullptr ) {
-        // Handle padding workflow (make_template_result)
-        input_reconstruction_.ExtractSlice(*padded_projection_, angles, 1.0f, false);
-        padded_projection_->SwapRealSpaceQuadrants( );
-        padded_projection_->BackwardFFT( );
-        padded_projection_->ClipInto(&current_projection_);
-        current_projection_.ForwardFFT( );
-    }
-    else {
-        // Standard workflow (match_template)
-        input_reconstruction_.ExtractSlice(current_projection_, angles, 1.0f, false);
-        current_projection_.SwapRealSpaceQuadrants( );
-    }
-    peak_timer.lap("extract result slice");
-
-    peak_timer.start("Normalize");
-    current_projection_.MultiplyByConstant(sqrtf(current_projection_.logical_x_dimension * current_projection_.logical_y_dimension));
-    current_projection_.BackwardFFT( );
-    current_projection_.AddConstant(-current_projection_.ReturnAverageOfRealValuesOnEdges( ));
-    peak_timer.lap("Normalize");
-
-    peak_timer.start("Insert result slice");
-    // Step 4: Insert projection into result image
-    result_image_.InsertOtherImageAtSpecifiedPosition(&current_projection_,
-                                                      current_peak.x - result_image_.physical_address_of_box_center_x,
-                                                      current_peak.y - result_image_.physical_address_of_box_center_y,
-                                                      0, 0.0f);
-    peak_timer.lap("Normalize");
-
-    peak_timer.start("Slab insertion");
-    // Step 5: Handle slab insertion (make_template_result only)
-    if ( slab_ != nullptr && binned_reconstruction_ != nullptr ) {
-        Image rotated_reconstruction;
-        angles.Init(-current_psi, -current_theta, -current_phi, 0.0, 0.0);
-        rotated_reconstruction.CopyFrom(binned_reconstruction_);
-        rotated_reconstruction.Rotate3DByRotationMatrixAndOrApplySymmetry(angles.euler_matrix);
-
-        slab_->InsertOtherImageAtSpecifiedPosition(&rotated_reconstruction,
-                                                   myroundint((current_peak.x - result_image_.physical_address_of_box_center_x) / (search_pixel_size_ / binned_3d_pixel_size_)),
-                                                   myroundint((current_peak.y - result_image_.physical_address_of_box_center_y) / (search_pixel_size_ / binned_3d_pixel_size_)),
-                                                   -myroundint(current_defocus / binned_3d_pixel_size_),
-                                                   0.0f);
-    }
-    peak_timer.lap("Slab insertion");
-
-    return {true, peak_info};
 }
 
-// Comparator: return <0, 0, >0 like strcmp
-int wxCMPFUNC_CONV ComparePeakInfoByPeakHeight(TemplateMatchFoundPeakInfo** a, TemplateMatchFoundPeakInfo** b) {
-    if ( (*a)->peak_height < (*b)->peak_height )
-        return 1;
-    if ( (*a)->peak_height > (*b)->peak_height )
-        return -1;
-    return 0;
-}
+/**
+ * @brief Cut particles from a micrograph and write a particle image stack and cisTEM star file.
+ *
+ * This consolidates the particle extraction loop from prepare_stack_matchtemplate. Peak
+ * coordinates are in MIP pixel space and must be scaled to micrograph pixels via
+ * `mip_to_micrograph_scale` (= search_pixel_size / micrograph_pixel_size) before clipping.
+ *
+ * Each particle is normalized by subtracting the edge mean and dividing by sqrt(variance).
+ * The edge mean (not the global mean) is used because it better represents the background
+ * level at the particle boundary, producing cleaner particles for downstream processing.
+ * Zero variance is guarded against to avoid division by zero for blank regions.
+ *
+ * The star file stores `search_pixel_size_` as the pixel size rather than the micrograph
+ * pixel size because the downstream refinement programs need to know the pixel size at which
+ * the angles were determined. The defocus values stored are the sum of the micrograph average
+ * defocus and the per-peak defocus offset from template matching.
+ *
+ * The first slice is written with `overwrite=true` to create a new file, and subsequent
+ * slices append. This matches MRC stack conventions.
+ */
+void TemplateMatchingPeakExtractor::CreateParticleStack(
+        const std::vector<Peak>&                  peak_list,
+        const ArrayOfTemplateMatchFoundPeakInfos& peak_infos,
+        Image&                                    micrograph,
+        const wxString&                           output_stack_filename,
+        const wxString&                           output_star_filename,
+        int                                       box_size,
+        float                                     mip_to_micrograph_scale,
+        float                                     voltage_kV,
+        float                                     spherical_aberration_mm,
+        float                                     amplitude_contrast,
+        float                                     average_defocus_1,
+        float                                     average_defocus_2,
+        float                                     average_defocus_angle,
+        const wxString&                           input_image_filename) const {
 
-void TemplateMatchingPeakExtractor::SortPeakInfoByPeakHeight(ArrayOfTemplateMatchFoundPeakInfos& arr) {
-    arr.Sort(ComparePeakInfoByPeakHeight);
+    Image current_particle;
+    current_particle.Allocate(box_size, box_size, true);
+
+    float micrograph_mean = micrograph.ReturnAverageOfRealValues( );
+
+    cisTEMParameterLine output_parameters;
+    cisTEMParameters    output_star_file;
+    output_star_file.PreallocateMemoryAndBlank(peak_infos.GetCount( ) + 1);
+
+    size_t num_peaks = std::min(peak_list.size( ), static_cast<size_t>(peak_infos.GetCount( )));
+
+    for ( int i = 0; i < num_peaks; i++ ) {
+        const Peak&                       peak = peak_list[i];
+        const TemplateMatchFoundPeakInfo& info = peak_infos[i];
+
+        float scaled_x = peak.x * mip_to_micrograph_scale;
+        float scaled_y = peak.y * mip_to_micrograph_scale;
+
+        micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0,
+                            int(scaled_x - micrograph.physical_address_of_box_center_x),
+                            int(scaled_y - micrograph.physical_address_of_box_center_y), 0);
+
+        float variance = current_particle.ReturnVarianceOfRealValues( );
+        if ( variance == 0.0f )
+            variance = 1.0f;
+        current_particle.AddMultiplyConstant(-current_particle.ReturnAverageOfRealValuesOnEdges( ), 1.0f / sqrtf(variance));
+
+        int position = i + 1;
+        if ( position == 1 )
+            current_particle.QuickAndDirtyWriteSlice(output_stack_filename.ToStdString( ), position, true, search_pixel_size_);
+        else
+            current_particle.QuickAndDirtyWriteSlice(output_stack_filename.ToStdString( ), position);
+
+        output_parameters.SetAllToZero( );
+        output_parameters.position_in_stack                  = position;
+        output_parameters.psi                                = info.psi;
+        output_parameters.theta                              = info.theta;
+        output_parameters.phi                                = info.phi;
+        output_parameters.defocus_1                          = average_defocus_1 + info.defocus;
+        output_parameters.defocus_2                          = average_defocus_2 + info.defocus;
+        output_parameters.defocus_angle                      = average_defocus_angle;
+        output_parameters.pixel_size                         = search_pixel_size_;
+        output_parameters.microscope_voltage_kv              = voltage_kV;
+        output_parameters.microscope_spherical_aberration_mm = spherical_aberration_mm;
+        output_parameters.amplitude_contrast                 = amplitude_contrast;
+        output_parameters.occupancy                          = 1.0f;
+        output_parameters.sigma                              = 10.0f;
+        output_parameters.logp                               = 5000.0f;
+        output_parameters.score                              = 50.0f;
+        output_parameters.image_is_active                    = 1;
+        output_parameters.stack_filename                     = output_stack_filename;
+        output_parameters.original_image_filename            = input_image_filename;
+
+        output_star_file.all_parameters[position] = output_parameters;
+    }
+
+    output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, 1, num_peaks);
 }

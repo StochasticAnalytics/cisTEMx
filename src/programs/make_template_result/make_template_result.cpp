@@ -130,30 +130,16 @@ bool MakeTemplateResult::DoCalculation( ) {
     Image pixel_size_image;
     Image input_reconstruction;
     Image binned_3d_reconstruction;
-    Image rotated_reconstruction;
     Image current_projection;
     Image padded_projection;
     Image slab;
-
-    Peak current_peak;
-
-    AnglesAndShifts angles;
-
-    float current_phi;
-    float current_theta;
-    float current_psi;
-    float current_defocus;
-    float current_pixel_size;
 
     int   number_of_peaks_found = 0;
     int   slab_thickness_in_pixels;
     int   binned_3d_dimension;
     float binned_3d_pixel_size;
     float max_density;
-    float sq_dist_x, sq_dist_y;
-    long  address;
     long  text_file_access_type;
-    int   i, j;
 
     float coordinates[8];
     if ( read_coordinates )
@@ -212,76 +198,90 @@ bool MakeTemplateResult::DoCalculation( ) {
     max_density = binned_3d_reconstruction.ReturnAverageOfMaxN( );
     binned_3d_reconstruction.DivideByConstant(max_density);
 
-    // Apply padding to reconstruction if needed
+    // Apply padding to reconstruction if needed - must happen before CreateResultImages
     if ( padding != 1.0f ) {
         input_reconstruction.Resize(input_reconstruction.logical_x_dimension * padding, input_reconstruction.logical_y_dimension * padding, input_reconstruction.logical_z_dimension * padding, input_reconstruction.ReturnAverageOfRealValuesOnEdges( ));
     }
 
     // assume cube
-
     current_projection.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_x_dimension, false);
     if ( padding != 1.0f )
         padded_projection.Allocate(input_reconstruction_file.ReturnXSize( ) * padding, input_reconstruction_file.ReturnXSize( ) * padding, false);
 
-    // Adding this for simplicity
-    Image masked_mip;
-    masked_mip = mip_image;
+    std::vector<Peak>                  peak_list;
+    ArrayOfTemplateMatchFoundPeakInfos all_peak_infos;
 
-    // loop until the found peak is below the threshold
-    // Use TemplateMatchingPeakExtractor to handle peak finding, masking, and projection insertion
+    if ( ! read_coordinates ) {
+        // Search mode: find peaks in MIP
+        Image masked_mip;
+        masked_mip = mip_image;
+        masked_mip.FindPeakWithIntegerCoordinatesForManyPeaks(
+                peak_list, wanted_threshold, 0.95f, sqrtf(min_peak_radius), 0);
 
-    TemplateMatchingPeakExtractor peak_extractor(
-            masked_mip,
-            phi_image,
-            theta_image,
-            psi_image,
-            defocus_image,
-            pixel_size_image,
-            output_image,
-            input_reconstruction,
-            current_projection,
-            (padding != 1.0f) ? &padded_projection : nullptr,
-            &slab,
-            &binned_3d_reconstruction,
-            read_coordinates ? &coordinate_file : nullptr,
-            wanted_threshold,
-            min_peak_radius,
-            pixel_size, // input_pixel_size (unbinned)
-            search_pixel_size, // search_pixel_size (from MIP header)
-            binned_3d_pixel_size,
-            true); // enable peak correction for make_template_result
+        TemplateMatchingPeakExtractor extractor(
+                mip_image, phi_image, theta_image, psi_image,
+                defocus_image, &pixel_size_image,
+                pixel_size, search_pixel_size);
 
-    wxPrintf("\n");
-    while ( true ) {
-        auto [new_peak_found, peak_info] = peak_extractor.ProcessNextPeak(angles, number_of_peaks_found);
+        extractor.TransferPeakInfo(peak_list, all_peak_infos);
 
-        if ( ! new_peak_found )
-            break;
-
-        // Convert peak_info to coordinates array for file writing (search mode only)
-        if ( ! read_coordinates ) {
-            coordinates[0] = peak_info.psi;
-            coordinates[1] = peak_info.theta;
-            coordinates[2] = peak_info.phi;
-            coordinates[3] = peak_info.x_pos;
-            coordinates[4] = peak_info.y_pos;
-            coordinates[5] = peak_info.defocus;
-            coordinates[6] = peak_info.pixel_size;
-            coordinates[7] = peak_info.peak_height;
+        // Write coordinate file
+        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+            coordinates[0] = all_peak_infos[i].psi;
+            coordinates[1] = all_peak_infos[i].theta;
+            coordinates[2] = all_peak_infos[i].phi;
+            coordinates[3] = all_peak_infos[i].x_pos;
+            coordinates[4] = all_peak_infos[i].y_pos;
+            coordinates[5] = all_peak_infos[i].defocus;
+            coordinates[6] = all_peak_infos[i].pixel_size;
+            coordinates[7] = all_peak_infos[i].peak_height;
             coordinate_file.WriteLine(coordinates);
         }
 
-        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n",
-                 number_of_peaks_found, peak_info.x_pos, peak_info.y_pos, peak_info.psi,
-                 peak_info.theta, peak_info.phi, peak_info.defocus,
-                 peak_info.pixel_size, peak_info.peak_height);
+        number_of_peaks_found = all_peak_infos.GetCount( );
 
-        if ( read_coordinates && coordinate_file.number_of_lines == number_of_peaks_found )
-            break;
+        wxPrintf("\n");
+        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+            wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n",
+                     i + 1, all_peak_infos[i].x_pos, all_peak_infos[i].y_pos, all_peak_infos[i].psi,
+                     all_peak_infos[i].theta, all_peak_infos[i].phi, all_peak_infos[i].defocus,
+                     all_peak_infos[i].pixel_size, all_peak_infos[i].peak_height);
+        }
+
+        extractor.CreateResultImages(
+                peak_list, all_peak_infos,
+                input_reconstruction, current_projection, output_image,
+                true,
+                (padding != 1.0f) ? &padded_projection : nullptr,
+                &slab, &binned_3d_reconstruction, binned_3d_pixel_size);
+    }
+    else {
+        // Read mode: load peaks from coordinate file
+        TemplateMatchingPeakExtractor extractor(
+                output_image, phi_image, theta_image, psi_image,
+                defocus_image, &pixel_size_image,
+                pixel_size, search_pixel_size);
+
+        extractor.ReadPeaksFromCoordinateFile(coordinate_file, peak_list, all_peak_infos);
+        number_of_peaks_found = all_peak_infos.GetCount( );
+
+        wxPrintf("\n");
+        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+            wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n",
+                     i + 1, all_peak_infos[i].x_pos, all_peak_infos[i].y_pos, all_peak_infos[i].psi,
+                     all_peak_infos[i].theta, all_peak_infos[i].phi, all_peak_infos[i].defocus,
+                     all_peak_infos[i].pixel_size, all_peak_infos[i].peak_height);
+        }
+
+        extractor.CreateResultImages(
+                peak_list, all_peak_infos,
+                input_reconstruction, current_projection, output_image,
+                true,
+                (padding != 1.0f) ? &padded_projection : nullptr,
+                &slab, &binned_3d_reconstruction, binned_3d_pixel_size);
     }
 
     // save the output image
-
     output_image.QuickAndDirtyWriteSlice(output_result_image_filename.ToStdString( ), 1, true, search_pixel_size);
     slab.QuickAndDirtyWriteSlices(output_slab_filename.ToStdString( ), 1, slab_thickness_in_pixels, true, binned_3d_pixel_size);
 

@@ -1,5 +1,7 @@
 #include "../../core/core_headers.h"
 
+#include "../match_template/template_matching_peak_extractor.h"
+
 class
         MakeParticleStack : public MyApp {
   public:
@@ -134,24 +136,10 @@ bool MakeParticleStack::DoCalculation( ) {
     Image theta_image;
     Image phi_image;
     Image defocus_image;
-    Image current_particle;
     Image micrograph;
 
-    Peak current_peak;
-
-    float current_phi;
-    float current_theta;
-    float current_psi;
-    float current_defocus;
-    float current_pixel_size = 1.0f;
-
-    int   number_of_peaks_found = 0;
-    float sq_dist_x, sq_dist_y;
-    float micrograph_mean;
-    float variance;
-    long  address;
-    long  text_file_access_type;
-    int   i, j;
+    int  number_of_peaks_found = 0;
+    long text_file_access_type;
 
     float coordinates[8];
     if ( read_coordinates )
@@ -186,139 +174,58 @@ bool MakeParticleStack::DoCalculation( ) {
     float mip_to_micrograph_scale = search_pixel_size / pixel_size;
 
     micrograph.QuickAndDirtyReadSlice(input_image_filename.ToStdString( ), 1);
-    micrograph_mean = micrograph.ReturnAverageOfRealValues( );
-    //	address = 0;
-    //	for (j = 0; j < micrograph.logical_y_dimension; j++)
-    //	{
-    //		for (i = 0; i < micrograph.logical_x_dimension; i++)
-    //		{
-    //			address++;
-    //			micrograph.real_values[address] = i + 10000.0f * j;
-    //		}
-    //		address += micrograph.padding_jump_value;
-    //	}
 
-    // assume square
+    std::vector<Peak>                  peak_list;
+    ArrayOfTemplateMatchFoundPeakInfos all_peak_infos;
 
-    current_particle.Allocate(box_size, box_size, true);
-
-    // loop until the found peak is below the threshold
+    // Create extractor - no pixel_size_image in prepare_stack_matchtemplate (pixel size is per-micrograph)
+    TemplateMatchingPeakExtractor extractor(
+            mip_image, phi_image, theta_image, psi_image,
+            defocus_image, nullptr,
+            pixel_size, search_pixel_size);
 
     wxPrintf("\n");
-    while ( 1 == 1 ) {
-        if ( ! read_coordinates ) {
-            // look for a peak..
+    if ( ! read_coordinates ) {
+        // Search mode: find peaks in MIP
+        mip_image.FindPeakWithIntegerCoordinatesForManyPeaks(
+                peak_list, wanted_threshold, 1.0f, sqrtf(min_peak_radius), 0);
 
-            current_peak = mip_image.FindPeakWithIntegerCoordinates(0.0, FLT_MAX);
-            if ( current_peak.value < wanted_threshold )
-                break;
+        extractor.TransferPeakInfo(peak_list, all_peak_infos);
+        number_of_peaks_found = all_peak_infos.GetCount( );
 
-            // ok we have peak..
-
-            number_of_peaks_found++;
-
-            // get angles and mask out the local area so it won't be picked again..
-
-            address = 0;
-
-            current_peak.x = current_peak.x + mip_image.physical_address_of_box_center_x;
-            current_peak.y = current_peak.y + mip_image.physical_address_of_box_center_y;
-
-            //			wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
-
-            for ( j = 0; j < mip_y_dimension; j++ ) {
-                sq_dist_y = float(pow(j - current_peak.y, 2));
-                for ( i = 0; i < mip_x_dimension; i++ ) {
-                    sq_dist_x = float(pow(i - current_peak.x, 2));
-
-                    // The square centered at the pixel
-                    if ( sq_dist_x + sq_dist_y <= min_peak_radius ) {
-                        mip_image.real_values[address] = -FLT_MAX;
-                    }
-
-                    if ( sq_dist_x == 0 && sq_dist_y == 0 ) {
-                        current_phi     = phi_image.real_values[address];
-                        current_theta   = theta_image.real_values[address];
-                        current_psi     = psi_image.real_values[address];
-                        current_defocus = defocus_image.real_values[address];
-                    }
-
-                    address++;
-                }
-                address += mip_image.padding_jump_value;
-            }
-
-            // Scale peak coordinates from MIP pixels to micrograph pixels
-            // This handles the case where template matching was done at a binned resolution
-            current_peak.x *= mip_to_micrograph_scale;
-            current_peak.y *= mip_to_micrograph_scale;
-
-            coordinates[0] = current_psi;
-            coordinates[1] = current_theta;
-            coordinates[2] = current_phi;
-            coordinates[3] = current_peak.x * pixel_size;
-            coordinates[4] = current_peak.y * pixel_size;
-            coordinates[5] = current_defocus;
-            coordinates[6] = current_pixel_size;
-            coordinates[7] = current_peak.value;
+        // Write coordinate file
+        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+            coordinates[0] = all_peak_infos[i].psi;
+            coordinates[1] = all_peak_infos[i].theta;
+            coordinates[2] = all_peak_infos[i].phi;
+            coordinates[3] = all_peak_infos[i].x_pos;
+            coordinates[4] = all_peak_infos[i].y_pos;
+            coordinates[5] = all_peak_infos[i].defocus;
+            coordinates[6] = all_peak_infos[i].pixel_size;
+            coordinates[7] = all_peak_infos[i].peak_height;
             coordinate_file.WriteLine(coordinates);
         }
-        else {
-            coordinate_file.ReadLine(coordinates);
-            number_of_peaks_found++;
-            current_psi        = coordinates[0];
-            current_theta      = coordinates[1];
-            current_phi        = coordinates[2];
-            current_peak.x     = coordinates[3] / pixel_size;
-            current_peak.y     = coordinates[4] / pixel_size;
-            current_defocus    = coordinates[5];
-            current_pixel_size = coordinates[6];
-            current_peak.value = coordinates[7];
-        }
-
-        output_parameters.SetAllToZero( );
-        output_parameters.position_in_stack                  = number_of_peaks_found;
-        output_parameters.psi                                = current_psi;
-        output_parameters.theta                              = current_theta;
-        output_parameters.phi                                = current_phi;
-        output_parameters.defocus_1                          = average_defocus_1 + current_defocus;
-        output_parameters.defocus_2                          = average_defocus_2 + current_defocus;
-        output_parameters.defocus_angle                      = average_defocus_angle;
-        output_parameters.pixel_size                         = pixel_size;
-        output_parameters.microscope_voltage_kv              = voltage_kV;
-        output_parameters.microscope_spherical_aberration_mm = spherical_aberration_mm;
-        output_parameters.amplitude_contrast                 = amplitude_contrast;
-        output_parameters.occupancy                          = 1.0f;
-        output_parameters.sigma                              = 10.0f;
-        output_parameters.logp                               = 5000.0f;
-        output_parameters.score                              = 50.0f;
-        output_parameters.image_is_active                    = 1;
-        output_parameters.stack_filename                     = output_particle_stack_filename;
-        output_parameters.original_image_filename            = input_image_filename;
-
-        output_star_file.all_parameters[number_of_peaks_found] = output_parameters;
-
-        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x * pixel_size, current_peak.y * pixel_size, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
-
-        micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0,
-                            int(current_peak.x - micrograph.physical_address_of_box_center_x),
-                            int(current_peak.y - micrograph.physical_address_of_box_center_y), 0);
-        //		micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0, int(current_peak.x * pixel_size), int(current_peak.y * pixel_size), 0);
-        //		micrograph.ClipInto(&current_particle, micrograph_mean, false, 1.0, int(- current_peak.x * pixel_size + current_particle.physical_address_of_box_center_x), int(- current_peak.y * pixel_size + current_particle.physical_address_of_box_center_y), 0);
-        variance = current_particle.ReturnVarianceOfRealValues( );
-        if ( variance == 0.0f )
-            variance = 1.0f;
-        current_particle.AddMultiplyConstant(-current_particle.ReturnAverageOfRealValuesOnEdges( ), 1.0f / sqrtf(variance));
-        if ( number_of_peaks_found == 1 )
-            current_particle.QuickAndDirtyWriteSlice(output_particle_stack_filename.ToStdString( ), number_of_peaks_found, true, pixel_size);
-        else
-            current_particle.QuickAndDirtyWriteSlice(output_particle_stack_filename.ToStdString( ), number_of_peaks_found);
-
-        if ( read_coordinates && coordinate_file.number_of_lines == number_of_peaks_found )
-            break;
+    }
+    else {
+        // Read mode: load peaks from coordinate file
+        extractor.ReadPeaksFromCoordinateFile(coordinate_file, peak_list, all_peak_infos);
+        number_of_peaks_found = all_peak_infos.GetCount( );
     }
 
-    output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, 1, number_of_peaks_found);
+    for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n",
+                 i + 1, all_peak_infos[i].x_pos, all_peak_infos[i].y_pos, all_peak_infos[i].psi,
+                 all_peak_infos[i].theta, all_peak_infos[i].phi, all_peak_infos[i].defocus,
+                 all_peak_infos[i].pixel_size, all_peak_infos[i].peak_height);
+    }
+
+    extractor.CreateParticleStack(
+            peak_list, all_peak_infos, micrograph,
+            output_particle_stack_filename, output_star_filename,
+            box_size, mip_to_micrograph_scale,
+            voltage_kV, spherical_aberration_mm, amplitude_contrast,
+            average_defocus_1, average_defocus_2, average_defocus_angle,
+            input_image_filename);
 
     if ( is_running_locally == true ) {
         wxPrintf("\nFound %i peaks.\n\n", number_of_peaks_found);

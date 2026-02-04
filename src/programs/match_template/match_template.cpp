@@ -1841,121 +1841,35 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         result_image.SetToConstant(0.0f);
 
         input_reconstruction.ReadSlices(&input_reconstruction_file, 1, input_reconstruction_file.ReturnNumberOfSlices( ));
-        if ( using_binned_ref ) {
-            // Not exact but just for visualization
-            int new_size = int(input_reconstruction.logical_x_dimension / input_binning_factor + 0.5f);
-            if ( IsOdd(new_size) )
-                new_size++;
-            input_reconstruction.ForwardFFT( );
-            input_reconstruction.Resize(new_size, new_size, new_size);
-            input_reconstruction.BackwardFFT( );
-        }
-
-        float max_density = input_reconstruction.ReturnAverageOfMaxN( );
-        input_reconstruction.DivideByConstant(max_density);
-
-        input_reconstruction.ForwardFFT( );
-        input_reconstruction.MultiplyByConstant(sqrtf(input_reconstruction.logical_x_dimension * input_reconstruction.logical_y_dimension * sqrtf(input_reconstruction.logical_z_dimension)));
-        input_reconstruction.ZeroCentralPixel( );
-        input_reconstruction.SwapRealSpaceQuadrants( );
 
         // assume cube
-
         current_projection.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_x_dimension, false);
         timer.lap("Initialize results image");
 
-        // loop until the found peak is below the threshold
-        // Use TemplateMatchingPeakExtractor to handle peak finding, masking, and projection insertion
+        const float resample_search_ratio = 0.9f;
 
-        const float resample_search_ratio = 1.0f;
-        // TemplateMatchingPeakExtractor peak_extractor(
-        //         scaled_mip,
-        //         phi_image,
-        //         theta_image,
-        //         psi_image,
-        //         defocus_image,
-        //         pixel_size_image,
-        //         result_image,
-        //         input_reconstruction,
-        //         current_projection,
-        //         nullptr, // no padded_projection (match_template doesn't use padding)
-        //         nullptr, // no slab (match_template doesn't create slab)
-        //         nullptr, // no binned_reconstruction
-        //         nullptr, // no coordinate_file (search mode, not read mode)
-        //         expected_threshold,
-        //         min_peak_radius_squared,
-        //         search_pixel_size / input_binning_factor,
-        //         search_pixel_size,
-        //         0.0f, // binned_pixel_size not needed without slab
-        //         resample_search_ratio != 1.f,
-        //         resample_search_ratio);
-
-        Image copy_for_extraction;
-        copy_for_extraction = scaled_mip;
         std::vector<Peak> peak_list;
-
-        timer.start("Extract New");
+        timer.start("Extract peaks");
         scaled_mip.FindPeakWithIntegerCoordinatesForManyPeaks(peak_list, expected_threshold, resample_search_ratio, sqrtf(min_peak_radius_squared), 4);
-        timer.lap("Extract New");
-        for ( auto& peak : peak_list ) {
-            temp_peak_info.x_pos       = peak.x * search_pixel_size;
-            temp_peak_info.y_pos       = peak.y * search_pixel_size;
-            temp_peak_info.phi         = phi_image.real_values[peak.physical_address_within_image];
-            temp_peak_info.theta       = theta_image.real_values[peak.physical_address_within_image];
-            temp_peak_info.psi         = psi_image.real_values[peak.physical_address_within_image];
-            temp_peak_info.defocus     = defocus_image.real_values[peak.physical_address_within_image];
-            temp_peak_info.pixel_size  = pixel_size_image.real_values[peak.physical_address_within_image];
-            temp_peak_info.peak_height = peak.value;
-            all_peak_infos.Add(temp_peak_info);
+        timer.lap("Extract peaks");
 
-            angles.Init(temp_peak_info.phi,
-                        temp_peak_info.theta,
-                        temp_peak_info.psi,
-                        0.0,
-                        0.0);
+        TemplateMatchingPeakExtractor extractor(
+                scaled_mip, phi_image, theta_image, psi_image,
+                defocus_image, &pixel_size_image,
+                search_pixel_size / input_binning_factor, search_pixel_size);
 
-            // Standard workflow (match_template)
-            input_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
-            current_projection.SwapRealSpaceQuadrants( );
+        extractor.TransferPeakInfo(peak_list, all_peak_infos);
 
-            current_projection.MultiplyByConstant(sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension));
-            current_projection.BackwardFFT( );
-            current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges( ));
-
-            // Step 4: Insert projection into result image
-            result_image.InsertOtherImageAtSpecifiedPosition(&current_projection,
-                                                             peak.x - result_image.physical_address_of_box_center_x,
-                                                             peak.y - result_image.physical_address_of_box_center_y,
-                                                             0, 0.0f);
+        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+            wxPrintf("Peak x,y,h %f %f %f \n", all_peak_infos[i].x_pos, all_peak_infos[i].y_pos, all_peak_infos[i].peak_height);
         }
 
-        // while ( true ) {
-        //     auto [new_peak_found, peak_info] = peak_extractor.ProcessNextPeak(angles, number_of_peaks_found);
-
-        //     if ( ! new_peak_found )
-        //         break;
-
-        //     //////////////////////////////////////////////
-        //     // CURRENTLY HARD CODED TO ONLY DO 1000 MAX //
-        //     //////////////////////////////////////////////
-
-        //     if ( number_of_peaks_found <= cistem::maximum_number_of_detections ) {
-        //         all_peak_infos.Add(peak_info);
-        //     }
-        //     else {
-        //         SendInfo("WARNING: More than 1000 peaks above threshold were found. Limiting results to 1000 peaks.\n");
-        //         break;
-        //     }
-        // }
-        // timer.lap("Extract Peaks");
-
-        // timer.start("Sort Peaks");
-        // // If we resampled the peaks we need to sort the output list as it will not necessarily be descending
-        // // I don't want to deal with wxArray
-        // if ( resample_peaks )
-        //     peak_extractor.SortPeakInfoByPeakHeight(all_peak_infos);
-        // timer.lap("Sort Peaks");
-        // save the output image
+        timer.start("Create result images");
+        extractor.CreateResultImages(
+                peak_list, all_peak_infos,
+                input_reconstruction, current_projection, result_image,
+                false);
+        timer.lap("Create result images");
 
         timer.start("Save result image");
         result_image.QuickAndDirtyWriteSlice(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[38].ReturnStringArgument( ), 1, true, search_pixel_size);

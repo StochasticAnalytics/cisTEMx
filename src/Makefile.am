@@ -1316,6 +1316,7 @@ match_template_gpu_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 
 prepare_stack_matchtemplate_SOURCES  = programs/prepare_stack_matchtemplate/prepare_stack_matchtemplate.cpp
+prepare_stack_matchtemplate_SOURCES += programs/match_template/template_matching_peak_extractor.cpp
 prepare_stack_matchtemplate_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_matchtemplate_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_matchtemplate_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)

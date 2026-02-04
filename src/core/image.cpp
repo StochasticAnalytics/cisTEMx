@@ -9884,10 +9884,10 @@ Peak Image::FindPeakWithIntegerCoordinates(float wanted_min_radius, float wanted
  * @return Peak 
  */
 void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_list,
-                                                       float              peak_threshold,
-                                                       float              peak_threshold_scale, // < 1 to examine lower peaks for correction
-                                                       float              exclusion_radius,
-                                                       int                wanted_min_distance_from_edges) {
+                                                       const float        peak_threshold,
+                                                       const float        peak_threshold_scale, // < 1 to examine lower peaks for correction
+                                                       const float        exclusion_radius,
+                                                       const int          wanted_min_distance_from_edges) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(object_is_centred_in_box, "This method is specialized for objects centered in the box");
@@ -9901,10 +9901,13 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
     peak_list.clear( );
     peak_list.reserve(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS / 10);
 
-    const int original_peak_size = 8;
-    const int upsample_peak_size = 64;
+    const int original_peak_size = 8; // we'll pad to 2N to avoid edge artifacts
+    const int padded_peak_size   = 2 * original_peak_size;
+    const int upsample_peak_size = 8 * padded_peak_size;
+    const int origin_offset      = padded_peak_size / 2 - original_peak_size / 2; // we'll pad from the lower left for effeciency than shift the origin after FFT so it is centered.
 
     Image original_peak;
+    Image padded_peak;
     Image upsample_peak;
 
     bool  do_upsampling    = peak_threshold_scale == 1.0f ? false : true;
@@ -9913,6 +9916,7 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
     if ( do_upsampling ) {
         original_peak.Allocate(original_peak_size, original_peak_size, 1, true);
         upsample_peak.Allocate(upsample_peak_size, upsample_peak_size, 1, true);
+        padded_peak.Allocate(padded_peak_size, padded_peak_size, 1, true);
     }
 
     // We'll use a priority queue to loop over, get all potential peaks > threshold just one time
@@ -9937,10 +9941,26 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
     const int      mip_stride                        = logical_x_dimension + padding_jump_value;
     const int      original_peakfirst_element_offset = (original_peak_size / 2) * (mip_stride) + original_peak_size / 2;
 
+    // Rather than putting checks on whether we are in the FFTW padding or not, lets just fill it with nearby values
+    // We don't want to use ZeroFFTWPadding() as this could create strong discontinuities when we extract
+    long fill_counter = logical_x_dimension;
+    if ( padding_jump_value == 1 ) {
+        for ( int j = 0; j < logical_y_dimension; j++ ) {
+            real_values[fill_counter] = real_values[fill_counter] - 1;
+            fill_counter += mip_stride;
+        }
+    }
+    else {
+        for ( int j = 0; j < logical_y_dimension; j++ ) {
+            real_values[fill_counter]     = real_values[fill_counter] - 1;
+            real_values[fill_counter + 1] = real_values[fill_counter] - 2;
+            fill_counter += mip_stride;
+        }
+    }
+
     while ( ! peak_queue.empty( ) && peak_list.size( ) < cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS ) {
         current_peak = peak_queue.top( );
         peak_queue.pop( );
-
         // Lazy deletion, see if we haven't already masked out this value
         if ( real_values[current_peak.physical_address_within_image] != current_peak.value )
             continue;
@@ -9951,7 +9971,6 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
             // Extract base peak region
             long peak_address_mip = current_peak.physical_address_within_image - original_peakfirst_element_offset;
             int  peak_address     = 0;
-
             if ( peak_address_mip > 0 && peak_address_mip + original_peak_size * mip_stride + original_peak_size < real_memory_allocated ) {
                 for ( int peak_j = 0; peak_j < original_peak_size; peak_j++ ) {
                     for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
@@ -9963,14 +9982,52 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
                     peak_address_mip += mip_stride - original_peak_size;
                 }
 
+                // Now we need to padd replicatively
+                int peak_address_padded = 0;
+                peak_address            = 0;
+
+                float x_line[original_peak_size];
+                for ( int j = 0; j < original_peak_size; j++ ) {
+                    for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
+                        x_line[peak_i] = original_peak.real_values[peak_address];
+                        peak_address++;
+                    }
+                    peak_address += original_peak.padding_jump_value;
+
+                    // The top left is just a copy
+                    int insert_at = padded_peak.ReturnReal1DAddressFromPhysicalCoord(0, j, 0);
+                    for ( int i = 0; i < original_peak_size; i++ ) {
+                        padded_peak.real_values[insert_at + i] = x_line[i];
+                    }
+                    // Now insert in the top right quadrant
+                    insert_at = padded_peak.ReturnReal1DAddressFromPhysicalCoord(0, padded_peak.logical_y_dimension - 1 - j, 0);
+                    for ( int i = 0; i < original_peak_size; i++ ) {
+                        padded_peak.real_values[insert_at + i] = x_line[i];
+                    }
+                    // Now the bottom left, we flip the line
+
+                    insert_at = padded_peak.ReturnReal1DAddressFromPhysicalCoord(padded_peak.logical_x_dimension / 2, j, 0);
+                    for ( int i = 0; i < original_peak_size; i++ ) {
+                        padded_peak.real_values[insert_at + i] = x_line[original_peak_size - 1 - i];
+                    }
+                    // Now the bottom right, we flip the line and the y
+                    insert_at = padded_peak.ReturnReal1DAddressFromPhysicalCoord(padded_peak.logical_x_dimension / 2, padded_peak.logical_y_dimension - 1 - j, 0);
+                    for ( int i = 0; i < original_peak_size; i++ ) {
+                        padded_peak.real_values[insert_at + i] = x_line[original_peak_size - 1 - i];
+                    }
+                    // Read in an X line
+                }
+
                 // original_peak.QuickAndDirtyWriteSlice(stack_fn, number_of_peaks_found + 1);
                 // original_peak.GaussianLowPassFilter(5.f / search_pixel_size_);
                 // Resample peak to higher resolution
                 upsample_peak.is_in_real_space = false;
                 upsample_peak.SetToConstant(0.f);
-                original_peak.ForwardFFT( );
+                padded_peak.ForwardFFT( );
+                float shift_origin = float(padded_peak_size / 2 - original_peak_size / 2);
+                padded_peak.PhaseShift(shift_origin, shift_origin, 0);
 
-                original_peak.ClipInto(&upsample_peak);
+                padded_peak.ClipInto(&upsample_peak);
                 upsample_peak.BackwardFFT( );
                 // upsample_peak.MultiplyByConstant(4.f);
 
@@ -9997,18 +10054,16 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
             // then peak_corrected_and_gt_thr remains false. We do need to catch the case that the orignal peak was
             // already > the threshold below when we check acceptance
         }
-
         // Since we may have upsampled and dealt with another threshold, we need to check here again
         // and only erase values if >. With no resampling, this will always be true because our original
         // queue is all > peak_threshold. With resampling if it is lower or the peak was OOB then we don't do anything
         // as we already popped it off the queue.
         if ( current_peak.value > peak_threshold ) {
-            ///////////
             x = current_peak.physical_address_within_image % (logical_x_dimension + padding_jump_value);
             y = current_peak.physical_address_within_image / (logical_x_dimension + padding_jump_value);
             peak_list.emplace_back(float(x),
                                    float(y),
-                                   1.f,
+                                   1.f, // z
                                    current_peak.value,
                                    current_peak.physical_address_within_image);
 
@@ -10031,8 +10086,6 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
               [](const Peak& a, const Peak& b) {
                   return a.value > b.value;
               });
-
-    return;
 }
 
 float Image::FindBeamTilt(CTF& input_ctf, float pixel_size, Image& phase_error_output, Image& beamtilt_output, Image& difference_image, float& beamtilt_x, float& beamtilt_y, float& particle_shift_x, float& particle_shift_y, float phase_multiplier, bool progress_bar, int first_position_to_search, int last_position_to_search, MyApp* app_for_result) {

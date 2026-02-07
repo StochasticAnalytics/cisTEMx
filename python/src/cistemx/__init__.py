@@ -10,3 +10,7 @@ This package provides tools for:
 """
 
 __version__ = "0.1.0"
+
+from cistemx.utils import parse_job_range
+
+__all__ = ["parse_job_range"]

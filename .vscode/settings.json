@@ -3,6 +3,8 @@
     "C_Cpp.errorSquiggles": "Disabled",
     "cmake.configureOnOpen": false,
     "C_Cpp.dimInactiveRegions": true,
+    "C_Cpp.intelliSenseEngine": "default",
+    "C_Cpp.autocomplete": "default",
     "files.associations": {
         "string": "cpp",
         "filesystem": "cpp",
@@ -111,33 +113,14 @@
     "html.format.endWithNewline": true,
     "editor.fontSize": 12,
     "editor.inlineSuggest.minShowDelay": 2,
-    "remote.extensionKind": {
-        "github.copilot-chat": "ui"
+    "editor.quickSuggestions": {
+        "other": true,
+        "comments": false,
+        "strings": false
     },
-    "chat.tools.terminal.autoApprove": {
-        "mkdir": true,
-        "echo": true,
-        "/^git (status|show|log)\\b/": true,
-        "ls": true,
-        "cd": true,
-        "pwd": true,
-        "cat": true,
-        "grep": true,
-        "head": true,
-        "tail": true,
-        "find": true,
-        "date": true,
-        "whoami": true,
-        "df": true,
-        "du": true,
-        "cp": false,
-        "mv": false,
-        "rm": false,
-        "del": false,
-        "/dangerous/": false
-    },
-    "github.copilot.chat.codeGeneration.instructions": [],
-    "github.copilot.chat.codeGeneration.useInstructionFiles": false,
+    "editor.suggestOnTriggerCharacters": true,
+    "editor.quickSuggestionsDelay": 10,
+    "editor.wordBasedSuggestions": "allDocuments",
     "yaml.schemas": {
         "https://squidfunk.github.io/mkdocs-material/schema.json": "mkdocs.yml"
     },

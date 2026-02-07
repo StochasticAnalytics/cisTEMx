@@ -1,5 +1,12 @@
 #include "../../core/core_headers.h"
 
+// REVERT AFTER TEST HACK: Uncomment to skip initial global alignment and proceed directly to local refinement
+// Assumes input particles are already well-aligned from previous refinement
+// #define cisTEMx_ASSUME_PREALIGNED_INPUT
+
+// REVERT AFTER TEST HACK: Uncomment to print debug output for first particle to compare control vs test
+// #define cisTEMx_DEBUG_REFINEMENT_OUTPUT
+
 class
         Refine3DApp : public MyApp {
   public:
@@ -1043,6 +1050,12 @@ bool Refine3DApp::DoCalculation( ) {
 
         image_counter = 0;
 
+#ifdef cisTEMx_DEBUG_REFINEMENT_OUTPUT
+        // REVERT AFTER TEST HACK: Only process first particle for comparison
+        last_particle = first_particle;
+        wxPrintf("DEBUG: Processing only particle %d\n", first_particle);
+#endif
+
 #pragma omp for schedule(dynamic, 1)
         for ( current_line_local = 0; current_line_local < input_star_file.ReturnNumberofLines( ); current_line_local++ ) {
             input_parameters = input_star_file.ReturnLine(current_line_local);
@@ -1328,6 +1341,15 @@ bool Refine3DApp::DoCalculation( ) {
                     //				search_particle_local.CenterInCorner();
                     //				search_particle_local.WeightBySSNR(search_reference_3d_local.statistics.part_SSNR);
 
+#ifdef cisTEMx_ASSUME_PREALIGNED_INPUT
+                    // REVERT AFTER TEST HACK: Skip expensive angular grid search
+                    // Still need to call InitGrid to allocate list_of_best_parameters memory
+                    euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
+                    // Set to 0 so refinement loop runs once for i=0 only (where we'll populate input params)
+                    best_parameters_to_keep = 0;
+                    // Ensure we don't try to access multiple hits in the random selection path
+                    take_random_best_parameter = false;
+#else
                     if ( search_particle_local.parameter_map.phi && ! search_particle_local.parameter_map.theta ) {
                         euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         if ( euler_search_local.best_parameters_to_keep != best_parameters_to_keep )
@@ -1365,6 +1387,7 @@ bool Refine3DApp::DoCalculation( ) {
                         euler_search_local.psi_start = 360.0 - input_parameters.phi;
                         best_parameters_to_keep      = 1;
                     }
+#endif // cisTEMx_ASSUME_PREALIGNED_INPUT
 
                     // Do local refinement of the top hits to determine the best match
 
@@ -1638,56 +1661,87 @@ bool Refine3DApp::DoCalculation( ) {
 
                 intermediate_result->SetResult(26, gui_result_parameters);
                 AddJobToResultQueue(intermediate_result);
+
+#ifdef cisTEMx_DEBUG_REFINEMENT_OUTPUT
+                if ( output_parameters.position_in_stack == first_particle ) {
+#ifdef cisTEMx_ASSUME_PREALIGNED_INPUT
+                    FILE* debug_gui = fopen("/tmp/gui_dump_hack_yes.txt", "w");
+#else
+                    FILE* debug_gui = fopen("/tmp/gui_dump_hack_no.txt", "w");
+#endif
+                    if ( debug_gui != NULL ) {
+                        fprintf(debug_gui, "=== GUI Result Parameters (26 values) ===\n");
+                        for ( int idx = 0; idx < 26; idx++ ) {
+                            fprintf(debug_gui, "gui_result_parameters[%d] = %.6f\n", idx, gui_result_parameters[idx]);
+                        }
+                        fclose(debug_gui);
+                    }
+#endif
+                }
+
+                //for (i = 1; i < refine_particle_local.number_of_parameters; i++) {output_parameters[i] -= input_parameters[i];}
+                output_parameters.Subtract(input_parameters);
+                output_parameters.position_in_stack                                = input_parameters.position_in_stack;
+                output_shifts_file.all_parameters[current_line_local]              = output_parameters;
+                output_shifts_file.all_parameters[current_line_local].score_change = 0.0f;
+
+                //my_output_par_shifts_file.WriteLine(output_parameters);
+
+                //fflush(my_output_par_file.parameter_file);
+                //fflush(my_output_par_shifts_file.parameter_file);
+
+                //		wxPrintf("thread = %i, line = %i\n", ReturnThreadNumberOfCurrentThread(), current_line_local);
+                if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
+                    my_progress->Update(image_counter);
             }
 
-            //for (i = 1; i < refine_particle_local.number_of_parameters; i++) {output_parameters[i] -= input_parameters[i];}
-            output_parameters.Subtract(input_parameters);
-            output_parameters.position_in_stack                                = input_parameters.position_in_stack;
-            output_shifts_file.all_parameters[current_line_local]              = output_parameters;
-            output_shifts_file.all_parameters[current_line_local].score_change = 0.0f;
+            input_image_local.Deallocate( );
+            temp_image_local.Deallocate( );
+            projection_image_local.Deallocate( );
+            if ( ctf_refinement && high_resolution_limit <= 20.0 )
+                binned_image.Deallocate( );
+            refine_particle_local.Deallocate( );
+            if ( global_search_local || local_global_refine == true ) {
+                search_particle_local.Deallocate( );
+                search_projection_image.Deallocate( );
+                temp_image2_local.Deallocate( );
+            }
+            if ( calculate_matching_projections )
+                final_image.Deallocate( );
 
-            //my_output_par_shifts_file.WriteLine(output_parameters);
+        } // end omp section
 
-            //fflush(my_output_par_file.parameter_file);
-            //fflush(my_output_par_shifts_file.parameter_file);
+        if ( is_running_locally == true )
+            delete my_progress;
 
-            //		wxPrintf("thread = %i, line = %i\n", ReturnThreadNumberOfCurrentThread(), current_line_local);
-            if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
-                my_progress->Update(image_counter);
-        }
+        // write the files..
 
-        input_image_local.Deallocate( );
-        temp_image_local.Deallocate( );
-        projection_image_local.Deallocate( );
-        if ( ctf_refinement && high_resolution_limit <= 20.0 )
-            binned_image.Deallocate( );
-        refine_particle_local.Deallocate( );
-        if ( global_search_local || local_global_refine == true ) {
-            search_particle_local.Deallocate( );
-            search_projection_image.Deallocate( );
-            temp_image2_local.Deallocate( );
+        output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, first_particle, last_particle);
+        output_shifts_file.WriteTocisTEMStarFile(output_shift_filename, -1, -1, first_particle, last_particle);
+
+#ifdef cisTEMx_DEBUG_REFINEMENT_OUTPUT
+        // REVERT AFTER TEST HACK: Copy star files to /tmp for comparison and exit
+#ifdef cisTEMx_ASSUME_PREALIGNED_INPUT
+        wxCopyFile(output_star_filename, wxT("/tmp/output_star_hack_yes.star"));
+        wxCopyFile(output_shift_filename, wxT("/tmp/output_shift_hack_yes.star"));
+        wxPrintf("DEBUG: Files copied to /tmp/*_hack_yes.star, exiting\n");
+#else
+        wxCopyFile(output_star_filename, wxT("/tmp/output_star_hack_no.star"));
+        wxCopyFile(output_shift_filename, wxT("/tmp/output_shift_hack_no.star"));
+        wxPrintf("DEBUG: Files copied to /tmp/*_hack_no.star, exiting\n");
+#endif
+        exit(0);
+#endif
+
+        //	delete global_euler_search;
+        if ( global_search ) {
+            delete[] projection_cache;
+            //		search_projection_image.RotateFourier2DDeleteIndex(kernel_index, psi_max, psi_step);
         }
         if ( calculate_matching_projections )
-            final_image.Deallocate( );
+            delete output_file;
 
-    } // end omp section
+        wxPrintf("\nRefine3D: Normal termination\n\n");
 
-    if ( is_running_locally == true )
-        delete my_progress;
-
-    // write the files..
-
-    output_star_file.WriteTocisTEMStarFile(output_star_filename, -1, -1, first_particle, last_particle);
-    output_shifts_file.WriteTocisTEMStarFile(output_shift_filename, -1, -1, first_particle, last_particle);
-    //	delete global_euler_search;
-    if ( global_search ) {
-        delete[] projection_cache;
-        //		search_projection_image.RotateFourier2DDeleteIndex(kernel_index, psi_max, psi_step);
+        return true;
     }
-    if ( calculate_matching_projections )
-        delete output_file;
-
-    wxPrintf("\nRefine3D: Normal termination\n\n");
-
-    return true;
-}

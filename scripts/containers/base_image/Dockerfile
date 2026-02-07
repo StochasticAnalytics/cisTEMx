@@ -8,7 +8,24 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=America/New_York
 ARG GCC_VER=11
 
-
+# ============================================================================
+# MIGRATION GUARD - Set to "false" after completing the migration checklist
+# When rebuilding the base image, review this list and clean up the top layer.
+# Pending packages (currently installed in top layer, now added to base):
+#   - libomp-dev (OpenMP runtime headers for clang)
+#   - bear (compilation database generator for clangd)
+#   - clang-18, clangd-18, clang-tidy-18 (LLVM 18 toolchain)
+# After rebuilding base:
+#   1. Remove the migration block from top_image/Dockerfile
+#   2. Remove 'RUN /tmp/install_bear.sh' from top_image/Dockerfile
+#   3. Remove install_bear.sh from the COPY line in top_image/Dockerfile
+# ============================================================================
+ARG MIGRATION_PENDING=true
+RUN if [ "${MIGRATION_PENDING}" = "true" ]; then \
+        echo "MIGRATION PENDING: Review the migration checklist in this Dockerfile before rebuilding." && \
+        echo "Set MIGRATION_PENDING=false (or remove this block) after completing cleanup." && \
+        exit 1; \
+    fi
 
 RUN apt-get update &&\
     apt-get -y install tzdata sudo &&\
@@ -31,7 +48,7 @@ RUN apt-get --allow-releaseinfo-change update && apt-get install -y \
     libreadline-dev liblzma-dev libssl-dev libncursesw5-dev wget \
     build-essential git xauth zip unzip parallel sqlite3 python3 python3-pip curl gdb \
     strace htop valgrind lldb tree jq ripgrep fd-find tmux \
-    linux-tools-generic sysstat shellcheck &&\
+    linux-tools-generic sysstat shellcheck libomp-dev bear &&\
     rm -rf /var/lib/apt/lists/*
 
 
@@ -189,9 +206,17 @@ RUN type -p wget >/dev/null || (apt update && apt-get install wget -y) &&\
     sudo apt install -y gh &&\ 
     rm -rf /var/lib/apt/lists/*
 
-# Install clang format 14 - available natively in Ubuntu 22.04
-RUN apt-get update && apt-get install -y clang-format-14 clang-14 clang-tidy-14 &&\
-    cd /usr/bin && ln -s clang-format-14 clang-format && ln -s clang-14 clang && ln -s clang-tidy-14 clang-tidy && ln -s clang++-14 clang++ &&\
+# Install clang-14 (native to Ubuntu 22.04) for clang-format-14 (pinned for formatting stability)
+# Install clang-18 toolchain from LLVM apt repository for compiler, clangd, and clang-tidy
+# clang-format stays at 14 to avoid reformatting the entire codebase
+RUN apt-get update && apt-get install -y clang-format-14 clang-14 wget gnupg &&\
+    wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&\
+    echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" > /etc/apt/sources.list.d/llvm-18.list &&\
+    apt-get update && apt-get install -y clang-18 clangd-18 clang-tidy-18 &&\
+    cd /usr/bin &&\
+    ln -sf clang-18 clang && ln -sf clang++-18 clang++ &&\
+    ln -sf clangd-18 clangd && ln -sf clang-tidy-18 clang-tidy &&\
+    ln -sf clang-format-14 clang-format &&\
     rm -rf /var/lib/apt/lists/*
 
 # It looks like we are moving away form intel due to NVCC support, but figuring this out was a PITA so leaving for reference.

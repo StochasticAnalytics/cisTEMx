@@ -47,6 +47,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     bool was_enabled_PixelSizeSearchYesRadio;
     bool was_enabled_PixelSizeSearchNoRadio;
     bool was_enabled_SymmetryComboBox;
+    bool was_enabled_SearchSizeComboBox;
     bool was_enabled_HighResolutionLimitNumericCtrl;
     bool was_enabled_DefocusSearchRangeNumericCtrl;
     bool was_enabled_DefocusSearchStepNumericCtrl;

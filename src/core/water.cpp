@@ -145,25 +145,22 @@ void Water::SeedWaters3d( ) {
         waters_per_angstrom_cubed = SOLVENT_DENSITY * 0.6022140857 / MW_WATER;
     }
 
-    wxPrintf("Atoms per nm^3 %3.3f, vol (in Ang^3) %2.2f %2.2f %2.2f\n", waters_per_angstrom_cubed * 1000, this->vol_angX, this->vol_angY, this->vol_angZ);
-    const float n_waters_lower_bound = waters_per_angstrom_cubed * (this->vol_angX * this->vol_angY * this->vol_angZ);
-    // FIXME:: this estimate should be more accurate
-    long n_waters_possible = (long)floor(1.05 * n_waters_lower_bound); // maybe make this a real vector so it is extensible.
-    wxPrintf("specimen volume is %3.3e nm expecting %3.3e waters\n", (this->vol_angX * this->vol_angY * this->vol_angZ) / 1000, n_waters_lower_bound);
+    // Expected waters per octant (8 octants per voxel)
+    const float expected_waters_per_octant = waters_per_angstrom_cubed * powf(pixel_size, 3) / 8.0f;
 
-    RandomNumberGenerator my_rand(pi_v<float>);
+    wxPrintf("Atoms per nm^3 %3.3f, vol (in Ang^3) %2.2f %2.2f %2.2f\n", waters_per_angstrom_cubed * 1000, this->vol_angX, this->vol_angY, this->vol_angZ);
+    const float n_waters_lower_bound = expected_waters_per_octant * 8.0f * float(vol_nX) * float(vol_nY) * float(vol_nZ);
+    // FIXME:: this estimate should be more accurate
+    long n_waters_possible = long(floor(1.05f * n_waters_lower_bound)); // maybe make this a real vector so it is extensible.
+    wxPrintf("specimen volume is %3.3e nm expecting %3.3e waters\n", (this->vol_angX * this->vol_angY * this->vol_angZ) / 1000, n_waters_lower_bound);
 
     // // We want to add waters with a density == n_waters_lower_bound / volume in angstroms
     // const float random_sigma_cutoff   = 1 - (n_waters_lower_bound / double((this->vol_nX - (this->size_neighborhood * this->pixel_size)) *
     //                                                                      (this->vol_nY - (this->size_neighborhood * this->pixel_size)) *
     //                                                                      (this->vol_nZ - (this->size_neighborhood * this->pixel_size))));
 
-    // We want to add waters with a density == n_waters_lower_bound / volume in angstroms
-    const float probablity_of_water_in_voxel_octent = 1 - n_waters_lower_bound / float(this->vol_nX * this->vol_nY * this->vol_nZ * 8);
+    std::cerr << "expected_waters_per_octant " << expected_waters_per_octant << std::endl;
 
-    std::cerr << "probablity_of_water_in_voxel_octent " << probablity_of_water_in_voxel_octent << std::endl;
-
-    water_coords.reserve(n_waters_possible);
     is_allocated_water_coords = true;
 
     //  There are millions to billions of waters. We want to schedule the threads in a way that avoids atomic collisions
@@ -172,21 +169,36 @@ void Water::SeedWaters3d( ) {
     //  in multiples of the neigborhood.
 
     // Break up the x/y dims into ~ nThreads^2 thread blocks
-    int incX = ceil(vol_nX / nThreads);
-    int incY = ceil(vol_nY / nThreads);
-    int iLower, iUpper, jLower, jUpper; //, xUpper, yUpper;
+    int       incX       = ceil(vol_nX / nThreads);
+    int       incY       = ceil(vol_nY / nThreads);
+    const int num_blocks = nThreads * nThreads;
 
-    // xUpper = this->vol_nX - this->size_neighborhood;
-    // yUpper = this->vol_nY - this->size_neighborhood;
+    // Thread-local vectors to avoid contention on water_coords
+    std::vector<std::vector<AtomPos>> block_waters(num_blocks);
+
+    // Pre-reserve approximate space per block
+    long waters_per_block = n_waters_possible / num_blocks;
+    std::cerr << "reserving block with " << waters_per_block << " waters_per_block"
+              << "\n";
+
+    for ( int b = 0; b < num_blocks; b++ ) {
+        block_waters[b].reserve(waters_per_block);
+    }
 
     // The outer two loops are over the blocks in x/y that should be handled by each thread.
     // This logic falls apart as the specimen is tilted. FIXME
+#pragma omp parallel for collapse(2) num_threads(nThreads)
     for ( int i = 0; i < nThreads; i++ ) {
-        iLower = i * incX;
-        iUpper = iLower + incX;
         for ( int j = 0; j < nThreads; j++ ) {
-            jLower = j * incY;
-            jUpper = jLower + incY;
+            int block_id = i * nThreads + j;
+
+            // Each block gets its own RNG with unique seed for reproducibility
+            RandomNumberGenerator block_rand(pi_v<float> + float(block_id));
+
+            int iLower = i * incX;
+            int iUpper = iLower + incX;
+            int jLower = j * incY;
+            int jUpper = jLower + incY;
 
             // For each block
             for ( int k = 0; k < this->vol_nZ; k++ ) {
@@ -197,8 +209,8 @@ void Water::SeedWaters3d( ) {
                         for ( float qz = -0.5f; qz <= 0.5f; qz += 1.f ) {
                             for ( float qy = -0.5f; qy <= 0.5f; qy += 1.f ) {
                                 for ( float qx = -0.5f; qx <= 0.5f; qx += 1.f ) {
-                                    if ( my_rand.GetUniformRandomSTD(0.0, 1.0) > probablity_of_water_in_voxel_octent )
-                                        water_coords.emplace_back(AtomType::water, float(iInner) + qx, float(jInner) + qy, float(k) + qz);
+                                    if ( block_rand.GetUniformRandomSTD(0.0, 1.0) <= expected_waters_per_octant )
+                                        block_waters[block_id].emplace_back(AtomType::water, float(iInner) + qx, float(jInner) + qy, float(k) + qz);
                                 }
                             }
                         }
@@ -208,9 +220,21 @@ void Water::SeedWaters3d( ) {
         }
     }
 
-    // We won't add any more waters, so free up the extra memory
-    // TODO: does freeing cost more than leaving it be?
-    water_coords.shrink_to_fit( );
+    // Merge block vectors into water_coords, freeing each block after moving to reduce peak memory
+    size_t total_waters = 0;
+    for ( const auto& block : block_waters ) {
+        total_waters += block.size( );
+    }
+    std::cerr << "total waters " << total_waters << std::endl;
+    water_coords.reserve(total_waters);
+    for ( auto& block : block_waters ) {
+        water_coords.insert(water_coords.end( ),
+                            std::make_move_iterator(block.begin( )),
+                            std::make_move_iterator(block.end( )));
+        // Free this block's memory immediately after moving
+        std::vector<AtomPos>( ).swap(block);
+    }
+
     number_of_waters = water_coords.size( );
 
     wxPrintf("waters added %3.3e (%2.2f%)\n", (float)this->number_of_waters, 100.0f * (float)this->number_of_waters / n_waters_lower_bound);
@@ -389,6 +413,7 @@ void Water::ReturnPadding(RotationMatrix max_rotation, float in_plane_rotation, 
                             max_padding.y = y_back - y_in;
                         }
                         if ( z_back - z_in > max_padding.z ) {
+                            // FIXME: maybe y_back is a typo?
                             max_padding.z = y_back - z_in;
                         }
                     }

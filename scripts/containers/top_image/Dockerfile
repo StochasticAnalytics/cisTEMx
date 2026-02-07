@@ -36,7 +36,21 @@ SHELL ["/bin/bash", "-c"]
 RUN usermod -u 1000 cisTEMdev
 
 
-# some rebuild comment
+# Temporary top-layer installs (pending migration to base layer — see base_image/Dockerfile migration guard)
+# libomp-dev: OpenMP runtime headers needed after removing Intel compiler
+# clang-18/clangd-18/clang-tidy-18: upgraded toolchain + language server for Cursor IDE
+# clang-format stays at 14 (from base) to avoid reformatting codebase
+RUN apt-get update && \
+    apt-get install -y libomp-dev wget gnupg && \
+    wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc && \
+    echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" > /etc/apt/sources.list.d/llvm-18.list && \
+    apt-get update && \
+    apt-get install -y clang-18 clangd-18 clang-tidy-18 && \
+    cd /usr/bin && \
+    ln -sf clang-18 clang && ln -sf clang++-18 clang++ && \
+    ln -sf clangd-18 clangd && ln -sf clang-tidy-18 clang-tidy && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV CISTEM_REF_IMAGES=/cisTEMdev/cistem_reference_images
 ENV CLAUDE_WORKSPACE_ROOT=/workspaces/cisTEMx
 ENV VIRTUAL_ENV=/home/cisTEMdev/venv
@@ -46,7 +60,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Python 3.10 is native to Ubuntu 22.04, set up virtual environment at /home/cisTEMdev/venv
 RUN apt-get update && \
     apt-get install -y python3.10 python3.10-venv python3.10-dev && \
-    pip3 install gdown && \
+    pip3 install gdown real_ladybug memorygraphMCP[ladybugdb] && \
     rm -rf /var/lib/apt/lists/*
 
 
@@ -136,9 +150,12 @@ RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /home/cisTEMdev/.bashrc
 RUN echo "set filename-display basename" > /home/cisTEMdev/.gdbinit
 RUN echo "build claude" && if [[ "x${build_claude}" == "xtrue" ]] ; then /tmp/install_node_22_and_claude.sh ; fi
 
+RUN echo "set filename-display basename" > /home/cisTEMdev/.gdbinit
+RUN echo "build claude" && if [[ "x${build_claude}" == "xtrue" ]] ; then curl -fsSL https://claude.ai/install.sh | bash ; fi
+
 # Make sure we open claude in verbose mode (can be turned off) so the startup hook ensureing skills are loaded is clear
 RUN echo "alias claude='claude --verbose'" >> /home/cisTEMdev/.bashrc
-RUN echo -e "picfix() {\n  # Directory where screenshots are saved\n  screenshot_dir=/workspaces/cisTEMx/.claude/cache\n  flameshot gui --path $screenshot_dir\n}" >> /home/cisTEMdev/.bashrc
+RUN echo "alias ccc='cursor '" >> /home/cisTEMdev/.bashrc
 
 
 

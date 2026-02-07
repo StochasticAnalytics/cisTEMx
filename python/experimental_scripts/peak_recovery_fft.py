@@ -26,30 +26,12 @@ import sqlite3
 import numpy as np
 import pandas as pd
 import mrcfile
+from scipy import fft as scipy_fft  # For single-precision FFT option
+from cistemx import parse_job_range
 from cistemx.db import database as tma
 
-
-def parse_job_range(range_str: str) -> list[int]:
-    """
-    Parse job range specification into list of job IDs.
-    Supports: "12:18" (range), "12,14,16" (list), or "12" (single).
-    """
-    range_str = range_str.strip()
-
-    if ':' in range_str:
-        parts = range_str.split(':')
-        if len(parts) != 2:
-            raise ValueError(f"Invalid range format '{range_str}'")
-        start, end = int(parts[0]), int(parts[1])
-        if start > end:
-            raise ValueError(f"Start ({start}) must be <= end ({end})")
-        return list(range(start, end + 1))
-
-    elif ',' in range_str:
-        return sorted([int(x.strip()) for x in range_str.split(',')])
-
-    else:
-        return [int(range_str)]
+# Debug flag: Use single-precision scipy FFTs to match C++ implementation
+DEBUG_FFT_SINGLE_PRECISION = False  # Set to True to match C++ float32 precision
 
 
 def get_job_threshold(conn: sqlite3.Connection, job_id: int) -> float:
@@ -113,6 +95,7 @@ def load_mip_for_job_image(analyzer, job_id: int, image_id: int) -> tuple[np.nda
 
 
 def compute_subpixel_offset_fft(image: np.ndarray, x_pixel: float, y_pixel: float,
+                                pixel_size: float,
                                 window_half: int = 2, upsample_factor: int = 10
                                 ) -> tuple[float, float, float]:
     """
@@ -121,6 +104,9 @@ def compute_subpixel_offset_fft(image: np.ndarray, x_pixel: float, y_pixel: floa
     Returns:
         (x_offset, y_offset, refined_peak_height)
     """
+
+    debug_images = False
+
     xi, yi = int(round(x_pixel)), int(round(y_pixel))
 
     ny, nx = image.shape
@@ -132,11 +118,32 @@ def compute_subpixel_offset_fft(image: np.ndarray, x_pixel: float, y_pixel: floa
     window = image[y0:y1, x0:x1]
     win_ny, win_nx = window.shape
 
-    fft_window = np.fft.fft2(window)
+    if debug_images:
+        # Save the window using mrcfile
+        with mrcfile.new_mmap('debug_window.mrc', shape=(win_ny, win_nx), overwrite=True) as mrc:
+            mrc.set_data(window.astype(np.float32))
+            mrc.voxel_size = (pixel_size, pixel_size, pixel_size)
+
+    if DEBUG_FFT_SINGLE_PRECISION:
+        # Use scipy with explicit float32 to match C++ single precision
+        window_f32 = window.astype(np.float32)
+        fft_window = scipy_fft.fft2(window_f32, norm='forward')
+    else:
+        fft_window = np.fft.fft2(window, norm='forward')
+
+    if debug_images:
+        # Save the FFT magnitude using mrcfile
+        fft_magnitude = np.abs(fft_window)
+        with mrcfile.new_mmap('debug_fft_window.mrc', shape=(win_ny, win_nx), overwrite=True) as mrc:
+            mrc.set_data(fft_magnitude.astype(np.float32))
+            mrc.voxel_size = (pixel_size, pixel_size, pixel_size)
 
     pad_ny = win_ny * upsample_factor
     pad_nx = win_nx * upsample_factor
-    padded = np.zeros((pad_ny, pad_nx), dtype=complex)
+    if DEBUG_FFT_SINGLE_PRECISION:
+        padded = np.zeros((pad_ny, pad_nx), dtype=np.complex64)
+    else:
+        padded = np.zeros((pad_ny, pad_nx), dtype=complex)
 
     ny_pos = (win_ny + 1) // 2
     ny_neg = win_ny // 2
@@ -151,7 +158,27 @@ def compute_subpixel_offset_fft(image: np.ndarray, x_pixel: float, y_pixel: floa
     if ny_neg > 0 and nx_neg > 0:
         padded[-ny_neg:, -nx_neg:] = fft_window[-ny_neg:, -nx_neg:]
 
-    upsampled = np.fft.ifft2(padded).real * (upsample_factor ** 2)
+    if debug_images:
+        # Save the padded FFT magnitude using mrcfile
+        with mrcfile.new_mmap('debug_padded_fft_window.mrc', shape=(pad_ny, pad_nx), overwrite=True) as mrc:
+            mrc.set_data(np.abs(padded).astype(np.float32))
+            mrc.voxel_size = (pixel_size, pixel_size, pixel_size)
+
+    print(f"win_nx={win_nx}  window_half={window_half}, upsample_factor={upsample_factor}, ")
+    if DEBUG_FFT_SINGLE_PRECISION:
+        # Use scipy with explicit complex64 to maintain single precision
+        upsampled = scipy_fft.ifft2(padded.astype(np.complex64), norm='forward').real
+    else:
+        upsampled = np.fft.ifft2(padded, norm='forward').real  # * (upsample_factor ** 2)
+
+    if debug_images:
+        # Save the upsampled image using mrcfile
+        with mrcfile.new_mmap('debug_upsampled_window.mrc', shape=(pad_ny, pad_nx), overwrite=True) as mrc:
+            mrc.set_data(upsampled.astype(np.float32))
+            mrc.voxel_size = (pixel_size / upsample_factor, pixel_size / upsample_factor, pixel_size)
+
+        # exit after saving debug images
+        sys.exit(0)
 
     max_idx = np.unravel_index(np.argmax(upsampled), upsampled.shape)
     max_y_up, max_x_up = max_idx
@@ -227,7 +254,7 @@ def find_peaks_with_fft_recovery(mip: np.ndarray, threshold: float,
 
         # FFT refine using original (unmasked) MIP
         x_off, y_off, refined_height = compute_subpixel_offset_fft(
-            original, x, y, window_half, upsample_factor)
+            original, x, y, pixel_size, window_half, upsample_factor)
 
         # Keep peak if refined height passes threshold
         kept = refined_height >= threshold
@@ -236,8 +263,10 @@ def find_peaks_with_fft_recovery(mip: np.ndarray, threshold: float,
         if debug:
             status = "KEPT" if kept else "skip"
             rec_flag = " [RECOVERED]" if (kept and recovered) else ""
+            improvement = refined_height - raw_height
+            pct_improvement = 100 * improvement / raw_height if raw_height != 0 else 0.0
             print(f"      Peak {peak_num:3d}: ({x:4d},{y:4d}) raw={raw_height:.2f} "
-                  f"refined={refined_height:.2f} {status}{rec_flag}")
+                  f"refined={refined_height:.2f} ({improvement:+.2f}, {pct_improvement:+.1f}%) {status}{rec_flag}")
 
         if kept:
             peaks.append({
@@ -395,10 +424,12 @@ def print_image_summary(image_id: int, results: dict, debug: bool = False):
 
 
 def analyze_job(analyzer, conn: sqlite3.Connection, job_id: int,
-                search_offset: float, mask_radius: float, upsample_factor: int,
-                window_half: int, match_radius: float,
+                search_offset: float, mask_radius: float,
+                upsample_factor: int = None,
+                target_pixel_size: float = None,
+                window_half: int = 2, match_radius: float = 10.0,
                 edge_exclusion_pix: int = 0,
-                base_resolution: float = 3.0, 
+                base_resolution: float = 3.0,
                 base_mask_radius: float = 10.0,
                 base_job_id: int = 12,
                 debug_images: int = 0) -> dict:
@@ -407,6 +438,8 @@ def analyze_job(analyzer, conn: sqlite3.Connection, job_id: int,
 
     Args:
         mask_radius: If > 0, use this fixed radius. If 0, compute from resolution scaling.
+        upsample_factor: Fixed FFT upsampling factor (mutually exclusive with target_pixel_size)
+        target_pixel_size: Target pixel size in Angstroms for dynamic upsampling
         edge_exclusion_pix: Pixels from edge to consider as "edge excluded" region
         base_resolution: Resolution (Å) for mask radius scaling (job 12 default)
         base_mask_radius: Mask radius at base_resolution
@@ -429,10 +462,9 @@ def analyze_job(analyzer, conn: sqlite3.Connection, job_id: int,
         effective_mask_radius = int(round(base_mask_radius * base_resolution / job_resolution))
         mask_mode = f"auto ({base_mask_radius}*{base_resolution}/{job_resolution:.1f})"
 
-    # Edge exclusion only applies to unbinned search (job 12)
+    # Edge exclusion only applies to base (unbinned) job
     # Binned searches don't have the edge exclusion artifact
-    # FIXME:
-    effective_edge_exclusion = edge_exclusion_pix if job_id == 12 else 0
+    effective_edge_exclusion = edge_exclusion_pix if job_id == base_job_id else 0
 
     print(f"\nJob {job_id}: threshold={threshold:.2f}, resolution~{job_resolution:.1f}Å, {len(images)} images")
     print(f"  Search offset={search_offset} (searching down to {search_offset * threshold:.2f})")
@@ -444,7 +476,18 @@ def analyze_job(analyzer, conn: sqlite3.Connection, job_id: int,
     total_edge_excluded = 0
     total_missed = 0
 
+    # Improvement metrics accumulators
+    improvement_metrics = {
+        'all_sum_improvement': 0.0,
+        'all_sum_pct_improvement': 0.0,
+        'all_peak_count': 0,
+        'recovered_sum_improvement': 0.0,
+        'recovered_sum_pct_improvement': 0.0,
+        'recovered_peak_count': 0,
+    }
+
     all_peaks = []
+    upsample_factors_used = []  # Track upsample factors for summary
 
     image_list = images[:debug_images] if debug_images > 0 else images
     debug = debug_images > 0
@@ -462,12 +505,24 @@ def analyze_job(analyzer, conn: sqlite3.Connection, job_id: int,
             image_size_ang = (nx * pixel_size, ny * pixel_size)
             edge_exclusion_ang = effective_edge_exclusion * pixel_size
 
+            # Compute effective upsample factor
+            # Use Nyquist resolution (2 × pixel_size) for target calculation
+            if target_pixel_size is not None:
+                nyquist_resolution = 2 * pixel_size
+                effective_upsample = max(1, int(round(nyquist_resolution / target_pixel_size)))
+                if debug:
+                    print(f"    pixel_size={pixel_size:.3f}Å (Nyquist={nyquist_resolution:.3f}Å) → "
+                          f"upsample={effective_upsample}x (target={target_pixel_size}Å)")
+            else:
+                effective_upsample = upsample_factor
+            upsample_factors_used.append(effective_upsample)
+
             # Find peaks with FFT recovery
             recovered_peaks = find_peaks_with_fft_recovery(
                 mip, threshold, pixel_size,
                 search_offset=search_offset,
                 mask_radius=effective_mask_radius,
-                upsample_factor=upsample_factor,
+                upsample_factor=effective_upsample,
                 window_half=window_half,
                 debug=debug
             )
@@ -496,6 +551,23 @@ def analyze_job(analyzer, conn: sqlite3.Connection, job_id: int,
                     p['category'] = category
                     all_peaks.append(p)
 
+            # Accumulate improvement metrics
+            for category in ['matched', 'truly_recovered', 'edge_excluded']:
+                for p in results[category]:
+                    raw = p['raw_height']
+                    refined = p['refined_height']
+                    imp = refined - raw
+                    pct_imp = imp / raw if raw != 0 else 0.0
+
+                    improvement_metrics['all_sum_improvement'] += imp
+                    improvement_metrics['all_sum_pct_improvement'] += pct_imp
+                    improvement_metrics['all_peak_count'] += 1
+
+                    if p.get('recovered', False):
+                        improvement_metrics['recovered_sum_improvement'] += imp
+                        improvement_metrics['recovered_sum_pct_improvement'] += pct_imp
+                        improvement_metrics['recovered_peak_count'] += 1
+
             if debug:
                 print_image_summary(image_id, results, debug=True)
 
@@ -508,18 +580,38 @@ def analyze_job(analyzer, conn: sqlite3.Connection, job_id: int,
     if not debug:
         print()  # Clear progress line
 
+    # Compute mean percentage improvements
+    all_mean_pct = (improvement_metrics['all_sum_pct_improvement'] /
+                    improvement_metrics['all_peak_count'] * 100
+                    if improvement_metrics['all_peak_count'] > 0 else 0.0)
+    recovered_mean_pct = (improvement_metrics['recovered_sum_pct_improvement'] /
+                          improvement_metrics['recovered_peak_count'] * 100
+                          if improvement_metrics['recovered_peak_count'] > 0 else 0.0)
+
+    # Compute upsample range
+    upsample_min = min(upsample_factors_used) if upsample_factors_used else 0
+    upsample_max = max(upsample_factors_used) if upsample_factors_used else 0
+
     return {
         'job_id': job_id,
         'threshold': threshold,
         'resolution': job_resolution,
         'mask_radius': effective_mask_radius,
+        'edge_exclusion': effective_edge_exclusion,
+        'upsample_min': upsample_min,
+        'upsample_max': upsample_max,
         'n_images': len(image_list),
         'original_peaks': total_original,
         'matched_peaks': total_matched,
         'truly_recovered': total_truly_recovered,
         'edge_excluded': total_edge_excluded,
         'missed_peaks': total_missed,
-        'all_peaks': all_peaks
+        'all_peaks': all_peaks,
+        # Improvement metrics
+        'all_total_improvement': improvement_metrics['all_sum_improvement'],
+        'all_mean_pct_improvement': all_mean_pct,
+        'recovered_total_improvement': improvement_metrics['recovered_sum_improvement'],
+        'recovered_mean_pct_improvement': recovered_mean_pct,
     }
 
 
@@ -542,15 +634,39 @@ def print_summary(results: list[dict]):
     print(f"  Edge excluded (raw>=thr, edge):{total_edge_excluded}")
     print(f"  Missed (in DB, not found):     {total_missed}")
 
-    print(f"\nPer-job breakdown:")
-    print(f"{'Job':>5} {'Res':>5} {'Thr':>6} {'Mask':>5} {'Orig':>7} {'Match':>7} {'TrueRec':>8} {'Edge':>6} {'Miss':>6}")
-    print("-" * 75)
-    for r in results:
-        print(f"{r['job_id']:>5} {r['resolution']:>5.1f} {r['threshold']:>6.2f} {r['mask_radius']:>5} "
-              f"{r['original_peaks']:>7} {r['matched_peaks']:>7} {r['truly_recovered']:>8} "
-              f"{r['edge_excluded']:>6} {r['missed_peaks']:>6}")
+    # Improvement metrics summary
+    all_total_imp = sum(r['all_total_improvement'] for r in results)
+    all_peaks = sum(r['matched_peaks'] + r['truly_recovered'] + r['edge_excluded'] for r in results)
+    recovered_total_imp = sum(r['recovered_total_improvement'] for r in results)
+    recovered_peaks = sum(r['truly_recovered'] for r in results)
 
-    print("=" * 80)
+    # Weighted average of percentage improvements
+    all_mean_pct = (sum(r['all_mean_pct_improvement'] * (r['matched_peaks'] + r['truly_recovered'] + r['edge_excluded'])
+                        for r in results) / all_peaks if all_peaks > 0 else 0.0)
+    rec_mean_pct = (sum(r['recovered_mean_pct_improvement'] * r['truly_recovered']
+                        for r in results) / recovered_peaks if recovered_peaks > 0 else 0.0)
+
+    print(f"\nImprovement from FFT refinement:")
+    print(f"  All peaks ({all_peaks}):        total={all_total_imp:.2f}, mean={all_mean_pct:.1f}%")
+    print(f"  Recovered only ({recovered_peaks}):   total={recovered_total_imp:.2f}, mean={rec_mean_pct:.1f}%")
+
+    print(f"\nPer-job breakdown:")
+    print(f"{'Job':>5} {'Res':>5} {'Thr':>6} {'Mask':>5} {'EdgeEx':>6} {'Upsamp':>8} "
+          f"{'Orig':>7} {'Match':>7} {'TrueRec':>8} {'Edge':>6} {'Miss':>6} {'AllImp%':>8} {'RecImp%':>8}")
+    print("-" * 107)
+    for r in results:
+        # Format upsample: show range if variable, single value if constant
+        if r['upsample_min'] == r['upsample_max']:
+            upsamp_str = f"{r['upsample_min']}x"
+        else:
+            upsamp_str = f"{r['upsample_min']}-{r['upsample_max']}x"
+        print(f"{r['job_id']:>5} {r['resolution']:>5.1f} {r['threshold']:>6.2f} {r['mask_radius']:>5} "
+              f"{r['edge_exclusion']:>6} {upsamp_str:>8} "
+              f"{r['original_peaks']:>7} {r['matched_peaks']:>7} {r['truly_recovered']:>8} "
+              f"{r['edge_excluded']:>6} {r['missed_peaks']:>6} "
+              f"{r['all_mean_pct_improvement']:>8.1f} {r['recovered_mean_pct_improvement']:>8.1f}")
+
+    print("=" * 107)
 
 
 def main():
@@ -579,8 +695,12 @@ Examples:
                         help='Base mask radius at 3.0Å resolution for auto-scaling (default: 10)')
     parser.add_argument('--edge-exclusion', type=int, default=97,
                         help='Edge exclusion in pixels, matches cisTEM template_size/4+1 (default: 97)')
-    parser.add_argument('--fft-upsample', type=int, default=10,
-                        help='FFT upsampling factor (default: 10)')
+    # Mutually exclusive upsampling mode
+    upsample_group = parser.add_mutually_exclusive_group()
+    upsample_group.add_argument('--fft-upsample', type=int, default=None,
+                                help='Fixed FFT upsampling factor (default: 10 if no target specified)')
+    upsample_group.add_argument('--target-pixel-size', type=float, default=None,
+                                help='Target pixel size in Angstroms (computes factor per-image)')
     parser.add_argument('--window-size', type=int, default=5,
                         help='Window size for FFT refinement (default: 5)')
     parser.add_argument('--match-radius', type=float, default=10.0,
@@ -591,6 +711,10 @@ Examples:
                         help='Debug mode: process N images with verbose output (default: 3 if flag given)')
 
     args = parser.parse_args()
+
+    # Default to fixed factor 10 if neither upsampling mode specified
+    if args.target_pixel_size is None and args.fft_upsample is None:
+        args.fft_upsample = 10
 
     # Parse job range
     try:
@@ -612,7 +736,10 @@ Examples:
     else:
         print(f"Mask radius: auto-scaled (base={args.base_mask_radius} at 3.0Å)")
     print(f"Edge exclusion: {args.edge_exclusion} pixels")
-    print(f"FFT upsample: {args.fft_upsample}x")
+    if args.target_pixel_size is not None:
+        print(f"FFT upsample: dynamic (target={args.target_pixel_size}Å)")
+    else:
+        print(f"FFT upsample: {args.fft_upsample}x (fixed)")
     print(f"Window size: {args.window_size}x{args.window_size}")
     print(f"Base resolution: {args.base_resolution} Å")
 
@@ -633,6 +760,7 @@ Examples:
                 search_offset=args.search_offset,
                 mask_radius=args.mask_radius,
                 upsample_factor=args.fft_upsample,
+                target_pixel_size=args.target_pixel_size,
                 window_half=window_half,
                 match_radius=args.match_radius,
                 edge_exclusion_pix=args.edge_exclusion,

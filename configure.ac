@@ -404,8 +404,12 @@ AM_CONDITIONAL([EXPERIMENTAL_AM],[test x$compile_experimental = xtrue])
 # OpenMP
 AC_ARG_ENABLE(openmp, AS_HELP_STRING([--enable-openmp],[Compile with OpenMP threading [default=no]]),[
   if test "$enableval" = yes; then
-  AC_OPENMP([],AC_MSG_ERROR("You asked for OpenMP, but I was not able to figure out how to compile programs that use OpenMP"))
-  CXXFLAGS="$CXXFLAGS $OPENMP_CXXFLAGS"
+    AC_OPENMP
+    if test -z "$OPENMP_CXXFLAGS"; then
+      AC_MSG_ERROR([You asked for OpenMP, but I was not able to figure out how to compile programs that use OpenMP])
+    fi
+    CXXFLAGS="$CXXFLAGS $OPENMP_CXXFLAGS"
+    LDFLAGS="$LDFLAGS $OPENMP_CXXFLAGS"
   fi
   ])
   

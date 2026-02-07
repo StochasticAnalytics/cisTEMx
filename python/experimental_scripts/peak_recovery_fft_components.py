@@ -29,30 +29,8 @@ import sqlite3
 import numpy as np
 import pandas as pd
 import mrcfile
+from cistemx import parse_job_range
 from cistemx.db import database as tma
-
-
-def parse_job_range(range_str: str) -> list[int]:
-    """
-    Parse job range specification into list of job IDs.
-    Supports: "12:18" (range), "12,14,16" (list), or "12" (single).
-    """
-    range_str = range_str.strip()
-
-    if ':' in range_str:
-        parts = range_str.split(':')
-        if len(parts) != 2:
-            raise ValueError(f"Invalid range format '{range_str}'")
-        start, end = int(parts[0]), int(parts[1])
-        if start > end:
-            raise ValueError(f"Start ({start}) must be <= end ({end})")
-        return list(range(start, end + 1))
-
-    elif ',' in range_str:
-        return sorted([int(x.strip()) for x in range_str.split(',')])
-
-    else:
-        return [int(range_str)]
 
 
 def get_job_threshold(conn: sqlite3.Connection, job_id: int) -> float:

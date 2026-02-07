@@ -138,19 +138,13 @@
             "command": "cd ${build_dir}/GNU-gpu && make -j${input:compile_cores}"
         },
         {
-            "label": "Configure for Static Analysis (Clang + Bear)",
-            "type": "shell",
-            "command": "mkdir -p ${build_dir}/clang-tidy-debug && cd ${build_dir}/clang-tidy-debug && CC=clang CXX=clang++ ../../configure --enable-debugmode ${input:additional_compiler_flags} --with-cuda=${cuda_dir} --with-wx-config=/opt/WX/wx305-clang-static-gtk2/bin/wx-config ${experimental_algo_flags} ${common_optional_programs} ${common_flags}",
-            "group": "build",
-            "problemMatcher": []
-        },
-        {
             "label": "Build with Bear (Generate compile_commands.json)",
             "type": "shell",
-            "command": "cd ${build_dir}/clang-tidy-debug && bear -- make -j${input:compile_cores}",
+            // Uses the DEBUG build directory — run "Configure cisTEMx DEBUG build" first
+            "command": "cd ${build_dir}/clang-gpu-debug-static && bear -- make -j${input:compile_cores}",
             "group": "build",
             "dependsOn": [
-                "Configure for Static Analysis (Clang + Bear)"
+                "Configure cisTEMx DEBUG build"
             ],
             "problemMatcher": {
                 "owner": "clang",
@@ -168,7 +162,7 @@
         {
             "label": "Clean Build with Bear (Full Database)",
             "type": "shell",
-            "command": "cd ${build_dir}/clang-tidy-debug && make clean && bear -- make -j${input:compile_cores}",
+            "command": "cd ${build_dir}/clang-gpu-debug-static && make clean && bear -- make -j${input:compile_cores}",
             "group": "build",
             "problemMatcher": {
                 "owner": "clang",
@@ -186,13 +180,13 @@
         {
             "label": "Link compile_commands.json to Root",
             "type": "shell",
-            "command": "ln -sf ${build_dir}/clang-tidy-debug/compile_commands.json ${workspaceFolder}/compile_commands.json",
+            "command": "ln -sf ${build_dir}/clang-gpu-debug-static/compile_commands.json ${workspaceFolder}/compile_commands.json",
             "problemMatcher": []
         },
         {
             "label": "Analyze Tensor Code (clang-tidy)",
             "type": "shell",
-            "command": "find ${workspaceFolder}/src/core/tensor -name '*.cpp' -o -name '*.cu' | xargs run-clang-tidy-14 -p ${build_dir}/clang-tidy-debug -quiet",
+            "command": "find ${workspaceFolder}/src/core/tensor -name '*.cpp' -o -name '*.cu' | xargs run-clang-tidy-14 -p ${build_dir}/clang-gpu-debug-static -quiet",
             "group": "test",
             "problemMatcher": {
                 "owner": "clang-tidy",
@@ -214,7 +208,7 @@
         {
             "label": "Analyze Changed Files (clang-tidy-diff)",
             "type": "shell",
-            "command": "git diff -U0 ${input:base_branch} | clang-tidy-diff-14.py -p1 -path ${build_dir}/clang-tidy-debug -quiet",
+            "command": "git diff -U0 ${input:base_branch} | clang-tidy-diff-14.py -p1 -path ${build_dir}/clang-gpu-debug-static -quiet",
             "group": "test",
             "problemMatcher": {
                 "owner": "clang-tidy",
@@ -236,7 +230,7 @@
         {
             "label": "Deep Analysis (scan-build)",
             "type": "shell",
-            "command": "cd ${build_dir}/clang-tidy-debug && scan-build-14 -o ${workspaceFolder}/.claude/cache/scan-results make -j${input:compile_cores}",
+            "command": "cd ${build_dir}/clang-gpu-debug-static && scan-build-14 -o ${workspaceFolder}/.claude/cache/scan-results make -j${input:compile_cores}",
             "group": "test",
             "problemMatcher": []
         }

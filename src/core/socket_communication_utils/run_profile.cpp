@@ -131,6 +131,33 @@ void RunProfile::SubstituteExecutableName(wxString executable_name) {
     }
 }
 
+void RunProfile::AppendCommandLineArguments(const wxString& extra_arguments) {
+    // Extract the flag name, handling both --flag=value and --flag value formats
+    wxString flag_name = extra_arguments.BeforeFirst(' ').BeforeFirst('=');
+    if ( CommandLineArgumentExists(flag_name) ) {
+        wxPrintf("Warning: command-line argument '%s' already present in run profile, skipping append\n", flag_name);
+        return;
+    }
+
+    for ( long counter = 0; counter < number_of_run_commands; counter++ ) {
+        run_commands[counter].command_to_run.Replace("$command", "$command " + extra_arguments);
+    }
+    manager_command.Replace("$command", "$command " + extra_arguments);
+}
+
+bool RunProfile::CommandLineArgumentExists(const wxString& flag_name) const {
+    // Check manager_command and all run_commands for the presence of the flag
+    if ( manager_command.Contains(flag_name) && flag_name != "$command" ) {
+        return true;
+    }
+    for ( long counter = 0; counter < number_of_run_commands; counter++ ) {
+        if ( run_commands[counter].command_to_run.Contains(flag_name) && flag_name != "$command" ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 RunProfile& RunProfile::operator=(const RunProfile& t) {
     // Check for self assignment
     if ( this != &t ) {

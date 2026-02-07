@@ -696,6 +696,13 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 	HighResolutionLimitNumericCtrl = new NumericTextCtrl( ExpertPanel, wxID_ANY, wxT("2.0"), wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER );
 	fgSizer1->Add( HighResolutionLimitNumericCtrl, 0, wxALL|wxEXPAND, 5 );
 
+	m_staticText190212 = new wxStaticText( ExpertPanel, wxID_ANY, wxT("Limit Search Size :"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText190212->Wrap( -1 );
+	fgSizer1->Add( m_staticText190212, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+
+	SearchSizeComboBox = new wxComboBox( ExpertPanel, wxID_ANY, wxT("high-res limit"), wxDefaultPosition, wxDefaultSize, 0, NULL, 0 );
+	fgSizer1->Add( SearchSizeComboBox, 0, wxALL|wxEXPAND, 5 );
+
 	m_staticText19021 = new wxStaticText( ExpertPanel, wxID_ANY, wxT("Pointgroup Symmetry :"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText19021->Wrap( -1 );
 	fgSizer1->Add( m_staticText19021, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );

@@ -10,6 +10,7 @@
  */
 
 #include "core_headers.h"
+#include "../programs/simulate/temp_simulate_defines.h"
 #include <wx/arrimpl.cpp> // this is a magic incantation which must be done!
 WX_DEFINE_OBJARRAY(ArrayOfParticleTrajectories);
 
@@ -608,9 +609,21 @@ void PDB::Init( ) {
         // (for underfocus, the focal plane is above the specimen in the scope and the undefocus magnitude increases as we move away (down) the column.)
         star_file_parameters.CalculateDefocusDependence( );
         int current_frame_number = 1;
+#ifdef cisTEM_fix_multiparticle
+        int this_pdb_particle_idx = 0; // Separate index for particles belonging to THIS PDB
+#endif
 
         // FIXME: there are multiple frames, calling this iParticle doesn't make sense.
         for ( int iParticle = 0; iParticle < star_file_parameters.ReturnNumberofLines( ); iParticle++ ) {
+
+#ifdef cisTEM_fix_multiparticle
+            // Only process starfile lines where reference_3d_filename matches THIS PDB's filename
+            wxString pdb_for_this_line = star_file_parameters.ReturnReference3DFilename(iParticle);
+            if ( pdb_for_this_line != text_filename ) {
+                continue; // This line belongs to a different PDB
+            }
+#endif
+
             // If particle group is 0 it is written improperly, but safe to assume there is only one frame per particle.
             // Otherwise, we increment the frame numbers until the number reduces again.
             if ( iParticle > 0 ) {
@@ -620,14 +633,28 @@ void PDB::Init( ) {
                 else
                     current_frame_number = 1;
             }
+            // X/Y shifts are in Angstroms, interpreted here as offsets from volume center.
+            // NOTE: In cisTEM refinement, shifts may use opposite sign convention (shift = -offset).
+            // Euler angles are negated for simulation (inverse transform). TODO: verify shift convention.
+#ifdef cisTEM_fix_multiparticle
             TransformBaseCoordinates(star_file_parameters.ReturnXShift(iParticle),
                                      star_file_parameters.ReturnYShift(iParticle),
-                                     (0.5f * (star_file_parameters.ReturnDefocus1(iParticle) + star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,
+                                     star_file_parameters.average_defocus - (0.5f * (star_file_parameters.ReturnDefocus1(iParticle) + star_file_parameters.ReturnDefocus2(iParticle))),
+                                     -star_file_parameters.ReturnPsi(iParticle),
+                                     -star_file_parameters.ReturnTheta(iParticle),
+                                     -star_file_parameters.ReturnPhi(iParticle),
+                                     this_pdb_particle_idx++,
+                                     current_frame_number - 1);
+#else
+            TransformBaseCoordinates(star_file_parameters.ReturnXShift(iParticle),
+                                     star_file_parameters.ReturnYShift(iParticle),
+                                     star_file_parameters.average_defocus - (0.5f * (star_file_parameters.ReturnDefocus1(iParticle) + star_file_parameters.ReturnDefocus2(iParticle))),
                                      -star_file_parameters.ReturnPsi(iParticle),
                                      -star_file_parameters.ReturnTheta(iParticle),
                                      -star_file_parameters.ReturnPhi(iParticle),
                                      iParticle,
                                      current_frame_number - 1);
+#endif
             // wxPrintf("x,y,z (%f,%f,%f) psi/theta/phi (%f,%f,%f), ipart/frame %d %d\n", star_file_parameters.ReturnXShift(iParticle),
             //                              star_file_parameters.ReturnYShift(iParticle),
             //                              (0.5f * (star_file_parameters.ReturnDefocus1(iParticle)+star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,

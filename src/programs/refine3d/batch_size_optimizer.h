@@ -3,7 +3,9 @@
 
 #include <chrono>
 #include <cmath>
-#include <omp.h> // FIXME: this should of course depend on weither we are using OpenMP or not
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 // #define PRINT_OPT_DEBUG
 
@@ -65,7 +67,7 @@ class BatchSizeOptimizer {
         time_in_ms += (ns_count / 1000000);
 
 #ifdef PRINT_OPT_DEBUG
-        if ( omp_get_thread_num( ) == 0 )
+        if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
             std::cerr << "At time t: ms = " << t << " " << time_in_ms << std::endl;
 #endif
     };
@@ -109,7 +111,7 @@ class BatchSizeOptimizer {
                     best_batch_time = time_in_ms;
                 }
 #ifdef PRINT_OPT_DEBUG
-                if ( omp_get_thread_num( ) == 0 ) {
+                if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
                     std::cerr << "Batch size: " << current_batch[1] << " step " << current_step << std::endl;
                     std::cerr << "Gradient and alpha : " << gradient << " " << alpha << std::endl;
                     std::cerr << "m_hat and v_hat : " << m_hat << " " << v_hat << std::endl;
@@ -127,7 +129,7 @@ class BatchSizeOptimizer {
         // these are unsigned ints so watch out for wrap around if negative - leave as double
         gradient = float((double(current_time[1]) - double(current_time[0])) / double(2 * std::max(1, current_step)));
 #ifdef PRINT_OPT_DEBUG
-        if ( omp_get_thread_num( ) == 0 ) {
+        if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
             std::cerr << "Time t, gradient calc: " << t << " " << current_time[0] << " " << current_time[1] << std::endl;
             std::cerr << "Gradient: " << gradient << std::endl;
         }

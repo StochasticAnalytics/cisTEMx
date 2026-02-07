@@ -37,6 +37,8 @@ class RunProfile {
     void RemoveAll( );
     long ReturnTotalJobs( );
     void SubstituteExecutableName(wxString executable_name);
+    void AppendCommandLineArguments(const wxString& extra_arguments);
+    bool CommandLineArgumentExists(const wxString& flag_name) const;
 
     RunProfile& operator=(const RunProfile& t);
     RunProfile& operator=(const RunProfile* t);

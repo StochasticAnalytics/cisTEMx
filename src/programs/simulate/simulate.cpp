@@ -1,4 +1,5 @@
 #include "../../core/core_headers.h"
+#include "temp_simulate_defines.h"
 
 #include "../../core/water.h"
 #include "../../constants/constants.h"
@@ -99,6 +100,24 @@ const float DQE_PARAMETERS_C[1][5] = {
 //        {0.1207,1.457,0.264,0.006423,0.06323}
 //
 //};
+
+#ifdef cisTEM_fix_multiparticle
+// Validates PDB file exists and has correct extension for gemmi.
+// This helper lives here (not in PDB class) because we're re-using the
+// reference_3d_filename starfile column as a hack for multi-particle PDB paths.
+bool ValidatePdbFilename(const wxString& filename) {
+    if ( ! DoesFileExist(filename) ) {
+        wxPrintf("ERROR: PDB file does not exist: %s\n", filename);
+        return false;
+    }
+    wxString ext = wxFileName(filename).GetExt( ).Lower( );
+    if ( ext != "pdb" && ext != "cif" && ext != "pdbx" && ext != "mmcif" ) {
+        wxPrintf("ERROR: Invalid extension '%s' for: %s\n", ext, filename);
+        return false;
+    }
+    return true;
+}
+#endif
 
 class SimulateApp : public MyApp {
 
@@ -526,7 +545,12 @@ void SimulateApp::DoInteractiveUserInput( ) {
     number_of_threads = my_input->GetIntFromUser("Number of threads", "Max is number of tilts", "1", 1);
 
     bool require_pdb_to_exist = true;
-    int  runaway_counter      = 0;
+#ifdef cisTEM_fix_multiparticle
+    // Single PDB input for non-starfile modes. For starfile mode, PDBs are
+    // read from reference_3d_filename column in DoCalculation() and this value is replaced.
+    sp.pdb_file_names.push_back(my_input->GetFilenameFromUser("PDB file name", "PDB file (replaced by starfile reference_3d_filename in micrograph mode)", "my_atom_coords.pdb", require_pdb_to_exist));
+#else
+    int runaway_counter = 0;
     while ( add_more_pdbs && runaway_counter < 10000 ) {
 
         sp.pdb_file_names.push_back(my_input->GetFilenameFromUser("PDB file name", "an input PDB", "my_atom_coords.pdb", require_pdb_to_exist));
@@ -538,6 +562,7 @@ void SimulateApp::DoInteractiveUserInput( ) {
             exit(-1);
         }
     }
+#endif
 
     // Allow bond scaling factor (constants/cistem::bond_scaling) to be overrode for experiment.
     sp.SetImagingParameters(wanted_pixel_size, kV, BOND_SCALING_FACTOR);
@@ -607,6 +632,11 @@ void SimulateApp::DoInteractiveUserInput( ) {
             SendErrorAndCrash("Error: You can't create a tilt-series and use an existing set of orientations at the same time");
         }
 
+        // Always ask for exposure parameters (not taken from starfile)
+        dose_per_frame   = my_input->GetFloatFromUser("electrons/Ang^2 in a frame at the specimen", "", "1.0", 0.05, 20.0);
+        dose_rate        = my_input->GetFloatFromUser("electrons/Pixel/sec", "Affects coherence but not coincidence loss", "3.0", 0.001, 200.0);
+        number_of_frames = my_input->GetFloatFromUser("number of frames per movie (micrograph or tilt)", "", "30", 1.0, 1000.0);
+
         bool wanted_parameters_are_present = false;
         if ( use_existing_params ) {
             // If we are using existing parameters, we enforce the following are specified.
@@ -627,26 +657,17 @@ void SimulateApp::DoInteractiveUserInput( ) {
                 kV                   = input_star_file.ReturnMicroscopekV(0);
                 spherical_aberration = input_star_file.ReturnMicroscopeCs(0);
 
-                float max_exposure, mean_phase_shift, mean_beam_tilt_x(0.f), mean_beam_tilt_y(0.f);
+                float mean_phase_shift, mean_beam_tilt_x(0.f), mean_beam_tilt_y(0.f);
                 mean_defocus     = 0.f;
                 mean_phase_shift = 0.f;
-                number_of_frames = 1;
-                // Assuming this is constant for all particles and frames FIXME
-                dose_per_frame = input_star_file.ReturnTotalExposure(0) - input_star_file.ReturnPreExposure(0);
-                // tmp override for testing FIXME
-                dose_per_frame         = 1;
-                current_total_exposure = 1;
-                pre_exposure           = 1;
                 for ( int counter = 0; counter < number_preexisting_particles; counter++ ) {
                     mean_defocus += 0.5f * (input_star_file.ReturnDefocus1(counter) + input_star_file.ReturnDefocus2(counter));
-                    number_of_frames = std::max(number_of_frames, float(input_star_file.ReturnParticleGroup(counter))); // FIXME, why is number of frames a float, prob a bad idea
                     mean_beam_tilt_x += input_star_file.ReturnBeamTiltX(counter);
                     mean_beam_tilt_y += input_star_file.ReturnBeamTiltY(counter);
                 }
                 mean_defocus /= number_preexisting_particles;
                 beam_tilt_x      = mean_beam_tilt_x / number_preexisting_particles;
                 beam_tilt_y      = mean_beam_tilt_y / number_preexisting_particles;
-                dose_rate        = 3.0f; // FIXME this is not currently in the parameter file
                 output_star_file = input_star_file; // we may change some of the parameters or save frames
             }
             else {
@@ -658,9 +679,6 @@ void SimulateApp::DoInteractiveUserInput( ) {
             // Either because the user did not ask for them (no-preexisting params) or because they were not present in the input star file
             mean_defocus      = my_input->GetFloatFromUser("wanted mean_defocus (Angstroms)", "Out", "700", 0, 120000);
             extra_phase_shift = my_input->GetFloatFromUser("wanted additional phase shift x * PI radians, i.e. 0.5 for PI/2 shift.", "", "0.0", -2.0, 2.0);
-            dose_per_frame    = my_input->GetFloatFromUser("electrons/Ang^2 in a frame at the specimen", "", "1.0", 0.05, 20.0);
-            dose_rate         = my_input->GetFloatFromUser("electrons/Pixel/sec", "Affects coherence but not coincidence loss", "3.0", 0.001, 200.0);
-            number_of_frames  = my_input->GetFloatFromUser("number of frames per movie (micrograph or tilt)", "", "30", 1.0, 1000.0);
         }
     }
 
@@ -776,6 +794,46 @@ bool SimulateApp::DoCalculation( ) {
     }
 
     sp.SetImagingParameters(wanted_pixel_size, kV);
+
+#ifdef cisTEM_fix_multiparticle
+    // Multi-PDB from starfile is only supported for micrograph mode, not particle stacks
+    MyAssertFalse(use_existing_params && make_particle_stack > 0,
+                  "Multi-PDB from starfile not yet supported for particle stack mode");
+
+    // In micrograph mode with starfile, extract PDB filenames from reference_3d_filename column
+    if ( use_existing_params ) {
+        sp.pdb_file_names.clear( );
+
+        for ( long iLine = 0; iLine < input_star_file.ReturnNumberofLines( ); iLine++ ) {
+            wxString pdb_filename = input_star_file.ReturnReference3DFilename(iLine);
+
+            if ( pdb_filename.IsEmpty( ) ) {
+                SendErrorAndCrash(wxString::Format("ERROR: Line %ld missing reference_3d_filename (PDB path)\n", iLine + 1));
+            }
+
+            // Check if this PDB is already in our list (simple uniqueness check)
+            bool already_seen = false;
+            for ( const auto& existing : sp.pdb_file_names ) {
+                if ( existing == pdb_filename ) {
+                    already_seen = true;
+                    break;
+                }
+            }
+
+            if ( ! already_seen ) {
+                if ( ! ValidatePdbFilename(pdb_filename) ) {
+                    SendErrorAndCrash(wxString::Format("PDB validation failed: %s\n", pdb_filename));
+                }
+                sp.pdb_file_names.push_back(pdb_filename);
+            }
+        }
+
+        wxPrintf("\nFound %zu unique PDBs from starfile:\n", sp.pdb_file_names.size( ));
+        for ( size_t i = 0; i < sp.pdb_file_names.size( ); i++ ) {
+            wxPrintf("  [%zu] %s\n", i, sp.pdb_file_names[i]);
+        }
+    }
+#endif
 
     if ( make_particle_stack > 0 ) {
 
@@ -1105,6 +1163,9 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     img_frame          = new Image[1];
     output_image_stack = new Image[number_of_images * (int)this->number_of_frames];
 
+    if ( DO_PRINT )
+        wxPrintf("N frame lines %d N images %d\n", number_of_frames, number_of_images);
+
     if ( SAVE_REF ) {
         ref_frame              = new Image[1];
         output_reference_stack = new Image[number_of_images * (int)this->number_of_frames];
@@ -1155,7 +1216,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             rotate_waters.SetToEulerRotation(-tilt_psi[iTilt], -tilt_theta[iTilt], -tilt_phi[iTilt]);
             max_rotation.SetToEulerRotation(-tilt_psi[iTilt], -max_tilt, 0.0f);
         }
-        else {
+        else if ( make_particle_stack > 0 ) {
             rotate_waters.SetToEulerRotation(euler1, euler2, euler3);
             max_rotation.SetToEulerRotation(-tilt_psi[iTilt], -tilt_theta[iTilt], -tilt_phi[iTilt]);
         }
@@ -1190,7 +1251,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
         }
 
         if ( SCALE_DEFOCUS_TO_MATCH_300 ) {
-            scale_defocus = (0.0196869700756145f / this->wavelength);
+            scale_defocus = (ReturnWavelenthInAngstroms(300.f) / this->wavelength);
             wanted_defocus_1_in_angstroms *= scale_defocus;
             wanted_defocus_2_in_angstroms *= scale_defocus;
             if ( DO_PRINT ) {
@@ -1346,7 +1407,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             coords.SetSpecimenVolume(current_specimen.vol_nX, current_specimen.vol_nY, current_specimen.vol_nZ);
             coords.SetSolventPadding(current_specimen.vol_nX + padSpecimenX, current_specimen.vol_nY + padSpecimenY, current_specimen.vol_nZ);
             if ( DO_PRINT ) {
-                wxPrintf("\n\n\t\twanted size is %d\n\n", padSpecimenX);
+                wxPrintf("\n\n\t\twanted size is %d\n\n", current_specimen.vol_nX + padSpecimenX);
             }
 
             // TODO put me at the top
@@ -1545,19 +1606,31 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             inelastic_mean.reserve(nSlabs);
             scattering_mass.reserve(nSlabs);
 
+            std::cerr << "DEBUG: vectors reserved for nSlabs=" << nSlabs << std::endl;
+            std::cerr << "DEBUG: scattering_total_shift.size()=" << scattering_total_shift.size( )
+                      << " capacity()=" << scattering_total_shift.capacity( ) << std::endl;
+
             for ( iSlab = 0; iSlab < nSlabs; iSlab++ ) {
+                std::cerr << "DEBUG: Starting iSlab=" << iSlab << "/" << nSlabs << std::endl;
                 if ( DO_PRINT )
                     wxPrintf("Working on slice %d/%d\n", iSlab, nSlabs);
 
+                std::cerr << "DEBUG: About to access scattering_total_shift[" << iSlab << "]" << std::endl;
                 scattering_total_shift[iSlab] = 0.0f;
-                propagator_distance[iSlab]    = -1.0f * (this->wanted_pixel_size * (slabIDX_end[iSlab] - slabIDX_start[iSlab] + 1));
+                std::cerr << "DEBUG: About to access propagator_distance[" << iSlab << "]" << std::endl;
+                propagator_distance[iSlab] = -1.0f * (this->wanted_pixel_size * (slabIDX_end[iSlab] - slabIDX_start[iSlab] + 1));
                 //            propagator_distance[iSlab] =  ( this->wanted_pixel_size * (slabIDX_end[iSlab] - slabIDX_start[iSlab] + 0) );
 
+                std::cerr << "DEBUG: Allocating scattering_potential[" << iSlab << "]" << std::endl;
                 coords.Allocate(&scattering_potential[iSlab], (PaddingStatus)solvent, true, true);
+                std::cerr << "DEBUG: scattering_potential allocated, dims=" << scattering_potential[iSlab].logical_x_dimension
+                          << "x" << scattering_potential[iSlab].logical_y_dimension << std::endl;
                 scattering_potential[iSlab].SetToConstant(0.0f);
+                std::cerr << "DEBUG: Allocating inelastic_potential[" << iSlab << "]" << std::endl;
                 coords.Allocate(&inelastic_potential[iSlab], (PaddingStatus)solvent, true, true);
 
                 inelastic_potential[iSlab].SetToConstant(0.0f);
+                std::cerr << "DEBUG: potentials initialized for slab " << iSlab << std::endl;
 
                 if ( SAVE_REF ) {
                     coords.Allocate(&ref_potential[iSlab], (PaddingStatus)solvent, true, true);
@@ -1576,11 +1649,20 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 }
 
                 timer.start("Allocate 3d slabs");
+                std::cerr << "DEBUG: SetSolventPadding_Z(" << slab_nZ << ")" << std::endl;
                 coords.SetSolventPadding_Z(slab_nZ);
+                std::cerr << "DEBUG: Allocating scattering_slab 3D" << std::endl;
                 coords.Allocate(&scattering_slab, (PaddingStatus)solvent, true, false);
+                std::cerr << "DEBUG: scattering_slab dims=" << scattering_slab.logical_x_dimension
+                          << "x" << scattering_slab.logical_y_dimension
+                          << "x" << scattering_slab.logical_z_dimension
+                          << " memory=" << scattering_slab.real_memory_allocated << std::endl;
+                std::cerr << "DEBUG: Allocating distance_slab 3D" << std::endl;
                 coords.Allocate(&distance_slab, (PaddingStatus)solvent, true, false);
+                std::cerr << "DEBUG: Allocating inelastic_slab 3D" << std::endl;
                 coords.Allocate(&inelastic_slab, (PaddingStatus)solvent, true, false);
 
+                std::cerr << "DEBUG: Add mean water potential" << std::endl;
                 if ( add_mean_water_potential ) {
                     coords.Allocate(&water_mask_slab, (PaddingStatus)solvent, true, false);
 // Not surprisingly a dynamic schedule here is super slow. Interestingly, multiplying by zero instead of setting to zero is about 80% runtime
@@ -1591,6 +1673,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                     }
                 }
 
+                std::cerr << "DEBUG: zero scattering slab potential" << std::endl;
 // Not surprisingly a dynamic schedule here is super slow. Interestingly, multiplying by zero instead of setting to zero is about 80% runtime
 #pragma omp parallel for num_threads(this->number_of_threads)
                 for ( long pixel_counter = 0; pixel_counter < scattering_slab.real_memory_allocated; pixel_counter++ ) {
@@ -1610,7 +1693,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 }
 
                 timer.lap("Allocate 3d slabs");
-
+                std::cerr << "DEBUG: Calc sacttering potential mean water potential" << std::endl;
                 timer.start("Calc Atoms");
                 if ( ! DO_PHASE_PLATE ) {
                     sp.calc_scattering_potential(&current_specimen, coords, &scattering_slab, &inelastic_slab, &distance_slab,
@@ -1793,7 +1876,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 }
 
                 if ( CALC_HOLES_ONLY == false ) {
-
+                    std::cerr << "DEBUG: Projecting 3dpotential" << std::endl;
                     timer.start("Project 3d");
                     this->project(&scattering_slab, scattering_potential, iSlab);
                     this->project(&inelastic_slab, inelastic_potential, iSlab);
@@ -1810,6 +1893,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 // TODO the edges should be a problem here, but maybe it is good to subtract the mean, exposure filter, then add back the mean around the edges? Can test with solvent off.
 
                 if ( SAVE_PHASE_GRATING ) {
+                    std::cerr << "DEBUG: Save phase grating potential" << std::endl;
                     std::string fileNameOUT = "with_phaseGrating_" + std::to_string(iSlab) + this->output_filename;
                     MRCFile     mrc_out(fileNameOUT, true);
                     scattering_potential[iSlab].WriteSlices(&mrc_out, 1, 1);
@@ -1822,7 +1906,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 }
 
                 if ( DO_EXPOSURE_FILTER == 2 && CALC_WATER_NO_HOLE == false ) {
-
+                    std::cerr << "DEBUG: exposure filter potential" << std::endl;
                     timer.start("ExpFilt 2d");
                     // add in the exposure filter
 
@@ -1860,7 +1944,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                     // }
 
                     delete[] dose_filter;
-
+                    std::cerr << "DEBUG:scattering back fft" << std::endl;
                     scattering_potential[iSlab].BackwardFFT( );
 
                     if ( SAVE_PHASE_GRATING_DOSE_FILTERED ) {

@@ -478,6 +478,49 @@ class TemplateMatchAnalyzer:
 
         return {row[0] for row in cursor.fetchall()}
 
+    def get_template_info(self, job_id: int) -> dict:
+        """
+        Get template volume information for a template matching job.
+
+        Retrieves the reference volume (3D template) used for a template matching
+        job by joining TEMPLATE_MATCH_LIST with VOLUME_ASSETS.
+
+        Args:
+            job_id: Template match job ID
+
+        Returns:
+            Dictionary with keys:
+            - VOLUME_ASSET_ID: Template volume asset ID
+            - NAME: Display name of the template (user-assigned in cisTEM)
+            - FILENAME: Full path to the template MRC file
+
+        Raises:
+            ValueError: If job_id has no results or template not found
+
+        Example:
+            info = analyzer.get_template_info(job_id=5)
+            print(f"Template: {info['NAME']}")  # e.g., "ribosome_h0.5"
+        """
+        cursor = self.conn.cursor()
+
+        cursor.execute("""
+            SELECT va.VOLUME_ASSET_ID, va.NAME, va.FILENAME
+            FROM TEMPLATE_MATCH_LIST tml
+            JOIN VOLUME_ASSETS va ON tml.REFERENCE_VOLUME_ASSET_ID = va.VOLUME_ASSET_ID
+            WHERE tml.TEMPLATE_MATCH_JOB_ID = ?
+            LIMIT 1
+        """, (job_id,))
+
+        result = cursor.fetchone()
+        if result is None:
+            raise ValueError(f"No template found for job {job_id}")
+
+        return {
+            'VOLUME_ASSET_ID': result[0],
+            'NAME': result[1],
+            'FILENAME': result[2]
+        }
+
     def get_result_file_paths(self, job_id: int,
                                image_asset_ids: Set[int] = None) -> pd.DataFrame:
         """

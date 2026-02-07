@@ -20,10 +20,10 @@
 #ifdef BATCH_HIGH_RES_EXPERIMENT
 #include <cmath>
 // File-static variables for batch experiment state (confined to this translation unit)
-static bool  s_batch_experiment_active     = false;
-static bool  s_batch_experiment_first_run  = true;
-static float s_batch_experiment_end_value  = 8.0f;   // Stop after this value
-static float s_batch_experiment_step       = 0.5f;   // Step size in Angstroms
+static bool  s_batch_experiment_active    = false;
+static bool  s_batch_experiment_first_run = true;
+static float s_batch_experiment_end_value = 8.0f; // Stop after this value
+static float s_batch_experiment_step      = 0.5f; // Step size in Angstroms
 #endif
 
 //#include "../core/core_headers.h"
@@ -103,6 +103,14 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     SymmetryComboBox->Append("T");
     SymmetryComboBox->Append("T2");
     SymmetryComboBox->SetSelection(0);
+
+    SearchSizeComboBox->Clear( );
+    SearchSizeComboBox->Append("high-res limit");
+    SearchSizeComboBox->Append("512");
+    SearchSizeComboBox->Append("1024");
+    SearchSizeComboBox->Append("2048");
+    SearchSizeComboBox->Append("4096");
+    SearchSizeComboBox->SetSelection(0);
 
     GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MatchTemplatePanel::OnGroupComboBox, this);
 }
@@ -188,6 +196,7 @@ void MatchTemplatePanel::ResetDefaults( ) {
     set_up_to_resume_job = false;
 
     SymmetryComboBox->SetValue("C1");
+    SearchSizeComboBox->SetValue("high-res limit");
 
     if ( main_frame->current_project.is_open ) {
         ResumeRunCheckBox->SetValue(false);
@@ -262,19 +271,12 @@ void MatchTemplatePanel::OnGroupComboBox(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::SetInfo( ) {
-    /*	#include "icons/ctffind_definitions.cpp"
-	#include "icons/ctffind_diagnostic_image.cpp"
-	#include "icons/ctffind_example_1dfit.cpp"
-
-	wxLogNull *suppress_png_warnings = new wxLogNull;
-	wxBitmap definitions_bmp = wxBITMAP_PNG_FROM_DATA(ctffind_definitions);
-	wxBitmap diagnostic_image_bmp = wxBITMAP_PNG_FROM_DATA(ctffind_diagnostic_image);
-	wxBitmap example_1dfit_bmp = wxBITMAP_PNG_FROM_DATA(ctffind_example_1dfit);
-	delete suppress_png_warnings;*/
 
     InfoText->GetCaret( )->Hide( );
 
     InfoText->BeginSuppressUndo( );
+
+    // ---- Title ----
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_CENTRE);
     InfoText->BeginBold( );
     InfoText->BeginUnderline( );
@@ -287,12 +289,18 @@ void MatchTemplatePanel::SetInfo( ) {
     InfoText->Newline( );
     InfoText->EndAlignment( );
 
+    // ---- Introduction ----
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_LEFT);
-    InfoText->WriteText(wxT("TODO: update this with the 2020 paper (finding things in cells) combined with things for bigger regions (Johannes' paper) or baited recon (newer paper)."));
+    InfoText->WriteText(wxT("Template matching locates macromolecular complexes in cryo-EM micrographs by exhaustively searching "
+                            "over 3D orientations, in-plane positions, and optionally defocus. For each orientation, 2D projections "
+                            "of a reference volume are compared to the image via cross-correlation, producing a correlation map whose "
+                            "peaks indicate candidate particle positions. This approach enables detection of targets in complex "
+                            "cellular environments such as FIB-milled lamellae without manual picking (Lucas et al., 2021)."));
     InfoText->Newline( );
     InfoText->Newline( );
     InfoText->EndAlignment( );
 
+    // ---- Program Options ----
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_CENTRE);
     InfoText->BeginBold( );
     InfoText->BeginUnderline( );
@@ -307,21 +315,27 @@ void MatchTemplatePanel::SetInfo( ) {
     InfoText->BeginBold( );
     InfoText->WriteText(wxT("Input Group : "));
     InfoText->EndBold( );
-    InfoText->WriteText(wxT("The group of image assets to look for templates in"));
+    InfoText->WriteText(wxT("The group of image assets to search for template matches."));
     InfoText->Newline( );
     InfoText->BeginBold( );
     InfoText->WriteText(wxT("Reference Volume : "));
     InfoText->EndBold( );
-    InfoText->WriteText(wxT("The volume that will used for the template search TODO: add a description of how to generate a reference, and padding/sizing considerations."));
+    InfoText->WriteText(wxT("The 3D volume used as the search template. This can be an experimental reconstruction or a volume "
+                            "generated from an atomic model using the Simulate program (see Himes & Grigorieff, 2021). The volume "
+                            "should be appropriately padded and sized for the target pixel size; the program will resample it as needed."));
     InfoText->Newline( );
     InfoText->BeginBold( );
     InfoText->WriteText(wxT("Run Profile : "));
     InfoText->EndBold( );
-    InfoText->WriteText(wxT("TODO: reference threading vs process balance. The selected run profile will be used to run the job. The run profile describes how the job should be run (e.g. how many processors should be used, and on which different computers).  Run profiles are set in the Run Profile panel, located under settings."));
+    InfoText->WriteText(wxT("The selected run profile describes how the job should be distributed. For GPU-accelerated template "
+                            "matching, we typically set CUDA_VISIBLE_DEVICES=N for each process and run one process per GPU with "
+                            "2-4 threads. Smaller images benefit from more threads as the GPU overhead per image is proportionally "
+                            "larger. Run profiles are configured in the Run Profile panel under Settings."));
     InfoText->Newline( );
     InfoText->Newline( );
     InfoText->EndAlignment( );
 
+    // ---- Expert Options ----
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_CENTRE);
     InfoText->BeginBold( );
     InfoText->BeginUnderline( );
@@ -332,20 +346,87 @@ void MatchTemplatePanel::SetInfo( ) {
     InfoText->Newline( );
     InfoText->EndAlignment( );
 
-    // TODO: add section on scaling based on pixel size. Note that the input is a target that may slightly differ. Note limits on sizing and power of two (ref to fast FFT bit)
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_LEFT);
+
+    // Search Limits
     InfoText->BeginBold( );
     InfoText->WriteText(wxT("Out of Plane Angular Step : "));
     InfoText->EndBold( );
-    InfoText->WriteText(wxT("The angular step that should be used for the out of plane search.  Smaller values may increase accuracy, but will significantly increase the required processing time."));
+    InfoText->WriteText(wxT("The angular step used for the out-of-plane search. Smaller values may increase accuracy, "
+                            "but will significantly increase the required processing time."));
     InfoText->Newline( );
     InfoText->BeginBold( );
     InfoText->WriteText(wxT("In Plane Angular Step : "));
     InfoText->EndBold( );
-    InfoText->WriteText(wxT("The angular step that should be used for the in plane search.  As with the out of plane angle, smaller values may increase accuracy, but will significantly increase the required processing time."));
+    InfoText->WriteText(wxT("The angular step used for the in-plane search. As with the out-of-plane angle, smaller "
+                            "values may increase accuracy, but will significantly increase the required processing time."));
+    InfoText->Newline( );
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("High-Resolution Limit : "));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT("The highest resolution (in Angstroms) used for template projection comparisons. Defaults to the "
+                            "Nyquist limit of the input images. Collecting data at higher magnification (better DQE) and "
+                            "downsampling is recommended over collecting at lower magnification, since this preserves "
+                            "low-resolution contrast. When FastFFT is enabled, the image will be resampled to the nearest "
+                            "power of two that is at most 4096 pixels. This option is disabled when Max Search Size is selected."));
+    InfoText->Newline( );
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Max Search Size : "));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT("An alternative to the High-Resolution Limit. Instead of specifying a resolution in Angstroms, "
+                            "this constrains the working image dimensions to the selected size (1024, 2048, or 4096 pixels) and "
+                            "automatically uses the highest resolution achievable at that size. Selecting any option other than "
+                            "the default resolution limit disables the High-Resolution Limit control. This is useful for speed "
+                            "optimization and is particularly helpful when input image dimensions vary across a dataset, as can "
+                            "occur with montaged collection strategies such as DeCo-LACE (Elferich et al., 2022)."));
+    InfoText->Newline( );
+
+    // Defocus Search
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Defocus Search : "));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT("When enabled, the program searches over a range of defocus values around the estimated defocus for "
+                            "each micrograph. This accounts for defocus variation across the field of view, which can be "
+                            "significant for tilted specimens or thick ice. Specify the search range and step size in Angstroms."));
+    InfoText->Newline( );
+
+    // Pixel Size Search
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Pixel Size Search : "));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT("When enabled, the program searches over a range of pixel sizes to account for magnification "
+                            "calibration errors. This is generally not needed for routine processing and is mostly useful for "
+                            "calibrating the effective pixel size for a given dataset. Magnification refinement is typically "
+                            "better handled in Refine Template, where per-micrograph pixel size corrections can be applied."));
+    InfoText->Newline( );
+
+    // Peak Selection
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Minimum Peak Radius : "));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT("The minimum distance (in pixels) between detected peaks. Peaks closer than this radius are "
+                            "suppressed, keeping only the strongest. Adjust based on expected particle spacing."));
+    InfoText->Newline( );
+
+    // GPU Configuration
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Use GPU : "));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT("Controls whether GPU acceleration is used. This option exists primarily for debugging; in practice "
+                            "it should remain set to Yes as CPU-only execution is orders of magnitude slower."));
+    InfoText->Newline( );
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Use FastFFT Library : "));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT("Enables the FastFFT library, which provides additional speedups of 5-40x over cuFFT by exploiting "
+                            "the structure of the correlation computation. FastFFT requires power-of-two image dimensions; the "
+                            "input will be resampled to satisfy this constraint. If resampling is not acceptable (e.g. the image "
+                            "size is not close to a power of two), disable this option."));
     InfoText->Newline( );
     InfoText->Newline( );
     InfoText->EndAlignment( );
+
+    // ---- References ----
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_CENTRE);
     InfoText->BeginBold( );
     InfoText->BeginUnderline( );
@@ -357,14 +438,61 @@ void MatchTemplatePanel::SetInfo( ) {
     InfoText->EndAlignment( );
 
     InfoText->BeginAlignment(wxTEXT_ALIGNMENT_LEFT);
+
+    // Rickgauer et al. 2017
     InfoText->BeginBold( );
-    InfoText->WriteText(wxT("Rickgauer J.P., Grigorieff N., Denk W."));
+    InfoText->WriteText(wxT("Rickgauer J.P., Grigorieff N., Denk W.,"));
     InfoText->EndBold( );
-    InfoText->WriteText(wxT(" 2017. Single-protein detection in crowded molecular environments in cryo-EM images. Elife 6, e25648.. "));
+    InfoText->WriteText(wxT(" 2017. Single-protein detection in crowded molecular environments in cryo-EM images. eLife 6, e25648. "));
     InfoText->BeginURL("http://doi.org/10.7554/eLife.25648");
     InfoText->BeginUnderline( );
     InfoText->BeginTextColour(*wxBLUE);
     InfoText->WriteText(wxT("doi:10.7554/eLife.25648"));
+    InfoText->EndURL( );
+    InfoText->EndTextColour( );
+    InfoText->EndUnderline( );
+    InfoText->Newline( );
+    InfoText->Newline( );
+
+    // Lucas et al. 2021
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Lucas B.A., Himes B.A., Xue L., Grant T., Mahamid J., Grigorieff N.,"));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT(" 2021. Locating macromolecular assemblies in cells by 2D template matching with cisTEM. eLife 10, e68946. "));
+    InfoText->BeginURL("http://doi.org/10.7554/eLife.68946");
+    InfoText->BeginUnderline( );
+    InfoText->BeginTextColour(*wxBLUE);
+    InfoText->WriteText(wxT("doi:10.7554/eLife.68946"));
+    InfoText->EndURL( );
+    InfoText->EndTextColour( );
+    InfoText->EndUnderline( );
+    InfoText->Newline( );
+    InfoText->Newline( );
+
+    // Himes & Grigorieff 2021
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Himes B.A., Grigorieff N.,"));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT(" 2021. Cryo-TEM simulations of amorphous radiation-sensitive samples using multislice wave propagation. IUCrJ 8, 943-953. "));
+    InfoText->BeginURL("http://doi.org/10.1107/S2052252521008538");
+    InfoText->BeginUnderline( );
+    InfoText->BeginTextColour(*wxBLUE);
+    InfoText->WriteText(wxT("doi:10.1107/S2052252521008538"));
+    InfoText->EndURL( );
+    InfoText->EndTextColour( );
+    InfoText->EndUnderline( );
+    InfoText->Newline( );
+    InfoText->Newline( );
+
+    // Elferich et al. 2022
+    InfoText->BeginBold( );
+    InfoText->WriteText(wxT("Elferich J., Schiroli G., Scadden D.T., Grigorieff N.,"));
+    InfoText->EndBold( );
+    InfoText->WriteText(wxT(" 2022. Defocus corrected large area cryo-EM (DeCo-LACE) for label-free detection of molecules across entire cell sections. eLife 11, e80980. "));
+    InfoText->BeginURL("http://doi.org/10.7554/eLife.80980");
+    InfoText->BeginUnderline( );
+    InfoText->BeginTextColour(*wxBLUE);
+    InfoText->WriteText(wxT("doi:10.7554/eLife.80980"));
     InfoText->EndURL( );
     InfoText->EndTextColour( );
     InfoText->EndUnderline( );
@@ -574,6 +702,7 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
     SetAndRememberEnableState(PixelSizeSearchNoRadio, was_enabled_PixelSizeSearchNoRadio, enable_value);
 
     SetAndRememberEnableState(SymmetryComboBox, was_enabled_SymmetryComboBox, enable_value);
+    SetAndRememberEnableState(SearchSizeComboBox, was_enabled_SearchSizeComboBox, enable_value);
     SetAndRememberEnableState(HighResolutionLimitNumericCtrl, was_enabled_HighResolutionLimitNumericCtrl, enable_value);
     SetAndRememberEnableState(DefocusSearchRangeNumericCtrl, was_enabled_DefocusSearchRangeNumericCtrl, enable_value);
     SetAndRememberEnableState(DefocusSearchStepNumericCtrl, was_enabled_DefocusSearchStepNumericCtrl, enable_value);
@@ -609,7 +738,7 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
 #ifdef BATCH_HIGH_RES_EXPERIMENT
-    if ( !s_batch_experiment_active ) {
+    if ( ! s_batch_experiment_active ) {
         // First click - activate batch mode
         s_batch_experiment_active    = true;
         s_batch_experiment_first_run = true;
@@ -619,7 +748,7 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
                                        s_batch_experiment_step));
     }
 
-    if ( !s_batch_experiment_first_run ) {
+    if ( ! s_batch_experiment_first_run ) {
         // Log what we're running (value was already set in ProcessAllJobsFinished)
         WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
                                        HighResolutionLimitNumericCtrl->ReturnValue( )));
@@ -730,9 +859,24 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     wanted_symmetry             = SymmetryComboBox->GetValue( ).Upper( );
     float high_resolution_limit = HighResolutionLimitNumericCtrl->ReturnValue( );
 
+    // Read search size cap from combo box (0 means no cap, use high-res limit only)
+    wxString search_size_selection = SearchSizeComboBox->GetValue( );
+    int      max_search_dimension  = 0;
+    if ( search_size_selection != "high-res limit" ) {
+        long val;
+        if ( search_size_selection.ToLong(&val) ) {
+            max_search_dimension = static_cast<int>(val);
+        }
+    }
+
     wxPrintf("\n\nWanted symmetry %s, Defocus Range %3.3f, Defocus Step %3.3f\n", wanted_symmetry, defocus_search_range, defocus_step);
 
     RunProfile active_refinement_run_profile = run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection( )];
+
+    if ( max_search_dimension > 0 ) {
+        active_refinement_run_profile.AppendCommandLineArguments(
+                wxString::Format("--max-search-size=%d", max_search_dimension));
+    }
 
     int number_of_processes = active_refinement_run_profile.ReturnTotalJobs( );
 

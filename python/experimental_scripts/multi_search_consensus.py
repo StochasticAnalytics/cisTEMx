@@ -23,56 +23,8 @@ import argparse
 import numpy as np
 import pandas as pd
 import mrcfile
+from cistemx import parse_job_range
 from cistemx.db import database as tma
-
-
-def parse_search_range(range_str: str) -> list[int]:
-    """
-    Parse search range specification into list of job IDs.
-
-    Supports three formats:
-    - Colon range: "12:18" → [12, 13, 14, 15, 16, 17, 18]
-    - Comma list: "12,14,16" → [12, 14, 16]
-    - Single value: "12" → [12]
-
-    Args:
-        range_str: Range specification string
-
-    Returns:
-        Sorted list of job IDs
-
-    Raises:
-        ValueError: If format is invalid or range is empty
-    """
-    range_str = range_str.strip()
-
-    if ':' in range_str:
-        # Range format: "12:18"
-        parts = range_str.split(':')
-        if len(parts) != 2:
-            raise ValueError(f"Invalid range format '{range_str}'. Use 'start:end' (e.g., '12:18')")
-        try:
-            start, end = int(parts[0]), int(parts[1])
-        except ValueError:
-            raise ValueError(f"Invalid integers in range '{range_str}'")
-        if start > end:
-            raise ValueError(f"Start ({start}) must be <= end ({end})")
-        return list(range(start, end + 1))
-
-    elif ',' in range_str:
-        # Comma-separated list: "12,14,16"
-        try:
-            job_ids = [int(x.strip()) for x in range_str.split(',')]
-        except ValueError:
-            raise ValueError(f"Invalid integers in list '{range_str}'")
-        return sorted(job_ids)
-
-    else:
-        # Single value: "12"
-        try:
-            return [int(range_str)]
-        except ValueError:
-            raise ValueError(f"Invalid job ID '{range_str}'")
 
 
 def euler_to_rotation_matrix(phi: float, theta: float, psi: float) -> np.ndarray:
@@ -384,6 +336,41 @@ def compute_subpixel_offsets(analyzer, results: list[dict], job_ids: list[int],
 
     if debug:
         print(f"  ✓ Sub-pixel offsets computed ({method_name})")
+
+
+def compute_refined_height_stats(results: list[dict], job_ids: list[int]):
+    """
+    Compute statistics for FFT-refined peak heights.
+
+    Adds REFINED_HEIGHT_MIN, REFINED_HEIGHT_MAX, REFINED_HEIGHT_MEAN, REFINED_HEIGHT_STD
+    to each result dict. Should be called after compute_subpixel_offsets with FFT method.
+
+    Args:
+        results: List of result dicts (modified in-place)
+        job_ids: List of job IDs
+    """
+    if not results:
+        return
+
+    # Check if refined heights exist
+    if f'REFINED_HEIGHT_JOB{job_ids[0]}' not in results[0]:
+        return
+
+    for result in results:
+        heights = np.array([result.get(f'REFINED_HEIGHT_JOB{j}', np.nan) for j in job_ids])
+        # Filter out NaN values for stats
+        valid_heights = heights[~np.isnan(heights)]
+
+        if len(valid_heights) > 0:
+            result['REFINED_HEIGHT_MIN'] = np.min(valid_heights)
+            result['REFINED_HEIGHT_MAX'] = np.max(valid_heights)
+            result['REFINED_HEIGHT_MEAN'] = np.mean(valid_heights)
+            result['REFINED_HEIGHT_STD'] = np.std(valid_heights)
+        else:
+            result['REFINED_HEIGHT_MIN'] = np.nan
+            result['REFINED_HEIGHT_MAX'] = np.nan
+            result['REFINED_HEIGHT_MEAN'] = np.nan
+            result['REFINED_HEIGHT_STD'] = np.nan
 
 
 def find_consensus_peaks(peaks_by_job: dict[int, pd.DataFrame],
@@ -710,6 +697,13 @@ def print_debug_consensus_table(results: list[dict], job_ids: list[int],
               f"{r['SCORE_MEAN']:7.2f} {r['SCORE_MIN']:7.2f} {r['SCORE_MAX']:7.2f} {r['SCORE_STD']:6.3f} | "
               f"{r['ORIENTATION_STD']:6.2f} | {per_search}")
 
+        # Print refined height stats row (FFT only) - same format as score stats
+        if has_refined and 'REFINED_HEIGHT_MEAN' in r:
+            per_search_refined = ' '.join([f"{r.get(f'REFINED_HEIGHT_JOB{j}', np.nan):6.2f}" for j in job_ids])
+            print(f"  {'':>4} {'FFT':>3} | {'':>9} {'':>9} {'':>6} | "
+                  f"{r['REFINED_HEIGHT_MEAN']:7.2f} {r['REFINED_HEIGHT_MIN']:7.2f} {r['REFINED_HEIGHT_MAX']:7.2f} {r['REFINED_HEIGHT_STD']:6.3f} | "
+                  f"{'':>6} | {per_search_refined}")
+
         # Print offset rows if requested
         if show_offsets:
             # Check if offset data exists
@@ -723,11 +717,6 @@ def print_debug_consensus_table(results: list[dict], job_ids: list[int],
                 # Y offset row
                 y_offsets = ' '.join([f"{r.get(f'Y_OFFSET_JOB{j}', np.nan):6.2f}" for j in job_ids])
                 print(f"{blank_prefix} Y:{y_offsets[2:]}")  # Remove first 2 chars to make room for "Y:"
-
-                # Refined height row (FFT only)
-                if has_refined:
-                    heights = ' '.join([f"{r.get(f'REFINED_HEIGHT_JOB{j}', np.nan):6.2f}" for j in job_ids])
-                    print(f"{blank_prefix} H:{heights[2:]}")  # H for height
 
     # Print averages row
     print(f"  {'-'*4}-{'-'*3}-+-{'-'*9}-{'-'*9}-{'-'*6}-+-"
@@ -746,17 +735,23 @@ def print_debug_consensus_table(results: list[dict], job_ids: list[int],
           f"{avg_score_mean:7.2f} {avg_score_min:7.2f} {avg_score_max:7.2f} {avg_score_std:6.3f} | "
           f"{avg_orient_std:6.2f} | {avg_per_search}")
 
+    # Print average refined height stats (FFT only)
+    if has_refined and 'REFINED_HEIGHT_MEAN' in results[0]:
+        avg_refined_mean = np.nanmean([r.get('REFINED_HEIGHT_MEAN', np.nan) for r in results])
+        avg_refined_min = np.nanmean([r.get('REFINED_HEIGHT_MIN', np.nan) for r in results])
+        avg_refined_max = np.nanmean([r.get('REFINED_HEIGHT_MAX', np.nan) for r in results])
+        avg_refined_std = np.nanmean([r.get('REFINED_HEIGHT_STD', np.nan) for r in results])
+        avg_per_search_refined = ' '.join([f"{np.nanmean([r.get(f'REFINED_HEIGHT_JOB{j}', np.nan) for r in results]):6.2f}" for j in job_ids])
+        print(f"  {'':>4} {'FFT':>3} | {'':>9} {'':>9} {'':>6} | "
+              f"{avg_refined_mean:7.2f} {avg_refined_min:7.2f} {avg_refined_max:7.2f} {avg_refined_std:6.3f} | "
+              f"{'':>6} | {avg_per_search_refined}")
+
     # Print average offsets if available
     if show_offsets and results and f'X_OFFSET_JOB{job_ids[0]}' in results[0]:
         avg_x_offsets = ' '.join([f"{np.nanmean([r.get(f'X_OFFSET_JOB{j}', np.nan) for r in results]):6.2f}" for j in job_ids])
         avg_y_offsets = ' '.join([f"{np.nanmean([r.get(f'Y_OFFSET_JOB{j}', np.nan) for r in results]):6.2f}" for j in job_ids])
         print(f"{blank_prefix} X:{avg_x_offsets[2:]}")
         print(f"{blank_prefix} Y:{avg_y_offsets[2:]}")
-
-        # Average refined heights (FFT only)
-        if has_refined:
-            avg_heights = ' '.join([f"{np.nanmean([r.get(f'REFINED_HEIGHT_JOB{j}', np.nan) for r in results]):6.2f}" for j in job_ids])
-            print(f"{blank_prefix} H:{avg_heights[2:]}")
 
     print(f"{'='*130}\n")
 
@@ -886,6 +881,9 @@ def analyze_consensus(analyzer: tma.TemplateMatchAnalyzer,
         compute_subpixel_offsets(analyzer, results, job_ids,
                                   method=subpixel_method, upsample_factor=fft_upsample,
                                   window_size=window_size, debug=debug)
+        # Compute stats for refined heights (FFT method only)
+        if subpixel_method == 'fft':
+            compute_refined_height_stats(results, job_ids)
 
     # Print combined debug table at the end
     if debug and results:
@@ -936,6 +934,16 @@ def print_summary(df: pd.DataFrame, job_ids: list[int], job_peak_counts: dict = 
     print(f"  Overall mean score: {df['SCORE_MEAN'].mean():.3f}")
     print(f"  Mean score range (max-min): {(df['SCORE_MAX'] - df['SCORE_MIN']).mean():.3f}")
 
+    # Refined height statistics (FFT method only)
+    if 'REFINED_HEIGHT_MEAN' in df.columns:
+        print(f"\nFFT-refined height statistics:")
+        print(f"  Overall mean refined height: {df['REFINED_HEIGHT_MEAN'].mean():.3f}")
+        print(f"  Mean refined height range (max-min): {(df['REFINED_HEIGHT_MAX'] - df['REFINED_HEIGHT_MIN']).mean():.3f}")
+        print(f"\nRefined height consistency (std across searches):")
+        print(f"  Mean refined std:  {df['REFINED_HEIGHT_STD'].mean():.3f}")
+        print(f"  Median refined std: {df['REFINED_HEIGHT_STD'].median():.3f}")
+        print(f"  Max refined std:   {df['REFINED_HEIGHT_STD'].max():.3f}")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -976,7 +984,7 @@ Examples:
 
     # Parse search range
     try:
-        job_ids = parse_search_range(args.search_range)
+        job_ids = parse_job_range(args.search_range)
     except ValueError as e:
         print(f"Error parsing search range: {e}", file=sys.stderr)
         sys.exit(1)

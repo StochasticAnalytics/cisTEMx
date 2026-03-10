@@ -186,6 +186,8 @@ class Database {
     int  ReturnHighestTemplateMatchesPackageID( );
     void SetActiveTemplateMatchJobForGivenImageAssetID(long image_asset, long template_match_job_id);
 
+    bool ReturnAllAssetIdsWithUnderfocus(int group_list_id, int total_group_members, wxArrayLong& underfocus_asset_ids);
+
     int ReturnNumberOfPreviousMovieAlignmentsByAssetID(int wanted_asset_id);
     int ReturnNumberOfPreviousTemplateMatchesByAssetID(int wanted_asset_id);
     int ReturnNumberOfPreviousCTFEstimationsByAssetID(int wanted_asset_id);

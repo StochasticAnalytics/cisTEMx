@@ -107,7 +107,17 @@
         "__threading_support": "cpp"
     },
     "C_Cpp.clang_format_path": "/usr/bin/clang-format-14",
+    "C_Cpp.formatting": "clangFormat",
     "editor.formatOnSave": true,
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    },
+    "[c]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    },
+    "[cuda-cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    },
     "DockerRun.DisableDockerrc": true,
     "html.format.endWithNewline": true,
     "editor.fontSize": 12,

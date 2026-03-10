@@ -20,6 +20,10 @@
 #endif
 
 #include "template_matching_data_sizer.h"
+#include "template_matching_peak_extractor.h"
+
+// Uncomment to enable peak info diagnostic file output
+#define cisTEM_SAVE_PEAK_INFO
 
 // The profiling for development is under conrtol of --enable-profiling.
 #ifdef CISTEM_PROFILING
@@ -51,6 +55,7 @@ class AggregatedTemplateResult {
     int   number_of_received_results;
     float total_number_of_angles_searched;
     bool  disable_flat_fielding;
+    bool  skip_peak_correction;
 
     float* collated_data_array;
     float* collated_mip_data;
@@ -205,8 +210,10 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
     command_line_parser.AddOption("", "n-expected-false-positives", "average number of false positives per image, (defaults to 1)", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddLongSwitch("ignore-defocus-for-threshold", "assume the defocus planes are not independent locs for threshold calc, (defaults false)");
     command_line_parser.AddLongSwitch("apply-result-rescaling", "Rescale the results their original size, (defaults false)");
-    command_line_parser.AddOption("", "max-search-size", "Maximum search size in pixels (must be > 32 if specified, 0 = no limit)", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddLongSwitch("allow-over-focus",
+                                      "Allow images with over-focus (negative defocus values). Default false");
 
+    command_line_parser.AddLongSwitch("skip-peak-correction", "Skip upsampled peak height correction (debugging). Default false");
     command_line_parser.AddOption("", "L2-peristance-fraction", "min L2 cache available for persisting as fraction of input image size in fp16 bytes (defaults to 0 [off])", wxCMD_LINE_VAL_DOUBLE);
 }
 
@@ -416,6 +423,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     long   temp_long;
     bool   use_gpu_prj                  = true;
     bool   disable_flat_fielding        = false;
+    bool   skip_peak_correction         = false;
     bool   ignore_defocus_for_threshold = false;
     bool   apply_result_rescaling{ };
     double n_expected_false_positives{1.0};
@@ -433,6 +441,10 @@ bool MatchTemplateApp::DoCalculation( ) {
         SendInfo("Disabling flat fielding\n");
         disable_flat_fielding = true;
     }
+    if ( command_line_parser.FoundSwitch("skip-peak-correction") ) {
+        SendInfo("Skipping peak height correction\n");
+        skip_peak_correction = true;
+    }
 
     if ( command_line_parser.FoundSwitch("disable-gpu-prj") ) {
         SendInfo("Disabling GPU projection\n");
@@ -448,17 +460,12 @@ bool MatchTemplateApp::DoCalculation( ) {
         n_expected_false_positives = temp_double;
     }
 
-    // Parse max-search-size argument
-    if ( command_line_parser.Found("max-search-size", &temp_long) ) {
-        max_search_size = temp_long;
-        if ( max_search_size > 0 && max_search_size <= 32 ) {
-            SendError("max-search-size must be greater than 32 if specified (provided: " + wxString::Format("%ld", max_search_size) + ")\n");
-            return false;
-        }
-        if ( max_search_size > 0 ) {
-            SendInfo("Using maximum search size: " + wxString::Format("%ld", max_search_size) + " pixels\n");
-        }
+    bool allow_over_focus = false;
+    if ( command_line_parser.FoundSwitch("allow-over-focus") ) {
+        SendInfo("Allowing over-focus (negative defocus) values\n");
+        allow_over_focus = true;
     }
+
     bool allow_rotation_for_speed{true};
 
     wxString input_search_images_filename    = my_current_job.arguments[0].ReturnStringArgument( );
@@ -505,6 +512,36 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool     use_fast_fft                    = my_current_job.arguments[41].ReturnBoolArgument( );
 
     int max_threads = my_current_job.arguments[42].ReturnIntegerArgument( );
+
+    // Check for over-focus (negative defocus values)
+    if ( ! allow_over_focus && (defocus1 < 0.0f || defocus2 < 0.0f) ) {
+        SendError(wxString::Format(
+                "Over-focus detected: defocus1 = %.1f, defocus2 = %.1f\n"
+                "Negative defocus values indicate over-focus, which currently produces "
+                "unreliable template matching results.\n"
+                "To proceed anyway, re-run with the --allow-over-focus flag.\n",
+                defocus1, defocus2));
+        return false;
+    }
+
+    // Reinterpret high_resolution_limit as max_search_size if > 20 and power of two
+    if ( high_resolution_limit_search > 20.0f ) {
+        int hrl_int = static_cast<int>(high_resolution_limit_search);
+        if ( is_power_of_two(hrl_int) ) {
+            max_search_size = hrl_int;
+            SendInfo(wxString::Format("High resolution limit value %d interpreted as max search size in pixels\n", hrl_int));
+            high_resolution_limit_search = 0.0f; // sentinel; handled at max_search_size block below
+        }
+        else {
+            SendError(wxString::Format(
+                    "High resolution limit value %.1f is greater than 20 but is not a power of two.\n"
+                    "Values > 20 are interpreted as max search size in pixels and must be a power of two "
+                    "(e.g., 64, 128, 256, 512, 1024, 2048, 4096).\n"
+                    "For a standard high resolution limit, use a value <= 20 Angstroms.\n",
+                    high_resolution_limit_search));
+            return false;
+        }
+    }
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
@@ -617,6 +654,10 @@ bool MatchTemplateApp::DoCalculation( ) {
             wxPrintf("Your input image is %i x %i pixels. To fit within the max search size of %ld, the high resolution limit for the search has been changed from %3.2fA to %3.2fA\n",
                      input_image.logical_x_dimension, input_image.logical_y_dimension, max_search_size, high_resolution_limit_search, std::max(high_limit_x, high_limit_y));
             high_resolution_limit_search = std::max(high_limit_x, high_limit_y);
+        }
+        // If image already fits within max_search_size, ensure we have a valid resolution limit
+        if ( high_resolution_limit_search == 0.0f ) {
+            high_resolution_limit_search = 2.0f * input_pixel_size; // Nyquist
         }
     }
 
@@ -1408,6 +1449,7 @@ bool MatchTemplateApp::DoCalculation( ) {
             result[cm_t::number_of_valid_search_pixels]                     = float(data_sizer.GetNumberOfValidSearchPixels( )); // if apply_result_rescaling is false, this will = image_size_x * image_size_y as they are cropped to the ROI
             result[cm_t::disable_flat_fielding]                             = float(disable_flat_fielding);
             result[cm_t::number_of_expected_false_positives]                = float(n_expected_false_positives);
+            result[cm_t::skip_peak_correction]                              = float(skip_peak_correction);
 
             if ( ! apply_result_rescaling ) {
                 MyDebugAssertTrue(data_sizer.GetNumberOfValidSearchPixels( ) == (max_intensity_projection.logical_x_dimension * max_intensity_projection.logical_y_dimension),
@@ -1551,6 +1593,10 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // All parts of the result for this image are now collected. Proceed to finalize.
         // TODO send the result back to the GUI, for now hack mode to save the files to the directory..
 
+        cistem_timer::StopWatch timer;
+
+        timer.start("Initialize objects");
+
         wxString directory_for_writing_results = current_job_package.jobs[0].arguments[37].ReturnStringArgument( );
 
         // Image objects for storing and processing results
@@ -1598,6 +1644,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         bool using_binned_ref = input_binning_factor > 1.0f ? true : false;
 
+        timer.lap("Initialize objects");
+        timer.start("Initialize volume and mip");
         ImageFile input_reconstruction_file;
         input_reconstruction_file.OpenFile(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[1].ReturnStringArgument( ), false);
 
@@ -1609,6 +1657,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         }
 
         scaled_mip.CopyFrom(&temp_image);
+        timer.lap("Initialize volume and mip");
+        timer.start("Rescale mip and stats");
         RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(&temp_image,
                                                             &scaled_mip,
                                                             aggregated_results[array_location].collated_pixel_sums,
@@ -1622,7 +1672,9 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             aggregated_results[array_location].collated_mip_data[pixel_counter] = temp_image.real_values[pixel_counter];
         }
+        timer.lap("Rescale mip and stats");
 
+        timer.start("Write output images");
         MRCFile mip_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[21].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         mip_output_file.SetOutputToFP16( );
@@ -1733,6 +1785,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         temp_image.WriteSlice(&square_sum_output_file, 1);
         square_sum_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
 
+        timer.lap("Write output images");
+        timer.start("Set and write histogram");
         // Write histogram text file
         //NumericTextFile histogram_file(wxString::Format("%s/histogram_%i.txt", directory_for_writing_results, aggregated_results[array_location].image_number), OPEN_TO_WRITE, 4);
         NumericTextFile histogram_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( ), OPEN_TO_WRITE, 4);
@@ -1798,7 +1852,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         }
 
         histogram_file.Close( );
-
+        timer.lap("Set and write histogram");
+        timer.start("Initialize results image");
         // Calculate the result image, and keep the peak info to send back...
 
         int   min_peak_radius         = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[39].ReturnFloatArgument( );
@@ -1811,141 +1866,84 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         result_image.SetToConstant(0.0f);
 
         input_reconstruction.ReadSlices(&input_reconstruction_file, 1, input_reconstruction_file.ReturnNumberOfSlices( ));
-        if ( using_binned_ref ) {
-            // Not exact but just for visualization
-            int new_size = int(input_reconstruction.logical_x_dimension / input_binning_factor + 0.5f);
-            if ( IsOdd(new_size) )
-                new_size++;
-            input_reconstruction.ForwardFFT( );
-            input_reconstruction.Resize(new_size, new_size, new_size);
-            input_reconstruction.BackwardFFT( );
-        }
-
-        float max_density = input_reconstruction.ReturnAverageOfMaxN( );
-        input_reconstruction.DivideByConstant(max_density);
-
-        input_reconstruction.ForwardFFT( );
-        input_reconstruction.MultiplyByConstant(sqrtf(input_reconstruction.logical_x_dimension * input_reconstruction.logical_y_dimension * sqrtf(input_reconstruction.logical_z_dimension)));
-        input_reconstruction.ZeroCentralPixel( );
-        input_reconstruction.SwapRealSpaceQuadrants( );
 
         // assume cube
-
         current_projection.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_x_dimension, false);
+        timer.lap("Initialize results image");
 
-        // loop until the found peak is below the threshold
+        const float resample_search_ratio = aggregated_results[array_location].skip_peak_correction ? 1.0f : cistem::match_template::PEAK_THRESHOLD_SCALE;
 
-        long nTrys = 0;
-        while ( 1 == 1 ) {
-            // look for a peak..
-            nTrys++;
-            //            wxPrintf("Trying the %ld'th peak\n",nTrys);
-            // FIXME min-distance from edges would be better to set dynamically.
-            current_peak = scaled_mip.FindPeakWithIntegerCoordinates(0.0, FLT_MAX);
-            if ( current_peak.value < expected_threshold )
-                break;
+        std::vector<Peak> peak_list;
+        std::vector<Peak> upsampled_peak_list;
+        timer.start("Extract peaks");
+        scaled_mip.FindPeakWithIntegerCoordinatesForManyPeaks(peak_list, upsampled_peak_list, expected_threshold, resample_search_ratio, sqrtf(min_peak_radius_squared), 4);
+        timer.lap("Extract peaks");
 
-            // ok we have peak..
+        TemplateMatchingPeakExtractor extractor(
+                scaled_mip, phi_image, theta_image, psi_image,
+                defocus_image, &pixel_size_image,
+                search_pixel_size / input_binning_factor, search_pixel_size);
 
-            number_of_peaks_found++;
+        extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list,
+                                          ! aggregated_results[array_location].skip_peak_correction,
+                                          all_peak_infos);
 
-            // get angles and mask out the local area so it won't be picked again..
+#ifdef cisTEM_SAVE_PEAK_INFO
+        // Write peak info to file - derive filename from histogram path by replacing _histogram_ with _peak_info_
+        wxString histogram_path = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( );
+        wxString peak_info_path = histogram_path;
+        peak_info_path.Replace("_histogram_", "_peak_info_");
 
-            address = 0;
+        NumericTextFile peak_info_file(peak_info_path, OPEN_TO_WRITE, 8);
+        peak_info_file.WriteCommentLine("x_pos y_pos defocus corrected_peak_height original_score above_threshold sub_pixel_x sub_pixel_y");
 
-            current_peak.x = current_peak.x + scaled_mip.physical_address_of_box_center_x;
-            current_peak.y = current_peak.y + scaled_mip.physical_address_of_box_center_y;
-
-            // arguments[2] = search_pixel_size
-            temp_peak_info.x_pos = current_peak.x * search_pixel_size; // RETURNING IN ANGSTROMS (also takes care of binning if present)
-            temp_peak_info.y_pos = current_peak.y * search_pixel_size; // RETURNING IN ANGSTROMS
-
-            //            wxPrintf("Peak = %f, %f, %f : %f\n", current_peak.x, current_peak.y, current_peak.value);
-
-            for ( j = std::max(myroundint(current_peak.y) - min_peak_radius, 0); j < std::min(myroundint(current_peak.y) + min_peak_radius, scaled_mip.logical_y_dimension); j++ ) {
-                sq_dist_y = float(j) - current_peak.y;
-                sq_dist_y *= sq_dist_y;
-
-                for ( i = std::max(myroundint(current_peak.x) - min_peak_radius, 0); i < std::min(myroundint(current_peak.x) + min_peak_radius, scaled_mip.logical_x_dimension); i++ ) {
-                    sq_dist_x = float(i) - current_peak.x;
-                    sq_dist_x *= sq_dist_x;
-                    address = phi_image.ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
-
-                    // The square centered at the pixel
-                    if ( sq_dist_x == 0 && sq_dist_y == 0 ) {
-                        current_phi   = phi_image.real_values[address];
-                        current_theta = theta_image.real_values[address];
-                        current_psi   = psi_image.real_values[address];
-
-                        temp_peak_info.phi   = phi_image.real_values[address];
-                        temp_peak_info.theta = theta_image.real_values[address];
-                        temp_peak_info.psi   = psi_image.real_values[address];
-
-                        temp_peak_info.defocus     = defocus_image.real_values[address]; // RETURNING MINUS
-                        temp_peak_info.pixel_size  = pixel_size_image.real_values[address];
-                        temp_peak_info.peak_height = scaled_mip.real_values[address];
-                    }
-
-                    if ( sq_dist_x + sq_dist_y <= min_peak_radius_squared ) {
-                        scaled_mip.real_values[address] = -FLT_MAX;
-                    }
-
-                    //                    address++;
-                }
-                //                address += scaled_mip.padding_jump_value;
-            }
-
-            //        wxPrintf("Peak %4i at x, y, psi, theta, phi, defocus, pixel size = %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f, %12.6f : %10.6f\n", number_of_peaks_found, current_peak.x, current_peak.y, current_psi, current_theta, current_phi, current_defocus, current_pixel_size, current_peak.value);
-            //        coordinates[0] = current_peak.x * search_pixel_size;
-            //        coordinates[1] = current_peak.y * search_pixel_size;
-            ////        coordinates[2] = binned_pixel_size * (slab.physical_address_of_box_center_z - binned_reconstruction.physical_address_of_box_center_z) - current_defocus;
-            //        coordinates[2] = binned_pixel_size * slab.physical_address_of_box_center_z - current_defocus;
-            //        coordinate_file.WriteLine(coordinates);
-
-            // ok get a projection
-
-            //////////////////////////////////////////////
-            // CURRENTLY HARD CODED TO ONLY DO 1000 MAX //
-            //////////////////////////////////////////////
-
-            if ( number_of_peaks_found <= cistem::maximum_number_of_detections ) {
-
-                angles.Init(current_phi, current_theta, current_psi, 0.0, 0.0);
-
-                input_reconstruction.ExtractSlice(current_projection, angles, 1.0f, false);
-                current_projection.SwapRealSpaceQuadrants( );
-
-                current_projection.MultiplyByConstant(sqrtf(current_projection.logical_x_dimension * current_projection.logical_y_dimension));
-                current_projection.BackwardFFT( );
-                current_projection.AddConstant(-current_projection.ReturnAverageOfRealValuesOnEdges( ));
-
-                // insert it into the output image
-
-                result_image.InsertOtherImageAtSpecifiedPosition(&current_projection, current_peak.x - result_image.physical_address_of_box_center_x, current_peak.y - result_image.physical_address_of_box_center_y, 0, 0.0f);
-                all_peak_infos.Add(temp_peak_info);
-            }
-            else {
-                SendInfo("WARNING: More than 1000 peaks above threshold were found. Limiting results to 1000 peaks.\n");
-                break;
-            }
+        double peak_data[8];
+        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+            peak_data[0] = all_peak_infos[i].x_pos;
+            peak_data[1] = all_peak_infos[i].y_pos;
+            peak_data[2] = all_peak_infos[i].defocus;
+            peak_data[3] = upsampled_peak_list[i].value; // Corrected peak height
+            peak_data[4] = peak_list[i].value; // Original peak height
+            peak_data[5] = (peak_list[i].value >= expected_threshold) ? 1.0 : 0.0;
+            peak_data[6] = upsampled_peak_list[i].x; // Sub-pixel offset X
+            peak_data[7] = upsampled_peak_list[i].y; // Sub-pixel offset Y
+            peak_info_file.WriteLine(peak_data);
         }
+        peak_info_file.Close( );
+#endif
 
-        // save the output image
+        timer.start("Create result images");
+        extractor.CreateResultImages(
+                peak_list,
+                all_peak_infos,
+                input_reconstruction,
+                current_projection,
+                result_image,
+                false);
 
+        timer.lap("Create result images");
+
+        timer.start("Save result image");
         result_image.QuickAndDirtyWriteSlice(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[38].ReturnStringArgument( ), 1, true, search_pixel_size);
+        timer.lap("Save result image");
 
+        timer.start("Send results to GUI");
         // tell the gui that this result is available...
 
         ArrayOfTemplateMatchFoundPeakInfos blank_changes;
         float                              high_res_limit_used = 2.0f * search_pixel_size;
         SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, high_res_limit_used, expected_threshold, all_peak_infos, blank_changes);
-
+        timer.lap("Send results to GUI");
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it
 
+        timer.start("Cleanup");
         aggregated_results.RemoveAt(array_location);
         delete[] expected_survival_histogram;
         delete[] survival_histogram;
+        timer.lap("Send results to GUI");
+        timer.print_times( );
+        wxPrintf("Pre print times\n");
     }
 }
 
@@ -1958,6 +1956,7 @@ AggregatedTemplateResult::AggregatedTemplateResult( ) {
     number_of_received_results      = 0;
     total_number_of_angles_searched = 0.0f;
     disable_flat_fielding           = false;
+    skip_peak_correction            = false;
 
     collated_data_array        = NULL;
     collated_mip_data          = NULL;
@@ -2025,6 +2024,7 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
         number_of_received_results      = 0;
         total_number_of_angles_searched = 0.0f;
         disable_flat_fielding           = result_array[cistem::match_template::disable_flat_fielding]; // FIXME: shouldn't we check that these are consistent across all results?
+        skip_peak_correction            = result_array[cistem::match_template::skip_peak_correction];
 
         // Set up pointers to different data sections within collated_data_array
         // nasty..

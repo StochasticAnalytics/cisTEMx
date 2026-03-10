@@ -1022,12 +1022,13 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     ProgressBar->Pulse( );
 }
 
-void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
     // result is available for an image..
 
     cached_results[image_number - 1].found_peaks.Clear( );
     cached_results[image_number - 1].found_peaks    = peak_infos;
     cached_results[image_number - 1].used_threshold = threshold_used;
+    cached_results[image_number - 1].high_res_limit = high_res_limit_used;
 
     ResultsPanel->SetActiveResult(cached_results[image_number - 1]);
 

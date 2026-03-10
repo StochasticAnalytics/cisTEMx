@@ -157,13 +157,13 @@ bool SendwxStringToSocket(wxString* string_to_send, wxSocketBase* socket) {
     return true;
 }
 
-bool SendTemplateMatchingResultToSocket(wxSocketBase* socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+bool SendTemplateMatchingResultToSocket(wxSocketBase* socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
     // send the image number and all the peak details...
 
     int number_of_peaks   = peak_infos.GetCount( );
     int number_of_changes = peak_changes.GetCount( );
 
-    int number_of_bytes = sizeof(int) + sizeof(float) + sizeof(int) + sizeof(int) + (number_of_peaks * sizeof(float) * 8) + (number_of_changes * sizeof(float) * 10); // THIS WILL NEED TO BE CHANGED IF EXTRA THINGS ARE ADDED
+    int number_of_bytes = sizeof(int) + sizeof(float) + sizeof(float) + sizeof(int) + sizeof(int) + (number_of_peaks * sizeof(float) * 8) + (number_of_changes * sizeof(float) * 10); // THIS WILL NEED TO BE CHANGED IF EXTRA THINGS ARE ADDED
 
     unsigned char* data_buffer = new unsigned char[number_of_bytes];
 
@@ -175,6 +175,8 @@ bool SendTemplateMatchingResultToSocket(wxSocketBase* socket, int& image_number,
     float* pointer_to_float_data = reinterpret_cast<float*>(data_buffer + (sizeof(int) * 3));
 
     int float_position                    = 0;
+    pointer_to_float_data[float_position] = high_res_limit_used;
+    float_position++;
     pointer_to_float_data[float_position] = threshold_used;
     float_position++;
 
@@ -234,7 +236,7 @@ bool SendTemplateMatchingResultToSocket(wxSocketBase* socket, int& image_number,
     return true;
 }
 
-bool ReceiveTemplateMatchingResultFromSocket(wxSocketBase* socket, int& image_number, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+bool ReceiveTemplateMatchingResultFromSocket(wxSocketBase* socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
     int number_of_bytes;
     int number_of_peaks;
     int number_of_changes;
@@ -259,6 +261,8 @@ bool ReceiveTemplateMatchingResultFromSocket(wxSocketBase* socket, int& image_nu
     float* pointer_to_float_data = reinterpret_cast<float*>(data_buffer + (sizeof(int) * 3));
     int    float_position        = 0;
 
+    high_res_limit_used = pointer_to_float_data[float_position];
+    float_position++;
     threshold_used = pointer_to_float_data[float_position];
     float_position++;
 

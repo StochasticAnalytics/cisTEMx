@@ -1940,7 +1940,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         // tell the gui that this result is available...
 
         ArrayOfTemplateMatchFoundPeakInfos blank_changes;
-        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, expected_threshold, all_peak_infos, blank_changes);
+        float                              high_res_limit_used = 2.0f * search_pixel_size;
+        SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, high_res_limit_used, expected_threshold, all_peak_infos, blank_changes);
 
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it

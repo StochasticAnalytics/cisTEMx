@@ -867,11 +867,12 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                 else if ( memcmp(socket_input_buffer, socket_template_match_result_ready, SOCKET_CODE_SIZE) == 0 ) {
                                     int                                image_number;
                                     float                              threshold_used;
+                                    float                              high_res_limit_used;
                                     ArrayOfTemplateMatchFoundPeakInfos peak_infos;
                                     ArrayOfTemplateMatchFoundPeakInfos peak_changes;
 
-                                    if ( ReceiveTemplateMatchingResultFromSocket(monitored_sockets[socket_counter], image_number, threshold_used, peak_infos, peak_changes) == true ) {
-                                        parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketTemplateMatchResultReady, parent_pointer, monitored_sockets[socket_counter], image_number, threshold_used, peak_infos, peak_changes));
+                                    if ( ReceiveTemplateMatchingResultFromSocket(monitored_sockets[socket_counter], image_number, high_res_limit_used, threshold_used, peak_infos, peak_changes) == true ) {
+                                        parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketTemplateMatchResultReady, parent_pointer, monitored_sockets[socket_counter], image_number, high_res_limit_used, threshold_used, peak_infos, peak_changes));
                                     }
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..

@@ -231,6 +231,7 @@ class MatchTemplatePanelParent : public JobPanel
 		NumericTextCtrl* InPlaneStepNumericCtrl;
 		wxStaticText* m_staticText190211;
 		NumericTextCtrl* HighResolutionLimitNumericCtrl;
+		wxStaticText* m_staticText190212;
 		wxStaticText* m_staticText19021;
 		wxStaticText* m_staticText698;
 		wxRadioButton* DefocusSearchYesRadio;
@@ -286,6 +287,7 @@ class MatchTemplatePanelParent : public JobPanel
 
 	public:
 		ImageGroupPickerComboPanel* GroupComboBox;
+		wxComboBox* SearchSizeComboBox;
 		wxComboBox* SymmetryComboBox;
 		ShowTemplateMatchResultsPanel* ResultsPanel;
 

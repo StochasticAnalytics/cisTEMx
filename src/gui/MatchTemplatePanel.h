@@ -78,6 +78,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     void OnSocketAllJobsFinished( );
     void HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes);
     bool CheckGroupHasDefocusValues( );
+    bool CheckForOverFocus(bool& append_allow_over_focus);
 
     //void Refresh();
     void SetInfo( );

@@ -4,15 +4,25 @@
 // When enabled, clicking StartEstimation will automatically cycle through values:
 // - First run: GUI value as-is
 // - Subsequent runs: 0.5A steps landing on half/whole numbers up to end_value
+// - NOTE: there is no check that the user has supplied the --max-search-size which will change the resolution to be the highest for a given size. There
+//         is no plan to fix this directly, as we will make that CLI option a radio in this GUI and THEN we can fix it. For now, if you aren't BAH, you shouldn not be building with this hack anyway.
 // #define BATCH_HIGH_RES_EXPERIMENT
+// #define BATCH_ALL_TEMPLATES
 
-#ifdef BATCH_HIGH_RES_EXPERIMENT
+// Mutually exclusive hacks
+#if defined(BATCH_HIGH_RES_EXPERIMENT) && defined(BATCH_ALL_TEMPLATES)
+#error "BATCH_HIGH_RES_EXPERIMENT && BATCH_ALL_TEMPLATES cannot be defined together"
+#endif
+
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
 #include <cmath>
 // File-static variables for batch experiment state (confined to this translation unit)
 static bool  s_batch_experiment_active    = false;
-static bool  s_batch_experiment_first_run = true;
 static float s_batch_experiment_end_value = 8.0f; // Stop after this value
 static float s_batch_experiment_step      = 0.5f; // Step size in Angstroms
+static int   s_first_volume_asset_idx     = 0;
+static int   s_number_of_volume_asset_idx = 0;
+static int   s_current_volume_asset_idx   = 0;
 #endif
 
 //#include "../core/core_headers.h"
@@ -25,6 +35,8 @@ extern MyVolumeAssetPanel*        volume_asset_panel;
 extern MyRunProfilesPanel*        run_profiles_panel;
 extern MyMainFrame*               main_frame;
 extern MatchTemplateResultsPanel* match_template_results_panel;
+
+constexpr std::array<int, 7> kAllowedSearchSizes = {4096, 2048, 1024, 512, 256, 128, 64};
 
 MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     : MatchTemplatePanelParent(parent) {
@@ -92,7 +104,21 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     SymmetryComboBox->Append("T2");
     SymmetryComboBox->SetSelection(0);
 
+    SearchSizeComboBox->Clear( );
+    SearchSizeComboBox->Append("high-res limit");
+    for ( int size : kAllowedSearchSizes ) {
+        SearchSizeComboBox->Append(wxString::Format("%d", size));
+    }
+    SearchSizeComboBox->SetSelection(0);
+    SearchSizeComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, [this](wxCommandEvent&) {
+        HighResolutionLimitNumericCtrl->Enable(SearchSizeComboBox->GetSelection( ) == 0);
+    });
+
     GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MatchTemplatePanel::OnGroupComboBox, this);
+
+#ifdef BATCH_ALL_TEMPLATES
+    s_number_of_volume_asset_idx = volume_asset_panel->all_assets_list->number_of_assets;
+#endif
 }
 
 /*
@@ -402,6 +428,113 @@ bool MatchTemplatePanel::CheckGroupHasDefocusValues( ) {
     return true;
 }
 
+/**
+ * @brief Checks the currently selected image group for over-focus (negative defocus) images
+ *        and presents the user with options to handle them.
+ *
+ * Queries the database to find images in the active group whose CTF estimates have
+ * defocus1 > 0 AND defocus2 > 0 (under-focus). Any images not meeting this criterion
+ * are considered over-focus. If over-focus images are found, a dialog is shown offering:
+ *
+ *   - YES: Create a new image group containing only the under-focus images, select it
+ *     in the GroupComboBox, and return true. Because this is called before
+ *     active_group.CopyFrom(), the caller will naturally pick up the new group.
+ *   - NO: Proceed anyway. Sets @p append_allow_over_focus to true so the caller can
+ *     pass --allow-over-focus to the worker processes.
+ *   - CANCEL: Abort the run.
+ *
+ * @param[out] append_allow_over_focus  Set to true if the user chose to proceed despite
+ *             over-focus images (NO), meaning --allow-over-focus should be appended to
+ *             the run profile. Unchanged otherwise.
+ * @return true if the caller should proceed with the job, false to abort.
+ */
+bool MatchTemplatePanel::CheckForOverFocus(bool& append_allow_over_focus) {
+    wxArrayLong underfocus_asset_ids;
+    int         group_list_id = image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )].id;
+    int         total_members = image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )].number_of_members;
+    bool        has_overfocus = main_frame->current_project.database.ReturnAllAssetIdsWithUnderfocus(
+                   group_list_id, total_members, underfocus_asset_ids);
+
+    if ( ! has_overfocus )
+        return true;
+
+    int overfocus_count = total_members - underfocus_asset_ids.GetCount( );
+
+    wxString message = wxString::Format(
+            "%d of %d images in this group have over-focus (negative defocus values), "
+            "which may produce unreliable template matching results.\n\n"
+            "Would you like to create a new image group containing only the %zu "
+            "under-focus images?\n\n"
+            "YES = Create a new filtered group and select it\n"
+            "NO = Ignore over-focus and proceed anyway (not recommended)\n"
+            "CANCEL = Abort",
+            overfocus_count, total_members,
+            underfocus_asset_ids.GetCount( ));
+
+    wxMessageDialog overfocus_dialog(this, message, "Over-Focus Detected",
+                                     wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxICON_WARNING);
+
+    int result = overfocus_dialog.ShowModal( );
+
+    if ( result == wxID_CANCEL )
+        return false;
+
+    if ( result == wxID_NO ) {
+        append_allow_over_focus = true;
+        return true;
+    }
+
+    // wxID_YES — create a new filtered group
+    wxTextEntryDialog name_dialog(this, "Enter a name for the new image group:",
+                                  "New Image Group", "under_focus");
+    if ( name_dialog.ShowModal( ) != wxID_OK )
+        return false;
+
+    wxString new_group_name = name_dialog.GetValue( );
+
+    // Calling AddGroup increments all_groups_list->number_of_groups
+    image_asset_panel->all_groups_list->AddGroup(new_group_name);
+    // This is used in dynamic table naming in the DB so is indexed from 1 not 0
+    long new_group_id = image_asset_panel->all_groups_list->ReturnNumberOfGroups( );
+
+    // current_group_number in the image_asset_panel SEEMs to server the same function as number_of_groups (whereas a second var selected_group would map to current_group in my (BAH) mind)
+    image_asset_panel->current_group_number = new_group_id;
+
+    image_asset_panel->AddGroupToDatabase(new_group_id, new_group_name.ToUTF8( ).data( ), new_group_id);
+
+    // Man, group is a funny looking word at this point.
+    AssetGroup& new_group = image_asset_panel->all_groups_list->groups[image_asset_panel->all_groups_list->number_of_groups - 1];
+    new_group.id          = new_group_id;
+
+    // FIXME: this should probably be a database class method. (Or maybe it is and we should be calling it.)
+    main_frame->current_project.database.Begin( );
+    main_frame->current_project.database.BeginBatchInsert(
+            wxString::Format("IMAGE_GROUP_%i", new_group_id), 2, "MEMBER_NUMBER", "IMAGE_ASSET_ID");
+
+    for ( size_t i = 0; i < underfocus_asset_ids.GetCount( ); i++ ) {
+        long asset_id = underfocus_asset_ids[i];
+        main_frame->current_project.database.AddToBatchInsert("ii", (int)i, (int)asset_id);
+        int array_pos = image_asset_panel->ReturnArrayPositionFromAssetID(asset_id);
+        new_group.AddMember(array_pos);
+    }
+
+    main_frame->current_project.database.EndBatchInsert( );
+    main_frame->current_project.database.Commit( );
+
+    // The method for image_asset_panel->DirtyGroups() is protected and I don't want to mess with it (BAH)
+    main_frame->DirtyImageGroups( );
+    FillGroupComboBox( );
+
+    // Presumably we always want to select the most recent addition which will be at the end so this (should) be safe
+    GroupComboBox->SetSelection(GroupComboBox->GetCount( ) - 1);
+
+    // Not sure why this is here, FIXME.
+    // wxCommandEvent dummy_event;
+    // OnGroupComboBox(dummy_event);
+
+    return true;
+}
+
 void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
 
     // We want things to be greyed out if the user is re-running the job.
@@ -586,24 +719,47 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
-#ifdef BATCH_HIGH_RES_EXPERIMENT
-    if ( ! s_batch_experiment_active ) {
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
+
+    // We are running already, print the update
+    if ( s_batch_experiment_active ) {
+#ifdef BATCH_ALL_TEMPLATES
+        // Log what we're running (value was already set in ProcessAllJobsFinished)
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running ref index %d/%d: %s\n",
+                                       s_current_volume_asset_idx,
+                                       s_number_of_volume_asset_idx,
+                                       volume_asset_panel->ReturnAssetShortFilename(s_current_volume_asset_idx).ToUTF8( ).data( )));
+#else
+        // Log what we're running (value was already set in ProcessAllJobsFinished)
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
+                                       HighResolutionLimitNumericCtrl->ReturnValue( )));
+#endif
+    }
+    else {
         // First click - activate batch mode
-        s_batch_experiment_active    = true;
-        s_batch_experiment_first_run = true;
+        // Print starting message
+        s_batch_experiment_active  = true;
+        s_current_volume_asset_idx = ReferenceSelectPanel->GetSelection( );
+        VolumeAsset* temp_volume   = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection( ));
+#ifdef BATCH_ALL_TEMPLATES
+        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run all templates in dropdown starting from %d (%s)",
+                                       s_current_volume_asset_idx,
+                                       temp_volume->filename.GetName( )));
+#else
         WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run from %.2f to %.2f in %.1fA steps",
                                        HighResolutionLimitNumericCtrl->ReturnValue( ),
                                        s_batch_experiment_end_value,
                                        s_batch_experiment_step));
-    }
-
-    if ( ! s_batch_experiment_first_run ) {
-        // Log what we're running (value was already set in ProcessAllJobsFinished)
-        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
-                                       HighResolutionLimitNumericCtrl->ReturnValue( )));
-    }
-    s_batch_experiment_first_run = false;
 #endif
+    }
+#endif // print info block
+
+    // Over-focus check MUST be called before active_group.CopyFrom() below.
+    // If the user creates a new filtered group, CheckForOverFocus changes the
+    // GroupComboBox selection, so the subsequent CopyFrom picks up the new group.
+    bool append_allow_over_focus = false;
+    if ( ! CheckForOverFocus(append_allow_over_focus) )
+        return;
 
     active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
 
@@ -699,13 +855,38 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     use_gpu      = UseGPURadioYes->GetValue( ) ? true : false;
     use_fast_fft = UseFastFFTRadioYes->GetValue( ) ? true : false;
 
-    wxString wanted_symmetry    = SymmetryComboBox->GetValue( );
-    wanted_symmetry             = SymmetryComboBox->GetValue( ).Upper( );
-    float high_resolution_limit = HighResolutionLimitNumericCtrl->ReturnValue( );
+    wxString wanted_symmetry = SymmetryComboBox->GetValue( ).Upper( );
+
+    float    high_resolution_limit;
+    wxString search_size_str   = SearchSizeComboBox->GetStringSelection( );
+    long     search_size_value = 0;
+
+    if ( search_size_str != "high-res limit" && search_size_str.ToLong(&search_size_value) ) {
+        bool is_valid = false;
+        for ( int allowed : kAllowedSearchSizes ) {
+            if ( search_size_value == allowed ) {
+                is_valid = true;
+                break;
+            }
+        }
+        if ( is_valid ) {
+            high_resolution_limit = static_cast<float>(search_size_value);
+        }
+        else {
+            high_resolution_limit = HighResolutionLimitNumericCtrl->ReturnValue( );
+        }
+    }
+    else {
+        high_resolution_limit = HighResolutionLimitNumericCtrl->ReturnValue( );
+    }
 
     wxPrintf("\n\nWanted symmetry %s, Defocus Range %3.3f, Defocus Step %3.3f\n", wanted_symmetry, defocus_search_range, defocus_step);
 
     RunProfile active_refinement_run_profile = run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection( )];
+
+    if ( append_allow_over_focus ) {
+        active_refinement_run_profile.AppendCLIArgument("--allow-over-focus");
+    }
 
     int number_of_processes = active_refinement_run_profile.ReturnTotalJobs( );
 
@@ -715,7 +896,8 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
     current_image              = image_asset_panel->ReturnAssetPointer(active_group.members[0]);
     current_image_euler_search = new EulerSearch;
-    // WARNING: resolution_limit below is used before its value is set
+    // NOTE: resolution limit is not actually used here
+    resolution_limit = 1.f;
     current_image_euler_search->InitGrid(wanted_symmetry, wanted_out_of_plane_angular_step, 0.0, 0.0, 360.0, wanted_in_plane_angular_step, 0.0, current_image->pixel_size / resolution_limit, parameter_map, 1);
 
     if ( wanted_symmetry.StartsWith("C") ) {
@@ -1079,11 +1261,10 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     ProgressPanel->Layout( );
     cached_results.Clear( );
 
-#ifdef BATCH_HIGH_RES_EXPERIMENT
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
     // Cancel batch experiment on user termination
     if ( s_batch_experiment_active ) {
-        s_batch_experiment_active    = false;
-        s_batch_experiment_first_run = true;
+        s_batch_experiment_active = false;
         WriteInfoText("BATCH EXPERIMENT: Cancelled by user");
     }
 #endif
@@ -1214,6 +1395,8 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     // Kill the job (in case it isn't already dead)
     main_frame->job_controller.KillJob(my_job_id);
 
+// Key section to advance to the next experiment in the batch
+#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
 #ifdef BATCH_HIGH_RES_EXPERIMENT
     if ( s_batch_experiment_active ) {
         float current_value = HighResolutionLimitNumericCtrl->ReturnValue( );
@@ -1227,8 +1410,10 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         next_value = std::round(next_value * 2.0f) / 2.0f;
 
         if ( next_value <= s_batch_experiment_end_value ) {
-            WriteInfoText(wxString::Format("BATCH EXPERIMENT: Completed %.2f, next = %.2f",
+            WriteInfoText(wxString::Format("\nBATCH EXPERIMENT: Completed %.2f, next = %.2f",
                                            current_value, next_value));
+
+            // Update the GUI so the Call after has the updated state
             HighResolutionLimitNumericCtrl->ChangeValueFloat(next_value);
 
             // Use CallAfter for safe event loop handling
@@ -1242,13 +1427,43 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         }
         else {
             // Done with all values
-            s_batch_experiment_active    = false;
-            s_batch_experiment_first_run = true;
+            s_batch_experiment_active = false;
             WriteInfoText(wxString::Format("BATCH EXPERIMENT: All values completed (ended at %.2f)!",
                                            current_value));
         }
     }
 #endif
+
+#ifdef BATCH_ALL_TEMPLATES
+    if ( s_batch_experiment_active ) {
+
+        if ( s_current_volume_asset_idx + 1 < s_number_of_volume_asset_idx ) {
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: Completed template idx %d, next = %d/%d",
+                                           s_current_volume_asset_idx,
+                                           s_current_volume_asset_idx + 1,
+                                           s_number_of_volume_asset_idx));
+
+            // Update the GUI so the Call after has the updated state
+            s_current_volume_asset_idx++;
+            ReferenceSelectPanel->SetSelection(s_current_volume_asset_idx);
+
+            // Use CallAfter for safe event loop handling
+            CallAfter([this]( ) {
+                if ( s_batch_experiment_active ) {
+                    wxCommandEvent dummy_event;
+                    StartEstimationClick(dummy_event);
+                }
+            });
+            return; // Don't show Finish button yet
+        }
+        else {
+            // Done with all values
+            s_batch_experiment_active = false;
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: All templates are completed!"));
+        }
+    }
+#endif
+#endif // batch block
 
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);

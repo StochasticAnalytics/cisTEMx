@@ -68,11 +68,12 @@ bool RefineTemplatePanel::CheckGroupHasTemplateMatchRunDone( ) {
     wxArrayLong images_with_template_match_result = main_frame->current_project.database.ReturnLongArrayFromSelectCommand("SELECT DISTINCT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST");
     long        current_image_id;
     int         images_with_template_match_counter;
-    bool        image_was_found;
+    bool        image_was_found = images_with_template_match_result.GetCount( ) > 0;
 
     // If check prevents looking for results when there are none, which could
     // cause a crash.
-    if ( images_with_template_match_result.GetCount( ) > 0 ) {
+
+    if ( image_was_found ) {
         for ( int image_in_group_counter = 0; image_in_group_counter < image_asset_panel->ReturnGroupSize(GroupComboBox->GetSelection( )); image_in_group_counter++ ) {
             current_image_id = image_asset_panel->all_assets_list->ReturnAssetPointer(image_asset_panel->ReturnGroupMember(GroupComboBox->GetSelection( ), image_in_group_counter))->asset_id;
             image_was_found  = false;
@@ -83,14 +84,10 @@ bool RefineTemplatePanel::CheckGroupHasTemplateMatchRunDone( ) {
                     break;
                 }
             }
-
-            if ( image_was_found == false )
-                return false;
         }
     }
 
-    // Should always default to false return, not true
-    return false;
+    return image_was_found;
 }
 
 void RefineTemplatePanel::ResetAllDefaultsClick(wxCommandEvent& event) {

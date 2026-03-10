@@ -1293,14 +1293,16 @@ samples_functional_testing_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 match_template_SOURCES  = programs/match_template/match_template.cpp
 match_template_SOURCES += programs/match_template/template_matching_data_sizer.cpp
+match_template_SOURCES += programs/match_template/template_matching_peak_extractor.cpp
 match_template_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 match_template_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 match_template_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 match_template_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-if WANT_CISTEM_GPU_AM  
+if WANT_CISTEM_GPU_AM
     match_template_gpu_SOURCES  = programs/match_template/match_template.cpp
     match_template_gpu_SOURCES += programs/match_template/template_matching_data_sizer.cpp
+    match_template_gpu_SOURCES += programs/match_template/template_matching_peak_extractor.cpp
     match_template_gpu_CXXFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     match_template_gpu_CPPFLAGS = -DENABLEGPU $(WX_CPPFLAGS_BASE)
     match_template_gpu_LDADD    = libgpucore.a libcore.a $(WX_LIBS_BASE) $(MKL_LIBS) $(CUDA_LIBS)
@@ -1309,6 +1311,7 @@ match_template_gpu_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 
 prepare_stack_matchtemplate_SOURCES  = programs/prepare_stack_matchtemplate/prepare_stack_matchtemplate.cpp
+prepare_stack_matchtemplate_SOURCES += programs/match_template/template_matching_peak_extractor.cpp
 prepare_stack_matchtemplate_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_matchtemplate_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_matchtemplate_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
@@ -1317,6 +1320,7 @@ prepare_stack_matchtemplate_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 
 make_template_result_SOURCES  = programs/make_template_result/make_template_result.cpp
+make_template_result_SOURCES += programs/match_template/template_matching_peak_extractor.cpp
 make_template_result_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 make_template_result_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 make_template_result_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)

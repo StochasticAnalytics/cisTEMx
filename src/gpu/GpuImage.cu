@@ -3824,7 +3824,8 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
             // cufftPlan is permanently bound to the stream set during plan creation.
             // Changing streams without recreating the plan causes undefined behavior due to
             // unmanaged workspace conflicts. The plan must be destroyed and recreated.
-            MyDebugAssertTrue(false, "Stream mismatch: cufftPlan is bound to a stream. To use a different stream, plan must be recreated.");
+            MyAssertTrue(false, "Stream mismatch: cufftPlan is bound to a stream. To use a different stream, plan must be recreated.");
+            // NOTE: I think we could fix this with a call to FreeFFTPlan() but instead, better to not hit this? Leave as runtime assert.
             return;
         }
         return;
@@ -3832,19 +3833,7 @@ void GpuImage::SetCufftPlan(cistem::fft_type::Enum plan_type, void* input_buffer
     else {
         // We can't destroy a plan that doesn't exist. TODO: could this be checked directly?
         if ( set_plan_type != cistem::fft_type::Enum::unset ) {
-            // TODO allow for more than one plan, up to some limit, to avoid teh destroy op.
-            // Have a simple sort to track most recenetly used plans and evict the oldest if needed.
-
-            // Check if fft_plan_event has been recorded (i.e., an FFT operation has occurred)
-            if ( fft_plan_event && cudaEventQuery(fft_plan_event) == cudaErrorNotReady ) {
-                // Synchronize on fft_plan_event to ensure all FFT work is complete before destroying the plan
-                cudaErr(cudaEventSynchronize(fft_plan_event));
-            }
-
-            cufftErr(cufftDestroy(cuda_plan_inverse));
-            cufftErr(cufftDestroy(cuda_plan_forward));
-            set_plan_type  = cistem::fft_type::Enum::unset;
-            set_batch_size = cufft_batch_size;
+            FreeFFTPlan( );
         }
         // We need to re-plan.
         switch ( plan_type ) {
@@ -4049,15 +4038,15 @@ void GpuImage::Deallocate( ) {
         return_sum_of_reals_event = nullptr;
     }
 
-    if ( fft_plan_event ) {
-        cudaErr(cudaEventDestroy(fft_plan_event));
-        fft_plan_event = nullptr;
-    }
-
     // Separat method for all the buffer memory spaces, not sure it this makes sense
     BufferDestroy( );
 
     FreeFFTPlan( );
+
+    if ( fft_plan_event ) {
+        cudaErr(cudaEventDestroy(fft_plan_event));
+        fft_plan_event = nullptr;
+    }
 
     //  if (is_cublas_loaded)
     //  {
@@ -4856,11 +4845,13 @@ void GpuImage::Consume(GpuImage* other_image) {
     complex_values   = other_image->complex_values;
     is_in_memory_gpu = other_image->is_in_memory_gpu;
 
-    cuda_plan_forward    = other_image->cuda_plan_forward;
-    cuda_plan_inverse    = other_image->cuda_plan_inverse;
-    set_plan_type        = other_image->set_plan_type;
-    cufft_batch_size     = other_image->cufft_batch_size;
-    set_stream_for_cufft = other_image->set_stream_for_cufft;
+    cuda_plan_forward           = other_image->cuda_plan_forward;
+    cuda_plan_inverse           = other_image->cuda_plan_inverse;
+    set_plan_type               = other_image->set_plan_type;
+    cufft_batch_size            = other_image->cufft_batch_size;
+    set_stream_for_cufft        = other_image->set_stream_for_cufft;
+    d_complexConjMulLoad_params = other_image->d_complexConjMulLoad_params;
+    is_set_complexConjMulLoad   = other_image->is_set_complexConjMulLoad;
 
     // We neeed to override the other image pointers so that it doesn't deallocate the memory.
     other_image->real_values      = NULL;

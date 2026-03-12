@@ -201,9 +201,9 @@ fi
 
 if test "x$is_cuda_ge_11" = "x1" ; then
   AC_MSG_NOTICE([CUDA >= 11.0, enabling --extra-device-vectorization])
-  NVCCFLAGS+=" --extra-device-vectorization -std=c++17 --expt-relaxed-constexpr --threads=8 --split-compile=8 "
+  NVCCFLAGS+=" --extra-device-vectorization -std=c++17 --expt-relaxed-constexpr --threads=8 --split-compile=8 " 
 else
-  AC_MSG_NOTICE([CUDA VERSION is not >= 11.0, some optimizations will be disabled])
+  AC_MSG_ERROR([CUDA VERSION is not > 11.0])
 fi
 
 # to trouble shoot ptx warnings for example.  

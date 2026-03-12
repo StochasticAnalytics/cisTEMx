@@ -257,6 +257,9 @@ class MatchTemplatePanelParent : public JobPanel
 		wxStaticText* m_staticText69911;
 		wxRadioButton* UseFastFFTRadioYes;
 		wxRadioButton* UseFastFFTRadioNo;
+		wxStaticText* m_staticText699111;
+		wxRadioButton* UsePeakSamplingCorrectionRadioYes;
+		wxRadioButton* UsePeakSamplingCorrectionRadioNo;
 		wxPanel* OutputTextPanel;
 		wxTextCtrl* output_textctrl;
 		wxPanel* InfoPanel;
@@ -351,6 +354,10 @@ class RefineTemplatePanelParent : public JobPanel
 		NumericTextCtrl* PixelSizeSearchRangeNumericCtrl;
 		wxStaticText* PixelSizeStepStaticText;
 		NumericTextCtrl* PixelSizeSearchStepNumericCtrl;
+		wxStaticText* m_staticText2011;
+		wxStaticText* m_staticText1891;
+		wxRadioButton* UsePeakSamplingCorrectionRadioYes;
+		wxRadioButton* UsePeakSamplingCorrectionRadioNo;
 		wxPanel* OutputTextPanel;
 		wxTextCtrl* output_textctrl;
 		wxPanel* InfoPanel;

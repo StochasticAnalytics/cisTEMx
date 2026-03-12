@@ -670,6 +670,7 @@ void RefineTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 
         float    angular_range                   = 2.0f; // this doesn't seem to be used.
         bool     ctf_refinement                  = false; // also not used.
+        bool     use_peak_sampling_correction    = UsePeakSamplingCorrectionRadioYes->GetValue( ) ? true : false;
         int      max_threads                     = 1; // this will be overwritten when run in the gui based on the run profile
         int      first_search_position           = -1; // not used
         int      last_search_position            = -1; // not used
@@ -677,7 +678,7 @@ void RefineTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         wxString directory_for_results           = main_frame->current_project.image_asset_directory.GetFullPath( ); // not used
         int      result_number                   = 1; // should be no image stacks through the gui.
 
-        current_job_package.AddJob("ttfffffffffffifffffbffttttttttttttttfffbtfiiiiiitft", input_search_image.ToUTF8( ).data( ),
+        current_job_package.AddJob("ttfffffffffffifffffbffttttttttttttttfffbtfiiiiiitftb", input_search_image.ToUTF8( ).data( ),
                                    input_reconstruction.ToUTF8( ).data( ),
                                    pixel_size,
                                    voltage_kV,
@@ -729,7 +730,8 @@ void RefineTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
                                    max_threads,
                                    directory_for_results.ToUTF8( ).data( ),
                                    result_threshold,
-                                   output_result_file.ToUTF8( ).data( ));
+                                   output_result_file.ToUTF8( ).data( ),
+                                   use_peak_sampling_correction);
 
         my_progress_dialog->Update(image_counter + 1);
     }

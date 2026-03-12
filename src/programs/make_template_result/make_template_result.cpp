@@ -60,17 +60,18 @@ void MakeTemplateResult::DoInteractiveUserInput( ) {
         mip_y_dimension     = my_input->GetIntFromUser("Y-dimension of original MIP", "The y-dimension of the MIP that contained the peaks listed in the input coordinate file", "4092", 100);
         xyz_coords_filename = my_input->GetFilenameFromUser("Input x,y,z coordinate file", "The file containing the x,y,z coordinates of the found targets", "coordinates.txt", false);
     }
-    input_reconstruction_filename = my_input->GetFilenameFromUser("Input template reconstruction", "The 3D reconstruction from which projections are calculated", "reconstruction.mrc", true);
-    output_result_image_filename  = my_input->GetFilenameFromUser("Output 2D projection montage", "The file for saving the found result", "result.mrc", false);
-    output_slab_filename          = my_input->GetFilenameFromUser("Output slab volume montage", "The file for saving the slab with the found targets", "slab.mrc", false);
-    slab_thickness                = my_input->GetFloatFromUser("Sample thickness (A)", "The thickness of the sample that was searched", "2000.0", 100.0);
-    pixel_size                    = my_input->GetFloatFromUser("Pixel size of images (A)", "Pixel size of input images in Angstroms", "1.0", 0.0);
-    binning_factor                = my_input->GetFloatFromUser("Binning factor for slab", "Factor to reduce size of output slab", "4.0", 0.0);
+    input_reconstruction_filename     = my_input->GetFilenameFromUser("Input template reconstruction", "The 3D reconstruction from which projections are calculated", "reconstruction.mrc", true);
+    output_result_image_filename      = my_input->GetFilenameFromUser("Output 2D projection montage", "The file for saving the found result", "result.mrc", false);
+    output_slab_filename              = my_input->GetFilenameFromUser("Output slab volume montage", "The file for saving the slab with the found targets", "slab.mrc", false);
+    slab_thickness                    = my_input->GetFloatFromUser("Sample thickness (A)", "The thickness of the sample that was searched", "2000.0", 100.0);
+    pixel_size                        = my_input->GetFloatFromUser("Pixel size of images (A)", "Pixel size of input images in Angstroms", "1.0", 0.0);
+    binning_factor                    = my_input->GetFloatFromUser("Binning factor for slab", "Factor to reduce size of output slab", "4.0", 0.0);
+    bool use_peak_sampling_correction = my_input->GetYesNoFromUser("Use peak sampling correction", "Apply peak height sampling correction", "Yes");
 
     delete my_input;
 
     //	my_current_job.Reset(14);
-    my_current_job.ManualSetArguments("ttttttttttfffffbiii", input_reconstruction_filename.ToUTF8( ).data( ),
+    my_current_job.ManualSetArguments("ttttttttttfffffbiiib", input_reconstruction_filename.ToUTF8( ).data( ),
                                       input_mip_filename.ToUTF8( ).data( ),
                                       input_best_psi_filename.ToUTF8( ).data( ),
                                       input_best_theta_filename.ToUTF8( ).data( ),
@@ -86,7 +87,8 @@ void MakeTemplateResult::DoInteractiveUserInput( ) {
                                       pixel_size, binning_factor,
                                       read_coordinates,
                                       mip_x_dimension, mip_y_dimension,
-                                      result_number);
+                                      result_number,
+                                      use_peak_sampling_correction);
 }
 
 // override the do calculation method which will be what is actually run..
@@ -114,6 +116,7 @@ bool MakeTemplateResult::DoCalculation( ) {
     int      mip_x_dimension                = my_current_job.arguments[16].ReturnIntegerArgument( );
     int      mip_y_dimension                = my_current_job.arguments[17].ReturnIntegerArgument( );
     int      result_number                  = my_current_job.arguments[18].ReturnIntegerArgument( );
+    bool     use_peak_sampling_correction   = my_current_job.arguments[19].ReturnBoolArgument( );
 
     float padding = 2.0f;
 
@@ -225,7 +228,7 @@ bool MakeTemplateResult::DoCalculation( ) {
                 peak_list,
                 upsampled_peak_list,
                 wanted_threshold,
-                cistem::match_template::PEAK_THRESHOLD_SCALE,
+                use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f,
                 sqrtf(min_peak_radius),
                 0);
 
@@ -234,7 +237,7 @@ bool MakeTemplateResult::DoCalculation( ) {
                 defocus_image, &pixel_size_image,
                 pixel_size, search_pixel_size);
 
-        extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list, true, all_peak_infos);
+        extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list, use_peak_sampling_correction, all_peak_infos);
 
         // Write coordinate file
         for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {

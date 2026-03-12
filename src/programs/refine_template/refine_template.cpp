@@ -155,9 +155,10 @@ void RefineTemplateApp::DoInteractiveUserInput( ) {
     //	ctf_refinement = my_input->GetYesNoFromUser("Refine defocus", "Should the particle defocus be refined?", "No");
     mask_radius = my_input->GetFloatFromUser("Mask radius (A) (0.0 = no mask)", "Radius of a circular mask to be applied to the input particles during refinement", "0.0", 0.0);
     //	my_symmetry = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
-    xy_change_threshold        = my_input->GetFloatFromUser("Moved peak warning (A)", "Threshold for displaying warning of peak location changes during refinement", "10.0", 0.0);
-    exclude_above_xy_threshold = my_input->GetYesNoFromUser("Exclude moving peaks", "Should the peaks that move more than the threshold be excluded from the output MIPs?", "No");
-    result_number              = my_input->GetIntFromUser("Result number to refine", "If input files contain results from several searches, which one should be refined?", "1", 1);
+    xy_change_threshold               = my_input->GetFloatFromUser("Moved peak warning (A)", "Threshold for displaying warning of peak location changes during refinement", "10.0", 0.0);
+    exclude_above_xy_threshold        = my_input->GetYesNoFromUser("Exclude moving peaks", "Should the peaks that move more than the threshold be excluded from the output MIPs?", "No");
+    result_number                     = my_input->GetIntFromUser("Result number to refine", "If input files contain results from several searches, which one should be refined?", "1", 1);
+    bool use_peak_sampling_correction = my_input->GetYesNoFromUser("Use peak sampling correction", "Apply peak height sampling correction", "Yes");
 
 #ifdef _OPENMP
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "When threading, what is the max threads to run", "1", 1);
@@ -177,7 +178,7 @@ void RefineTemplateApp::DoInteractiveUserInput( ) {
     delete my_input;
 
     //	my_current_job.Reset(42);
-    my_current_job.ManualSetArguments("ttfffffffffffifffffbffttttttttttttttfffbtfiiiiiitft", input_search_images.ToUTF8( ).data( ),
+    my_current_job.ManualSetArguments("ttfffffffffffifffffbffttttttttttttttfffbtfiiiiiitftb", input_search_images.ToUTF8( ).data( ),
                                       input_reconstruction.ToUTF8( ).data( ),
                                       pixel_size,
                                       voltage_kV,
@@ -227,11 +228,11 @@ void RefineTemplateApp::DoInteractiveUserInput( ) {
                                       max_threads,
                                       directory_for_results.ToUTF8( ).data( ),
                                       threshold_for_result_plotting,
-                                      filename_for_gui_result_image.ToUTF8( ).data( ));
+                                      filename_for_gui_result_image.ToUTF8( ).data( ),
+                                      use_peak_sampling_correction);
 }
 
 void RefineTemplateApp::AddCommandLineOptions( ) {
-    command_line_parser.AddLongSwitch("skip-peak-correction", "Skip upsampled peak height correction (debugging). Default false");
 }
 
 // override the do calculation method which will be what is actually run..
@@ -293,7 +294,7 @@ bool RefineTemplateApp::DoCalculation( ) {
     wxString directory_for_results           = my_current_job.arguments[48].ReturnStringArgument( );
     float    threshold_for_result_plotting   = my_current_job.arguments[49].ReturnFloatArgument( );
     wxString filename_for_gui_result_image   = my_current_job.arguments[50].ReturnStringArgument( );
-    bool     skip_peak_correction            = command_line_parser.FoundSwitch("skip-peak-correction");
+    bool     use_peak_sampling_correction    = my_current_job.arguments[51].ReturnBoolArgument( );
 
     if ( is_running_locally == false )
         max_threads = number_of_threads_requested_on_command_line; // OVERRIDE FOR THE GUI, AS IT HAS TO BE SET ON THE COMMAND LINE...
@@ -505,7 +506,7 @@ bool RefineTemplateApp::DoCalculation( ) {
             peak_list,
             upsampled_peak_list,
             wanted_threshold,
-            skip_peak_correction ? 1.0f : cistem::match_template::PEAK_THRESHOLD_SCALE,
+            use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f,
             sqrtf(min_peak_radius2), 0);
 
     number_of_peaks_found = peak_list.size( );

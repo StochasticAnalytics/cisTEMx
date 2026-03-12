@@ -293,7 +293,9 @@ void ShowTemplateMatchResultsPanel::FillPeakInfoTable(float threshold_used) {
     long item_index;
     int  counter;
 
-    double peak_sum_for_avg = 0.f;
+    double peak_sum_for_avg = 0.0;
+    int    valid_peak_count = 0;
+
     for ( counter = 0; counter < current_result.found_peaks.GetCount( ); counter++ ) {
         PeakListCtrl->InsertItem(counter, wxString::Format("%i", counter + 1));
         PeakListCtrl->SetItem(counter, 1, wxString::Format("%.2f", current_result.found_peaks[counter].x_pos));
@@ -303,12 +305,21 @@ void ShowTemplateMatchResultsPanel::FillPeakInfoTable(float threshold_used) {
         PeakListCtrl->SetItem(counter, 5, wxString::Format("%.2f", current_result.found_peaks[counter].phi));
         PeakListCtrl->SetItem(counter, 6, wxString::Format("%.2f", current_result.found_peaks[counter].defocus));
         PeakListCtrl->SetItem(counter, 7, wxString::Format("%.2f", current_result.found_peaks[counter].pixel_size));
-        PeakListCtrl->SetItem(counter, 8, wxString::Format("%.2f", current_result.found_peaks[counter].peak_height));
-        peak_sum_for_avg += current_result.found_peaks[counter].peak_height;
+
+        float ph = current_result.found_peaks[counter].peak_height;
+        if ( std::isnan(ph) ) {
+            PeakListCtrl->SetItem(counter, 8, "NaN");
+        }
+        else {
+            PeakListCtrl->SetItem(counter, 8, wxString::Format("%.2f", ph));
+            peak_sum_for_avg += ph;
+            valid_peak_count++;
+        }
     }
+
     float peak_avg{0.f};
-    if ( counter > 0 )
-        peak_avg = peak_sum_for_avg / double(counter);
+    if ( valid_peak_count > 0 )
+        peak_avg = peak_sum_for_avg / double(valid_peak_count);
 
     // FIXME: docs, what is six from?
     if ( current_result.found_peaks.GetCount( ) > 0 ) {

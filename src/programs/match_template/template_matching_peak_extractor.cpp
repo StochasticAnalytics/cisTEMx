@@ -119,7 +119,8 @@ void TemplateMatchingPeakExtractor::TransferAndSortPeakInfo(std::vector<Peak>&  
             continue;
         }
 
-        if ( std::isnan(peak.value) || peak.value <= std::numeric_limits<float>::lowest( ) ) {
+        if ( std::isnan(peak.value) || peak.value <= std::numeric_limits<float>::lowest( ) ||
+             (use_corrected_peak && std::isnan(upsampled.value)) ) {
             continue;
         }
 

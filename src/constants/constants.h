@@ -53,7 +53,7 @@ constexpr float MAX_BINNING_FACTOR          = 10.f; // The maximum binning facto
 constexpr float MIN_VALUE_TO_MIP            = -0.5f; // The minimum value to be considered for the MIP, saves i/o but must be lower than the lowest likely mip value
 
 // Peak threshold scale for upsampled peak correction. Values < 1 enable sub-pixel
-// correction via FFT upsampling. Use --skip-peak-correction at runtime to override to 1.0f.
+// correction via FFT upsampling. Set "Use peak sampling correction" to No to override to 1.0f.
 constexpr float PEAK_THRESHOLD_SCALE = 0.85f;
 
 /**
@@ -75,7 +75,7 @@ enum Enum : int {
     number_of_valid_search_pixels,
     disable_flat_fielding,
     number_of_expected_false_positives,
-    skip_peak_correction,
+    use_peak_sampling_correction,
     COUNT
 };
 } // namespace match_template

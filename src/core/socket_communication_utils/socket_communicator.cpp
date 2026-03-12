@@ -830,6 +830,23 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         result_number              = details[1];
                                         number_of_expected_results = details[2];
 
+                                        // Data flow at this site (two stages):
+                                        //
+                                        //   Worker process ──TCP──> [kernel buf] ──ReadFromSocket──> data_array (monitor thread)
+                                        //                                                                 │
+                                        //                                                   CallAfter (cross-thread, same process)
+                                        //                                                                 │
+                                        //                                                                 v
+                                        //                                           HandleSocketProgramDefinedResult (GUI thread)
+                                        //                                                                 │
+                                        //                                                          delete[] data_array
+                                        //
+                                        // Stage 1 (inter-process): ReadFromSocket already copied bytes from kernel TCP
+                                        // receive buffer into data_array. The remote worker's send buffer is independent.
+                                        // Stage 2 (intra-process): CallAfter transfers raw pointer from this monitor
+                                        // thread to the GUI event loop thread. Cannot free here — GUI thread hasn't
+                                        // consumed it yet. Handler calls delete[] after processing.
+                                        // TODO: consider std::unique_ptr with custom release in CallAfter bind.
                                         data_array = new float[size_of_data_array];
 
                                         if ( ReadFromSocket(monitored_sockets[socket_counter], data_array, size_of_data_array * sizeof(float), true, "SendProgramDefinedResultArrayFromWorkerToMaster", FUNCTION_DETAILS_AS_WXSTRING) == true ) {

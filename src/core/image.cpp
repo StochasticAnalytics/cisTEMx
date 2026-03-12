@@ -10053,7 +10053,8 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
                 Peak        upsampled_found_peak       = upsample_peak.FindPeakWithIntegerCoordinates(0.0f, search_radius, 0);
 
                 // Update found_peak_value if upsampled value is higher
-                if ( upsampled_found_peak.value > found_peak_value ) {
+                // Guard against NaN from FFT upsampling (unreliable with some compiler FP modes)
+                if ( ! std::isnan(upsampled_found_peak.value) && upsampled_found_peak.value > found_peak_value ) {
                     found_peak_value = upsampled_found_peak.value;
                     sub_pixel_x      = upsampled_found_peak.x / upsample_factor;
                     sub_pixel_y      = upsampled_found_peak.y / upsample_factor;

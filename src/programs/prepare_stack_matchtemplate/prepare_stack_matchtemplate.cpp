@@ -62,22 +62,23 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
         mip_y_dimension     = my_input->GetIntFromUser("Y-dimension of original MIP", "The y-dimension of the MIP that contained the peaks listed in the input coordinate file", "4092", 100);
         xyz_coords_filename = my_input->GetFilenameFromUser("Input x,y,z coordinate file", "The file containing the x,y,z coordinates of the found targets", "coordinates.txt", false);
     }
-    input_image_filename           = my_input->GetFilenameFromUser("Input image file", "The image that was searched", "image.mrc", false);
-    output_star_filename           = my_input->GetFilenameFromUser("Output star file", "The star file containing the particle alignment parameters", "particle_stack.star", false);
-    output_particle_stack_filename = my_input->GetFilenameFromUser("Output particle stack", "The output image stack, containing the picked particles", "particle_stack.mrc", false);
-    box_size                       = my_input->GetIntFromUser("Box size for particles (px.)", "The pixel dimensions of the box used to cut out the particles", "256", 10);
-    pixel_size                     = my_input->GetFloatFromUser("Pixel size of image (A)", "Pixel size of input image in Angstroms", "1.0", 0.0);
-    average_defocus_1              = my_input->GetFloatFromUser("Average defocus 1 (A)", "The average defocus estimated for the image in direction 1", "5000.0");
-    average_defocus_2              = my_input->GetFloatFromUser("Average defocus 2 (A)", "The average defocus estimated for the image in direction 2", "5000.0");
-    average_defocus_angle          = my_input->GetFloatFromUser("Average defocus angle (deg)", "The average defocus angle estimated for the image", "0.0");
-    voltage_kV                     = my_input->GetFloatFromUser("Beam energy (keV)", "The energy of the electron beam used to image the sample in kilo electron volts", "300.0", 0.0);
-    spherical_aberration_mm        = my_input->GetFloatFromUser("Spherical aberration (mm)", "Spherical aberration of the objective lens in millimeters", "2.7", 0.0);
-    amplitude_contrast             = my_input->GetFloatFromUser("Amplitude contrast", "Assumed amplitude contrast", "0.07", 0.0, 1.0);
+    input_image_filename              = my_input->GetFilenameFromUser("Input image file", "The image that was searched", "image.mrc", false);
+    output_star_filename              = my_input->GetFilenameFromUser("Output star file", "The star file containing the particle alignment parameters", "particle_stack.star", false);
+    output_particle_stack_filename    = my_input->GetFilenameFromUser("Output particle stack", "The output image stack, containing the picked particles", "particle_stack.mrc", false);
+    box_size                          = my_input->GetIntFromUser("Box size for particles (px.)", "The pixel dimensions of the box used to cut out the particles", "256", 10);
+    pixel_size                        = my_input->GetFloatFromUser("Pixel size of image (A)", "Pixel size of input image in Angstroms", "1.0", 0.0);
+    average_defocus_1                 = my_input->GetFloatFromUser("Average defocus 1 (A)", "The average defocus estimated for the image in direction 1", "5000.0");
+    average_defocus_2                 = my_input->GetFloatFromUser("Average defocus 2 (A)", "The average defocus estimated for the image in direction 2", "5000.0");
+    average_defocus_angle             = my_input->GetFloatFromUser("Average defocus angle (deg)", "The average defocus angle estimated for the image", "0.0");
+    voltage_kV                        = my_input->GetFloatFromUser("Beam energy (keV)", "The energy of the electron beam used to image the sample in kilo electron volts", "300.0", 0.0);
+    spherical_aberration_mm           = my_input->GetFloatFromUser("Spherical aberration (mm)", "Spherical aberration of the objective lens in millimeters", "2.7", 0.0);
+    amplitude_contrast                = my_input->GetFloatFromUser("Amplitude contrast", "Assumed amplitude contrast", "0.07", 0.0, 1.0);
+    bool use_peak_sampling_correction = my_input->GetYesNoFromUser("Use peak sampling correction", "Apply peak height sampling correction", "Yes");
 
     delete my_input;
 
     //	my_current_job.Reset(14);
-    my_current_job.ManualSetArguments("tttttttttifffffffffbiii",
+    my_current_job.ManualSetArguments("tttttttttifffffffffbiiib",
                                       input_mip_filename.ToUTF8( ).data( ),
                                       input_best_psi_filename.ToUTF8( ).data( ),
                                       input_best_theta_filename.ToUTF8( ).data( ),
@@ -99,11 +100,11 @@ void MakeParticleStack::DoInteractiveUserInput( ) {
                                       min_peak_radius,
                                       read_coordinates,
                                       mip_x_dimension, mip_y_dimension,
-                                      result_number);
+                                      result_number,
+                                      use_peak_sampling_correction);
 }
 
 void MakeParticleStack::AddCommandLineOptions( ) {
-    command_line_parser.AddLongSwitch("skip-peak-correction", "Skip upsampled peak height correction (debugging). Default false");
 }
 
 // override the do calculation method which will be what is actually run..
@@ -135,7 +136,7 @@ bool MakeParticleStack::DoCalculation( ) {
     int      mip_x_dimension                = my_current_job.arguments[20].ReturnIntegerArgument( );
     int      mip_y_dimension                = my_current_job.arguments[21].ReturnIntegerArgument( );
     int      result_number                  = my_current_job.arguments[22].ReturnIntegerArgument( );
-    bool     skip_peak_correction           = command_line_parser.FoundSwitch("skip-peak-correction");
+    bool     use_peak_sampling_correction   = my_current_job.arguments[23].ReturnBoolArgument( );
 
     Image mip_image;
     Image psi_image;
@@ -211,10 +212,10 @@ bool MakeParticleStack::DoCalculation( ) {
                 peak_list,
                 upsampled_peak_list,
                 wanted_threshold,
-                skip_peak_correction ? 1.0f : cistem::match_template::PEAK_THRESHOLD_SCALE,
+                use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f,
                 sqrtf(min_peak_radius), 0);
 
-        extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list, true, all_peak_infos);
+        extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list, use_peak_sampling_correction, all_peak_infos);
         number_of_peaks_found = all_peak_infos.GetCount( );
 
         // Write coordinate file

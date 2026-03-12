@@ -319,13 +319,23 @@ int Database::ReturnHighestParticlePositionID( ) {
 bool Database::ReturnAllAssetIdsWithUnderfocus(int group_list_id, int total_group_members, wxArrayLong& underfocus_asset_ids) {
     underfocus_asset_ids.Clear( );
 
-    wxString query = wxString::Format(
-            "SELECT ig.IMAGE_ASSET_ID "
-            "FROM IMAGE_GROUP_%i ig "
-            "INNER JOIN IMAGE_ASSETS ia ON ig.IMAGE_ASSET_ID = ia.IMAGE_ASSET_ID "
-            "INNER JOIN ESTIMATED_CTF_PARAMETERS ecp ON ia.CTF_ESTIMATION_ID = ecp.CTF_ESTIMATION_ID "
-            "WHERE ecp.DEFOCUS1 > 0 AND ecp.DEFOCUS2 > 0",
-            group_list_id);
+    wxString query;
+    if ( group_list_id == -1 ) {
+        // "All Images" group — query IMAGE_ASSETS directly
+        query = "SELECT ia.IMAGE_ASSET_ID "
+                "FROM IMAGE_ASSETS ia "
+                "INNER JOIN ESTIMATED_CTF_PARAMETERS ecp ON ia.CTF_ESTIMATION_ID = ecp.CTF_ESTIMATION_ID "
+                "WHERE ecp.DEFOCUS1 > 0 AND ecp.DEFOCUS2 > 0";
+    }
+    else {
+        query = wxString::Format(
+                "SELECT ig.IMAGE_ASSET_ID "
+                "FROM IMAGE_GROUP_%i ig "
+                "INNER JOIN IMAGE_ASSETS ia ON ig.IMAGE_ASSET_ID = ia.IMAGE_ASSET_ID "
+                "INNER JOIN ESTIMATED_CTF_PARAMETERS ecp ON ia.CTF_ESTIMATION_ID = ecp.CTF_ESTIMATION_ID "
+                "WHERE ecp.DEFOCUS1 > 0 AND ecp.DEFOCUS2 > 0",
+                group_list_id);
+    }
 
     underfocus_asset_ids = ReturnLongArrayFromSelectCommand(query);
 

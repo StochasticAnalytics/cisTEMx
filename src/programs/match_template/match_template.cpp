@@ -55,7 +55,7 @@ class AggregatedTemplateResult {
     int   number_of_received_results;
     float total_number_of_angles_searched;
     bool  disable_flat_fielding;
-    bool  skip_peak_correction;
+    bool  use_peak_sampling_correction;
 
     float* collated_data_array;
     float* collated_mip_data;
@@ -213,7 +213,6 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
     command_line_parser.AddLongSwitch("allow-over-focus",
                                       "Allow images with over-focus (negative defocus values). Default false");
 
-    command_line_parser.AddLongSwitch("skip-peak-correction", "Skip upsampled peak height correction (debugging). Default false");
     command_line_parser.AddOption("", "L2-peristance-fraction", "min L2 cache available for persisting as fraction of input image size in fp16 bytes (defaults to 0 [off])", wxCMD_LINE_VAL_DOUBLE);
 }
 
@@ -304,6 +303,8 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
 #endif
 
+    bool use_peak_sampling_correction = my_input->GetYesNoFromUser("Use peak sampling correction", "Apply peak height sampling correction", "Yes");
+
     int   first_search_position           = -1;
     int   last_search_position            = -1;
     int   image_number_for_gui            = 0;
@@ -315,7 +316,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbbi",
+    my_current_job.ManualSetArguments("ttffffffffffifffffbfftttttttttftiiiitttfbbbi",
                                       input_search_images.ToUTF8( ).data( ),
                                       input_reconstruction.ToUTF8( ).data( ),
                                       input_pixel_size,
@@ -358,6 +359,7 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
                                       min_peak_radius,
                                       use_gpu_input,
                                       use_fast_fft,
+                                      use_peak_sampling_correction,
                                       max_threads);
 }
 
@@ -423,7 +425,6 @@ bool MatchTemplateApp::DoCalculation( ) {
     long   temp_long;
     bool   use_gpu_prj                  = true;
     bool   disable_flat_fielding        = false;
-    bool   skip_peak_correction         = false;
     bool   ignore_defocus_for_threshold = false;
     bool   apply_result_rescaling{ };
     double n_expected_false_positives{1.0};
@@ -441,11 +442,6 @@ bool MatchTemplateApp::DoCalculation( ) {
         SendInfo("Disabling flat fielding\n");
         disable_flat_fielding = true;
     }
-    if ( command_line_parser.FoundSwitch("skip-peak-correction") ) {
-        SendInfo("Skipping peak height correction\n");
-        skip_peak_correction = true;
-    }
-
     if ( command_line_parser.FoundSwitch("disable-gpu-prj") ) {
         SendInfo("Disabling GPU projection\n");
         use_gpu_prj = false;
@@ -510,8 +506,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     float    min_peak_radius                 = my_current_job.arguments[39].ReturnFloatArgument( );
     bool     use_gpu                         = my_current_job.arguments[40].ReturnBoolArgument( );
     bool     use_fast_fft                    = my_current_job.arguments[41].ReturnBoolArgument( );
+    bool     use_peak_sampling_correction    = my_current_job.arguments[42].ReturnBoolArgument( );
 
-    int max_threads = my_current_job.arguments[42].ReturnIntegerArgument( );
+    int max_threads = my_current_job.arguments[43].ReturnIntegerArgument( );
 
     // Check for over-focus (negative defocus values)
     if ( ! allow_over_focus && (defocus1 < 0.0f || defocus2 < 0.0f) ) {
@@ -1449,7 +1446,7 @@ bool MatchTemplateApp::DoCalculation( ) {
             result[cm_t::number_of_valid_search_pixels]                     = float(data_sizer.GetNumberOfValidSearchPixels( )); // if apply_result_rescaling is false, this will = image_size_x * image_size_y as they are cropped to the ROI
             result[cm_t::disable_flat_fielding]                             = float(disable_flat_fielding);
             result[cm_t::number_of_expected_false_positives]                = float(n_expected_false_positives);
-            result[cm_t::skip_peak_correction]                              = float(skip_peak_correction);
+            result[cm_t::use_peak_sampling_correction]                      = float(use_peak_sampling_correction);
 
             if ( ! apply_result_rescaling ) {
                 MyDebugAssertTrue(data_sizer.GetNumberOfValidSearchPixels( ) == (max_intensity_projection.logical_x_dimension * max_intensity_projection.logical_y_dimension),
@@ -1651,7 +1648,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         temp_image.Allocate(int(image_size_x), int(image_size_y), true);
 
-        // Fill the temp_image with data form the collatged mip before passing it on to be rescaled.
+        // Fill the temp_image with data from the collated mip before passing it on to be rescaled.
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_mip_data[pixel_counter];
         }
@@ -1668,7 +1665,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
                                                             aggregated_results[array_location].disable_flat_fielding);
 
         // Update the collated mip data which is used downstream for the scaled mip and other calcs
-        // Fill the temp_image with data form the collatged mip before passing it on to be rescaled.
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             aggregated_results[array_location].collated_mip_data[pixel_counter] = temp_image.real_values[pixel_counter];
         }
@@ -1787,14 +1783,14 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         timer.lap("Write output images");
         timer.start("Set and write histogram");
+        float expected_threshold;
+
         // Write histogram text file
         //NumericTextFile histogram_file(wxString::Format("%s/histogram_%i.txt", directory_for_writing_results, aggregated_results[array_location].image_number), OPEN_TO_WRITE, 4);
         NumericTextFile histogram_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( ), OPEN_TO_WRITE, 4);
 
         double* expected_survival_histogram = new double[histogram_number_of_points];
         double* survival_histogram          = new double[histogram_number_of_points];
-
-        float expected_threshold;
 
         double temp_double_array[5];
 
@@ -1871,7 +1867,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         current_projection.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_x_dimension, false);
         timer.lap("Initialize results image");
 
-        const float resample_search_ratio = aggregated_results[array_location].skip_peak_correction ? 1.0f : cistem::match_template::PEAK_THRESHOLD_SCALE;
+        const float resample_search_ratio = aggregated_results[array_location].use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f;
 
         std::vector<Peak> peak_list;
         std::vector<Peak> upsampled_peak_list;
@@ -1885,7 +1881,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
                 search_pixel_size / input_binning_factor, search_pixel_size);
 
         extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list,
-                                          ! aggregated_results[array_location].skip_peak_correction,
+                                          aggregated_results[array_location].use_peak_sampling_correction,
                                           all_peak_infos);
 
 #ifdef cisTEM_SAVE_PEAK_INFO
@@ -1956,7 +1952,7 @@ AggregatedTemplateResult::AggregatedTemplateResult( ) {
     number_of_received_results      = 0;
     total_number_of_angles_searched = 0.0f;
     disable_flat_fielding           = false;
-    skip_peak_correction            = false;
+    use_peak_sampling_correction    = true;
 
     collated_data_array        = NULL;
     collated_mip_data          = NULL;
@@ -2024,7 +2020,7 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
         number_of_received_results      = 0;
         total_number_of_angles_searched = 0.0f;
         disable_flat_fielding           = result_array[cistem::match_template::disable_flat_fielding]; // FIXME: shouldn't we check that these are consistent across all results?
-        skip_peak_correction            = result_array[cistem::match_template::skip_peak_correction];
+        use_peak_sampling_correction    = result_array[cistem::match_template::use_peak_sampling_correction];
 
         // Set up pointers to different data sections within collated_data_array
         // nasty..

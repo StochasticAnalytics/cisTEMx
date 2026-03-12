@@ -41,3 +41,7 @@ include/Eigen
 
 .claude/cache/
 worktrees/
+
+core_knowledge_graph
+.claude
+CLAUDE.md

@@ -377,7 +377,7 @@ AC_ARG_ENABLE(experimental, AS_HELP_STRING([--enable-experimental],[Compile with
  
 #rigorous socket check 
 
-AC_ARG_ENABLE(rigorous-socket-check, AS_HELP_STRING([--enable-rigorous-sockets],[Use rigorous socket checking [default=no]]),[
+AC_ARG_ENABLE(rigorous-socket-check, AS_HELP_STRING([--enable-rigorous-socket-check],[Use rigorous socket checking [default=no]]),[
   if test "$enableval" = yes; then
     AC_DEFINE([RIGOROUS_SOCKET_CHECK],[], [Define the rigorous sockets flag])
   	AC_MSG_NOTICE([Compiling with rigorous socket checking])	

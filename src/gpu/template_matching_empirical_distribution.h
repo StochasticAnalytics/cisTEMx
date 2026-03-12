@@ -215,7 +215,7 @@ class TM_EmpiricalDistribution {
         // Provides a pointer to the start of the CCF data for the 'current_slice_to_process'
         // within the currently active batch buffer ('mip_dbl_buffer_idx_').
         const int current_mip_to_process = GetCurrentMip_idx( );
-        MyDebugAssertTrue(current_mip_to_process >= 0 && current_mip_to_process <= n_imgs_to_process_at_once_, "current_mip_to_process (%d) should be >= 0 and < n_imgs_to_process_at_once_ (%d)", current_mip_to_process, n_imgs_to_process_at_once_);
+        MyDebugAssertTrue(current_mip_to_process >= 0 && current_mip_to_process < n_imgs_to_process_at_once_, "current_mip_to_process (%d) should be >= 0 and < n_imgs_to_process_at_once_ (%d)", current_mip_to_process, n_imgs_to_process_at_once_);
 
         return &ccf_array_.at(mip_dbl_buffer_idx_)[image_plane_mem_allocated_ * current_mip_to_process];
     }
@@ -289,7 +289,7 @@ class TM_EmpiricalDistribution {
      */
     inline void UpdateHostAngleArrays(const float current_psi, const float current_theta, const float current_phi) {
         const int current_mip_to_process = GetCurrentMip_idx( );
-        MyDebugAssertTrue(current_mip_to_process >= 0 && current_mip_to_process <= n_imgs_to_process_at_once_, "current_mip_to_process (%d) should be >= 0 and < n_imgs_to_process_at_once_ (%d)", current_mip_to_process, n_imgs_to_process_at_once_);
+        MyDebugAssertTrue(current_mip_to_process >= 0 && current_mip_to_process < n_imgs_to_process_at_once_, "current_mip_to_process (%d) should be >= 0 and < n_imgs_to_process_at_once_ (%d)", current_mip_to_process, n_imgs_to_process_at_once_);
 
         // Populates the host-pinned buffer for angle data for the current image in the batch.
         // This buffer is then copied asynchronously to the device.

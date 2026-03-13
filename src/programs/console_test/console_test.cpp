@@ -2065,7 +2065,6 @@ void MyTestApp::TestRunProfileCLIArguments( ) {
     if ( profile.HasCLIArgument("--allow-over-focus") != false ) {
         FailTest;
     }
-    PrintResult(test_has_passed);
 
     // 2. AppendCLIArgument basic - append and verify
     profile.AppendCLIArgument("--allow-over-focus");
@@ -2075,21 +2074,18 @@ void MyTestApp::TestRunProfileCLIArguments( ) {
     if ( profile.manager_command != "$command --allow-over-focus" ) {
         FailTest;
     }
-    PrintResult(test_has_passed);
 
     // 3. Dedup check - appending same argument again should be a no-op
     profile.AppendCLIArgument("--allow-over-focus");
     if ( profile.manager_command != "$command --allow-over-focus" ) {
         FailTest;
     }
-    PrintResult(test_has_passed);
 
     // 4. Substring false positive - HasCLIArgument("--allow") should return false
     //    even though "--allow-over-focus" is present
     if ( profile.HasCLIArgument("--allow") != false ) {
         FailTest;
     }
-    PrintResult(test_has_passed);
 
     // 5. Multiple distinct arguments
     profile.AppendCLIArgument("--disable-gpu-prj");
@@ -2099,7 +2095,6 @@ void MyTestApp::TestRunProfileCLIArguments( ) {
     if ( profile.manager_command != "$command --allow-over-focus --disable-gpu-prj" ) {
         FailTest;
     }
-    PrintResult(test_has_passed);
 
     // 6. run_commands updated - verify run_commands[0] also contains the arguments
     if ( ! profile.run_commands[0].command_to_run.Contains("--allow-over-focus") ) {
@@ -2111,7 +2106,6 @@ void MyTestApp::TestRunProfileCLIArguments( ) {
     if ( profile.run_commands[0].command_to_run != "$command --allow-over-focus --disable-gpu-prj" ) {
         FailTest;
     }
-    PrintResult(test_has_passed);
 
     // 7. Whitespace in argument - leading/trailing spaces should be preserved as-is
     //    by the Replace mechanism (the argument is inserted verbatim)
@@ -2121,7 +2115,6 @@ void MyTestApp::TestRunProfileCLIArguments( ) {
     if ( profile2.HasCLIArgument("--trimmed-arg") != true ) {
         FailTest;
     }
-    PrintResult(test_has_passed);
 
     EndTest( );
 }

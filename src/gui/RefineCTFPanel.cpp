@@ -1269,6 +1269,12 @@ void CTFRefinementManager::SetupRefinementJob( ) {
         output_parameters.all_parameters[counter].image_shift_x                      = input_refinement->class_refinement_results[best_class].particle_refinement_results[counter].image_shift_x;
         output_parameters.all_parameters[counter].image_shift_y                      = input_refinement->class_refinement_results[best_class].particle_refinement_results[counter].image_shift_y;
         output_parameters.all_parameters[counter].reference_3d_filename              = current_reference_filenames.Item(best_class);
+
+        // Copy multi-view data from input_refinement (not modified by refinement)
+        output_parameters.all_parameters[counter].beam_tilt_group = input_refinement->class_refinement_results[best_class].particle_refinement_results[counter].beam_tilt_group;
+        output_parameters.all_parameters[counter].particle_group  = input_refinement->class_refinement_results[best_class].particle_refinement_results[counter].particle_group;
+        output_parameters.all_parameters[counter].pre_exposure    = input_refinement->class_refinement_results[best_class].particle_refinement_results[counter].pre_exposure;
+        output_parameters.all_parameters[counter].total_exposure  = input_refinement->class_refinement_results[best_class].particle_refinement_results[counter].total_exposure;
     }
 
     wxString output_star_filename = wxString::Format("%s/refine_ctf_input_star_%li.cistem", main_frame->current_project.parameter_file_directory.GetFullPath( ), input_refinement->refinement_id);

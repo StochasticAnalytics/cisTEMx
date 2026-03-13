@@ -1083,6 +1083,7 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
 
             // Set multi-view parameters from import
             temp_particle_info.particle_group = import_parameters.all_parameters[counter].particle_group;
+            temp_particle_info.total_exposure = import_parameters.all_parameters[counter].pre_exposure;
             temp_particle_info.total_exposure = import_parameters.all_parameters[counter].total_exposure;
 
             temp_refinement_package->contained_particles.Add(temp_particle_info);
@@ -1738,7 +1739,8 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                 }
 
                 if ( is_class_selected[best_class] == true ) {
-                    bool include_particle = apply_exposure_limit ? exposure_limit < refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(
+                    // !apply || < limit
+                    bool include_particle = apply_exposure_limit ? exposure_limit > refinement_to_copy->ReturnRefinementResultByClassAndPositionInStack(
                                                                                                               0, template_refinement_package->contained_particles[particle_counter].position_in_stack)
                                                                                             .total_exposure
                                                                  : true;
@@ -1906,6 +1908,7 @@ void MyNewRefinementPackageWizard::OnFinished(wxWizardEvent& event) {
                 // Copy multi-view parameters
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].beam_tilt_group = active_result.beam_tilt_group;
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].particle_group  = active_result.particle_group;
+                temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].pre_exposure    = active_result.pre_exposure;
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].total_exposure  = active_result.total_exposure;
 
                 temp_refinement.class_refinement_results[class_counter].particle_refinement_results[particle_counter].assigned_subset = active_result.assigned_subset;

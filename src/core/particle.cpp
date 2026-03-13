@@ -101,6 +101,8 @@ void Particle::CopyAllButImages(const Particle* other_particle) {
         no_ctf_weighting                  = false;
         complex_ctf                       = other_particle->complex_ctf;
         particle_group                    = other_particle->particle_group;
+        pre_exposure                      = other_particle->pre_exposure;
+        total_exposure                    = other_particle->total_exposure;
 
         if ( particle_image != NULL ) {
             delete particle_image;
@@ -523,7 +525,7 @@ void Particle::ApplyExposureDecayToSSNRCurve(Curve& SSNR_curve, float total_expo
         float spatial_frequency_angstrom = normalized_frequency / pixel_size; // 1/Angstrom
 
         // Get critical dose at this frequency
-        float critical_dose = dose_calculator.ReturnCriticalDose(spatial_frequency_angstrom);
+        float critical_dose = dose_calculator.ReturnCriticalDose(spatial_frequency_angstrom * spatial_frequency_angstrom);
 
         // Apply exponential decay: SNR_new = SNR_old * exp(-exposure/critical_dose)
         float dose_factor = expf(-total_exposure_electrons_per_angstrom2 / critical_dose);

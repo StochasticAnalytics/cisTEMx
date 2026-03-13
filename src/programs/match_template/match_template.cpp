@@ -141,7 +141,7 @@ class
      */
     template <typename StatsType>
     void CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
-                                    double&      global_ccc_std_variance,
+                                    double&      global_ccc_std_dev,
                                     StatsType*   sum,
                                     StatsType*   sum_of_sqs,
                                     const float  n_angles_in_search,
@@ -278,8 +278,8 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     phase_shift                 = my_input->GetFloatFromUser("Phase Shift (degrees)", "Additional phase shift in degrees", "0.0");
     //    low_resolution_limit = my_input->GetFloatFromUser("Low resolution limit (A)", "Low resolution limit of the data used for alignment in Angstroms", "300.0", 0.0);
     high_resolution_limit = my_input->GetFloatFromUser("High resolution limit (A)", "High resolution limit of the data used for alignment in Angstroms", "8.0", 0.0);
-    angular_step          = my_input->GetFloatFromUser("Out of plane angular step (0.0 = set automatically)", "Angular step size for global grid search", "0.0", 0.0);
-    in_plane_angular_step = my_input->GetFloatFromUser("In plane angular step (0.0 = set automatically)", "Angular step size for in-plane rotations during the search", "0.0", 0.0);
+    angular_step          = my_input->GetFloatFromUser("Out of plane angular step", "Angular step size for global grid search", "2.5", 0.1);
+    in_plane_angular_step = my_input->GetFloatFromUser("In plane angular step", "Angular step size for in-plane rotations during the search", "1.5", 0.1);
     //    best_parameters_to_keep = my_input->GetIntFromUser("Number of top hits to refine", "The number of best global search orientations to refine locally", "20", 1);
     defocus_search_range    = my_input->GetFloatFromUser("Defocus search range (A)", "Search range (-value ... + value) around current defocus", "500.0", 0.0);
     defocus_step            = my_input->GetFloatFromUser("Defocus step (A) (0.0 = no search)", "Step size used in the defocus search", "50.0", 0.0);
@@ -715,23 +715,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     else
         mask_radius_search = particle_radius_angstroms;
 
-    bool calculated_angular_step = false;
-    if ( angular_step <= 0 ) {
-        calculated_angular_step = true;
-        angular_step            = CalculateAngularStep(high_resolution_limit_search, mask_radius_search);
-    }
-
-    if ( in_plane_angular_step <= 0 ) {
-        SendErrorAndCrash("In-plane angular step cannot be zero or negative");
-        psi_step = rad_2_deg(data_sizer.GetSearchPixelSize( ) / mask_radius_search);
-        psi_step = 360.0 / int(360.0 / psi_step + 0.5);
-    }
-    else {
-        psi_step = in_plane_angular_step;
-    }
-
-    if ( calculated_angular_step )
-        wxPrintf("Out-of-plane step (%3.1f) and in-plane step (%3.1f) calculated automatically because the inputs were zero\n");
+    psi_step = in_plane_angular_step;
 
     // search grid
     // Note: resolution limit is only used in euler search in particle extraction and whitening. It does not affect template matching.
@@ -2123,7 +2107,7 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
  */
 template <typename StatsType>
 void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
-                                                  double&      global_ccc_std_variance,
+                                                  double&      global_ccc_std_dev,
                                                   StatsType*   sum,
                                                   StatsType*   sum_of_sqs,
                                                   const float  n_angles_in_search,
@@ -2156,7 +2140,9 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
 
     global_ccc_mean = global_sum / total_number_of_ccs;
 
-    global_ccc_std_variance = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
+    global_ccc_std_dev = global_sum_of_squares / total_number_of_ccs - double(global_ccc_mean * global_ccc_mean);
+    MyAssertTrue(global_ccc_std_dev >= 0.f, "global_ccc_std_dev calculation (%3.3f) is < 0\n", global_ccc_std_dev);
+    global_ccc_std_dev = sqrtf(global_ccc_std_dev);
 
     return;
 }

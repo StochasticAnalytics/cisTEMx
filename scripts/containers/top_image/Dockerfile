@@ -94,3 +94,9 @@ USER cisTEMdev
 WORKDIR /home/cisTEMdev
 
 RUN echo "set filename-display basename" > /home/cisTEMdev/.gdbinit
+
+# Even though we are not maintaining claude in the main cisTEM repo, still install it so i (BAH) can easily use it with my drop in tooling.
+# Make sure we open claude in verbose mode (can be turned off) so the startup hook ensureing skills are loaded is clear
+RUN curl -fsSL https://claude.ai/install.sh | bash && echo "alias claude='/home/cisTEMdev/.local/bin/claude --verbose'" >> /home/cisTEMdev/.bashrc
+# Configure git to use vscode as the diff tool, which is very helpful for development. This will allow you to run "git difftool" and have the differences open in vscode.
+RUN git config --global diff.tool vscode && git config --global difftool.vscode.cmd 'code --wait --diff $LOCAL $REMOTE'

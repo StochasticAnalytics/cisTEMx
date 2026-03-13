@@ -71,7 +71,12 @@ void ImportRefinementPackageWizard::OnMetaBrowseButtonClick(wxCommandEvent& even
     else if ( cisTEMRadioButton->GetValue( ) == true ) {
         openFileDialog = new wxFileDialog(this, _("Select STAR File"), "", "", "STAR files (*.star)|*.star;", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     }
-
+    else if ( emClarityRadioButton->GetValue( ) == true ) {
+        openFileDialog = new wxFileDialog(this, _("Select STAR File"), "", "", "STAR files (*.star)|*.star;", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    }
+    else {
+        MyAssertTrue(false, "This shouldn't happen, added else b/c we just get a segfault if we forget to add a new else if on modification");
+    }
     if ( openFileDialog->ShowModal( ) == wxID_OK ) {
         MetaDataFileTextCtrl->SetValue(openFileDialog->GetPath( ));
     }

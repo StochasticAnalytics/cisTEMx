@@ -36,7 +36,6 @@ if [[ $1 == "-h" || $1 == "--help" ]] ; then
     echo "      --compiler: icpc or g++, default is icpc [g++ builds not supported yet]"
     echo "      --build-type: static or dynamic, default is static [BUT only dynamic is supported for --wx-version dev]"
     echo "      --npm: build npm, default is false if not specified"
-    echo "      --claude: build claude, default is false if not specified"
     echo "      --skip-libtorch: default is true to include libtorch dynamic libraries for blush imple if not specified"
     echo "      --ref-images: build reference images, default is true if not specified"
     echo "      --skip-docs: skip including depenencies for the new docs system, default is false if not specified"
@@ -93,7 +92,6 @@ build_ref_images="true"
 build_libtorch="true"
 build_docs="true"
 tag_suffix=""
-build_claude="false"
 
 
 while [[ $# -gt 0 ]]; do
@@ -134,10 +132,6 @@ while [[ $# -gt 0 ]]; do
         ;;
     --npm)
         build_npm="true"
-        shift # past argument
-        ;;
-    --claude)
-        build_claude="true"
         shift # past argument
         ;;
     --ref-images)
@@ -219,7 +213,6 @@ else
     echo "    compiler: ${build_compiler}"
     echo "    build type: ${build_type}"
     echo "    npm: ${build_npm}"
-    echo "    claude: ${build_claude}"
     echo "    ref-images: ${build_ref_images}"
     echo "    libtorch: ${build_libtorch}"
     echo "    docs system: ${build_docs}"
@@ -261,5 +254,4 @@ docker build ${skip_cache} --tag ${container_repository}:${prefix}${container_ve
     --build-arg build_ref_images=${build_ref_images} \
     --build-arg build_libtorch=${build_libtorch} \
     --build-arg build_docs=${build_docs} \
-    --build-arg build_claude=${build_claude} \
     ${path_to_dockerfile}

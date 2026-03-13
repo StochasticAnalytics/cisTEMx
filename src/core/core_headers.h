@@ -1,6 +1,12 @@
 #ifndef SRC_PROGRAMS_CORE_CORE_HEADERS_H_
 #define SRC_PROGRAMS_CORE_CORE_HEADERS_H_
 
+// Verify that cistem_config.h has been included via compiler forced include (-include flag)
+// This ensures all configuration defines from configure.ac are available
+#ifndef CISTEM_CONFIG_H_INCLUDED
+#error "cistem_config.h must be included! Check build system configuration (configure.ac)."
+#endif
+
 typedef struct Peak {
     float x;
     float y;
@@ -21,8 +27,8 @@ typedef struct CurvePoint {
     float value_n;
 } CurvePoint;
 
-// All the defines set in configure.ac
-#include <cistem_config.h>
+// Configuration defines from configure.ac are automatically included via -include flag
+// See configure.ac:708-709 and verification check at top of this file
 #ifndef _LARGE_FILE_SOURCE
 #define _LARGE_FILE_SOURCE
 #endif

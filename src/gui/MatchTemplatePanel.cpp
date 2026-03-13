@@ -51,6 +51,7 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
 
     // We need to allow a higher precision, otherwise, the option to resample will almost always be taken
     HighResolutionLimitNumericCtrl->SetPrecision(4);
+
     SetInfo( );
     FillGroupComboBox( );
     FillRunProfileComboBox( );
@@ -67,6 +68,9 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     result_bitmap.Create(1, 1, 24);
     time_of_last_result_update = time(NULL);
 
+    // Restrict the angular search values to what is allowed on the CLI input
+    OutofPlaneStepNumericCtrl->SetMinMaxValue(0.1f, 360.f);
+    InPlaneStepNumericCtrl->SetMinMaxValue(0.1f, 360.f);
     DefocusSearchRangeNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);
     DefocusSearchStepNumericCtrl->SetMinMaxValue(1.0f, FLT_MAX);
     PixelSizeSearchRangeNumericCtrl->SetMinMaxValue(0.0f, FLT_MAX);

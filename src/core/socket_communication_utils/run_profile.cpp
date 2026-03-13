@@ -130,7 +130,8 @@ void RunProfile::AppendCLIArgument(const wxString& argument) {
 }
 
 bool RunProfile::HasCLIArgument(const wxString& argument) const {
-    return manager_command.Contains(" " + argument);
+    return manager_command.Contains(" " + argument + " ") ||
+           manager_command.EndsWith(" " + argument);
 }
 
 RunProfile& RunProfile::operator=(const RunProfile& t) {

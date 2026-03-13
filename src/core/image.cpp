@@ -9963,8 +9963,8 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
     }
     else {
         for ( int j = 0; j < logical_y_dimension; j++ ) {
-            real_values[fill_counter]     = real_values[fill_counter] - 1;
-            real_values[fill_counter + 1] = real_values[fill_counter] - 2;
+            real_values[fill_counter]     = real_values[fill_counter - 1];
+            real_values[fill_counter + 1] = real_values[fill_counter - 2];
             fill_counter += mip_stride;
         }
     }
@@ -9987,7 +9987,7 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
             // Extract base peak region
             long peak_address_mip = current_peak.physical_address_within_image - original_peakfirst_element_offset;
             int  peak_address     = 0;
-            if ( peak_address_mip > 0 && peak_address_mip + original_peak_size * mip_stride + original_peak_size < real_memory_allocated ) {
+            if ( peak_address_mip >= 0 && peak_address_mip + original_peak_size * mip_stride + original_peak_size < real_memory_allocated ) {
                 for ( int peak_j = 0; peak_j < original_peak_size; peak_j++ ) {
                     for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
                         original_peak.real_values[peak_address] = real_values[peak_address_mip];
@@ -10094,7 +10094,7 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
                 long  y_offset = j * (logical_x_dimension + padding_jump_value);
                 float y_sq     = float(j) - y;
                 y_sq *= y_sq;
-                for ( int i = std::max(0, x - exclusion_radius_int); i < std::min(logical_x_dimension, x + exclusion_radius_int) + 1; i++ ) {
+                for ( int i = std::max(0, x - exclusion_radius_int); i < std::min(logical_x_dimension, x + exclusion_radius_int + 1); i++ ) {
                     float x_sq = float(i) - x;
                     if ( x_sq * x_sq + y_sq <= exclusion_radius_sq )
                         real_values[y_offset + i] = -std::numeric_limits<float>::max( );

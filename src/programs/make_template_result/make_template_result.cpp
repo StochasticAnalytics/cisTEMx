@@ -48,8 +48,8 @@ void MakeTemplateResult::DoInteractiveUserInput( ) {
         input_best_psi_filename        = my_input->GetFilenameFromUser("Input psi file", "The file containing the best psi image", "psi.mrc", true);
         input_best_theta_filename      = my_input->GetFilenameFromUser("Input theta file", "The file containing the best psi image", "theta.mrc", true);
         input_best_phi_filename        = my_input->GetFilenameFromUser("Input phi file", "The file containing the best psi image", "phi.mrc", true);
-        input_best_defocus_filename    = my_input->GetFilenameFromUser("Input defocus file", "The file with the best defocus image", "defocus.mrc", false);
-        input_best_pixel_size_filename = my_input->GetFilenameFromUser("Input pixel size file", "The file with the best pixel size image", "pixel_size.mrc", false);
+        input_best_defocus_filename    = my_input->GetFilenameFromUser("Input defocus file", "The file with the best defocus image", "defocus.mrc", true);
+        input_best_pixel_size_filename = my_input->GetFilenameFromUser("Input pixel size file", "The file with the best pixel size image", "pixel_size.mrc", true);
         xyz_coords_filename            = my_input->GetFilenameFromUser("Output x,y,z coordinate file", "The file for saving the x,y,z coordinates of the found targets", "coordinates.txt", false);
         wanted_threshold               = my_input->GetFloatFromUser("Peak threshold", "Peaks over this size will be taken", "7.5", 0.0);
         min_peak_radius                = my_input->GetFloatFromUser("Min Peak Radius (px.)", "Essentially the minimum closeness for peaks", "10.0", 1.0);

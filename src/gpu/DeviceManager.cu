@@ -67,7 +67,11 @@ void DeviceManager::Init(int wanted_number_of_gpus, MyApp* parent_ptr) {
                 max_mem = free_mem;
             }
 
-            GPU_score = (float)free_mem * (float)prop.memoryClockRate * (float)prop.memoryBusWidth * (float)prop.multiProcessorCount * (float)prop.maxThreadsPerMultiProcessor;
+            // cudaDeviceProp::memoryClockRate was removed in CUDA 13; query the
+            // equivalent attribute (peak memory clock in kHz) instead.
+            int memory_clock_rate;
+            cudaErr(cudaDeviceGetAttribute(&memory_clock_rate, cudaDevAttrMemoryClockRate, iGPU));
+            GPU_score = (float)free_mem * (float)memory_clock_rate * (float)prop.memoryBusWidth * (float)prop.multiProcessorCount * (float)prop.maxThreadsPerMultiProcessor;
             if ( GPU_score > GPU_score_max ) {
                 GPU_score_max = GPU_score;
                 selected_GPU  = iGPU;
@@ -117,11 +121,15 @@ void DeviceManager::ListDevices( ) {
         cudaErr(cudaGetDeviceProperties(&prop, iGPU));
         int can_use_host_ptr = -1;
         cudaErr(cudaDeviceGetAttribute(&can_use_host_ptr, cudaDevAttrCanUseHostPointerForRegisteredMem, iGPU));
+        // cudaDeviceProp::memoryClockRate was removed in CUDA 13; query the
+        // equivalent attribute (peak memory clock in kHz) instead.
+        int memory_clock_rate;
+        cudaErr(cudaDeviceGetAttribute(&memory_clock_rate, cudaDevAttrMemoryClockRate, iGPU));
         wxPrintf("Device number: %d\n", iGPU);
         wxPrintf("  Device name: %s\n", prop.name);
-        wxPrintf("  Memory clock cate (KHz): %d\n", prop.memoryClockRate);
+        wxPrintf("  Memory clock cate (KHz): %d\n", memory_clock_rate);
         wxPrintf("  Memory bus width (bits): %d\n", prop.memoryBusWidth);
-        wxPrintf("  Memory bandwidth (GB/s): %f\n", 2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6);
+        wxPrintf("  Memory bandwidth (GB/s): %f\n", 2.0 * memory_clock_rate * (prop.memoryBusWidth / 8) / 1.0e6);
         wxPrintf("  Number of multiprocessors: %d\n", prop.multiProcessorCount);
         wxPrintf("  Threads per multiprocessor: %d\n", prop.maxThreadsPerMultiProcessor);
         wxPrintf("  Maximum 3dArray size: %i, %i, %i\n", prop.maxSurface3D[0], prop.maxSurface3D[1], prop.maxSurface3D[2]); // for texture cache

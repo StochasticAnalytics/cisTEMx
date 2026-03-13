@@ -121,21 +121,28 @@ if test "$want_cuda" = "yes" ; then
 
 		have_cuda="yes"
 
-fi
-
-# This is the code that will be generated at compile time and should be specified for the most used gpu 
+# This is the code that will be generated at compile time and should be specified for the most used gpu
 # TODO: export target_arch to link against pre-built FastFFT that has the same target arch
+
+# Explicit arch subset. When given, this OVERRIDES the target/oldest RANGE below and
+# builds a cubin for exactly the listed archs (PTX embedded for the highest). Space-
+# or comma-separated, e.g. --with-gpu-arch-list="86 120". Handy for tasks.json dev
+# builds; leave unset for the default full-fleet build.
+gpu_arch_list=""
+AC_ARG_WITH([gpu-arch-list], AS_HELP_STRING([--with-gpu-arch-list=LIST], [Explicit space/comma-separated arch subset to build, e.g. "86 120"; overrides --with-target/oldest-gpu-arch. Each must be in 80,86,89,90,100,120; PTX for the highest.]),
+[ gpu_arch_list=`echo "$withval" | tr ',' ' '` ], [ gpu_arch_list="" ])
+
 target_arch=""
-AC_ARG_WITH([target-gpu-arch], AS_HELP_STRING([--with-target-gpu-arch@<:@=70,75,80,86,89,90@:>@], [Primary architecture to compile for (default=86)]),
+AC_ARG_WITH([target-gpu-arch], AS_HELP_STRING([--with-target-gpu-arch@<:@=80,86,89,90,100,120@:>@], [Primary architecture to compile for (default=86)]),
 [
-	if test "$withval" = "90" ; then target_arch=90
+	if test "$withval" = "120" ; then target_arch=120
+	elif  test "$withval" = "100" ; then target_arch=100
+	elif  test "$withval" = "90" ; then target_arch=90
 	elif  test "$withval" = "89" ; then target_arch=89
-	elif  test "$withval" = "86" ; then target_arch=86 
+	elif  test "$withval" = "86" ; then target_arch=86
 	elif  test "$withval" = "80" ; then target_arch=80
-	elif  test "$withval" = "75" ; then target_arch=75
-	elif  test "$withval" = "70" ; then target_arch=70
 		else
-		AC_MSG_ERROR([Requested target-gpu-arch must be in 70,75,80,86,89,90 not $withval])
+		AC_MSG_ERROR([Requested target-gpu-arch must be in 80,86,89,90,100,120 not $withval])
 	fi
 	
 ], [ target_arch="86"] )
@@ -147,37 +154,26 @@ NVCCFLAGS+=" --gpu-architecture=sm_$target_arch -gencode=arch=compute_$target_ar
 
 # This is the oldest arch that will have JIT-able code g
 oldest_arch=""
-AC_ARG_WITH([oldest-gpu-arch], AS_HELP_STRING([--with-oldest-gpu-arch@<:@=70,75,80,86,89,90@:>@], [Oldest architecture make compatible for (default=70)]),
+AC_ARG_WITH([oldest-gpu-arch], AS_HELP_STRING([--with-oldest-gpu-arch@<:@=80,86,89,90,100,120@:>@], [Oldest architecture make compatible for (default=80)]),
 [
-	if test "$withval" = "90" ; then oldest_arch=90
+	if test "$withval" = "120" ; then oldest_arch=120
+	elif  test "$withval" = "100" ; then oldest_arch=100
+	elif  test "$withval" = "90" ; then oldest_arch=90
 	elif  test "$withval" = "89" ; then oldest_arch=89
-	elif  test "$withval" = "86" ; then oldest_arch=86 
+	elif  test "$withval" = "86" ; then oldest_arch=86
 	elif  test "$withval" = "80" ; then oldest_arch=80
-	elif  test "$withval" = "75" ; then oldest_arch=75
-	elif  test "$withval" = "70" ; then oldest_arch=70
 		else
-		AC_MSG_ERROR([Requested target-oldest_arch must be in 70,75,80,86,89 not $withval])
+		AC_MSG_ERROR([Requested target-oldest_arch must be in 80,86,89,90,100,120 not $withval])
 	fi
 	
-], [ oldest_arch="70"] )
+], [ oldest_arch="80"] )
 AC_MSG_NOTICE([oldest gpu architecture is sm$oldest_arch])
 
 if test "$oldest_arch" -gt "$target_arch" ; then 
 	AC_MSG_ERROR([Requested target-oldest_arch is greater than the target arch.]) 
 else
 
-	current_arch="70"
-	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
-		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
-	fi
-
-	current_arch="75"
-	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
-		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
-	fi
-
 	current_arch="80"
-	AC_MSG_NOTICE(current arch $current_arch oldest $oldest_arch target $target_arch )
 	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
 	fi
@@ -195,8 +191,36 @@ else
 	current_arch="90"
 	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
 		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
+	fi
+
+	current_arch="100"
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
+		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
+	fi
+
+	current_arch="120"
+	if test $current_arch -ge $oldest_arch && test $current_arch -ne $target_arch ; then
+		NVCCFLAGS+=" -gencode=arch=compute_$current_arch,code=sm_$current_arch"
 	fi	
 		
+fi
+
+# Explicit-subset override: rebuild the gencode set from --with-gpu-arch-list, discarding
+# the RANGE computed above. target_arch becomes the highest listed (kept in sync for the
+# FastFFT link + the TODO above).
+if test -n "$gpu_arch_list" ; then
+	NVCCFLAGS=" -ccbin $CXX"
+	target_arch=""
+	for arch_entry in $gpu_arch_list ; do
+		case "$arch_entry" in
+			80|86|89|90|100|120) ;;
+			*) AC_MSG_ERROR([--with-gpu-arch-list entry '$arch_entry' must be in 80,86,89,90,100,120]) ;;
+		esac
+		NVCCFLAGS+=" -gencode=arch=compute_$arch_entry,code=sm_$arch_entry"
+		if test -z "$target_arch" || test "$arch_entry" -gt "$target_arch" ; then target_arch=$arch_entry ; fi
+	done
+	NVCCFLAGS+=" -gencode=arch=compute_$target_arch,code=compute_$target_arch"
+	AC_MSG_NOTICE([gpu-arch-list build: @<:@$gpu_arch_list@:>@ (PTX for sm_$target_arch)])
 fi
 
 if test "x$is_cuda_ge_11" = "x1" ; then
@@ -228,7 +252,9 @@ AC_ARG_ENABLE(gpu-cache-hints, AS_HELP_STRING([--disable-gpu-cache-hints],[Do no
   	NVCCFLAGS+=" -Xcompiler= -DDISABLECACHEHINTS"
   	AC_MSG_NOTICE([Disabling cache hint intrinsics requiring CUDA 11 or newer])  	
   fi])
-  
+
+fi # end if test "$want_cuda" = "yes"
+
 AC_SUBST(CUDA_LIBS)
 AC_SUBST(CUDA_CFLAGS)
 AC_SUBST(NVCCFLAGS)

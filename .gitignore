@@ -25,10 +25,15 @@ RemoteSystemsTempFiles
 /release_build/
 **/build*
 **/.DS_Store
+# Editor / devcontainer config is provided via symlinks into the
+# untracked plasmon-labs-devcontainer/ external repo (NOT a git submodule).
+# These entries must match the symlinks themselves, not just directory
+# contents — a symlink is a file, so a `dir/*` rule never matches it.
 .vscode
-/.devcontainer.json
-.devcontainer/*
-/devcontainer.json
+.vscode/
+/.devcontainer
+/.devcontainer.bak.*/
+plasmon-labs-devcontainer/
 cistem_config.in*
 scripts/testing/post_format_test.cpp
 src/ext/
@@ -39,5 +44,161 @@ configure~
 __pycache__/
 include/Eigen
 
-.claude/cache/
 worktrees/
+
+compile_commands.json
+
+# Claude Code project-scoped MCP config (currently empty/local). Remove this
+# ignore if you later want to commit a shared MCP server config.
+.mcp.json
+
+# Python
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+mkdocs.yml
+
+# Node.js dependencies (JavaScript for docs)
+node_modules/
+package-lock.json
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+core_knowledge_graph
+.claude
+CLAUDE.md
+dot-claude/
+
+autonomous-build/

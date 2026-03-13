@@ -17,7 +17,7 @@ void CPUvsGPUProjectionRunner(const wxString& temp_directory) {
     SamplesPrintTestStartMessage("Starting CPU vs GPU projection tests:", false);
 
     wxString cistem_ref_dir = CheckForReferenceImages( );
-    // If we are in the dev container the CISTEM_REF_IMAGES variable should be defined, pointing to images we need.
+    // If we are in the dev container the PLASMONLABS_REF_IMAGES variable should be defined, pointing to images we need.
     TEST(DoCPUvsGPUProjectionTest(cistem_ref_dir, temp_directory));
 
     SamplesPrintEndMessage( );
@@ -27,7 +27,7 @@ void CPUvsGPUProjectionRunner(const wxString& temp_directory) {
 
 bool DoCPUvsGPUProjectionTest(const wxString& cistem_ref_dir, const wxString& temp_directory) {
 
-    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the CISTEM_REF_IMAGES directory.");
+    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the PLASMONLABS_REF_IMAGES directory.");
 
     bool passed     = true;
     bool all_passed = true;

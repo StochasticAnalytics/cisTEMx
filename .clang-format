@@ -19,7 +19,6 @@ AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakAfterReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: true
-IndentPPDirectives: BeforeHash
 PPIndentWidth: -1
 BinPackArguments: true
 BinPackParameters: true
@@ -107,7 +106,6 @@ SpacesInSquareBrackets: false
 SpaceBeforeCaseColon: false
 SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
-SpaceBeforeInheritanceColon: true 
 Standard: c++17
 TabWidth: 4
 UseTab: Never

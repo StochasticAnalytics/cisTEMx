@@ -19,6 +19,12 @@ LT_PREREQ([2.4])
 LT_INIT([dlopen])
 AC_LANG(C++)
 
+# Define marker to verify cistem_config.h inclusion via -include flag (see configure.ac:708-709)
+# AC_DEFINE entries are added to cistem_config.in by autoheader, then configure generates cistem_config.h from the template.
+# The -include compiler flag forces cistem_config.h inclusion in all compilation units, propagating all AC_DEFINE symbols.
+# core_headers.h:7 verifies this marker is defined to catch build system misconfiguration.
+AC_DEFINE([CISTEM_CONFIG_H_INCLUDED], [], [Marker to detect if cistem_config.h has been included])
+
 # Set this for the gpu makefile hack
 # TODO: I don't think this is still needed, but I'm not sure.
 TOPSRCDIR=$srcdir
@@ -123,9 +129,12 @@ if test "x$CXX" = "xicpc"; then
 else 
   if test "x$CXX" = "xclang++"; then
     # Clang needs the -no-c++11-narrowing suppression to compile
-	  CXXFLAGS="$CXXFLAGS -m64 -funroll-loops -O3 -pipe $WARNINGS_ON  -std=c++${CPP_STANDARD} -Wno-c++11-narrowing" 		
+	  CXXFLAGS="$CXXFLAGS -m64 -funroll-loops -O3 -pipe $WARNINGS_ON  -std=c++${CPP_STANDARD} -Wno-c++11-narrowing"
 	  CPPFLAGS="$CPPFLAGS -m64 -funroll-loops -O3 -pipe $WARNINGS_ON "
-  else 
+	  # sqlite needs -ldl and core/assets.cpp calls zlib directly (gzerror); the
+	  # icpc and gcc branches link these and the clang++ branch must match.
+	  LIBS="$LIBS -ldl -lz"
+  else
 	  CXXFLAGS="$CXXFLAGS -m64 -funroll-loops -O3 -fprotect-parens -pipe $WARNINGS_ON -fexpensive-optimizations -std=c++${CPP_STANDARD}" 		
 	  CPPFLAGS="$CPPFLAGS -m64 -funroll-loops -O3 -fprotect-parens -pipe $WARNINGS_ON -fexpensive-optimizations"
 
@@ -238,15 +247,15 @@ AC_ARG_ENABLE(debugmode, AS_HELP_STRING([--enable-debugmode],[Compile in debug m
 # BEGIN CUDA CHECKS AND SETS
 ###############################
 
-# This also has an effect in submodule_FastFFT on the FastFFT_FLAGS
-want_gpu_debug="no"
-AC_ARG_ENABLE(gpu-debug, AS_HELP_STRING([--enable-gpu-debug],[Compile heavy synchronous checking [default=no]]),[
-  if test "$enableval" = yes; then
-    AC_DEFINE([ENABLE_GPU_DEBUG],[], [use the gpu or not])
-  	AC_MSG_NOTICE([Compiling with synchronizing debug checks for GPU code])	
-    want_gpu_debug="yes"
-  fi
-  ]) 
+AC_ARG_WITH([gpu-debug],
+  AS_HELP_STRING([--with-gpu-debug=LEVEL],[GPU debug level: 1=checks only, 2=+syncs [default=0]]),
+  [gpu_debug_level=$withval], [gpu_debug_level=0])
+
+if test "$gpu_debug_level" -gt 0; then
+  AC_DEFINE_UNQUOTED([ENABLE_GPU_DEBUG], [$gpu_debug_level], [GPU debug level])
+  AC_MSG_NOTICE([Compiling with GPU debug level $gpu_debug_level])
+  NVCCFLAGS="$NVCCFLAGS -DENABLE_GPU_DEBUG=$gpu_debug_level"
+fi 
   
 # Call the m4 macro to check and setup for FastFFT if present and requested. Must be run after AX_CUDA
 submodule_FastFFT
@@ -269,8 +278,8 @@ if test "x$want_cuda" = "xyes" ; then
     fi
 
     AC_MSG_NOTICE([Adding the CUDA includes Setting up NVCC initial flags])
-    CUDA_CPPFLAGS="$FastFFT_CUDA_FLAGS $FastFFT_DEFINES $CUDA_CFLAGS $NVCCFLAGS"
-    CUDA_CXXFLAGS="$FastFFT_CUDA_FLAGS $FastFFT_DEFINES $CUDA_CFLAGS $NVCCFLAGS"
+    CUDA_CPPFLAGS="$CUDA_CFLAGS $NVCCFLAGS"
+    CUDA_CXXFLAGS="$CUDA_CFLAGS $NVCCFLAGS"
     
     CXXFLAGS="$CXXFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
     CPPFLAGS="$CPPFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
@@ -368,9 +377,9 @@ AC_ARG_ENABLE(experimental, AS_HELP_STRING([--enable-experimental],[Compile with
  
 #rigorous socket check 
 
-AC_ARG_ENABLE(rigorous-sockets, AS_HELP_STRING([--enable-rigorous-sockets],[Use rigorous socket checking [default=no]]),[
+AC_ARG_ENABLE(rigorous-socket-check, AS_HELP_STRING([--enable-rigorous-socket-check],[Use rigorous socket checking [default=no]]),[
   if test "$enableval" = yes; then
-    AC_DEFINE([RIGOROUS_SOCKETS],[], [Define the rigorous sockets flag])
+    AC_DEFINE([RIGOROUS_SOCKET_CHECK],[], [Define the rigorous sockets flag])
   	AC_MSG_NOTICE([Compiling with rigorous socket checking])	
   fi
   ])
@@ -467,6 +476,7 @@ fi
 use_mkl_threads="no"
 use_gnu_threads="no"
 use_mkl_sequential="yes"
+use_mkl_dynamic="no"
 AC_ARG_ENABLE(mkl-threads, AS_HELP_STRING([--enable-mkl-threads],[Compile with MKL threading using Intel threads [default=no]]),[
     use_mkl_threads="yes"
     use_mkl_sequential="no"
@@ -476,6 +486,14 @@ AC_ARG_ENABLE(gnu-threads, AS_HELP_STRING([--enable-gnu-threads],[Compile with M
     use_gnu_threads="yes"
     use_mkl_sequential="no"
 
+])
+# --enable-mkl-dynamic: link the MKL shared objects (.so) rather than the
+# static .a archives in the sequential path. Default off preserves the
+# historical static-archive link, so existing builds are unaffected; opt-in
+# produces a fully dynamic MKL whose sonames are resolved at load time (via the
+# -L search dir and LD_LIBRARY_PATH) instead of being embedded as archives.
+AC_ARG_ENABLE(mkl-dynamic, AS_HELP_STRING([--enable-mkl-dynamic],[Link the Intel MKL dynamically against the shared .so instead of the static archives [default=no]]),[
+    use_mkl_dynamic="yes"
 ])
 
 # Make sure we have the environmental variables set up
@@ -545,24 +563,44 @@ if test "x$use_mkl_threads" = "xyes" -o "x$use_gnu_threads" = "xyes"; then
             MKL_LIBS="$MKL_LIBS -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread "
         fi
     fi
-else    
-    # Use MKL seqential
+else
+    # Use MKL sequential — what cisTEM has always linked against.
     AC_MSG_NOTICE([ Using the MKL sequential interface. ])
 
-    
-    if test "x$static_link" = "xtrue" ; then
-      AC_MSG_NOTICE([   Using static linking for the MKL. ])
-
-        # |-Wl*-group|/opt/*mkl* 
+    if test "x$use_mkl_dynamic" = "xyes"; then
+        # Dynamic sequential MKL (--enable-mkl-dynamic): link the shared objects
+        # via -l flags. Shared libraries resolve the mkl_core <-> mkl_sequential
+        # circular dependency at load time, so the static-archive --start-group /
+        # repeated-archive workaround in the else branch is unnecessary here.
+        # --no-as-needed keeps the linker from dropping the MKL sonames whose
+        # symbols are only pulled in through MKL's runtime CPU dispatch. ILP64
+        # (-lmkl_intel_ilp64) preserved to match the MKL_ILP64 define above;
+        # -L${MKLROOT}/lib/intel64 (already in LDFLAGS) is the link-time search
+        # path, LD_LIBRARY_PATH the load-time one.
+        #
+        # WHY nothing here defends against libtorch: libtorch_cpu.so ships an
+        # embedded MKL and exports its low-level mkl_dft_* kernel symbols
+        # globally; with system MKL dynamic they cross-bind system MKL's DFTI and
+        # segfault the first FFT plan. That collision is resolved at the container
+        # level by LD_PRELOAD-ing the system MKL libs (see the
+        # plasmon-labs-devcontainer base image), which wins every MKL symbol in
+        # one place. A per-binary link fix (pinning the kernel libs into
+        # DT_NEEDED) was rejected as brittle across MKL versions and libtool.
+        AC_MSG_NOTICE([ Linking the MKL dynamically (shared .so). ])
+        MKL_LIBS=" $MKL_LIBS -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl"
+    else
+        # The MKL static archives are mutually dependent: mkl_core references
+        # symbols in mkl_sequential and vice versa. A single left-to-right linker
+        # pass cannot resolve that, so pass the archives by explicit path and
+        # repeat the circular pair, letting later scans satisfy earlier
+        # back-references. --preserve-dup-deps stops libtool from collapsing the
+        # repeats. This explicit-archive form is used regardless of shared/static
+        # link mode because libtool reorders a -Wl,--start-group placed around -l
+        # flags, breaking the grouping before the real linker sees it.
         LIBTOOL_FLAGS="--preserve-dup-deps "
         circular_deps="${MKLROOT}/lib/intel64/libmkl_core.a ${MKLROOT}/lib/intel64/libmkl_sequential.a "
         MKL_LIBS=" $MKL_LIBS ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${circular_deps}  ${circular_deps}  ${circular_deps} -lpthread -lm -ldl"
-
-        # LIBS="$LIBS ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a "
-    else
-        MKL_LIBS="$MKL_LIBS -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_sequential -lmkl_core -lpthread "
-    fi    
-    
+    fi
 fi
 
 
@@ -592,7 +630,12 @@ if test "x$static_link" = "xtrue"; then
  	# There is no static library for libcilkrts. Suppress this warning.
  	LDFLAGS="$LDFLAGS -wd10237"
  else
-	LDFLAGS="$LDFLAGS -static"
+	# clang: statically link Intel's libiomp5 (the KMP-ABI OpenMP runtime that
+	# -fopenmp targets and MKL uses) -- analog of icpc's -qopenmp-link=static.
+	# Full archive path, not -liomp5: libtool drops -Wl,-Bstatic and would pick
+	# the .so. In LIBS (after objects) to resolve __kmpc_* refs; --as-needed
+	# sheds the implicit dynamic -lomp that -fopenmp appends.
+	LIBS="$LIBS -Wl,--as-needed /opt/intel/oneapi/compiler/latest/lib/libiomp5.a"
  fi
 fi
 
@@ -638,37 +681,35 @@ fi
 AC_CHECK_PROG(GIT_CHECK,git,yes)
 # If we have git, it must not be too old, e.g. 1.8 is still the default on older OS's like CentOS 7 
 is_git_new_enough=`git version | awk '{if($3 >= 2) print yes; else print no}'`
-if test "xis_git_new_enough" == "xno" ; then
+if test "x$is_git_new_enough" == "xno" ; then
   	AC_MSG_NOTICE([your version of git is too old, you can updated on Centos 7 with sudo yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm
   	])
 else
 
 set_git_versioning_defaults="no"
-AC_CHECK_FILE("$TOPSRCDIR/.git/HEAD",
-  [
-    if test "x$GIT_CHECK" = "xyes"; then 
-      # All the args require the extra double quotes to be properly formated later on.
-      
-      # Get the current branch, which could have multiple refs, which is why we need the awk (*) marks the active branch.
-      AC_DEFINE_UNQUOTED([CISTEM_CURRENT_BRANCH],["`git  branch | awk '/^\*/{print $2}'`"], [get the current branch])
-      # Get the first reachable tag - number of commits since that tag - short commit hash
-      version_name="`cat $TOPSRCDIR/VERSION | $AWK  '{print $1}'`"
-      version_commit="`cat $TOPSRCDIR/VERSION | $AWK  '{print $2}'`"
-      is_dirty="`git status --short | awk '{if($0!="" && FNR==1) print "-dirty"}'`"
-      AC_DEFINE_UNQUOTED([CISTEM_VERSION_TEXT],["`git rev-list ${version_commit}..HEAD | awk -v NAME=$version_name -v ISDIRTY=$is_dirty 'BEGIN{n=0}{n=n+1}{if(FNR==1) H=$1}END{print NAME"-"n-1"-"substr(H,1,7)ISDIRTY}'`"], [current version text])
-      # Get both an easily parsed date, as well as a more readable date
-      AC_DEFINE_UNQUOTED([CISTEM_TIME_YYMMDDHHMMSS],["`git show --no-patch --no-notes --pretty='%cd' --date=format:%y%m%d%H%M%S`"], [time of build complete])
-      AC_DEFINE_UNQUOTED([CISTEM_TIME_READABLE],["`git show --no-patch --no-notes --pretty='%ci' --date=format:%y%m%d%H%M%S`"], [time of build readable]) 
-      
-    else
-      set_git_versioning_defaults="yes"
+# Use git rev-parse --git-dir instead of AC_CHECK_FILE(".git/HEAD") because
+# in git worktrees, .git is a file (containing gitdir: pointer), not a directory.
+# git rev-parse --git-dir works correctly in both normal repos and worktrees.
+git_dir=`cd "$TOPSRCDIR" && git rev-parse --git-dir 2>/dev/null`
+if test "x$GIT_CHECK" = "xyes" && test "x$git_dir" != "x"; then
+    # All the args require the extra double quotes to be properly formated later on.
 
-    fi
-  ], 
-  [
+    # Get the current branch, which could have multiple refs, which is why we need the awk (*) marks the active branch.
+    AC_DEFINE_UNQUOTED([CISTEM_CURRENT_BRANCH],["`cd "$TOPSRCDIR" && git branch | awk '/^\*/{print $2}'`"], [get the current branch])
+    # Get the first reachable tag - number of commits since that tag - short commit hash
+    version_name="`cat $TOPSRCDIR/VERSION | $AWK  '{print $1}'`"
+    version_commit="`cat $TOPSRCDIR/VERSION | $AWK  '{print $2}'`"
+    is_dirty="`cd "$TOPSRCDIR" && git status --short | awk '{if($0!="" && FNR==1) print "-dirty"}'`"
+    AC_DEFINE_UNQUOTED([CISTEM_VERSION_TEXT],["`cd "$TOPSRCDIR" && git rev-list ${version_commit}..HEAD | awk -v NAME=$version_name -v ISDIRTY=$is_dirty 'BEGIN{n=0}{n=n+1}{if(FNR==1) H=$1}END{print NAME"-"n-1"-"substr(H,1,7)ISDIRTY}'`"], [current version text])
+    # Get both an easily parsed date, as well as a more readable date
+    AC_DEFINE_UNQUOTED([CISTEM_TIME_YYMMDDHHMMSS],["`cd "$TOPSRCDIR" && git show --no-patch --no-notes --pretty='%cd' --date=format:%y%m%d%H%M%S`"], [time of build complete])
+    AC_DEFINE_UNQUOTED([CISTEM_TIME_READABLE],["`cd "$TOPSRCDIR" && git show --no-patch --no-notes --pretty='%ci' --date=format:%y%m%d%H%M%S`"], [time of build readable])
+
+else
     set_git_versioning_defaults="yes"
-  ])
 fi
+
+fi  # end of is_git_new_enough check
 
 # Confirm we found the proper git versioning information. This is primarly intended for developers who are actively using multiple versions
 # or who are distributing test debug builds to users, such that they may easily confirm what version they are using from the 
@@ -699,6 +740,12 @@ CPPFLAGS="$CPPFLAGS -I$CISTEM_CONFIG_DIR"
 WX_CPPFLAGS="$WX_CPPFLAGS -I$CISTEM_CONFIG_DIR"
 WX_CPPFLAGS_BASE="$WX_CPPFLAGS_BASE -I$CISTEM_CONFIG_DIR"
 
+# Force inclusion of cistem_config.h in all compilation units
+# This ensures configuration defines from configure.ac are available everywhere
+# Supported by GCC, Clang, and Intel icpc compilers
+CXXFLAGS="$CXXFLAGS -include $CISTEM_CONFIG_DIR/cistem_config.h"
+CPPFLAGS="$CPPFLAGS -include $CISTEM_CONFIG_DIR/cistem_config.h"
+
 # Make sure the host compiler gets all flags when called from nvcc
 CUDA_TO_CPP="`echo $CPPFLAGS $WX_CPPFLAGS | sed -e 's/\s\+/,/g' | awk '{print "-Xcompiler " $0}'`"
 CUDA_TO_CXX="`echo $CXXFLAGS $WX_CXXFLAGS | sed -e 's/\s\+/,/g' | awk '{print "-Xcompiler " $0}'`"
@@ -717,7 +764,6 @@ AC_SUBST(CUDA_LIBS)
 AC_SUBST(libFastFFT_OBJECTS)
 AC_SUBST(MKL_LIBS)
 AC_SUBST(LIBTORCH_LIBS)
-AC_SUBST(LIBTORCH_RPATH)
 AC_SUBST(LIBTOOL_FLAGS)
 
 
@@ -729,6 +775,35 @@ AC_SUBST(LIBTOOL_FLAGS)
   AC_MSG_NOTICE([MKL_LIBS=$MKL_LIBS])
   AC_MSG_NOTICE([LIBTORCH_LIBS=$LIBTORCH_LIBS])
   AC_MSG_NOTICE([libFastFFT_OBJECTS=$libFastFFT_OBJECTS])
+
+# Lock cisTEM programs to their build-time shared libraries (wx, libtorch).
+#
+# WHY DT_RPATH (via --disable-new-dtags): the distribution container ships these
+# libs at the same fixed /opt paths as the build container, so an absolute rpath
+# is a stable lock. The modern linker default emits DT_RUNPATH, which
+# LD_LIBRARY_PATH overrides -- a stray LD_LIBRARY_PATH (conda, HPC modules) could
+# then load a different-ABI wx and abort the wxWidgets build-options check at
+# wxApp init, or load a different libtorch. DT_RPATH is searched before
+# LD_LIBRARY_PATH and cannot be overridden. wxFormBuilder is a separate binary
+# that keeps resolving the system wx; this lock applies only to cisTEM programs.
+#
+# WHY global rather than per-program: per-program rpath (and libtool's incidental
+# libdir hardcoding) gave inconsistent coverage -- wx was locked for some
+# programs and not others. LDFLAGS reaches every program via automake's link rule.
+cistem_rpath=""
+if test -n "$WX_LIBS" ; then
+	wx_libdir=`echo "$WX_LIBS" | $AWK '{for (i = 1; i <= NF; i++) if (substr($i, 1, 2) == "-L") { print substr($i, 3); exit } }'`
+	if test -n "$wx_libdir" ; then
+		cistem_rpath="$cistem_rpath -Wl,-rpath,$wx_libdir"
+	fi
+fi
+if test "x$use_libtorch" = "xyes" ; then
+	cistem_rpath="$cistem_rpath -Wl,-rpath,$LIBTORCH_ROOT/lib"
+fi
+if test -n "$cistem_rpath" ; then
+	LDFLAGS="$LDFLAGS -Wl,--disable-new-dtags$cistem_rpath"
+	AC_MSG_NOTICE([cisTEM library rpath lock:$cistem_rpath])
+fi
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 AC_CONFIG_HEADERS([cistem_config.h:cistem_config.in])

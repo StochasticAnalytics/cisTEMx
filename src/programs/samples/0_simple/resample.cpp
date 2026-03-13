@@ -22,7 +22,7 @@ void ResampleRunner(const wxString& temp_directory) {
 
     constexpr bool test_is_to_be_run = true;
     if constexpr ( test_is_to_be_run ) {
-        // If we are in the dev container the CISTEM_REF_IMAGES variable should be defined, pointing to images we need.
+        // If we are in the dev container the PLASMONLABS_REF_IMAGES variable should be defined, pointing to images we need.
         TEST(DoFourierExpandVsLerpResize(cistem_ref_dir, temp_directory));
         TEST(DoCTFImageVsTexture(cistem_ref_dir, temp_directory));
         TEST(DoFourierCropVsLerpResize(cistem_ref_dir, temp_directory));
@@ -108,7 +108,7 @@ struct ResampleRunnerObjects {
 };
 
 bool DoCTFImageVsTexture(const wxString& cistem_ref_dir, const wxString& temp_directory) {
-    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the CISTEM_REF_IMAGES directory.");
+    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the PLASMONLABS_REF_IMAGES directory.");
 
     bool passed     = true;
     bool all_passed = true;
@@ -161,7 +161,7 @@ bool DoCTFImageVsTexture(const wxString& cistem_ref_dir, const wxString& temp_di
 }
 
 bool DoFourierCropVsLerpResize(const wxString& cistem_ref_dir, const wxString& temp_directory) {
-    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the CISTEM_REF_IMAGES directory.");
+    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the PLASMONLABS_REF_IMAGES directory.");
 
     bool passed     = true;
     bool all_passed = true;
@@ -229,7 +229,7 @@ bool DoFourierCropVsLerpResize(const wxString& cistem_ref_dir, const wxString& t
 }
 
 bool DoFourierExpandVsLerpResize(const wxString& cistem_ref_dir, const wxString& temp_directory) {
-    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the CISTEM_REF_IMAGES directory.");
+    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the PLASMONLABS_REF_IMAGES directory.");
 
     bool passed     = true;
     bool all_passed = true;
@@ -323,7 +323,7 @@ bool DoFourierExpandVsLerpResize(const wxString& cistem_ref_dir, const wxString&
 }
 
 bool DoLerpWithCTF(const wxString& cistem_ref_dir, const wxString& temp_directory) {
-    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the CISTEM_REF_IMAGES directory.");
+    MyAssertFalse(cistem_ref_dir == temp_directory, "The temp directory should not be the same as the PLASMONLABS_REF_IMAGES directory.");
 
     bool passed     = true;
     bool all_passed = true;

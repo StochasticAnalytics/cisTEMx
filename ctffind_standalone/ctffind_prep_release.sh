@@ -92,7 +92,7 @@ COMMENTED_OUT
 
 # Prepare for building
 module purge
-source ../regenerate_project.b
+source ../regenerate_project.sh
 
 # make sure we are using the latest Intel compiler, wx, etc
 module purge

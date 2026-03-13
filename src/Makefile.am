@@ -2,14 +2,13 @@
 #
 # LibTorch Support:
 # -----------------
-# Programs requiring LibTorch (e.g., blush regularization) should add to their LDADD:
+# Programs requiring LibTorch (e.g., blush regularization) add the libs to their LDADD:
 #   program_LDADD = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS) $(LIBTORCH_LIBS)
 #
-# And add RPATH flags to their LDFLAGS:
-#   program_LDFLAGS = $(LIBTORCH_RPATH)
-#
-# The LIBTORCH_RPATH setting enables bundling of .so files with the distribution.
-# See m4/libtorch.m4 for configuration details.
+# Runtime library location is handled globally in configure.ac, which locks wx
+# and libtorch to their build-time /opt paths via DT_RPATH for every program.
+# No per-program LDFLAGS rpath is needed.
+# See m4/libtorch.m4 for libtorch detection and configure.ac for the rpath lock.
 
 noinst_HEADERS = core/stopwatch.h \
                  core/asset_group.h \
@@ -553,9 +552,6 @@ libgpucore_a_SOURCES  =      gpu/core_extensions/stop_watch_gpu.cu \
                              programs/refine3d/batched_search.cu \
                              test/gpu/test_gpu_kernels.cu \
                              programs/quick_test/quick_test_gpu.cu
-if ENABLE_LOCAL_BUILD_OF_FASTFFT_AM
-    libgpucore_a_SOURCES += ../include/FastFFT/src/fastfft/FastFFT.cu
-endif
 
 libgpucore_OBJECTS=$(libgpucore_a_SOURCES:.cu=.o)                                                   
 
@@ -782,7 +778,7 @@ cisTEM_display_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 gui_test_SOURCES = programs/gui_test/gui_test.cpp gui/PlotCurvePanel.cpp gui/mathplot.cpp
 gui_test_CXXFLAGS = $(WX_CPPFLAGS)
 gui_test_CPPFLAGS = $(WX_CPPFLAGS)
-gui_test_LDADD = libguicore.a libcore.a $(WX_LIBS)
+gui_test_LDADD = libguicore.a libcore.a $(WX_LIBS) $(MKL_LIBS)
 gui_test_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 cisTEM_job_control_SOURCES  = programs/guix_job_control/guix_job_control.cpp 
@@ -818,7 +814,6 @@ endif
 
 
 console_test_LDADD    = $(console_test_LDSTRING) libcore.a $(WX_LIBS_BASE) $(MKL_LIBS) $(CUDA_LIBS) $(LIBTORCH_LIBS)
-console_test_LDFLAGS  = $(LIBTORCH_RPATH)
 console_test_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 

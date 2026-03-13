@@ -942,21 +942,24 @@ bool MatchTemplateApp::DoCalculation( ) {
         // FwdFFT the variance is still 1 under the footprint of the tempalte. A final accounting for the invFFT is applied (1/sqrt(N_image)) during the invFFT.
         const float round_trip_scale = 1.f / d_input_image->number_of_real_space_pixels / sqrtf(float(current_projection.number_of_real_space_pixels));
 
-        FastFFT::FourierTransformer<float, float, float2, 2> FT;
-        FT.SetForwardFFTPlan(input_image.logical_x_dimension,
-                             input_image.logical_y_dimension,
-                             d_input_image->logical_z_dimension,
-                             d_input_image->dims.x,
-                             d_input_image->dims.y,
-                             d_input_image->dims.z,
-                             true);
-        FT.SetInverseFFTPlan(d_input_image->dims.x,
-                             d_input_image->dims.y,
-                             d_input_image->dims.z,
-                             d_input_image->dims.x,
-                             d_input_image->dims.y,
-                             d_input_image->dims.z,
-                             true);
+        // FastFFT new-descriptor constructor (SetForwardFFTPlan/SetInverseFFTPlan removed 2026-07).
+        // Field mapping per include/detail/plan_descriptor.h migration table: fwd input -> input_size,
+        // fwd output -> fourier_size (== inv input, matches here), inv output -> output_size; both
+        // padded flags were true, the descriptor default.
+        // PlanExtent stores std::size_t; the source dimensions are int. Brace-init narrows on that
+        // signed-to-unsigned conversion regardless of value, since the compiler cannot know these
+        // logical dimensions are always positive here, so the explicit cast is required, not stylistic.
+        FastFFT::PlanDescriptor plan{ };
+        plan.input_size   = {static_cast<std::size_t>(input_image.logical_x_dimension),
+                             static_cast<std::size_t>(input_image.logical_y_dimension),
+                             static_cast<std::size_t>(d_input_image->logical_z_dimension)};
+        plan.fourier_size = {static_cast<std::size_t>(d_input_image->dims.x),
+                             static_cast<std::size_t>(d_input_image->dims.y),
+                             static_cast<std::size_t>(d_input_image->dims.z)};
+        plan.output_size  = {static_cast<std::size_t>(d_input_image->dims.x),
+                             static_cast<std::size_t>(d_input_image->dims.y),
+                             static_cast<std::size_t>(d_input_image->dims.z)};
+        FastFFT::FourierTransformer<float, float, float2, 2> FT(plan);
 
         FT.FwdFFT(d_input_image->real_values);
 
@@ -1037,13 +1040,13 @@ bool MatchTemplateApp::DoCalculation( ) {
             data_sizer.whitening_filter_ptr->MakeThreadSafeForNThreads(max_threads);
             size_t L2_window_size;
             // note that we need the firstprivate so the shared ptr is intialized the first time it is encountered
-#pragma omp parallel num_threads(max_threads) default(none) shared(L2_window_size, first_gpu_loop, GPU, first_search_position, incPos, maxPos, max_threads,                                      \
-                                                                   d_input_image, angles, my_progress, template_reconstruction, use_fast_fft, projection_filter,                                 \
-                                                                   min_counter_val, profile_timing, current_projection, psi_start, psi_step, psi_max,                                            \
-                                                                   global_euler_search, number_of_search_positions, number_of_search_positions_per_thread, use_gpu_prj,                          \
-                                                                   data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size,                                                    \
-                                                                   correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, \
-                                                                   actual_number_of_angles_searched, defocus_step) firstprivate(template_reconstruction_gpu, L2_persistance_fraction, current_correlation_position)
+#pragma omp parallel num_threads(max_threads) default(none) shared(L2_window_size, first_gpu_loop, GPU, first_search_position, incPos, maxPos, max_threads,                                              \
+                                                                           d_input_image, angles, my_progress, template_reconstruction, use_fast_fft, projection_filter,                                 \
+                                                                           min_counter_val, profile_timing, current_projection, psi_start, psi_step, psi_max,                                            \
+                                                                           global_euler_search, number_of_search_positions, number_of_search_positions_per_thread, use_gpu_prj,                          \
+                                                                           data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size,                                                    \
+                                                                           correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, \
+                                                                           actual_number_of_angles_searched, defocus_step) firstprivate(template_reconstruction_gpu, L2_persistance_fraction, current_correlation_position)
             {
                 int tIDX = ReturnThreadNumberOfCurrentThread( );
                 // gpuDev.SetGpu( );
@@ -1133,10 +1136,10 @@ bool MatchTemplateApp::DoCalculation( ) {
                 if ( use_gpu_prj )
                     projection_filter.SwapFourierSpaceQuadrants(false, true);
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(min_counter_val, threshold_val, data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size, max_intensity_projection,                            \
-                                                                   correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, actual_number_of_angles_searched, \
-                                                                   profile_timing, GPU, projection_filter, current_projection, angles, global_euler_search, number_of_search_positions_per_thread, use_gpu_prj,                    \
-                                                                   defocus_i, defocus_step, size_i, pixel_size_step, histogram_data) private(current_correlation_position)
+#pragma omp parallel num_threads(max_threads) default(none) shared(min_counter_val, threshold_val, data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size, max_intensity_projection,                                    \
+                                                                           correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, actual_number_of_angles_searched, \
+                                                                           profile_timing, GPU, projection_filter, current_projection, angles, global_euler_search, number_of_search_positions_per_thread, use_gpu_prj,                    \
+                                                                           defocus_i, defocus_step, size_i, pixel_size_step, histogram_data) private(current_correlation_position)
 
                 {
                     int tIDX = ReturnThreadNumberOfCurrentThread( );
@@ -1928,7 +1931,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 #ifdef MKL
         vdErfcInv(1, &erf_input, &temp_threshold);
 #else
-        temp_threshold       = cisTEM_erfcinv(erf_input);
+        temp_threshold = cisTEM_erfcinv(erf_input);
 #endif
         expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
 

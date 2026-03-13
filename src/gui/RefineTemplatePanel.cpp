@@ -64,7 +64,7 @@ RefineTemplatePanel::RefineTemplatePanel(wxWindow* parent)
     GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &RefineTemplatePanel::OnGroupComboBox, this);
 }
 
-bool RefineTemplatePanel::CheckGroupHasTemplateMatchRunDone( ) {
+bool RefineTemplatePanel::CheckGroupForTemplateMatchingCompletion( ) {
     wxArrayLong images_with_template_match_result = main_frame->current_project.database.ReturnLongArrayFromSelectCommand("SELECT DISTINCT IMAGE_ASSET_ID FROM TEMPLATE_MATCH_LIST");
     long        current_image_id;
     int         images_with_template_match_counter;
@@ -84,6 +84,9 @@ bool RefineTemplatePanel::CheckGroupHasTemplateMatchRunDone( ) {
                     break;
                 }
             }
+
+            if ( image_was_found == false )
+                return false;
         }
     }
 
@@ -232,7 +235,7 @@ void RefineTemplatePanel::OnGroupComboBox(wxCommandEvent& event) {
     }
 
     if ( GroupComboBox->GetCount( ) > 0 && main_frame->current_project.is_open == true )
-        all_input_images_have_match_template_result = CheckGroupHasTemplateMatchRunDone( );
+        all_input_images_have_match_template_result = CheckGroupForTemplateMatchingCompletion( );
 
     if ( all_input_images_have_match_template_result == true && InputErrorText->IsShown( ) == true ) {
         InputErrorText->Show(false);
@@ -359,7 +362,7 @@ void RefineTemplatePanel::SetInfo( ) {
 void RefineTemplatePanel::FillGroupComboBox( ) {
     GroupComboBox->FillComboBox(true);
     if ( GroupComboBox->GetCount( ) > 0 && main_frame->current_project.is_open == true )
-        all_input_images_have_match_template_result = CheckGroupHasTemplateMatchRunDone( );
+        all_input_images_have_match_template_result = CheckGroupForTemplateMatchingCompletion( );
 
     if ( all_input_images_have_match_template_result == true && InputErrorText->IsShown( ) == true ) {
         InputErrorText->Show(false);

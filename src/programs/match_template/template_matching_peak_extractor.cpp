@@ -197,7 +197,7 @@ void TemplateMatchingPeakExtractor::ReadPeaksFromCoordinateFile(NumericTextFile&
 
         peak_infos.Add(peak_info);
 
-        peak_list.emplace_back(x_px, long(y_px), 1.f, coordinates[7], address);
+        peak_list.emplace_back(x_px, y_px, 1.f, coordinates[7], address);
     }
 }
 
@@ -340,8 +340,8 @@ void TemplateMatchingPeakExtractor::CreateResultImages(
             rotated_reconstruction.Rotate3DByRotationMatrixAndOrApplySymmetry(angles.euler_matrix);
 
             slab->InsertOtherImageAtSpecifiedPosition(&rotated_reconstruction,
-                                                      myroundint((peak.x - result_image.physical_address_of_box_center_x) / (search_pixel_size_ / binned_pixel_size)),
-                                                      myroundint((peak.y - result_image.physical_address_of_box_center_y) / (search_pixel_size_ / binned_pixel_size)),
+                                                      myroundint((peak.x - result_image.physical_address_of_box_center_x) * (search_pixel_size_ / binned_pixel_size)),
+                                                      myroundint((peak.y - result_image.physical_address_of_box_center_y) * (search_pixel_size_ / binned_pixel_size)),
                                                       -myroundint(info.defocus / binned_pixel_size),
                                                       0.0f);
         }

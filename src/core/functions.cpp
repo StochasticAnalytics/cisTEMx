@@ -1,5 +1,7 @@
 #include "core_headers.h"
 
+#include <memory>
+
 // for ip address
 #include <stdio.h>
 #include <sys/types.h>

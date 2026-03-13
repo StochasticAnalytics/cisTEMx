@@ -22,9 +22,6 @@
 #include "template_matching_data_sizer.h"
 #include "template_matching_peak_extractor.h"
 
-// Uncomment to enable peak info diagnostic file output
-#define cisTEM_SAVE_PEAK_INFO
-
 // The profiling for development is under conrtol of --enable-profiling.
 #ifdef CISTEM_PROFILING
 using namespace cistem_timer;
@@ -1884,7 +1881,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
                                           aggregated_results[array_location].use_peak_sampling_correction,
                                           all_peak_infos);
 
-#ifdef cisTEM_SAVE_PEAK_INFO
         // Write peak info to file - derive filename from histogram path by replacing _histogram_ with _peak_info_
         wxString histogram_path = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( );
         wxString peak_info_path = histogram_path;
@@ -1906,7 +1902,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
             peak_info_file.WriteLine(peak_data);
         }
         peak_info_file.Close( );
-#endif
 
         timer.start("Create result images");
         extractor.CreateResultImages(
@@ -1937,9 +1932,8 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         aggregated_results.RemoveAt(array_location);
         delete[] expected_survival_histogram;
         delete[] survival_histogram;
-        timer.lap("Send results to GUI");
+        timer.lap("Cleanup");
         timer.print_times( );
-        wxPrintf("Pre print times\n");
     }
 }
 

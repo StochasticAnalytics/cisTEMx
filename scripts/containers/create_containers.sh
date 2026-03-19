@@ -28,21 +28,19 @@ usr_path="../../.vscode"
 # Check for -h or --help
 if [[ $1 == "-h" || $1 == "--help" ]] ; then
     echo ""
-    echo "Usage: build_base.sh <base|top|ci> [--no-cache] [--wx-version=<stable|dev>] [--compiler=<icpc|g++>] [--build-type=<static|dynamic>] [--npm ] [--ref-images ] [--tag-suffix=<string>]"
+    echo "Usage: create_containers.sh <base|top|ci> [--no-cache] [--wx-version=<stable|dev>] [--compiler=<icpc|g++>] [--build-type=<static|dynamic>] [--ref-images] [--skip-libtorch] [--tag-suffix=<string>]"
     echo "      --no-cache: build without cache, must be second arg"
     echo ""
     echo "  positional args are optional and only affect the top layer build"
     echo "      --wx-version: stable or dev, default is stable (currently 3.0.5)"
-    echo "      --compiler: icpc or g++, default is icpc [g++ builds not supported yet]"
+    echo "      --compiler: icpc or g++, default is icpc (icpc is primary, others for completeness)"
     echo "      --build-type: static or dynamic, default is static [BUT only dynamic is supported for --wx-version dev]"
-    echo "      --npm: build npm, default is false if not specified"
-    echo "      --skip-libtorch: default is true to include libtorch dynamic libraries for blush imple if not specified"
-    echo "      --ref-images: build reference images, default is true if not specified"
-    echo "      --skip-docs: skip including depenencies for the new docs system, default is false if not specified"
+    echo "      --skip-libtorch: exclude libtorch dynamic libraries, default is to include"
+    echo "      --ref-images: include reference images, default is true"
     echo "      --tag-suffix: to append to the image tag"
     echo ""
-    echo "For example, to build the base image without cache, and the top image with wxWidgets 3.1.5, g++, dynamic, npm, and ref-images:"
-    echo "      create_containers.sh base --no-cache --wx-version=dev --compiler=g++ --npm --ref-images"
+    echo "For example, to build the base image without cache:"
+    echo "      create_containers.sh base --no-cache"
     exit 0
 fi
 
@@ -87,10 +85,8 @@ fi
 build_type="static"
 build_compiler="icpc"
 build_wx_version="stable"
-build_npm="false"
 build_ref_images="true"
 build_libtorch="true"
-build_docs="true"
 tag_suffix=""
 
 
@@ -130,20 +126,12 @@ while [[ $# -gt 0 ]]; do
         shift # past argument
         shift # past value
         ;;
-    --npm)
-        build_npm="true"
-        shift # past argument
-        ;;
     --ref-images)
         build_ref_images="true"
         shift # past argument
         ;;
     --skip-libtorch)
         build_libtorch="false"
-        shift # past argument
-        ;;
-    --skip-docs)
-        build_docs="false"
         shift # past argument
         ;;
     --tag-suffix)
@@ -233,10 +221,8 @@ else
     echo "    wxWidgets version: ${build_wx_version}"
     echo "    compiler: ${build_compiler}"
     echo "    build type: ${build_type}"
-    echo "    npm: ${build_npm}"
     echo "    ref-images: ${build_ref_images}"
     echo "    libtorch: ${build_libtorch}"
-    echo "    docs system: ${build_docs}"
     echo "    container version: ${top_container_version}"
     echo "    container base version: ${base_container_version}"
     echo "    container repository: ${container_repository}"
@@ -279,9 +265,7 @@ else
         --build-arg build_type=${build_type} \
         --build-arg build_compiler=${build_compiler} \
         --build-arg build_wx_version=${build_wx_version} \
-        --build-arg build_npm=${build_npm} \
         --build-arg build_ref_images=${build_ref_images} \
         --build-arg build_libtorch=${build_libtorch} \
-        --build-arg build_docs=${build_docs} \
         ${path_to_dockerfile}
 fi

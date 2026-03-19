@@ -190,3 +190,6 @@ cython_debug/
 core_knowledge_graph
 .claude
 CLAUDE.md
+dot-claude/
+
+autonomous-build/

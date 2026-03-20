@@ -723,11 +723,12 @@ TEST_CASE("RotationMatrix Euler angle conversion", "[RotationMatrix][core][conve
         float phi_out, theta_out, psi_out;
         rm.ConvertToValidEulerAngles(phi_out, theta_out, psi_out);
 
-        // Recreate matrix from output angles
+        // ConvertToValidEulerAngles guarantees accuracy to 0.001 per matrix element
+        // (its internal verification threshold); use matching tolerance for round-trip tests.
         RotationMatrix rm_verify;
         rm_verify.SetToEulerRotation(phi_out, theta_out, psi_out);
 
-        REQUIRE(MatricesAreAlmostEqual(rm, rm_verify));
+        REQUIRE(MatricesAreAlmostEqual(rm, rm_verify, 1e-3f));
     }
 
     SECTION("conversion handles theta=0 edge case") {
@@ -747,7 +748,7 @@ TEST_CASE("RotationMatrix Euler angle conversion", "[RotationMatrix][core][conve
         RotationMatrix rm_verify;
         rm_verify.SetToEulerRotation(phi_out, theta_out, psi_out);
 
-        REQUIRE(MatricesAreAlmostEqual(rm, rm_verify));
+        REQUIRE(MatricesAreAlmostEqual(rm, rm_verify, 1e-3f));
     }
 
     SECTION("conversion handles theta=180 edge case") {
@@ -766,7 +767,7 @@ TEST_CASE("RotationMatrix Euler angle conversion", "[RotationMatrix][core][conve
         RotationMatrix rm_verify;
         rm_verify.SetToEulerRotation(phi_out, theta_out, psi_out);
 
-        REQUIRE(MatricesAreAlmostEqual(rm, rm_verify));
+        REQUIRE(MatricesAreAlmostEqual(rm, rm_verify, 1e-3f));
     }
 
     SECTION("conversion handles arbitrary angles") {
@@ -795,7 +796,7 @@ TEST_CASE("RotationMatrix Euler angle conversion", "[RotationMatrix][core][conve
             RotationMatrix rm_verify;
             rm_verify.SetToEulerRotation(phi_out, theta_out, psi_out);
 
-            REQUIRE(MatricesAreAlmostEqual(rm, rm_verify));
+            REQUIRE(MatricesAreAlmostEqual(rm, rm_verify, 1e-3f));
         }
     }
 

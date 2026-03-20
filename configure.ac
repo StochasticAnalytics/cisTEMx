@@ -647,37 +647,35 @@ fi
 AC_CHECK_PROG(GIT_CHECK,git,yes)
 # If we have git, it must not be too old, e.g. 1.8 is still the default on older OS's like CentOS 7 
 is_git_new_enough=`git version | awk '{if($3 >= 2) print yes; else print no}'`
-if test "xis_git_new_enough" == "xno" ; then
+if test "x$is_git_new_enough" == "xno" ; then
   	AC_MSG_NOTICE([your version of git is too old, you can updated on Centos 7 with sudo yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm
   	])
 else
 
 set_git_versioning_defaults="no"
-AC_CHECK_FILE("$TOPSRCDIR/.git/HEAD",
-  [
-    if test "x$GIT_CHECK" = "xyes"; then 
-      # All the args require the extra double quotes to be properly formated later on.
-      
-      # Get the current branch, which could have multiple refs, which is why we need the awk (*) marks the active branch.
-      AC_DEFINE_UNQUOTED([CISTEM_CURRENT_BRANCH],["`git  branch | awk '/^\*/{print $2}'`"], [get the current branch])
-      # Get the first reachable tag - number of commits since that tag - short commit hash
-      version_name="`cat $TOPSRCDIR/VERSION | $AWK  '{print $1}'`"
-      version_commit="`cat $TOPSRCDIR/VERSION | $AWK  '{print $2}'`"
-      is_dirty="`git status --short | awk '{if($0!="" && FNR==1) print "-dirty"}'`"
-      AC_DEFINE_UNQUOTED([CISTEM_VERSION_TEXT],["`git rev-list ${version_commit}..HEAD | awk -v NAME=$version_name -v ISDIRTY=$is_dirty 'BEGIN{n=0}{n=n+1}{if(FNR==1) H=$1}END{print NAME"-"n-1"-"substr(H,1,7)ISDIRTY}'`"], [current version text])
-      # Get both an easily parsed date, as well as a more readable date
-      AC_DEFINE_UNQUOTED([CISTEM_TIME_YYMMDDHHMMSS],["`git show --no-patch --no-notes --pretty='%cd' --date=format:%y%m%d%H%M%S`"], [time of build complete])
-      AC_DEFINE_UNQUOTED([CISTEM_TIME_READABLE],["`git show --no-patch --no-notes --pretty='%ci' --date=format:%y%m%d%H%M%S`"], [time of build readable]) 
-      
-    else
-      set_git_versioning_defaults="yes"
+# Use git rev-parse --git-dir instead of AC_CHECK_FILE(".git/HEAD") because
+# in git worktrees, .git is a file (containing gitdir: pointer), not a directory.
+# git rev-parse --git-dir works correctly in both normal repos and worktrees.
+git_dir=`cd "$TOPSRCDIR" && git rev-parse --git-dir 2>/dev/null`
+if test "x$GIT_CHECK" = "xyes" && test "x$git_dir" != "x"; then
+    # All the args require the extra double quotes to be properly formated later on.
 
-    fi
-  ], 
-  [
+    # Get the current branch, which could have multiple refs, which is why we need the awk (*) marks the active branch.
+    AC_DEFINE_UNQUOTED([CISTEM_CURRENT_BRANCH],["`cd "$TOPSRCDIR" && git branch | awk '/^\*/{print $2}'`"], [get the current branch])
+    # Get the first reachable tag - number of commits since that tag - short commit hash
+    version_name="`cat $TOPSRCDIR/VERSION | $AWK  '{print $1}'`"
+    version_commit="`cat $TOPSRCDIR/VERSION | $AWK  '{print $2}'`"
+    is_dirty="`cd "$TOPSRCDIR" && git status --short | awk '{if($0!="" && FNR==1) print "-dirty"}'`"
+    AC_DEFINE_UNQUOTED([CISTEM_VERSION_TEXT],["`cd "$TOPSRCDIR" && git rev-list ${version_commit}..HEAD | awk -v NAME=$version_name -v ISDIRTY=$is_dirty 'BEGIN{n=0}{n=n+1}{if(FNR==1) H=$1}END{print NAME"-"n-1"-"substr(H,1,7)ISDIRTY}'`"], [current version text])
+    # Get both an easily parsed date, as well as a more readable date
+    AC_DEFINE_UNQUOTED([CISTEM_TIME_YYMMDDHHMMSS],["`cd "$TOPSRCDIR" && git show --no-patch --no-notes --pretty='%cd' --date=format:%y%m%d%H%M%S`"], [time of build complete])
+    AC_DEFINE_UNQUOTED([CISTEM_TIME_READABLE],["`cd "$TOPSRCDIR" && git show --no-patch --no-notes --pretty='%ci' --date=format:%y%m%d%H%M%S`"], [time of build readable])
+
+else
     set_git_versioning_defaults="yes"
-  ])
 fi
+
+fi  # end of is_git_new_enough check
 
 # Confirm we found the proper git versioning information. This is primarly intended for developers who are actively using multiple versions
 # or who are distributing test debug builds to users, such that they may easily confirm what version they are using from the 

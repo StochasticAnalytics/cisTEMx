@@ -471,12 +471,16 @@ bool Refine3DApp::DoCalculation( ) {
     ReconstructedVolume       search_reference_3d;
     ReconstructedVolume       search_reference_3d_local;
     ImageProjectionComparison comparison_object;
-    ConjugateGradient         conjugate_gradient_minimizer;
-    EulerSearch               global_euler_search, euler_search_local;
-    Curve                     noise_power_spectrum;
-    Curve                     number_of_terms;
-    RandomNumberGenerator     random_particle(true);
-    ProgressBar*              my_progress;
+#ifdef cisTEM_USE_CG_REFACTOR_2026
+    PowellConjugateGradient conjugate_gradient_minimizer;
+#else
+    ConjugateGradient conjugate_gradient_minimizer;
+#endif
+    EulerSearch           global_euler_search, euler_search_local;
+    Curve                 noise_power_spectrum;
+    Curve                 number_of_terms;
+    RandomNumberGenerator random_particle(true);
+    ProgressBar*          my_progress;
 
     JobResult* intermediate_result;
 

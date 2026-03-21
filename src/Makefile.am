@@ -54,6 +54,7 @@ noinst_HEADERS = core/stopwatch.h \
                  core/downhill_simplex.h \
                  core/brute_force_search.h \
                  core/conjugate_gradient.h \
+                 core/conjugate_gradient_refactor2026.h \
                  core/euler_search.h \
                  core/frealign_parameter_file.h \
                  core/particle_finder.h \
@@ -623,6 +624,7 @@ libcore_a_SOURCES  = core/stopwatch.cpp \
                        core/brute_force_search.cpp \
                        core/va04.cpp \
                        core/conjugate_gradient.cpp \
+                       core/conjugate_gradient_refactor2026.cpp \
                        core/euler_search.cpp \
                        core/frealign_parameter_file.cpp \
                        core/basic_star_file_reader.cpp \
@@ -1360,6 +1362,7 @@ endif
     unit_test_runner_SOURCES  += test/core/test_matrix.cpp 
     unit_test_runner_SOURCES  += test/core/test_non_wx_functions.cpp
     unit_test_runner_SOURCES  += test/core/test_curve.cpp
+    unit_test_runner_SOURCES  += test/core/test_conjugate_gradient.cpp
 if WANT_CISTEM_GPU_AM
     unit_test_runner_SOURCES += test/gpu/test_gpu.cpp
                             

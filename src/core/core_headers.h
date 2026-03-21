@@ -198,6 +198,7 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 #include "downhill_simplex.h"
 #include "brute_force_search.h"
 #include "conjugate_gradient.h"
+#include "conjugate_gradient_refactor2026.h" // guarded by cisTEM_ENABLE_CG_REFACTOR_2026 internally
 #include "euler_search.h"
 #include "frealign_parameter_file.h"
 #include "basic_star_file_reader.h"

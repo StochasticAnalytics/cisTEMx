@@ -809,34 +809,38 @@ bool CtffindApp::DoCalculation( ) {
     int                number_of_search_dimensions;
     BruteForceSearch*  brute_force_search;
     int                counter;
+#ifdef cisTEM_USE_CG_REFACTOR_2026
+    PowellConjugateGradient* conjugate_gradient_minimizer;
+#else
     ConjugateGradient* conjugate_gradient_minimizer;
-    int                current_output_location;
-    int                number_of_bins_in_1d_spectra;
-    Curve*             number_of_averaged_pixels                 = new Curve( );
-    Curve*             rotational_average                        = new Curve( );
-    Image*             number_of_extrema_image                   = new Image( );
-    Image*             ctf_values_image                          = new Image( );
-    double*            rotational_average_astig                  = NULL;
-    double*            rotational_average_astig_renormalized     = NULL;
-    double*            spatial_frequency                         = NULL;
-    double*            spatial_frequency_in_reciprocal_angstroms = NULL;
-    double*            rotational_average_astig_fit              = NULL;
-    float*             number_of_extrema_profile                 = NULL;
-    float*             ctf_values_profile                        = NULL;
-    double*            fit_frc                                   = NULL;
-    double*            fit_frc_sigma                             = NULL;
-    MRCFile            output_diagnostic_file(output_diagnostic_filename, true);
-    int                last_bin_with_good_fit;
-    double*            values_to_write_out = new double[10];
-    float              best_score_after_initial_phase;
-    int                last_bin_without_aliasing;
-    ImageFile          gain_file;
-    Image*             gain = new Image( );
-    ImageFile          dark_file;
-    Image*             dark = new Image( );
-    float              final_score;
-    float              tilt_axis;
-    float              tilt_angle;
+#endif
+    int       current_output_location;
+    int       number_of_bins_in_1d_spectra;
+    Curve*    number_of_averaged_pixels                 = new Curve( );
+    Curve*    rotational_average                        = new Curve( );
+    Image*    number_of_extrema_image                   = new Image( );
+    Image*    ctf_values_image                          = new Image( );
+    double*   rotational_average_astig                  = NULL;
+    double*   rotational_average_astig_renormalized     = NULL;
+    double*   spatial_frequency                         = NULL;
+    double*   spatial_frequency_in_reciprocal_angstroms = NULL;
+    double*   rotational_average_astig_fit              = NULL;
+    float*    number_of_extrema_profile                 = NULL;
+    float*    ctf_values_profile                        = NULL;
+    double*   fit_frc                                   = NULL;
+    double*   fit_frc_sigma                             = NULL;
+    MRCFile   output_diagnostic_file(output_diagnostic_filename, true);
+    int       last_bin_with_good_fit;
+    double*   values_to_write_out = new double[10];
+    float     best_score_after_initial_phase;
+    int       last_bin_without_aliasing;
+    ImageFile gain_file;
+    Image*    gain = new Image( );
+    ImageFile dark_file;
+    Image*    dark = new Image( );
+    float     final_score;
+    float     tilt_axis;
+    float     tilt_angle;
 
     // Open the input file
     bool input_file_is_valid = input_file.OpenFile(input_filename, false, false, false, eer_super_res_factor, eer_frames_per_image);
@@ -1276,9 +1280,13 @@ bool CtffindApp::DoCalculation( ) {
                 for ( counter = 0; counter < number_of_search_dimensions; counter++ ) {
                     cg_starting_point[counter] = brute_force_search->GetBestValue(counter);
                 }
-                cg_accuracy[0]               = 100.0;
-                cg_accuracy[1]               = 0.05;
+                cg_accuracy[0] = 100.0;
+                cg_accuracy[1] = 0.05;
+#ifdef cisTEM_USE_CG_REFACTOR_2026
+                conjugate_gradient_minimizer = new PowellConjugateGradient( );
+#else
                 conjugate_gradient_minimizer = new ConjugateGradient( );
+#endif
                 conjugate_gradient_minimizer->Init(&CtffindCurveObjectiveFunction, &comparison_object_1D, number_of_search_dimensions, cg_starting_point, cg_accuracy);
                 conjugate_gradient_minimizer->Run( );
                 for ( counter = 0; counter < number_of_search_dimensions; counter++ ) {
@@ -1518,7 +1526,11 @@ bool CtffindApp::DoCalculation( ) {
             // CG minimization
             profile_timing.start("Peform 2D search optimization");
             comparison_object_2D.SetCTF(*current_ctf);
+#ifdef cisTEM_USE_CG_REFACTOR_2026
+            conjugate_gradient_minimizer = new PowellConjugateGradient( );
+#else
             conjugate_gradient_minimizer = new ConjugateGradient( );
+#endif
             conjugate_gradient_minimizer->Init(&CtffindObjectiveFunction, &comparison_object_2D, number_of_search_dimensions, cg_starting_point, cg_accuracy);
             conjugate_gradient_minimizer->Run( );
             profile_timing.lap("Peform 2D search optimization");

@@ -482,17 +482,21 @@ bool FindDQE::DoCalculation( ) {
     Image background_mask_image;
     //	Curve nps_fit_spectrum;
     //	Curve noise_whitening_spectrum;
-    Curve             mtf, nps, nps_fit, fit_window1;
-    Curve             number_of_terms, fit_window2;
-    Curve             fit_window3;
-    CurveComparison   comparison_object;
+    Curve           mtf, nps, nps_fit, fit_window1;
+    Curve           number_of_terms, fit_window2;
+    Curve           fit_window3;
+    CurveComparison comparison_object;
+#ifdef cisTEM_USE_CG_REFACTOR_2026
+    PowellConjugateGradient conjugate_gradient_minimizer;
+#else
     ConjugateGradient conjugate_gradient_minimizer;
-    rle3d             runlenth3d;
-    float             cg_starting_point[11];
-    float             cg_accuracy[11];
-    float             saved_parameters[11];
-    float             best_parameters[11];
-    float*            fitted_parameters;
+#endif
+    rle3d  runlenth3d;
+    float  cg_starting_point[11];
+    float  cg_accuracy[11];
+    float  saved_parameters[11];
+    float  best_parameters[11];
+    float* fitted_parameters;
 
     threshold_image.Allocate(input_file.ReturnXSize( ), input_file.ReturnYSize( ), true);
     threshold_image_small.Allocate(input_file.ReturnXSize( ), input_file.ReturnYSize( ), true);

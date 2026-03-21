@@ -150,7 +150,11 @@ void do_2D_refinement(CTFNodeFitInput* input, wxJSONValue& debug_json_output) {
     input->comparison_object_2D->SetupQuickCorrelation( );
     input->comparison_object_2D->fit_nodes_downweight_nodes = input->downweight_nodes;
     input->comparison_object_2D->fit_nodes_rounded_square   = input->use_rounded_square;
-    ConjugateGradient* conjugate_gradient_minimizer         = new ConjugateGradient( );
+#ifdef cisTEM_USE_CG_REFACTOR_2026
+    PowellConjugateGradient* conjugate_gradient_minimizer = new PowellConjugateGradient( );
+#else
+    ConjugateGradient* conjugate_gradient_minimizer = new ConjugateGradient( );
+#endif
     conjugate_gradient_minimizer->Init(&CtffindNodesObjectiveFunction, input->comparison_object_2D, number_of_search_dimensions, cg_starting_point, cg_accuracy);
 
     conjugate_gradient_minimizer->Run( );

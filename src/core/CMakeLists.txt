@@ -42,6 +42,7 @@ add_library(cisTEM_core STATIC
 	brute_force_search.cpp
 	va04.cpp
 	conjugate_gradient.cpp
+	conjugate_gradient_refactor2026.cpp
 	euler_search.cpp
 	frealign_parameter_file.cpp
 	basic_star_file_reader.cpp

@@ -3,6 +3,7 @@
 
 #include "../ActionsPanelSpa.h"
 #include "Icons.h"
+#include "../GenericRunnerPanel.h"
 
 // GLOBAL PANEL POINTERS: These are all defined in projectx.cpp and used throughout the application.
 //
@@ -32,6 +33,7 @@ extern AutoRefine3DPanel*    auto_refine_3d_panel;
 extern AbInitio3DPanel*      ab_initio_3d_panel;
 extern Generate3DPanel*      generate_3d_panel;
 extern Sharpen3DPanel*       sharpen_3d_panel;
+extern GenericRunnerPanel*   generic_runner_panel;
 extern wxImageList*          ActionsSpaBookIconImages;
 
 // #include "../ResultsPanelSpa.h"
@@ -67,6 +69,7 @@ struct SpaWorkflowRegister {
             ab_initio_3d_panel   = new AbInitio3DPanel(actions_panel->ActionsBook);
             generate_3d_panel    = new Generate3DPanel(actions_panel->ActionsBook);
             sharpen_3d_panel     = new Sharpen3DPanel(actions_panel->ActionsBook);
+            generic_runner_panel = new GenericRunnerPanel(actions_panel->ActionsBook);
 
             if ( ! actions_panel->ActionsBook->GetImageList( ) ) {
                 actions_panel->ActionsBook->AssignImageList(GetActionsSpaBookIconImages( ));
@@ -82,6 +85,7 @@ struct SpaWorkflowRegister {
             actions_panel->ActionsBook->AddPage(refine_ctf_panel, "Refine CTF", false, 7);
             actions_panel->ActionsBook->AddPage(generate_3d_panel, "Generate 3D", false, 8);
             actions_panel->ActionsBook->AddPage(sharpen_3d_panel, "Sharpen 3D", false, 9);
+            actions_panel->ActionsBook->AddPage(generic_runner_panel, "Network Test", false);
 
             return actions_panel;
         };

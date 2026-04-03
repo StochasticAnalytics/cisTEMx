@@ -38,6 +38,7 @@ ActionsPanelSpa::~ActionsPanelSpa( ) {
     ab_initio_3d_panel   = nullptr;
     generate_3d_panel    = nullptr;
     sharpen_3d_panel     = nullptr;
+    generic_runner_panel = nullptr;
 }
 
 void ActionsPanelSpa::OnActionsBookPageChanged(wxListbookEvent& event) {
@@ -52,6 +53,7 @@ void ActionsPanelSpa::OnActionsBookPageChanged(wxListbookEvent& event) {
     extern RefineCTFPanel*       refine_ctf_panel;
     extern Generate3DPanel*      generate_3d_panel;
     extern Sharpen3DPanel*       sharpen_3d_panel;
+    extern GenericRunnerPanel*   generic_runner_panel;
 
 #ifdef __WXOSX__
     // Necessary for MacOS to refresh the panels
@@ -94,6 +96,10 @@ void ActionsPanelSpa::OnActionsBookPageChanged(wxListbookEvent& event) {
     else if ( event.GetSelection( ) == 9 ) {
         sharpen_3d_panel->Layout( );
         sharpen_3d_panel->Refresh( );
+    }
+    else if ( event.GetSelection( ) == 10 ) {
+        generic_runner_panel->Layout( );
+        generic_runner_panel->Refresh( );
     }
 #endif
 }

@@ -131,6 +131,7 @@
 #include "../gui/MatchTemplatePanel.h"
 #include "../gui/MatchTemplateResultsPanel.h"
 #include "../gui/RefineTemplatePanel.h"
+#include "../gui/GenericRunnerPanel.h"
 
 #ifdef EXPERIMENTAL
 #include "../gui/MyExperimentalPanel.h"

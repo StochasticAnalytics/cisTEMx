@@ -24,6 +24,7 @@ MyRefine3DPanel*      refine_3d_panel      = nullptr;
 RefineCTFPanel*       refine_ctf_panel     = nullptr;
 Generate3DPanel*      generate_3d_panel    = nullptr;
 Sharpen3DPanel*       sharpen_3d_panel     = nullptr;
+GenericRunnerPanel*   generic_runner_panel = nullptr;
 
 MyOverviewPanel*           overview_panel               = nullptr;
 ActionsPanelParent*        actions_panel                = nullptr;

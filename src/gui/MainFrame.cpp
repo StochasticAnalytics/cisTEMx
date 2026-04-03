@@ -28,6 +28,7 @@ extern AutoRefine3DPanel*    auto_refine_3d_panel;
 extern AbInitio3DPanel*      ab_initio_3d_panel;
 extern Generate3DPanel*      generate_3d_panel;
 extern Sharpen3DPanel*       sharpen_3d_panel;
+extern GenericRunnerPanel*   generic_runner_panel;
 
 extern MySettingsPanel*    settings_panel;
 extern MyRunProfilesPanel* run_profiles_panel;
@@ -470,6 +471,8 @@ void MyMainFrame::DirtyRunProfiles( ) {
             ab_initio_3d_panel->run_profiles_are_dirty = true;
         if ( generate_3d_panel )
             generate_3d_panel->run_profiles_are_dirty = true;
+        if ( generic_runner_panel )
+            generic_runner_panel->run_profiles_are_dirty = true;
     }
     else if ( current_workflow == "Template Matching" ) {
         if ( match_template_panel )

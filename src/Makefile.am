@@ -166,6 +166,7 @@ noinst_HEADERS = core/stopwatch.h \
                  gui/MatchTemplateResultsPanel.h \
                  gui/MatchTemplatePanel.h \
                  gui/RefineTemplatePanel.h \
+                 gui/GenericRunnerPanel.h \
                  gui/icons/action_icon.cpp \
                  gui/icons/assets_icon.cpp \
                  gui/icons/ctf_icon.cpp \
@@ -293,7 +294,8 @@ bin_PROGRAMS =  cisTEM_job_control \
                 refine_template \
                 make_template_result \
                 prepare_stack_matchtemplate \
-                cisTEM_display 
+                generic_runner \
+                cisTEM_display
 
 
 
@@ -756,6 +758,7 @@ cisTEM_SOURCES = programs/projectx/projectx.cpp \
                 gui/MatchTemplatePanel.cpp \
                 gui/MatchTemplateResultsPanel.cpp \
                 gui/RefineTemplatePanel.cpp \
+                gui/GenericRunnerPanel.cpp \
                 gui/CombineRefinementPackagesWizard.cpp \
                 gui/AtomicCoordinatesAssetPanel.cpp \
                 gui/AtomicCoordinatesChooserDialog.cpp \
@@ -1173,6 +1176,12 @@ refine_ctf_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 refine_ctf_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 refine_ctf_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 refine_ctf_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+generic_runner_SOURCES  = programs/generic_runner/generic_runner.cpp
+generic_runner_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+generic_runner_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+generic_runner_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+generic_runner_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 estimate_beamtilt_SOURCES  = programs/estimate_beamtilt/estimate_beamtilt.cpp
 estimate_beamtilt_CXXFLAGS = $(WX_CPPFLAGS_BASE)

@@ -198,10 +198,12 @@ IMPLEMENT_APP(MatchTemplateApp)
 
 // TODO: why is this here?
 void MatchTemplateApp::ProgramSpecificInit( ) {
+    MyDebugPrintGA1("match_template ProgramSpecificInit pid=%d", (int)getpid( ));
 }
 
 // Optional command-line stuff
 void MatchTemplateApp::AddCommandLineOptions( ) {
+    MyDebugPrintGA1("match_template AddCommandLineOptions");
     command_line_parser.AddLongSwitch("disable-gpu-prj", "Disable projection using the gpu. Default false");
     command_line_parser.AddLongSwitch("disable-flat-fielding", "Disable flat fielding. Default false");
     command_line_parser.AddOption("", "n-expected-false-positives", "average number of false positives per image, (defaults to 1)", wxCMD_LINE_VAL_DOUBLE);
@@ -216,6 +218,7 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
 // override the DoInteractiveUserInput
 
 void MatchTemplateApp::DoInteractiveUserInput( ) {
+    MyDebugPrintGA1("match_template DoInteractiveUserInput pid=%d", (int)getpid( ));
     wxString input_search_images;
     wxString input_reconstruction;
 
@@ -409,14 +412,17 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
  * @return True if the calculation completes successfully, false otherwise.
  */
 bool MatchTemplateApp::DoCalculation( ) {
+    MyDebugPrintGA1("match_template DoCalculation ENTRY pid=%d is_running_locally=%d", (int)getpid( ), (int)is_running_locally);
 
     bool is_rotated_by_90 = false;
 
     // In particular histogram_min, histogram_max, histogram_step, histogram_number_of_points, histogram_first_bin_midpoint
     using namespace cistem::match_template;
     StopWatch profile_timing;
+    MyDebugPrintGA1("match_template DoCalculation using namespace cistem::match_template, stopwatch created");
 
     wxDateTime start_time = wxDateTime::Now( );
+    MyDebugPrintGA1("match_template DoCalculation start_time recorded");
 
     double temp_double;
     long   temp_long;
@@ -461,6 +467,7 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     bool allow_rotation_for_speed{true};
 
+    MyDebugPrintGA1("match_template DoCalculation about to parse job arguments, num_args=%d", my_current_job.number_of_arguments);
     wxString input_search_images_filename    = my_current_job.arguments[0].ReturnStringArgument( );
     wxString input_reconstruction_filename   = my_current_job.arguments[1].ReturnStringArgument( );
     float    input_pixel_size                = my_current_job.arguments[2].ReturnFloatArgument( );
@@ -506,6 +513,9 @@ bool MatchTemplateApp::DoCalculation( ) {
     bool     use_peak_sampling_correction    = my_current_job.arguments[42].ReturnBoolArgument( );
 
     int max_threads = my_current_job.arguments[43].ReturnIntegerArgument( );
+    MyDebugPrintGA1("match_template DoCalculation parsed args: search_img='%s' recon='%s' use_gpu=%d max_threads=%d first_pos=%d last_pos=%d image_num=%d jobs_per_img=%d",
+                    (const char*)input_search_images_filename.mb_str( ), (const char*)input_reconstruction_filename.mb_str( ),
+                    (int)use_gpu, max_threads, first_search_position, last_search_position, image_number_for_gui, number_of_jobs_per_image_in_gui);
 
     // Check for over-focus (negative defocus values)
     if ( ! allow_over_focus && (defocus1 < 0.0f || defocus2 < 0.0f) ) {
@@ -598,8 +608,11 @@ bool MatchTemplateApp::DoCalculation( ) {
     ImageFile input_reconstruction_file;
 
     // Open input files for search images and template reconstruction
+    MyDebugPrintGA1("match_template DoCalculation opening input search images '%s'", (const char*)input_search_images_filename.mb_str( ));
     input_search_image_file.OpenFile(input_search_images_filename.ToStdString( ), false);
+    MyDebugPrintGA1("match_template DoCalculation opened search images, opening reconstruction '%s'", (const char*)input_reconstruction_filename.mb_str( ));
     input_reconstruction_file.OpenFile(input_reconstruction_filename.ToStdString( ), false);
+    MyDebugPrintGA1("match_template DoCalculation opened both input files");
 
     Image input_image;
     Image padded_reference;
@@ -741,6 +754,7 @@ bool MatchTemplateApp::DoCalculation( ) {
         padded_projection.Allocate(input_reconstruction.logical_x_dimension * padding, input_reconstruction.logical_x_dimension * padding, false);
 
     profile_timing.lap("Allocate and zero arrays");
+    MyDebugPrintGA1("match_template DoCalculation allocated and zeroed work arrays");
     // angular step
 
     float mask_radius_search;
@@ -834,6 +848,7 @@ bool MatchTemplateApp::DoCalculation( ) {
     wxPrintf("There are %li correlation positions total.\n\n", number_of_search_positions);
 
     wxPrintf("Performing Search...\n\n");
+    MyDebugPrintGA1("match_template DoCalculation about to perform search nJobs=%d max_threads=%d use_gpu=%d", last_search_position - first_search_position + 1, max_threads, (int)use_gpu);
 
     wxDateTime overall_start;
     wxDateTime overall_finish;
@@ -850,12 +865,15 @@ bool MatchTemplateApp::DoCalculation( ) {
     }
 
     int incPos = (nJobs) / (max_threads); // Increment for distributing jobs to threads
+    MyDebugPrintGA1("match_template DoCalculation nJobs=%d incPos=%d final_max_threads=%d", nJobs, incPos, max_threads);
 
 #ifdef ENABLEGPU
     profile_timing.start("Init GPU");
+    MyDebugPrintGA1("match_template DoCalculation initializing GPU");
     TemplateMatchingCore* GPU;
     DeviceManager         gpuDev;
     profile_timing.lap("Init GPU");
+    MyDebugPrintGA1("match_template DoCalculation GPU init complete");
 
     // We want to share the input image so that we can get the best L2 caching behavior on the GPU.
     std::shared_ptr<GpuImage> d_input_image = std::make_shared<GpuImage>( );
@@ -1500,7 +1518,9 @@ bool MatchTemplateApp::DoCalculation( ) {
         }
 
         // Send the packed result to the master process
+        MyDebugPrintGA1("match_template DoCalculation calling SendProgramDefinedResultToMaster floats=%ld image_for_gui=%d jobs_per_image=%d", number_of_result_floats, image_number_for_gui, number_of_jobs_per_image_in_gui);
         SendProgramDefinedResultToMaster(result, number_of_result_floats, image_number_for_gui, number_of_jobs_per_image_in_gui);
+        MyDebugPrintGA1("match_template DoCalculation SendProgramDefinedResultToMaster returned");
         // The result should not be deleted here, as the worker thread will free it up once it has been send to the master
         // delete [] result;
     }
@@ -1517,11 +1537,16 @@ bool MatchTemplateApp::DoCalculation( ) {
 #endif
 
     if ( is_running_locally == true ) {
+        MyDebugPrintGA1("match_template DoCalculation is_running_locally=true, normal termination branch");
         wxPrintf("\nMatch Template: Normal termination\n");
         wxDateTime finish_time = wxDateTime::Now( );
         wxPrintf("Total Run Time : %s\n\n", finish_time.Subtract(start_time).Format("%Hh:%Mm:%Ss"));
     }
+    else {
+        MyDebugPrintGA1("match_template DoCalculation is_running_locally=false, worker-mode exit");
+    }
 
+    MyDebugPrintGA1("match_template DoCalculation RETURNING true");
     return true;
 }
 
@@ -1548,6 +1573,7 @@ bool MatchTemplateApp::DoCalculation( ) {
  * @param number_of_expected_results The total number of partial results expected for this image.
  */
 void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, long array_size, int result_number, int number_of_expected_results) {
+    MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult result_number=%d expected=%d array_size=%ld", result_number, number_of_expected_results, array_size);
 
     // do we have this image number already?
 
@@ -1560,9 +1586,11 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
     wxPrintf("Master Handling result for image %i..", result_number);
 
+    MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult aggregated_results.count=%lu", (unsigned long)aggregated_results.GetCount( ));
     // Check if an AggregatedTemplateResult already exists for this image
     for ( int result_counter = 0; result_counter < aggregated_results.GetCount( ); result_counter++ ) {
         if ( aggregated_results[result_counter].image_number == result_number ) {
+            MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult found existing agg slot=%d for image=%d", result_counter, result_number);
             aggregated_results[result_counter].AddResult(result_array, array_size, result_number, number_of_expected_results);
             need_a_new_result = false;
             array_location    = result_counter;
@@ -1573,6 +1601,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
     // If no existing result, create a new one
     if ( need_a_new_result == true ) {
+        MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult creating new agg for image=%d", result_number);
         AggregatedTemplateResult result_to_add;
         // So I guess this Add, then index into size - 1 is like push_back kinda?
         aggregated_results.Add(result_to_add);
@@ -1582,8 +1611,13 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         wxPrintf("Adding new result to array for image %i, at %i\n", result_number, array_location);
     }
 
+    MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult image=%d received=%d expected=%d",
+                    result_number,
+                    aggregated_results[array_location].number_of_received_results,
+                    number_of_expected_results);
     // Check if all expected results for this image have been received
     if ( aggregated_results[array_location].number_of_received_results == number_of_expected_results ) {
+        MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult image=%d ALL RESULTS RECEIVED, finalizing", result_number);
         // All parts of the result for this image are now collected. Proceed to finalize.
         // TODO send the result back to the GUI, for now hack mode to save the files to the directory..
 
@@ -1923,7 +1957,10 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         ArrayOfTemplateMatchFoundPeakInfos blank_changes;
         float                              high_res_limit_used = 2.0f * search_pixel_size;
+        MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult calling SendTemplateMatchingResultToSocket image=%d high_res=%f peaks=%lu",
+                        aggregated_results[array_location].image_number, high_res_limit_used, (unsigned long)all_peak_infos.GetCount( ));
         SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, high_res_limit_used, expected_threshold, all_peak_infos, blank_changes);
+        MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult SendTemplateMatchingResultToSocket returned");
         timer.lap("Send results to GUI");
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it
@@ -1942,6 +1979,7 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
  * Initializes members to default values, pointers to NULL.
  */
 AggregatedTemplateResult::AggregatedTemplateResult( ) {
+    MyDebugPrintGA1("match_template AggregatedTemplateResult ctor");
     image_number                    = -1;
     number_of_received_results      = 0;
     total_number_of_angles_searched = 0.0f;
@@ -1965,6 +2003,7 @@ AggregatedTemplateResult::AggregatedTemplateResult( ) {
  * Frees the `collated_data_array` if it was allocated.
  */
 AggregatedTemplateResult::~AggregatedTemplateResult( ) {
+    MyDebugPrintGA1("match_template AggregatedTemplateResult dtor");
     if ( collated_data_array != NULL )
         delete[] collated_data_array;
 }
@@ -1995,6 +2034,7 @@ AggregatedTemplateResult::~AggregatedTemplateResult( ) {
  * @param number_of_expected_results The total number of partial results expected for this image (used for logging).
  */
 void AggregatedTemplateResult::AddResult(float* result_array, long array_size, int result_number, int number_of_expected_results) {
+    MyDebugPrintGA1("match_template AggregatedTemplateResult::AddResult result_number=%d expected=%d array_size=%ld", result_number, number_of_expected_results, array_size);
 
     int offset = cistem::match_template::COUNT; // Offset to the start of actual image data after header info
 
@@ -2103,6 +2143,7 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
                                                   StatsType*   sum_of_sqs,
                                                   const float  n_angles_in_search,
                                                   const Image& mip_image) {
+    MyDebugPrintGA1("match_template CalcGlobalCCCScalingFactor n_angles=%f", n_angles_in_search);
 
     const long N = mip_image.real_memory_allocated;
     MyDebugAssertTrue(N > 0, "N must be greater than 0");
@@ -2154,6 +2195,7 @@ void MatchTemplateApp::CalcGlobalCCCScalingFactor(double&      global_ccc_mean,
 void MatchTemplateApp::ResampleHistogramData(long*        histogram_ptr,
                                              const double global_ccc_mean,
                                              const double global_ccc_std_dev) {
+    MyDebugPrintGA1("match_template ResampleHistogramData mean=%f std=%f", global_ccc_mean, global_ccc_std_dev);
 
     // constexpr values for histogram values.
     using namespace cistem::match_template;
@@ -2216,6 +2258,7 @@ void MatchTemplateApp::RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(Image
                                                                            long*       histogram,
                                                                            const float n_angles_in_search,
                                                                            const bool  disable_flat_fielding) {
+    MyDebugPrintGA1("match_template RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev n_angles=%f disable_flat=%d", n_angles_in_search, (int)disable_flat_fielding);
     MyDebugAssertTrue(n_angles_in_search > 0, "n_angles_in_search must be > = zero");
 
     double global_ccc_mean    = 0.0;

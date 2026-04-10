@@ -2,6 +2,7 @@
 #include <wx/app.h>
 #include <wx/cmdline.h>
 #include <cstdio>
+#include <map>
 #include "wx/socket.h"
 #include <wx/evtloop.h>
 
@@ -48,6 +49,25 @@ class
     wxString      master_port;
 
     long number_of_workers_already_connected;
+
+    // Revert-debug-ga1: populated by LaunchJobThread after tunnel verification.
+    // Lists ssh_target names that have a reverse tunnel for the controller port.
+    // Read by HandleNewSocketConnection after master election, to set up a
+    // second reverse tunnel per target for the master port, and to decide
+    // whether to rewrite the master address sent to tunneled workers.
+    wxArrayString remote_tunnel_targets;
+    bool          master_tunnels_established;
+    // Remote-side port chosen at LaunchRemoteJob time, verified free on every
+    // remote_tunnel_targets entry. Reused as BOTH the remote listen port
+    // (ssh -f -N -R <port>:127.0.0.1:<master_port>) AND the port sent to the
+    // tunneled worker (master=127.0.0.1:<port>). Must NOT reuse master_port
+    // because a stale cisTEM worker from another user can silently collide
+    // on the remote (seen: sshastri zombie bound 0.0.0.0:3002 on GA1, ssh -R
+    // fell back to [::1]:3002 with ExitOnForwardFailure=yes still returning 0,
+    // and IPv4 127.0.0.1 traffic routed into the zombie).
+    wxString master_tunnel_remote_port;
+
+    friend class LaunchJobThread;
 
     // Socket Handling overrides..
 
@@ -115,17 +135,27 @@ class LaunchJobThread : public wxThread {
 };
 
 wxThread::ExitCode LaunchJobThread::Entry( ) {
+    MyDebugPrintGA1("LaunchJobThread::Entry begin pid=%d", (int)getpid( ));
+    MyDebugPrintGA1("LaunchJobThread::Entry ip_address=%s port_number=%s actual_number_of_jobs=%ld", ip_address, port_number, actual_number_of_jobs);
+    MyDebugPrintGA1("LaunchJobThread::Entry calling LaunchRemoteJob()");
     LaunchRemoteJob( );
+    MyDebugPrintGA1("LaunchJobThread::Entry LaunchRemoteJob() returned");
     return (wxThread::ExitCode)0; // success
 }
 
 IMPLEMENT_APP(JobControlApp)
 
 bool JobControlApp::OnInit( ) {
-    number_of_received_jobs = 0;
-    all_jobs_are_finished   = false;
+    MyDebugPrintGA1("JobControlApp::OnInit begin pid=%d", (int)getpid( ));
+    number_of_received_jobs    = 0;
+    all_jobs_are_finished      = false;
+    master_tunnels_established = false;
+    master_tunnel_remote_port  = "";
+    remote_tunnel_targets.Empty( );
+    MyDebugPrintGA1("JobControlApp::OnInit counters reset");
 
     MyDebugPrint("Job Controller: Running...\n");
+    MyDebugPrintGA1("JobControlApp::OnInit returning true");
 
     // initialise sockets
     wxSocketBase::Initialize( );
@@ -239,7 +269,53 @@ void JobControlApp::OnEventLoopEnter(wxEventLoopBase* loop) {
     }
 }
 
+// BEGIN SSH_TUNNEL_HACK — reverse tunnel for remote jobs over untrusted networks
+// Set to false to disable all tunnel logic and revert to original behavior.
+static const bool USE_SSH_TUNNEL = true;
+
+// Run a command and capture stdout. Returns empty string on failure.
+static wxString RunAndCapture(const wxString& cmd) {
+    wxString result;
+    FILE*    fp = popen(cmd.ToUTF8( ).data( ), "r");
+    if ( fp ) {
+        char buf[512];
+        while ( fgets(buf, sizeof(buf), fp) != NULL ) {
+            result += buf;
+        }
+        pclose(fp);
+    }
+    result.Trim( );
+    return result;
+}
+
+// Extract the SSH target (user@host or hostname) from a command string.
+// Parses: ssh [-flags...] <target> "..."
+// Returns the first non-flag token after "ssh".
+static wxString ExtractSSHTarget(const wxString& cmd) {
+    wxStringTokenizer tok(cmd, " ");
+    bool              past_ssh = false;
+    while ( tok.HasMoreTokens( ) ) {
+        wxString token = tok.GetNextToken( );
+        if ( token == "ssh" ) {
+            past_ssh = true;
+            continue;
+        }
+        if ( past_ssh ) {
+            if ( token.StartsWith("-") )
+                continue;
+            return token;
+        }
+    }
+    return "";
+}
+
+// END SSH_TUNNEL_HACK
+
 void LaunchJobThread::LaunchRemoteJob( ) {
+    MyDebugPrintGA1("LaunchRemoteJob ENTRY pid=%d tid=%ld", (int)getpid( ), (long)wxThread::GetCurrentId( ));
+    MyDebugPrintGA1("LaunchRemoteJob ip_address='%s' port_number='%s' actual_jobs=%ld", ip_address, port_number, actual_number_of_jobs);
+    MyDebugPrintGA1("LaunchRemoteJob run_profile.number_of_run_commands=%ld controller_address='%s'", current_run_profile.number_of_run_commands, current_run_profile.controller_address);
+    MyDebugPrintGA1("LaunchRemoteJob run_profile.executable_name='%s'", current_run_profile.executable_name);
     long counter;
     long command_counter;
     long process_counter;
@@ -256,15 +332,236 @@ void LaunchJobThread::LaunchRemoteJob( ) {
     wxString executable_with_threads;
     wxString execution_command;
 
-    if ( current_run_profile.controller_address == "" ) {
-        executable = current_run_profile.executable_name + " " + ip_address + " " + port_number + " ";
+    // BEGIN SSH_TUNNEL
+    // When USE_SSH_TUNNEL is true and a run command uses SSH, we set up
+    // a reverse tunnel per SSH target so the remote worker can connect
+    // back to salina via 127.0.0.1:<tunnel_port>.
+    //
+    // This works for ALL remote hosts (grantahlquist1, aws-host-*, etc.)
+    // regardless of whether they have Tailscale installed.
+
+    // Per-target tunnel info: ssh_target -> {effective_ip, effective_port}
+    struct TunnelInfo {
+        wxString ip;
+        wxString port;
+    };
+
+    std::map<wxString, TunnelInfo> tunnel_map;
+
+    // Convention: SSH config aliases prefixed with "remote-" need reverse
+    // tunnels (the worker can't route back to salina directly).
+    // Everything else is assumed local (salina, etna, siracusa, etc.)
+    //
+    // Example ~/.ssh/config entries:
+    //   Host remote-grantahlquist1   ->  tunnel
+    //   Host remote-aws-1            ->  tunnel
+    //   Host remote-aws-2            ->  tunnel
+    //   Host etna                    ->  no tunnel (local VLAN)
+    static const wxString REMOTE_PREFIX = "remote-";
+
+    auto NeedsTunnel = [&](const wxString& target) -> bool {
+        wxString host = target;
+        if ( host.Contains("@") )
+            host = host.AfterFirst('@');
+        return host.StartsWith(REMOTE_PREFIX);
+    };
+
+    int next_tunnel_port = 43210;
+
+    if ( USE_SSH_TUNNEL ) {
+        MyDebugPrintGA1("LaunchRemoteJob beginning tunnel scan loop, num_run_commands=%ld", current_run_profile.number_of_run_commands);
+        // Scan all commands for SSH targets that need tunnels
+        for ( long cc = 0; cc < current_run_profile.number_of_run_commands; cc++ ) {
+            wxString cmd = current_run_profile.run_commands[cc].command_to_run;
+            MyDebugPrintGA1("tunnel scan cc=%ld cmd='%s'", cc, cmd);
+            wxString target = ExtractSSHTarget(cmd);
+            MyDebugPrintGA1("tunnel scan cc=%ld extracted target='%s' empty=%d", cc, target, (int)target.IsEmpty( ));
+            if ( target.IsEmpty( ) )
+                continue;
+            if ( ! NeedsTunnel(target) ) {
+                MyDebugPrintGA1("tunnel scan cc=%ld target='%s' is LOCAL, skipping", cc, target);
+                wxPrintf("SSH_TUNNEL: %s is local, no tunnel needed\n", target);
+                continue;
+            }
+            if ( tunnel_map.find(target) != tunnel_map.end( ) ) {
+                MyDebugPrintGA1("tunnel scan cc=%ld target='%s' already has tunnel, skipping", cc, target);
+                continue; // Already have a tunnel for this target
+            }
+
+            MyDebugPrintGA1("tunnel scan cc=%ld target='%s' NEW REMOTE TARGET, setting up", cc, target);
+            wxPrintf("SSH_TUNNEL: Setting up tunnel for %s\n", target);
+
+            // 1. Verify connectivity
+            MyDebugPrintGA1("tunnel target='%s' running ssh connectivity test", target);
+            wxString ssh_test = RunAndCapture(wxString::Format(
+                    "ssh -o ConnectTimeout=10 %s \"echo ok\" 2>/dev/null", target));
+            MyDebugPrintGA1("tunnel target='%s' ssh_test result='%s'", target, ssh_test);
+            if ( ssh_test != "ok" ) {
+                MyDebugPrintGA1("tunnel target='%s' SSH TEST FAILED, aborting LaunchRemoteJob", target);
+                QueueInfo(wxString::Format("SSH_TUNNEL_ERROR: Cannot SSH to %s _ aborting", target));
+                return;
+            }
+            wxPrintf("SSH_TUNNEL: Connectivity to %s confirmed\n", target);
+            MyDebugPrintGA1("tunnel target='%s' connectivity confirmed, beginning port try loop next_tunnel_port=%d", target, next_tunnel_port);
+
+            // 2. Establish reverse tunnel
+            // Pre-check: ssh -R with ExitOnForwardFailure still returns 0 when
+            // the IPv4 loopback port is held by another process and sshd falls
+            // back to binding [::1]:PORT only -- leaving the worker's IPv4
+            // connect() silently routed to the conflicting process. Verify the
+            // port is free on the remote's 127.0.0.1 BEFORE trusting ssh -R.
+            bool     tunnel_ok = false;
+            wxString remote_port;
+            for ( int try_port = next_tunnel_port; try_port < next_tunnel_port + 40; try_port++ ) {
+                wxString probe = RunAndCapture(wxString::Format(
+                        "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%d 2>/dev/null && echo in_use || echo free'\" 2>/dev/null",
+                        target, try_port));
+                MyDebugPrintGA1("tunnel target='%s' precheck port %d result='%s'", target, try_port, probe);
+                if ( ! probe.Contains("free") ) {
+                    // in_use or ambiguous -- skip to next port
+                    continue;
+                }
+                MyDebugPrintGA1("tunnel target='%s' trying port %d (forwarding to localhost:%s)", target, try_port, port_number);
+                wxString tunnel_cmd = wxString::Format(
+                        "ssh -f -N -o ExitOnForwardFailure=yes -R %d:localhost:%s %s 2>/dev/null",
+                        try_port, port_number, target);
+                int ret = system(tunnel_cmd.ToUTF8( ).data( ));
+                MyDebugPrintGA1("tunnel target='%s' port %d ssh -f -N returned %d", target, try_port, ret);
+                if ( ret == 0 ) {
+                    remote_port      = wxString::Format("%d", try_port);
+                    next_tunnel_port = try_port + 1;
+                    tunnel_ok        = true;
+                    MyDebugPrintGA1("tunnel target='%s' SUCCESS on port %d", target, try_port);
+                    break;
+                }
+            }
+            if ( ! tunnel_ok ) {
+                QueueInfo(wxString::Format("SSH_TUNNEL_ERROR: No free port for %s _ aborting", target));
+                return;
+            }
+
+            tunnel_map[target] = {wxString("127.0.0.1"), remote_port};
+            QueueInfo(wxString::Format("SSH_TUNNEL: %s -> 127.0.0.1:%s -> localhost:%s",
+                                       target, remote_port, port_number));
+        }
+
+        // 3. Verify all tunnels are working before releasing to command loop.
+        //    SSH to each remote and confirm the tunnel port is listening.
+        //    This replaces manual launch ordering and delay hacks.
+        MyDebugPrintGA1("tunnel verification phase: %zu tunnel(s) to verify", tunnel_map.size( ));
+        for ( auto& kv : tunnel_map ) {
+            wxString target = kv.first;
+            wxString tport  = kv.second.port;
+            MyDebugPrintGA1("verify target='%s' port=%s", target, tport);
+            wxPrintf("SSH_TUNNEL: Verifying tunnel to %s (port %s)...\n", target, tport);
+
+            bool verified = false;
+            for ( int attempt = 0; attempt < 5; attempt++ ) {
+                // Check that the tunnel port is listening on the remote (use bash /dev/tcp, no nc dependency)
+                wxString check = RunAndCapture(wxString::Format(
+                        "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%s && echo tunnel_ok || echo tunnel_fail' 2>/dev/null\" 2>/dev/null",
+                        target, tport));
+                MyDebugPrintGA1("verify target='%s' attempt=%d check_output='%s'", target, attempt + 1, check);
+                if ( check.Contains("tunnel_ok") ) {
+                    wxPrintf("SSH_TUNNEL: Tunnel to %s verified OK\n", target);
+                    MyDebugPrintGA1("verify target='%s' OK on attempt=%d", target, attempt + 1);
+                    verified = true;
+                    break;
+                }
+                wxPrintf("SSH_TUNNEL: Tunnel to %s not ready, retrying (%d/5)...\n", target, attempt + 1);
+                wxMilliSleep(1000);
+            }
+            if ( ! verified ) {
+                // Tunnel established but can't reach the port -- warn but continue
+                // (the tunnel SSH process may just need a moment)
+                wxPrintf("SSH_TUNNEL: WARNING: Could not verify tunnel to %s -- proceeding anyway\n", target);
+                MyDebugPrintGA1("verify target='%s' UNVERIFIED, proceeding anyway", target);
+            }
+        }
+
+        if ( tunnel_map.empty( ) ) {
+            wxPrintf("SSH_TUNNEL: No remote SSH targets, using original ip/port\n");
+            MyDebugPrintGA1("tunnel_map empty, no remote targets");
+        }
+        else {
+            wxPrintf("SSH_TUNNEL: All %zu tunnel(s) ready\n", tunnel_map.size( ));
+            MyDebugPrintGA1("tunnel_map ready, count=%zu", tunnel_map.size( ));
+        }
     }
     else {
-        executable = current_run_profile.executable_name + " " + current_run_profile.controller_address + " " + port_number + " ";
+        wxPrintf("SSH_TUNNEL: Disabled (USE_SSH_TUNNEL=false)\n");
+    }
+    // END SSH_TUNNEL
+
+    // Build executable strings.
+    // executable_default uses original ip/port (local workers).
+    // For SSH targets with tunnels, we build per-command executables in the loop below.
+    wxString executable_default;
+
+    if ( current_run_profile.controller_address == "" ) {
+        executable_default = current_run_profile.executable_name + " " + ip_address + " " + port_number + " ";
+    }
+    else {
+        executable_default = current_run_profile.executable_name + " " + current_run_profile.controller_address + " " + port_number + " ";
     }
 
     for ( counter = 0; counter < SOCKET_CODE_SIZE; counter++ ) {
-        executable += job_code[counter];
+        executable_default += job_code[counter];
+    }
+
+    wxPrintf("SSH_TUNNEL: executable_default: %s\n", executable_default);
+    for ( auto& kv : tunnel_map ) {
+        wxPrintf("SSH_TUNNEL: tunnel[%s]: 127.0.0.1:%s\n", kv.first, kv.second.port);
+    }
+
+    // Revert-debug-ga1: publish tunnel target list to JobControlApp so
+    // HandleNewSocketConnection can set up master-port reverse tunnels to
+    // these same hosts once master election completes. Must be done BEFORE
+    // workers start connecting back (first socket accept fires from the
+    // first system() call below).
+    main_thread_pointer->remote_tunnel_targets.Empty( );
+    for ( auto& kv : tunnel_map ) {
+        main_thread_pointer->remote_tunnel_targets.Add(kv.first);
+    }
+    main_thread_pointer->master_tunnels_established = false;
+    main_thread_pointer->master_tunnel_remote_port  = "";
+    MyDebugPrintGA1("published remote_tunnel_targets count=%d", (int)main_thread_pointer->remote_tunnel_targets.GetCount( ));
+
+    // Revert-debug-ga1: reserve ONE high port that is free on every remote
+    // target. This port is used on BOTH sides of the master-port reverse
+    // tunnel (the remote listen port AND the port we tell tunneled workers
+    // to connect to). Scanning uniformly means every tunneled worker gets
+    // the same master address, so we don't need to identify which peer
+    // 127.0.0.1 connection belongs to which remote in the worker branch.
+    if ( ! tunnel_map.empty( ) ) {
+        bool reserved = false;
+        for ( int try_port = next_tunnel_port; try_port < next_tunnel_port + 80; try_port++ ) {
+            bool free_on_all = true;
+            for ( auto& kv : tunnel_map ) {
+                wxString target = kv.first;
+                wxString probe  = RunAndCapture(wxString::Format(
+                         "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%d 2>/dev/null && echo in_use || echo free'\" 2>/dev/null",
+                         target, try_port));
+                MyDebugPrintGA1("master-port reserve probe target='%s' port=%d result='%s'", target, try_port, probe);
+                if ( ! probe.Contains("free") ) {
+                    free_on_all = false;
+                    break;
+                }
+            }
+            if ( free_on_all ) {
+                main_thread_pointer->master_tunnel_remote_port = wxString::Format("%d", try_port);
+                next_tunnel_port                               = try_port + 1;
+                reserved                                       = true;
+                MyDebugPrintGA1("master-port reserve SUCCESS port=%d", try_port);
+                wxPrintf("SSH_TUNNEL: reserved master-tunnel port %d (uniform across %zu target(s))\n", try_port, tunnel_map.size( ));
+                break;
+            }
+        }
+        if ( ! reserved ) {
+            QueueInfo("SSH_TUNNEL_ERROR: could not reserve a master-tunnel port free on all remotes _ aborting");
+            MyDebugPrintGA1("master-port reserve FAILED, aborting");
+            return;
+        }
     }
 
     wxMilliSleep(2000);
@@ -274,11 +571,41 @@ void LaunchJobThread::LaunchRemoteJob( ) {
     else
         number_of_commands_to_run = current_run_profile.ReturnTotalJobs( );
 
+    MyDebugPrintGA1("LaunchRemoteJob entering command launch loop num_commands=%ld total_to_run=%ld", current_run_profile.number_of_run_commands, number_of_commands_to_run);
     for ( command_counter = 0; command_counter < current_run_profile.number_of_run_commands; command_counter++ ) {
+        MyDebugPrintGA1("cmd_loop iter=%ld num_copies=%i delay_ms=%i", command_counter, current_run_profile.run_commands[command_counter].number_of_copies, current_run_profile.run_commands[command_counter].delay_time_in_ms);
         if ( number_of_commands_to_run - number_of_commands_run < current_run_profile.run_commands[command_counter].number_of_copies )
             number_to_run_for_this_command = number_of_commands_to_run - number_of_commands_run;
         else
             number_to_run_for_this_command = current_run_profile.run_commands[command_counter].number_of_copies;
+
+        // Pick the right executable for this command's target.
+        // If the command has an SSH target with a tunnel, use 127.0.0.1:<tunnel_port>.
+        // Otherwise use the default ip/port (local workers).
+        wxString cmd_template   = current_run_profile.run_commands[command_counter].command_to_run;
+        wxString cmd_ssh_target = ExtractSSHTarget(cmd_template);
+        MyDebugPrintGA1("cmd_loop iter=%ld template='%s' ssh_target='%s'", command_counter, cmd_template, cmd_ssh_target);
+
+        if ( ! cmd_ssh_target.IsEmpty( ) && tunnel_map.find(cmd_ssh_target) != tunnel_map.end( ) ) {
+            TunnelInfo& ti = tunnel_map[cmd_ssh_target];
+            MyDebugPrintGA1("cmd_loop iter=%ld picking TUNNEL executable target=%s tunnel_ip=%s tunnel_port=%s", command_counter, cmd_ssh_target, ti.ip, ti.port);
+            if ( current_run_profile.controller_address == "" ) {
+                executable = current_run_profile.executable_name + " " + ti.ip + " " + ti.port + " ";
+            }
+            else {
+                executable = current_run_profile.executable_name + " " + current_run_profile.controller_address + " " + ti.port + " ";
+            }
+            for ( long jc = 0; jc < SOCKET_CODE_SIZE; jc++ ) {
+                executable += job_code[jc];
+            }
+            wxPrintf("SSH_TUNNEL: Command %ld -> tunnel (%s via 127.0.0.1:%s)\n",
+                     command_counter, cmd_ssh_target, ti.port);
+        }
+        else {
+            executable = executable_default;
+            MyDebugPrintGA1("cmd_loop iter=%ld picking DEFAULT executable (target empty or not in tunnel_map)", command_counter);
+            wxPrintf("SSH_TUNNEL: Command %ld -> default\n", command_counter);
+        }
 
         execution_command       = current_run_profile.run_commands[command_counter].command_to_run;
         executable_with_threads = executable + wxString::Format(" %i", current_run_profile.run_commands[command_counter].number_of_threads_per_copy);
@@ -287,6 +614,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
 
         execution_command += "&";
 
+        MyDebugPrintGA1("cmd_loop iter=%ld final execution_command='%s' copies=%ld", command_counter, execution_command, number_to_run_for_this_command);
         for ( process_counter = 0; process_counter < number_to_run_for_this_command; process_counter++ ) {
 
             wxMilliSleep(current_run_profile.run_commands[command_counter].delay_time_in_ms);
@@ -299,11 +627,14 @@ void LaunchJobThread::LaunchRemoteJob( ) {
 
             //wxQueueEvent(main_thread_pointer, test_event);
             //wxExecute(execution_command);
-            system(execution_command.ToUTF8( ).data( ));
+            MyDebugPrintGA1("about to system() iter=%ld copy=%ld", command_counter, process_counter);
+            int sysret = system(execution_command.ToUTF8( ).data( ));
+            MyDebugPrintGA1("system() returned %d for iter=%ld copy=%ld", sysret, command_counter, process_counter);
             number_of_commands_run++;
         }
     }
 
+    MyDebugPrintGA1("LaunchRemoteJob END num_commands_run=%ld waiting on socket events", number_of_commands_run);
     // now we wait for the connections - this is taken care of as server events..
 }
 
@@ -377,16 +708,24 @@ void JobControlApp::SendNumberofConnections( ) {
 //////////////////////////////////////////////////////////////////////////////////////
 
 void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned char* identification_code) {
+    MyDebugPrintGA1("HandleNewSocketConnection ENTRY socket=%p", (void*)new_connection);
 
-    if ( new_connection == NULL )
+    if ( new_connection == NULL ) {
+        MyDebugPrintGA1("HandleNewSocketConnection NULL socket, returning");
         return;
+    }
+
+    wxString peer_ip = ReturnIPAddressFromSocket(new_connection);
+    MyDebugPrintGA1("HandleNewSocketConnection peer_ip='%s'", peer_ip);
 
     if ( (memcmp(identification_code, current_job_code, SOCKET_CODE_SIZE) != 0) ) {
+        MyDebugPrintGA1("HandleNewSocketConnection BAD JOB ID from peer=%s", peer_ip);
         SendError("Unknown Job ID (Job Control), leftover from a previous job? - Closing Connection");
         new_connection->Destroy( ); // should not be monitoring so can just destroy it
         new_connection = NULL;
     }
     else {
+        MyDebugPrintGA1("HandleNewSocketConnection valid job id, peer=%s have_assigned_master=%d", peer_ip, (int)have_assigned_master);
         // one of the workers has connected to us.  If it is the first one then
         // we need to make it the master, tell it to start a socket server
         // and send us the address so we can pass it on to all future workers.
@@ -395,30 +734,90 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
 
         if ( have_assigned_master == false ) // we don't have a master, so assign it
         {
+            MyDebugPrintGA1("HandleNewSocketConnection ASSIGNING MASTER peer=%s", peer_ip);
 
             master_socket        = new_connection;
             have_assigned_master = true;
 
             WriteToSocket(new_connection, socket_you_are_the_master, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+            MyDebugPrintGA1("HandleNewSocketConnection sent socket_you_are_the_master, sending job package");
             // See JobPackage::SendJobPackage() Doxygen for encoding order specification
             current_job_package.SendJobPackage(new_connection);
+            MyDebugPrintGA1("HandleNewSocketConnection job package sent, waiting for master to report ip/port");
 
             bool no_error;
             master_ip_address = ReceivewxStringFromSocket(new_connection, no_error);
             master_port       = ReceivewxStringFromSocket(new_connection, no_error);
+            MyDebugPrintGA1("HandleNewSocketConnection MASTER REPORTED ip='%s' port='%s' no_error=%d", master_ip_address, master_port, (int)no_error);
+
+            // Revert-debug-ga1: set up reverse tunnel for master port to each
+            // remote target, so tunneled workers can reach the master via
+            // 127.0.0.1:<master_tunnel_remote_port> on their own loopback.
+            // The REMOTE listen port is master_tunnel_remote_port (pre-scanned
+            // in LaunchRemoteJob as a high port free on every target) -- it
+            // MUST NOT be the same as master_port because another user's
+            // stale cisTEM worker could silently hold master_port=3002 on a
+            // remote, letting ssh -R bind only [::1]:3002 and shadow the
+            // IPv4 loopback we actually need. The SALINA side of the forward
+            // still targets 127.0.0.1:<master_port> (where the just-elected
+            // master actually listens).
+            if ( ! master_tunnels_established && ! remote_tunnel_targets.IsEmpty( ) ) {
+                if ( master_tunnel_remote_port.IsEmpty( ) ) {
+                    wxPrintf("SSH_TUNNEL: ERROR: no master_tunnel_remote_port reserved, tunneled workers will fail\n");
+                    MyDebugPrintGA1("master-port reverse tunnel skip: no reserved port");
+                }
+                else {
+                    MyDebugPrintGA1("setting up master-port reverse tunnels count=%d remote_port=%s -> salina master_port=%s", (int)remote_tunnel_targets.GetCount( ), master_tunnel_remote_port, master_port);
+                    for ( size_t ii = 0; ii < remote_tunnel_targets.GetCount( ); ii++ ) {
+                        wxString target     = remote_tunnel_targets[ii];
+                        wxString tunnel_cmd = wxString::Format(
+                                "ssh -f -N -o ExitOnForwardFailure=yes -R %s:127.0.0.1:%s %s 2>/dev/null",
+                                master_tunnel_remote_port, master_port, target);
+                        MyDebugPrintGA1("master tunnel target='%s' cmd='%s'", target, tunnel_cmd);
+                        int ret = system(tunnel_cmd.ToUTF8( ).data( ));
+                        MyDebugPrintGA1("master tunnel target='%s' ssh returned %d", target, ret);
+                        if ( ret != 0 ) {
+                            wxPrintf("SSH_TUNNEL: WARNING: master tunnel to %s failed (ret=%d)\n", target, ret);
+                        }
+                        else {
+                            wxPrintf("SSH_TUNNEL: master tunnel to %s established (remote %s -> salina 127.0.0.1:%s)\n", target, master_tunnel_remote_port, master_port);
+                        }
+                    }
+                    master_tunnels_established = true;
+                    MyDebugPrintGA1("master-port reverse tunnels done");
+                }
+            }
 
             // monitor the master socket..
 
             MonitorSocket(new_connection);
 
             number_of_workers_already_connected++;
+            MyDebugPrintGA1("HandleNewSocketConnection master count now %d", (int)number_of_workers_already_connected);
             SendNumberofConnections( );
         }
         else // we have a master, tell this worker who it's master is.
         {
+            // Revert-debug-ga1: if the worker connected via a reverse tunnel
+            // (peer_ip == 127.0.0.1) the master VLAN IP we received from the
+            // master is not routable from the remote host. Substitute both
+            // the ip AND the port: the worker must connect to
+            // 127.0.0.1:<master_tunnel_remote_port> on its own loopback, which
+            // the reverse tunnel forwards back to salina 127.0.0.1:<master_port>.
+            wxString effective_master_ip   = master_ip_address;
+            wxString effective_master_port = master_port;
+            if ( peer_ip == "127.0.0.1" ) {
+                effective_master_ip = "127.0.0.1";
+                if ( ! master_tunnel_remote_port.IsEmpty( ) ) {
+                    effective_master_port = master_tunnel_remote_port;
+                }
+                MyDebugPrintGA1("tunneled worker detected, rewriting master '%s':'%s' -> '%s':'%s'", master_ip_address, master_port, effective_master_ip, effective_master_port);
+            }
+            MyDebugPrintGA1("HandleNewSocketConnection ASSIGNING WORKER peer=%s, telling it master='%s':'%s'", peer_ip, effective_master_ip, effective_master_port);
             WriteToSocket(new_connection, socket_you_are_a_worker, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
-            SendwxStringToSocket(&master_ip_address, new_connection);
-            SendwxStringToSocket(&master_port, new_connection);
+            SendwxStringToSocket(&effective_master_ip, new_connection);
+            SendwxStringToSocket(&effective_master_port, new_connection);
+            MyDebugPrintGA1("HandleNewSocketConnection worker peer=%s told master, monitoring socket", peer_ip);
 
             // that should be the end of our interactions with the worker
             // it should disconnect itself. We have to monitor it however so that
@@ -427,6 +826,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
             MonitorSocket(new_connection);
 
             number_of_workers_already_connected++;
+            MyDebugPrintGA1("HandleNewSocketConnection worker count now %d", (int)number_of_workers_already_connected);
             SendNumberofConnections( );
         }
     }
@@ -445,14 +845,17 @@ void JobControlApp::HandleSocketYouAreConnected(wxSocketBase* connected_socket) 
 }
 
 void JobControlApp::HandleSocketJobPackage(wxSocketBase* connected_socket, JobPackage* received_package) {
+    MyDebugPrintGA1("HandleSocketJobPackage ENTRY received package from gui");
     // we have a job package from the gui, copy it.. start a server and launch the jobs..
 
     current_job_package = *received_package;
     delete received_package;
+    MyDebugPrintGA1("HandleSocketJobPackage copied package, profile.num_run_commands=%ld total_jobs=%i", current_job_package.my_profile.number_of_run_commands, current_job_package.number_of_jobs);
 
     SetupServer( );
     my_port        = ReturnServerPort( );
     my_port_string = ReturnServerPortString( );
+    MyDebugPrintGA1("HandleSocketJobPackage SetupServer done my_port=%ld my_port_string='%s'", my_port, my_port_string);
 
     wxString      current_address_according_to_gui;
     wxString      ip_address_string;
@@ -475,7 +878,9 @@ void JobControlApp::HandleSocketJobPackage(wxSocketBase* connected_socket, JobPa
         ip_address_string += my_possible_ip_addresses.Item(counter);
     }
 
+    MyDebugPrintGA1("HandleSocketJobPackage final ip_address_string='%s' creating LaunchJobThread", ip_address_string);
     LaunchJobThread* launch_thread = new LaunchJobThread(this, current_job_package.my_profile, ip_address_string, my_port_string, current_job_code, current_job_package.number_of_jobs);
+    MyDebugPrintGA1("HandleSocketJobPackage LaunchJobThread created, calling Run()");
 
     if ( launch_thread->Run( ) != wxTHREAD_NO_ERROR ) {
         MyPrintWithDetails("Can't create the launch thread!");
@@ -571,9 +976,11 @@ void JobControlApp::HandleSocketTemplateMatchResultReady(wxSocketBase* connected
 }
 
 void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
+    MyDebugPrintGA1("HandleSocketDisconnect ENTRY socket=%p gui_socket=%p master_socket=%p", (void*)connected_socket, (void*)gui_socket, (void*)master_socket);
     // what disconnected..
 
     if ( connected_socket == gui_socket ) {
+        MyDebugPrintGA1("HandleSocketDisconnect GUI DISCONNECT, aborting");
         MyDebugPrint("Got a disconnect from the GUI - aborting");
 
         if ( have_assigned_master == true ) {

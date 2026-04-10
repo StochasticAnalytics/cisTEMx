@@ -66,6 +66,10 @@ namespace cistem {
 #define MyDebugPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); StackDump dump(NULL); dump.MyWalk(2);}
 #define MyPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__);StackDump dump(NULL); dump.MyWalk(2);}
 #define MyDebugPrint(...)	{wxPrintf(__VA_ARGS__); wxPrintf("\n");}
+// Revert-debug-ga1: no-op after GA1 silent-worker investigation was resolved.
+// Call sites remain in the code but compile away. To re-enable, restore the
+// original body: {wxPrintf("Revert-debug-ga1 [%s] %s:%i %s | ", ...); ...}
+#define MyDebugPrintGA1(...)	do { } while (0)
 #define MyDebugAssertTrue(cond, msg, ...) {if ((cond) != true) { wxPrintf("\n" msg, ##__VA_ARGS__); wxPrintf("\nFailed Assert at %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); DEBUG_ABORT;}}
 #define MyDebugAssertFalse(cond, msg, ...) {if ((cond) == true) { wxPrintf("\n" msg, ##__VA_ARGS__); wxPrintf("\nFailed Assert at %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); DEBUG_ABORT;}}
 #define DEBUG_ABORT {StackDump dump(NULL); dump.MyWalk(1); abort();}
@@ -74,6 +78,8 @@ namespace cistem {
 #define MyPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__);}
 #define MyDebugPrintWithDetails(...)
 #define MyDebugPrint(...)
+// Revert-debug-ga1: no-op after GA1 silent-worker investigation was resolved.
+#define MyDebugPrintGA1(...)	do { } while (0)
 #define MyDebugAssertTrue(cond, msg, ...)
 #define MyDebugAssertFalse(cond, msg, ...)
 #define DEBUG_ABORT exit(-1);

@@ -474,6 +474,7 @@ bool Refine3DApp::DoCalculation( ) {
 #ifdef cisTEM_USE_CG_REFACTOR_2026
     PowellConjugateGradient conjugate_gradient_minimizer;
 #else
+#error
     ConjugateGradient conjugate_gradient_minimizer;
 #endif
     EulerSearch           global_euler_search, euler_search_local;

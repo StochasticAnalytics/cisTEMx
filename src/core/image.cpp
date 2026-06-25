@@ -9952,6 +9952,17 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
     const int      mip_stride                        = logical_x_dimension + padding_jump_value;
     const int      original_peakfirst_element_offset = (original_peak_size / 2) * (mip_stride) + original_peak_size / 2;
 
+    // Snapshot the MIP for upsample tile crops. The main real_values buffer below
+    // is mutated by exclusion-zone masking (-FLT_MAX sentinels) as peaks are
+    // accepted; without this snapshot, a later peak whose 8x8 neighborhood
+    // overlaps a prior peak's exclusion zone pulls -FLT_MAX into the FFT input
+    // and produces NaN/Inf in the upsampled image. The pre-existing isnan() guard
+    // below silently masked those failures (~10% of peaks on average, up to 100%
+    // on dense-cluster MIPs), so peaks that would have crossed threshold via
+    // upsample correction were instead rejected at integer height.
+    Image clean_mip;
+    clean_mip = *this;
+
     // Rather than putting checks on whether we are in the FFTW padding or not, lets just fill it with nearby values
     // We don't want to use ZeroFFTWPadding() as this could create strong discontinuities when we extract
     long fill_counter = logical_x_dimension;
@@ -9990,7 +10001,7 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
             if ( peak_address_mip >= 0 && peak_address_mip + original_peak_size * mip_stride + original_peak_size < real_memory_allocated ) {
                 for ( int peak_j = 0; peak_j < original_peak_size; peak_j++ ) {
                     for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
-                        original_peak.real_values[peak_address] = real_values[peak_address_mip];
+                        original_peak.real_values[peak_address] = clean_mip.real_values[peak_address_mip];
                         peak_address++;
                         peak_address_mip++;
                     }
@@ -10103,6 +10114,445 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
         }
         else
             real_values[current_peak.physical_address_within_image] = -std::numeric_limits<float>::max( );
+    }
+}
+
+/**
+ * @brief Sweep variant of FindPeakWithIntegerCoordinatesForManyPeaks that exposes the
+ *        upsampling region sizes/factor and the padding mode as arguments, and also
+ *        emits per-peak FWHM (in upsampled pixel units). Production code should keep
+ *        using the original method; this exists so we can sweep the upsampling knobs.
+ *
+ * Production-equivalent defaults:
+ *   sweep_original_peak_size  = 8
+ *   sweep_padding_multiplier  = 2  (padded_peak_size = 2 * original)
+ *   sweep_upsample_factor     = 8  (upsample_peak_size = 8 * padded)
+ *   sweep_padding_mode        = 0  (mirror reflection)
+ *
+ * Padding modes:
+ *   0 = mirror   - existing production behavior; fills the inner 2N x 2N region with
+ *                  reflected copies of the source tile (with the trailing rows/cols
+ *                  duplicated at the seam). For padding_multiplier > 2 the rest of
+ *                  the padded box stays zero.
+ *   1 = zero     - place the source tile at the top-left of the padded box; the rest
+ *                  of the box stays at zero (set by Allocate).
+ *   2 = hann_zero- apply a 2D Hann window to the source tile during the copy, then
+ *                  zero-pad. Tapers values at tile edges to suppress spectral
+ *                  leakage; complements zero-padding.
+ *
+ * Per-peak outputs:
+ *   fwhm_x_upsampled_px[i], fwhm_y_upsampled_px[i] - 1D FWHM measured along x / y
+ *       through the upsampled peak max, in upsampled pixel units. Set to -1.0f
+ *       when upsampling did not run for that peak (peak_threshold_scale == 1.0f
+ *       or the peak was too close to the MIP edge to extract).
+ */
+void Image::FindPeakWithIntegerCoordinatesForManyPeaksSweep(std::vector<Peak>&  peak_list,
+                                                            std::vector<Peak>&  upsampled_peak_list,
+                                                            std::vector<float>& fwhm_x_upsampled_px,
+                                                            std::vector<float>& fwhm_y_upsampled_px,
+                                                            std::vector<int>&   upsample_status,
+                                                            const float         peak_threshold,
+                                                            const float         peak_threshold_scale,
+                                                            const float         exclusion_radius,
+                                                            const int           wanted_min_distance_from_edges,
+                                                            const int           sweep_original_peak_size,
+                                                            const int           sweep_padding_multiplier,
+                                                            const int           sweep_upsample_factor,
+                                                            const int           sweep_padding_mode,
+                                                            const float         sweep_width_fraction) {
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
+    MyDebugAssertTrue(object_is_centred_in_box, "This method is specialized for objects centered in the box");
+    MyDebugAssertTrue(logical_z_dimension == 1, "This method is specialized for 2d");
+    MyDebugAssertTrue(exclusion_radius >= 0.f, "Exclusion radius must be zero or positive");
+    MyDebugAssertTrue(wanted_min_distance_from_edges >= 0, "wanted_min_distance_from_edges must be zero or positive");
+    MyDebugAssertTrue(2 * wanted_min_distance_from_edges < logical_x_dimension, "No pixels to search in X!");
+    MyDebugAssertTrue(2 * wanted_min_distance_from_edges < logical_y_dimension, "No pixels to search in Y!");
+    MyDebugAssertTrue(sweep_original_peak_size > 0 && sweep_original_peak_size % 2 == 0, "sweep_original_peak_size must be a positive even integer");
+    MyDebugAssertTrue(sweep_padding_multiplier >= 1, "sweep_padding_multiplier must be >= 1");
+    MyDebugAssertTrue(sweep_upsample_factor >= 1, "sweep_upsample_factor must be >= 1");
+    MyDebugAssertTrue(sweep_padding_mode >= 0 && sweep_padding_mode <= 2, "sweep_padding_mode must be 0, 1, or 2");
+
+    peak_list.clear( );
+    peak_list.reserve(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS / 10);
+    upsampled_peak_list.clear( );
+    upsampled_peak_list.reserve(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS / 10);
+    fwhm_x_upsampled_px.clear( );
+    fwhm_x_upsampled_px.reserve(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS / 10);
+    fwhm_y_upsampled_px.clear( );
+    fwhm_y_upsampled_px.reserve(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS / 10);
+    upsample_status.clear( );
+    upsample_status.reserve(cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS / 10);
+
+    const int   original_peak_size = sweep_original_peak_size;
+    const int   padded_peak_size   = sweep_padding_multiplier * original_peak_size;
+    const int   upsample_peak_size = sweep_upsample_factor * padded_peak_size;
+    const int   origin_offset      = padded_peak_size / 2 - original_peak_size / 2;
+    const float upsample_factor    = float(upsample_peak_size) / float(padded_peak_size);
+
+    Image original_peak;
+    Image padded_peak;
+    Image upsample_peak;
+
+    bool  do_upsampling    = peak_threshold_scale == 1.0f ? false : true;
+    float search_threshold = peak_threshold_scale * peak_threshold;
+
+    if ( do_upsampling ) {
+        original_peak.Allocate(original_peak_size, original_peak_size, 1, true);
+        upsample_peak.Allocate(upsample_peak_size, upsample_peak_size, 1, true);
+        padded_peak.Allocate(padded_peak_size, padded_peak_size, 1, true);
+    }
+
+    std::priority_queue<Sortable2dPeak> peak_queue;
+    long                                address = 0;
+    for ( int j = 0 + wanted_min_distance_from_edges; j < logical_y_dimension - wanted_min_distance_from_edges; j++ ) {
+        for ( int i = 0 + wanted_min_distance_from_edges; i < logical_x_dimension - wanted_min_distance_from_edges; i++ ) {
+            address = ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
+            if ( real_values[address] > search_threshold ) {
+                peak_queue.emplace(real_values[address], address);
+            }
+        }
+    }
+
+    float exclusion_radius_sq  = exclusion_radius * exclusion_radius;
+    int   exclusion_radius_int = int(std::ceil(exclusion_radius)) + 1;
+
+    Sortable2dPeak current_peak;
+    int            x, y;
+    const int      mip_stride                        = logical_x_dimension + padding_jump_value;
+    const int      original_peakfirst_element_offset = (original_peak_size / 2) * (mip_stride) + original_peak_size / 2;
+
+    // Snapshot the MIP for upsample tile crops. The main real_values buffer below
+    // gets mutated by exclusion-zone masking (-FLT_MAX sentinels) as peaks are
+    // accepted; that contaminates the 8x8 tile when a later peak's neighborhood
+    // overlaps a prior peak's exclusion zone, which feeds -FLT_MAX into the FFT
+    // and produces NaN/Inf in the upsample. clean_mip preserves the original
+    // pixel values for the FFT input; tracking still happens on real_values.
+    Image clean_mip;
+    clean_mip = *this;
+
+    long fill_counter = logical_x_dimension;
+    if ( padding_jump_value == 1 ) {
+        for ( int j = 0; j < logical_y_dimension; j++ ) {
+            real_values[fill_counter] = real_values[fill_counter] - 1;
+            fill_counter += mip_stride;
+        }
+    }
+    else {
+        for ( int j = 0; j < logical_y_dimension; j++ ) {
+            real_values[fill_counter]     = real_values[fill_counter - 1];
+            real_values[fill_counter + 1] = real_values[fill_counter - 2];
+            fill_counter += mip_stride;
+        }
+    }
+
+    while ( ! peak_queue.empty( ) && peak_list.size( ) < cistem::match_template::MAX_ALLOWED_NUMBER_OF_PEAKS ) {
+        current_peak = peak_queue.top( );
+        peak_queue.pop( );
+        if ( real_values[current_peak.physical_address_within_image] != current_peak.value )
+            continue;
+
+        float found_peak_value = current_peak.value;
+        float sub_pixel_x      = 0.0f;
+        float sub_pixel_y      = 0.0f;
+
+        // Per-peak diagnostic status. 0 = upsample improved peak height,
+        // 1 = edge-bound check failed (peak too close to MIP edge to extract tile),
+        // 2 = upsampled value is NaN or never updated (all NaN in search box),
+        // 3 = upsampled max was real but did NOT exceed integer max,
+        // 4 = upsampling globally disabled (peak_threshold_scale == 1.0).
+        int upsample_status_value = 4;
+
+        if ( do_upsampling ) {
+            // If the edge-bounds check below fails we'll fall through with status=1.
+            upsample_status_value = 1;
+            long peak_address_mip = current_peak.physical_address_within_image - original_peakfirst_element_offset;
+            int  peak_address     = 0;
+            if ( peak_address_mip >= 0 && peak_address_mip + original_peak_size * mip_stride + original_peak_size < real_memory_allocated ) {
+                for ( int peak_j = 0; peak_j < original_peak_size; peak_j++ ) {
+                    for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
+                        original_peak.real_values[peak_address] = clean_mip.real_values[peak_address_mip];
+                        peak_address++;
+                        peak_address_mip++;
+                    }
+                    peak_address += original_peak.padding_jump_value;
+                    peak_address_mip += mip_stride - original_peak_size;
+                }
+
+                // Track per-peak FWHM; -1 sentinel if upsampling not run for this peak.
+                float fwhm_x_px = -1.0f;
+                float fwhm_y_px = -1.0f;
+
+                int peak_address_padded = 0;
+                peak_address            = 0;
+
+                // Modes 1 (zero-pad) and 2 (Hann + zero-pad) intentionally leave parts
+                // of the padded box at zero, so they need a clean zero base. Mode 0
+                // (symmetric mirror) tiles the entire padded box below, no zero base
+                // needed; matches production exactly at pm=2 where no zeroing happens.
+                if ( sweep_padding_mode != 0 ) {
+                    padded_peak.SetToConstant(0.f);
+                }
+
+                if ( sweep_padding_mode == 0 ) {
+                    // Symmetric mirror tiling. The padded box is filled by (pm x pm)
+                    // copies of the original NxN tile, with each copy x-flipped iff
+                    // its column-block index is odd and y-flipped iff its row-block
+                    // index is odd. Adjacent tile boundaries are mirror-continuous,
+                    // so the entire padded box is C0-continuous (no internal step
+                    // discontinuities). For pm=2 this collapses to production's
+                    // 4-copy 2N x 2N tiling; for pm>2 it generalizes that scheme
+                    // without introducing any zero region.
+                    std::vector<float> x_line(original_peak_size);
+                    for ( int j = 0; j < original_peak_size; j++ ) {
+                        for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
+                            x_line[peak_i] = original_peak.real_values[peak_address];
+                            peak_address++;
+                        }
+                        peak_address += original_peak.padding_jump_value;
+
+                        for ( int rb = 0; rb < sweep_padding_multiplier; rb++ ) {
+                            const int padded_row = (rb % 2 == 0)
+                                                           ? (rb * original_peak_size + j)
+                                                           : (rb * original_peak_size + (original_peak_size - 1 - j));
+                            for ( int cb = 0; cb < sweep_padding_multiplier; cb++ ) {
+                                const int padded_col0 = cb * original_peak_size;
+                                int       insert_at   = padded_peak.ReturnReal1DAddressFromPhysicalCoord(padded_col0, padded_row, 0);
+                                if ( cb % 2 == 0 ) {
+                                    for ( int i = 0; i < original_peak_size; i++ ) {
+                                        padded_peak.real_values[insert_at + i] = x_line[i];
+                                    }
+                                }
+                                else {
+                                    for ( int i = 0; i < original_peak_size; i++ ) {
+                                        padded_peak.real_values[insert_at + i] = x_line[original_peak_size - 1 - i];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else {
+                    // Modes 1 (zero) and 2 (Hann window + zero) both place the source
+                    // tile at top-left and leave the rest of padded_peak at zero.
+                    const bool  apply_hann = (sweep_padding_mode == 2);
+                    const float two_pi     = 6.28318530717958647692f;
+                    for ( int j = 0; j < original_peak_size; j++ ) {
+                        float wy = 1.0f;
+                        if ( apply_hann && original_peak_size > 1 ) {
+                            wy = 0.5f * (1.0f - cosf(two_pi * float(j) / float(original_peak_size - 1)));
+                        }
+                        int insert_at = padded_peak.ReturnReal1DAddressFromPhysicalCoord(0, j, 0);
+                        for ( int peak_i = 0; peak_i < original_peak_size; peak_i++ ) {
+                            float wx = 1.0f;
+                            if ( apply_hann && original_peak_size > 1 ) {
+                                wx = 0.5f * (1.0f - cosf(two_pi * float(peak_i) / float(original_peak_size - 1)));
+                            }
+                            padded_peak.real_values[insert_at + peak_i] = wx * wy * original_peak.real_values[peak_address];
+                            peak_address++;
+                        }
+                        peak_address += original_peak.padding_jump_value;
+                    }
+                }
+
+                upsample_peak.is_in_real_space = false;
+                upsample_peak.SetToConstant(0.f);
+                padded_peak.ForwardFFT( );
+                float shift_origin = float(padded_peak_size / 2 - original_peak_size / 2);
+                padded_peak.PhaseShift(shift_origin, shift_origin, 0);
+
+                padded_peak.ClipInto(&upsample_peak);
+                upsample_peak.BackwardFFT( );
+
+                upsample_peak.object_is_centred_in_box = true;
+
+                // The integer pixel max is by construction the local maximum within
+                // its Voronoi cell, so the continuous peak it represents must lie in
+                // [-0.5, +0.5] px x [-0.5, +0.5] px around the integer center. The
+                // cell is a square (the corners (+/-0.5, +/-0.5) are inside it); a
+                // disc of radius 0.5 would miss the corners. Search exactly that
+                // square in upsample coords -> a (upfac+1) x (upfac+1) box centered
+                // on box_center. Anything found further out cannot be this peak: it
+                // would be a different local max, ringing, or a neighbor peak that
+                // the priority queue is processing separately. Using a wider search
+                // box (e.g. the full tile region) silently steals neighbor peaks'
+                // upsample values and inflates the reported correction; we used to
+                // do that and it produced ~20% unphysical |d|>0.5 hits at orig=8.
+                const int box_center_x         = upsample_peak.physical_address_of_box_center_x;
+                const int box_center_y         = upsample_peak.physical_address_of_box_center_y;
+                const int sub_search_radius_up = int(upsample_factor) / 2;
+                const int sub_x0               = std::max(0, box_center_x - sub_search_radius_up);
+                const int sub_x1               = std::min(upsample_peak.logical_x_dimension - 1, box_center_x + sub_search_radius_up);
+                const int sub_y0               = std::max(0, box_center_y - sub_search_radius_up);
+                const int sub_y1               = std::min(upsample_peak.logical_y_dimension - 1, box_center_y + sub_search_radius_up);
+
+                // FWHM walk bounds: the FWHM measurement needs a wider region to
+                // actually walk down the peak shoulder past the half-max threshold.
+                // Bound it by the original-signal region of upsample_peak (the same
+                // asymmetric square the old code used for both search and walk):
+                //   N/2 pixels to the left of peak, N/2-1 to the right (in original
+                //   coords; multiplied by upfac to get upsample coords).
+                const int half_tile_neg_up = (original_peak_size / 2) * int(upsample_factor);
+                const int half_tile_pos_up = (original_peak_size / 2 - 1) * int(upsample_factor);
+                const int tile_x0          = std::max(0, box_center_x - half_tile_neg_up);
+                const int tile_x1          = std::min(upsample_peak.logical_x_dimension - 1, box_center_x + half_tile_pos_up);
+                const int tile_y0          = std::max(0, box_center_y - half_tile_neg_up);
+                const int tile_y1          = std::min(upsample_peak.logical_y_dimension - 1, box_center_y + half_tile_pos_up);
+
+                Peak upsampled_found_peak;
+                upsampled_found_peak.value                         = -std::numeric_limits<float>::max( );
+                upsampled_found_peak.x                             = 0.f;
+                upsampled_found_peak.y                             = 0.f;
+                upsampled_found_peak.z                             = 1.f;
+                upsampled_found_peak.physical_address_within_image = 0;
+                for ( int yy = sub_y0; yy <= sub_y1; yy++ ) {
+                    for ( int xx = sub_x0; xx <= sub_x1; xx++ ) {
+                        long a = upsample_peak.ReturnReal1DAddressFromPhysicalCoord(xx, yy, 0);
+                        if ( upsample_peak.real_values[a] > upsampled_found_peak.value ) {
+                            upsampled_found_peak.value                         = upsample_peak.real_values[a];
+                            upsampled_found_peak.x                             = float(xx - box_center_x);
+                            upsampled_found_peak.y                             = float(yy - box_center_y);
+                            upsampled_found_peak.physical_address_within_image = a;
+                        }
+                    }
+                }
+
+                // Width measurement above the per-image threshold. The threshold
+                // (peak_threshold, from the caller; in practice the histogram-derived
+                // expected_threshold) is the signal/noise boundary by definition;
+                // peaks below it aren't peaks. Using it as the baseline means
+                // sweep_width_fraction is the fraction of the peak's above-threshold
+                // excursion at which to measure width:
+                //     walk_threshold = peak_threshold + (peak_max - peak_threshold) * fraction
+                // Default fraction = 0.5: width at half the above-threshold height
+                // (a "FWHM"-shaped measurement, but referenced to the noise floor
+                // instead of zero). Walk caps are the central-tile edges, regardless
+                // of peak position - past those we're in mirror/zero-pad territory.
+                if ( ! std::isnan(upsampled_found_peak.value) ) {
+                    const int peak_px = box_center_x + int(roundf(upsampled_found_peak.x));
+                    const int peak_py = box_center_y + int(roundf(upsampled_found_peak.y));
+
+                    if ( peak_px >= tile_x0 && peak_px <= tile_x1 && peak_py >= tile_y0 && peak_py <= tile_y1 ) {
+                        const float baseline  = peak_threshold;
+                        const float peak_max  = upsampled_found_peak.value;
+                        const float excursion = peak_max - baseline;
+
+                        if ( excursion > 0.0f ) {
+                            const float walk_threshold = baseline + excursion * sweep_width_fraction;
+
+                            int left = peak_px;
+                            while ( left > tile_x0 ) {
+                                long a = upsample_peak.ReturnReal1DAddressFromPhysicalCoord(left - 1, peak_py, 0);
+                                if ( upsample_peak.real_values[a] < walk_threshold )
+                                    break;
+                                left--;
+                            }
+                            int right = peak_px;
+                            while ( right < tile_x1 ) {
+                                long a = upsample_peak.ReturnReal1DAddressFromPhysicalCoord(right + 1, peak_py, 0);
+                                if ( upsample_peak.real_values[a] < walk_threshold )
+                                    break;
+                                right++;
+                            }
+                            const bool x_walk_ok = (left > tile_x0) && (right < tile_x1);
+                            fwhm_x_px            = x_walk_ok ? float(right - left) : -1.0f;
+
+                            int top = peak_py;
+                            while ( top > tile_y0 ) {
+                                long a = upsample_peak.ReturnReal1DAddressFromPhysicalCoord(peak_px, top - 1, 0);
+                                if ( upsample_peak.real_values[a] < walk_threshold )
+                                    break;
+                                top--;
+                            }
+                            int bot = peak_py;
+                            while ( bot < tile_y1 ) {
+                                long a = upsample_peak.ReturnReal1DAddressFromPhysicalCoord(peak_px, bot + 1, 0);
+                                if ( upsample_peak.real_values[a] < walk_threshold )
+                                    break;
+                                bot++;
+                            }
+                            const bool y_walk_ok = (top > tile_y0) && (bot < tile_y1);
+                            fwhm_y_px            = y_walk_ok ? float(bot - top) : -1.0f;
+                        }
+                    }
+                }
+
+                // Distinguish NaN / never-updated (-FLT_MAX) from real-but-no-improvement.
+                if ( std::isnan(upsampled_found_peak.value) || upsampled_found_peak.value == -std::numeric_limits<float>::max( ) ) {
+                    upsample_status_value = 2;
+                }
+                else if ( upsampled_found_peak.value > found_peak_value ) {
+                    found_peak_value      = upsampled_found_peak.value;
+                    sub_pixel_x           = upsampled_found_peak.x / upsample_factor;
+                    sub_pixel_y           = upsampled_found_peak.y / upsample_factor;
+                    upsample_status_value = 0;
+                }
+                else {
+                    upsample_status_value = 3;
+                }
+
+                original_peak.is_in_real_space = true;
+                original_peak.SetToConstant(0.f);
+                padded_peak.is_in_real_space = true;
+
+                // Stash FWHM so we can emit it if the peak passes the threshold
+                // check below. We don't push to the output vectors yet because the
+                // peak might still be rejected.
+                fwhm_x_upsampled_px.push_back(fwhm_x_px);
+                fwhm_y_upsampled_px.push_back(fwhm_y_px);
+                upsample_status.push_back(upsample_status_value);
+            }
+            else {
+                // Out-of-bounds peak; no upsampling done.
+                fwhm_x_upsampled_px.push_back(-1.0f);
+                fwhm_y_upsampled_px.push_back(-1.0f);
+                upsample_status.push_back(upsample_status_value); // = 1
+            }
+        }
+        else {
+            // Upsampling disabled (peak_threshold_scale == 1.0f); no FWHM available.
+            fwhm_x_upsampled_px.push_back(-1.0f);
+            fwhm_y_upsampled_px.push_back(-1.0f);
+            upsample_status.push_back(upsample_status_value); // = 4
+        }
+
+        if ( found_peak_value > peak_threshold ) {
+            x = current_peak.physical_address_within_image % (logical_x_dimension + padding_jump_value);
+            y = current_peak.physical_address_within_image / (logical_x_dimension + padding_jump_value);
+
+            peak_list.emplace_back(float(x),
+                                   float(y),
+                                   1.f,
+                                   current_peak.value,
+                                   current_peak.physical_address_within_image);
+
+            upsampled_peak_list.emplace_back(sub_pixel_x,
+                                             sub_pixel_y,
+                                             1.f,
+                                             found_peak_value,
+                                             current_peak.physical_address_within_image);
+
+            for ( int j = std::max(0, y - exclusion_radius_int); j < std::min(logical_y_dimension, y + exclusion_radius_int + 1); j++ ) {
+                long  y_offset = j * (logical_x_dimension + padding_jump_value);
+                float y_sq     = float(j) - y;
+                y_sq *= y_sq;
+                for ( int i = std::max(0, x - exclusion_radius_int); i < std::min(logical_x_dimension, x + exclusion_radius_int + 1); i++ ) {
+                    float x_sq = float(i) - x;
+                    if ( x_sq * x_sq + y_sq <= exclusion_radius_sq )
+                        real_values[y_offset + i] = -std::numeric_limits<float>::max( );
+                }
+            }
+        }
+        else {
+            real_values[current_peak.physical_address_within_image] = -std::numeric_limits<float>::max( );
+            // Drop the per-peak diagnostic entries we just pushed - this peak was rejected.
+            if ( ! fwhm_x_upsampled_px.empty( ) )
+                fwhm_x_upsampled_px.pop_back( );
+            if ( ! fwhm_y_upsampled_px.empty( ) )
+                fwhm_y_upsampled_px.pop_back( );
+            if ( ! upsample_status.empty( ) )
+                upsample_status.pop_back( );
+        }
     }
 }
 

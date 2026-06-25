@@ -4,16 +4,65 @@
 
 #include "../match_template/template_matching_peak_extractor.h"
 
+// Enable an experimental CLI-driven parameter sweep over the upsampling knobs in
+// Image::FindPeakWithIntegerCoordinatesForManyPeaksSweep. Driven from the Python
+// driver script in scripts/peak_upsampling_sweep.py.
+#define cisTEM_test_peak_upsampling_sweep
+
 class
         MakeTemplateResult : public MyApp {
   public:
     bool DoCalculation( );
     void DoInteractiveUserInput( );
+#ifdef cisTEM_test_peak_upsampling_sweep
+    void AddCommandLineOptions( );
+#endif
 
   private:
 };
 
 IMPLEMENT_APP(MakeTemplateResult)
+
+#ifdef cisTEM_test_peak_upsampling_sweep
+void MakeTemplateResult::AddCommandLineOptions( ) {
+    command_line_parser.AddOption("", "sweep-peak-threshold-scale",
+                                  "Override peak_threshold_scale passed to FindPeakWithIntegerCoordinatesForManyPeaksSweep "
+                                  "(production default 0.85 when peak sampling correction is on, 1.0 otherwise).",
+                                  wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "sweep-original-peak-size",
+                                  "Override original_peak_size for the upsampling region (production default 8). "
+                                  "Must be a positive even integer.",
+                                  wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-padding-multiplier",
+                                  "Override padding multiplier so padded_peak_size = N*original (production default 2).",
+                                  wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-upsample-factor",
+                                  "Override upsample factor so upsample_peak_size = N*padded (production default 8).",
+                                  wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-padding-mode",
+                                  "Padding mode: 0=mirror (production), 1=zero pad, 2=Hann window + zero pad. Default 0.",
+                                  wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-width-fraction",
+                                  "Fraction of peak excursion above baseline at which to measure peak width. "
+                                  "0.5 = FWHM (above baseline); 0.67 = 2/3-max width; etc. Default 0.5.",
+                                  wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "sweep-annulus-inner-fwhm-mult",
+                                  "Inner annulus radius as a multiple of measured per-peak FWHM (avg of x,y). Default 1.5.",
+                                  wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "sweep-annulus-outer-fwhm-mult",
+                                  "Outer annulus radius as a multiple of measured per-peak FWHM (avg of x,y). Default 4.0.",
+                                  wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "sweep-annulus-fallback-inner-px",
+                                  "Fallback inner annulus radius (MIP px) when FWHM is unavailable. Default 12.",
+                                  wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "sweep-annulus-fallback-outer-px",
+                                  "Fallback outer annulus radius (MIP px) when FWHM is unavailable. Default 24.",
+                                  wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "sweep-diag-out",
+                                  "Path to write per-peak diagnostic sidecar file (CSV). If empty, no file is written.",
+                                  wxCMD_LINE_VAL_STRING);
+}
+#endif
 
 // override the DoInteractiveUserInput
 
@@ -120,6 +169,63 @@ bool MakeTemplateResult::DoCalculation( ) {
 
     float padding = 2.0f;
 
+#ifdef cisTEM_test_peak_upsampling_sweep
+    // Sweep parameters: defaults reproduce the production behavior exactly.
+    float    sweep_peak_threshold_scale      = use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f;
+    int      sweep_original_peak_size        = 8;
+    int      sweep_padding_multiplier        = 2;
+    int      sweep_upsample_factor           = 8;
+    int      sweep_padding_mode              = 0;
+    float    sweep_width_fraction            = 0.5f;
+    float    sweep_annulus_inner_fwhm_mult   = 1.5f;
+    float    sweep_annulus_outer_fwhm_mult   = 4.0f;
+    float    sweep_annulus_fallback_inner_px = 12.0f;
+    float    sweep_annulus_fallback_outer_px = 24.0f;
+    wxString sweep_diag_out;
+
+    double temp_double = 0.0;
+    long   temp_long   = 0;
+    if ( command_line_parser.Found("sweep-peak-threshold-scale", &temp_double) ) {
+        sweep_peak_threshold_scale = float(temp_double);
+    }
+    if ( command_line_parser.Found("sweep-original-peak-size", &temp_long) ) {
+        sweep_original_peak_size = int(temp_long);
+    }
+    if ( command_line_parser.Found("sweep-padding-multiplier", &temp_long) ) {
+        sweep_padding_multiplier = int(temp_long);
+    }
+    if ( command_line_parser.Found("sweep-upsample-factor", &temp_long) ) {
+        sweep_upsample_factor = int(temp_long);
+    }
+    if ( command_line_parser.Found("sweep-padding-mode", &temp_long) ) {
+        sweep_padding_mode = int(temp_long);
+    }
+    if ( command_line_parser.Found("sweep-width-fraction", &temp_double) ) {
+        sweep_width_fraction = float(temp_double);
+    }
+    if ( command_line_parser.Found("sweep-annulus-inner-fwhm-mult", &temp_double) ) {
+        sweep_annulus_inner_fwhm_mult = float(temp_double);
+    }
+    if ( command_line_parser.Found("sweep-annulus-outer-fwhm-mult", &temp_double) ) {
+        sweep_annulus_outer_fwhm_mult = float(temp_double);
+    }
+    if ( command_line_parser.Found("sweep-annulus-fallback-inner-px", &temp_double) ) {
+        sweep_annulus_fallback_inner_px = float(temp_double);
+    }
+    if ( command_line_parser.Found("sweep-annulus-fallback-outer-px", &temp_double) ) {
+        sweep_annulus_fallback_outer_px = float(temp_double);
+    }
+    command_line_parser.Found("sweep-diag-out", &sweep_diag_out);
+    wxPrintf("\n[sweep] peak_threshold_scale=%f original_peak_size=%i padding_multiplier=%i "
+             "upsample_factor=%i padding_mode=%i annulus_fwhm_mult=[%f,%f] "
+             "annulus_fallback_px=[%f,%f] diag=%s\n",
+             sweep_peak_threshold_scale, sweep_original_peak_size, sweep_padding_multiplier,
+             sweep_upsample_factor, sweep_padding_mode,
+             sweep_annulus_inner_fwhm_mult, sweep_annulus_outer_fwhm_mult,
+             sweep_annulus_fallback_inner_px, sweep_annulus_fallback_outer_px,
+             sweep_diag_out.IsEmpty( ) ? "(none)" : sweep_diag_out.ToUTF8( ).data( ));
+#endif
+
     ImageFile input_reconstruction_file;
 
     input_reconstruction_file.OpenFile(input_reconstruction_filename.ToStdString( ), false);
@@ -219,11 +325,149 @@ bool MakeTemplateResult::DoCalculation( ) {
     std::vector<Peak>                  peak_list;
     std::vector<Peak>                  upsampled_peak_list;
     ArrayOfTemplateMatchFoundPeakInfos all_peak_infos;
+#ifdef cisTEM_test_peak_upsampling_sweep
+    std::vector<float> sweep_fwhm_x_px;
+    std::vector<float> sweep_fwhm_y_px;
+    std::vector<int>   sweep_upsample_status;
+#endif
 
     if ( ! read_coordinates ) {
         // Search mode: find peaks in MIP
         Image masked_mip;
         masked_mip = mip_image;
+#ifdef cisTEM_test_peak_upsampling_sweep
+        masked_mip.FindPeakWithIntegerCoordinatesForManyPeaksSweep(
+                peak_list,
+                upsampled_peak_list,
+                sweep_fwhm_x_px,
+                sweep_fwhm_y_px,
+                sweep_upsample_status,
+                wanted_threshold,
+                sweep_peak_threshold_scale,
+                sqrtf(min_peak_radius),
+                0,
+                sweep_original_peak_size,
+                sweep_padding_multiplier,
+                sweep_upsample_factor,
+                sweep_padding_mode,
+                sweep_width_fraction);
+
+        // Per-peak diagnostic sidecar: FWHM in Angstroms, plus annulus background
+        // stats from the original (unmodified) MIP. Annulus inner/outer radii are
+        // derived per-peak from the measured FWHM (multiples of the avg of fwhm_x
+        // and fwhm_y, in MIP px). When FWHM is unavailable (no upsampling done, or
+        // peak too close to edge) we fall back to fixed-px radii.
+        if ( ! sweep_diag_out.IsEmpty( ) ) {
+            wxFFile diag_fh(sweep_diag_out, "w");
+            if ( diag_fh.IsOpened( ) ) {
+                diag_fh.Write(wxString::Format("# image_mip=%s\n", input_mip_filename));
+                diag_fh.Write(wxString::Format("# pixel_size_A=%f\n", search_pixel_size));
+                diag_fh.Write(wxString::Format("# wanted_threshold=%f\n", wanted_threshold));
+                diag_fh.Write(wxString::Format("# sweep_peak_threshold_scale=%f\n", sweep_peak_threshold_scale));
+                diag_fh.Write(wxString::Format("# sweep_original_peak_size=%i\n", sweep_original_peak_size));
+                diag_fh.Write(wxString::Format("# sweep_padding_multiplier=%i\n", sweep_padding_multiplier));
+                diag_fh.Write(wxString::Format("# sweep_upsample_factor=%i\n", sweep_upsample_factor));
+                diag_fh.Write(wxString::Format("# sweep_padding_mode=%i\n", sweep_padding_mode));
+                diag_fh.Write(wxString::Format("# sweep_width_fraction=%f\n", sweep_width_fraction));
+                diag_fh.Write(wxString::Format("# annulus_inner_fwhm_mult=%f\n", sweep_annulus_inner_fwhm_mult));
+                diag_fh.Write(wxString::Format("# annulus_outer_fwhm_mult=%f\n", sweep_annulus_outer_fwhm_mult));
+                diag_fh.Write(wxString::Format("# annulus_fallback_inner_px=%f\n", sweep_annulus_fallback_inner_px));
+                diag_fh.Write(wxString::Format("# annulus_fallback_outer_px=%f\n", sweep_annulus_fallback_outer_px));
+                // fwhm_valid=1 means both fwhm_x_A and fwhm_y_A are real measurements
+                // and the annulus radii were derived from them. fwhm_valid=0 means at
+                // least one FWHM was unavailable (no upsampling, or peak too close to
+                // edge to extract); the annulus radii were taken from the fallback
+                // pixel values. fwhm_x_A and fwhm_y_A will be -1 when invalid.
+                // x, y are integer MIP pixel coordinates of the peak.
+                // subpixel_dx_px, subpixel_dy_px are the upsample-derived sub-pixel
+                // offsets from (x, y), in ORIGINAL MIP pixel units. Full sub-pixel
+                // coordinate = x + subpixel_dx_px, y + subpixel_dy_px. Both 0 when
+                // upsampling did not run or did not improve the integer-coord peak.
+                // upsample_status: 0 = upsample improved peak height; 1 = edge-bound check
+                // failed (peak too close to MIP edge to extract tile); 2 = upsampled value
+                // was NaN or never updated; 3 = upsampled max was real but did NOT exceed
+                // integer max; 4 = upsampling globally disabled (peak_threshold_scale == 1.0).
+                diag_fh.Write("x,y,subpixel_dx_px,subpixel_dy_px,height_orig,height_upsampled,upsample_status,fwhm_valid,fwhm_x_A,fwhm_y_A,ann_inner_A,ann_outer_A,ann_min,ann_med,ann_max\n");
+
+                // upsample_factor inside the image method = upsample_peak_size / padded_peak_size = sweep_upsample_factor.
+                const float upsample_factor_f = float(sweep_upsample_factor);
+
+                for ( size_t i = 0; i < peak_list.size( ); i++ ) {
+                    const int cx = int(peak_list[i].x);
+                    const int cy = int(peak_list[i].y);
+
+                    // FWHM: upsampled px -> original (MIP) px -> Angstroms.
+                    const float fwhm_x_up_px   = (i < sweep_fwhm_x_px.size( )) ? sweep_fwhm_x_px[i] : -1.0f;
+                    const float fwhm_y_up_px   = (i < sweep_fwhm_y_px.size( )) ? sweep_fwhm_y_px[i] : -1.0f;
+                    const float fwhm_x_orig_px = (fwhm_x_up_px > 0) ? fwhm_x_up_px / upsample_factor_f : -1.0f;
+                    const float fwhm_y_orig_px = (fwhm_y_up_px > 0) ? fwhm_y_up_px / upsample_factor_f : -1.0f;
+                    const float fwhm_x_A       = (fwhm_x_orig_px > 0) ? fwhm_x_orig_px * search_pixel_size : -1.0f;
+                    const float fwhm_y_A       = (fwhm_y_orig_px > 0) ? fwhm_y_orig_px * search_pixel_size : -1.0f;
+
+                    // Per-peak annulus radii. Use FWHM when valid, else fall back.
+                    const int fwhm_valid = (fwhm_x_orig_px > 0 && fwhm_y_orig_px > 0) ? 1 : 0;
+                    float     inner_px, outer_px;
+                    if ( fwhm_valid ) {
+                        const float fwhm_avg_orig_px = 0.5f * (fwhm_x_orig_px + fwhm_y_orig_px);
+                        inner_px                     = fwhm_avg_orig_px * sweep_annulus_inner_fwhm_mult;
+                        outer_px                     = fwhm_avg_orig_px * sweep_annulus_outer_fwhm_mult;
+                    }
+                    else {
+                        inner_px = sweep_annulus_fallback_inner_px;
+                        outer_px = sweep_annulus_fallback_outer_px;
+                    }
+                    const float r_in_sq  = inner_px * inner_px;
+                    const float r_out_sq = outer_px * outer_px;
+                    const int   r_out_i  = int(std::ceil(outer_px));
+
+                    std::vector<float> ring_values;
+                    ring_values.reserve(size_t(4) * r_out_i * r_out_i);
+                    for ( int dy = -r_out_i; dy <= r_out_i; dy++ ) {
+                        const int yy = cy + dy;
+                        if ( yy < 0 || yy >= mip_image.logical_y_dimension )
+                            continue;
+                        const float dy_sq = float(dy) * float(dy);
+                        for ( int dx = -r_out_i; dx <= r_out_i; dx++ ) {
+                            const int xx = cx + dx;
+                            if ( xx < 0 || xx >= mip_image.logical_x_dimension )
+                                continue;
+                            const float r_sq = float(dx) * float(dx) + dy_sq;
+                            if ( r_sq < r_in_sq || r_sq > r_out_sq )
+                                continue;
+                            const long a = mip_image.ReturnReal1DAddressFromPhysicalCoord(xx, yy, 0);
+                            ring_values.push_back(mip_image.real_values[a]);
+                        }
+                    }
+
+                    float ann_min = 0.0f, ann_med = 0.0f, ann_max = 0.0f;
+                    if ( ! ring_values.empty( ) ) {
+                        std::sort(ring_values.begin( ), ring_values.end( ));
+                        ann_min = ring_values.front( );
+                        ann_max = ring_values.back( );
+                        ann_med = ring_values[ring_values.size( ) / 2];
+                    }
+
+                    const float ann_inner_A = inner_px * search_pixel_size;
+                    const float ann_outer_A = outer_px * search_pixel_size;
+
+                    const int upsample_status = (i < sweep_upsample_status.size( )) ? sweep_upsample_status[i] : -1;
+
+                    diag_fh.Write(wxString::Format(
+                            "%i,%i,%f,%f,%f,%f,%i,%i,%f,%f,%f,%f,%f,%f,%f\n",
+                            cx, cy,
+                            upsampled_peak_list[i].x, upsampled_peak_list[i].y,
+                            peak_list[i].value,
+                            upsampled_peak_list[i].value,
+                            upsample_status,
+                            fwhm_valid,
+                            fwhm_x_A, fwhm_y_A,
+                            ann_inner_A, ann_outer_A,
+                            ann_min, ann_med, ann_max));
+                }
+                diag_fh.Close( );
+            }
+        }
+#else
         masked_mip.FindPeakWithIntegerCoordinatesForManyPeaks(
                 peak_list,
                 upsampled_peak_list,
@@ -231,6 +475,7 @@ bool MakeTemplateResult::DoCalculation( ) {
                 use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f,
                 sqrtf(min_peak_radius),
                 0);
+#endif
 
         TemplateMatchingPeakExtractor extractor(
                 mip_image, phi_image, theta_image, psi_image,

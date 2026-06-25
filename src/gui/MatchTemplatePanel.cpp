@@ -6,7 +6,7 @@
 // - Subsequent runs: 0.5A steps landing on half/whole numbers up to end_value
 // - NOTE: there is no check that the user has supplied the --max-search-size which will change the resolution to be the highest for a given size. There
 //         is no plan to fix this directly, as we will make that CLI option a radio in this GUI and THEN we can fix it. For now, if you aren't BAH, you shouldn not be building with this hack anyway.
-// #define BATCH_HIGH_RES_EXPERIMENT
+#define BATCH_HIGH_RES_EXPERIMENT
 // #define BATCH_ALL_TEMPLATES
 
 // Mutually exclusive hacks

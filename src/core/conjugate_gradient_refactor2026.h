@@ -31,7 +31,7 @@
 // find_dqe) through the refactored optimizer instead of the original va04a.
 // Requires cisTEM_ENABLE_CG_REFACTOR_2026 above. Commented out by default.
 // To find all call-site ifdefs: grep -rn cisTEM_USE_CG_REFACTOR_2026
-// #define cisTEM_USE_CG_REFACTOR_2026
+#define cisTEM_USE_CG_REFACTOR_2026
 
 #include <functional>
 #include <vector>

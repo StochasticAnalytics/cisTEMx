@@ -4,6 +4,8 @@
 
 #define SamplesTestResult(result) SamplesPrintResult(result, __LINE__);
 #define SamplesTestResultCanFail(result) SamplesPrintResultCanFail(result, __LINE__);
+#define SamplesTestResultSkipped(reason) SamplesPrintResultSkipped(reason, __LINE__);
+#define SamplesTestSkip(name, reason) SamplesPrintTestSkip(name, reason, __LINE__);
 
 class Image;
 
@@ -27,6 +29,8 @@ void SamplesPrintBold(wxString message);
 
 void SamplesPrintResult(bool result, int line);
 void SamplesPrintResultCanFail(bool passed, int line);
+void SamplesPrintResultSkipped(const char* reason, int line);
+void SamplesPrintTestSkip(const char* test_name, const char* reason, int line);
 
 void SamplesBeginPrint(const char* test_name);
 

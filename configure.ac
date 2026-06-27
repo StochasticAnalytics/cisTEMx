@@ -129,9 +129,12 @@ if test "x$CXX" = "xicpc"; then
 else 
   if test "x$CXX" = "xclang++"; then
     # Clang needs the -no-c++11-narrowing suppression to compile
-	  CXXFLAGS="$CXXFLAGS -m64 -funroll-loops -O3 -pipe $WARNINGS_ON  -std=c++${CPP_STANDARD} -Wno-c++11-narrowing" 		
+	  CXXFLAGS="$CXXFLAGS -m64 -funroll-loops -O3 -pipe $WARNINGS_ON  -std=c++${CPP_STANDARD} -Wno-c++11-narrowing"
 	  CPPFLAGS="$CPPFLAGS -m64 -funroll-loops -O3 -pipe $WARNINGS_ON "
-  else 
+	  # sqlite needs -ldl and core/assets.cpp calls zlib directly (gzerror); the
+	  # icpc and gcc branches link these and the clang++ branch must match.
+	  LIBS="$LIBS -ldl -lz"
+  else
 	  CXXFLAGS="$CXXFLAGS -m64 -funroll-loops -O3 -fprotect-parens -pipe $WARNINGS_ON -fexpensive-optimizations -std=c++${CPP_STANDARD}" 		
 	  CPPFLAGS="$CPPFLAGS -m64 -funroll-loops -O3 -fprotect-parens -pipe $WARNINGS_ON -fexpensive-optimizations"
 
@@ -554,24 +557,21 @@ if test "x$use_mkl_threads" = "xyes" -o "x$use_gnu_threads" = "xyes"; then
             MKL_LIBS="$MKL_LIBS -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread "
         fi
     fi
-else    
-    # Use MKL seqential
+else
+    # Use MKL sequential — what cisTEM has always linked against.
     AC_MSG_NOTICE([ Using the MKL sequential interface. ])
 
-    
-    if test "x$static_link" = "xtrue" ; then
-      AC_MSG_NOTICE([   Using static linking for the MKL. ])
-
-        # |-Wl*-group|/opt/*mkl* 
-        LIBTOOL_FLAGS="--preserve-dup-deps "
-        circular_deps="${MKLROOT}/lib/intel64/libmkl_core.a ${MKLROOT}/lib/intel64/libmkl_sequential.a "
-        MKL_LIBS=" $MKL_LIBS ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${circular_deps}  ${circular_deps}  ${circular_deps} -lpthread -lm -ldl"
-
-        # LIBS="$LIBS ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a "
-    else
-        MKL_LIBS="$MKL_LIBS -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_sequential -lmkl_core -lpthread "
-    fi    
-    
+    # The MKL static archives are mutually dependent: mkl_core references
+    # symbols in mkl_sequential and vice versa. A single left-to-right linker
+    # pass cannot resolve that, so pass the archives by explicit path and
+    # repeat the circular pair, letting later scans satisfy earlier
+    # back-references. --preserve-dup-deps stops libtool from collapsing the
+    # repeats. This explicit-archive form is used regardless of shared/static
+    # link mode because libtool reorders a -Wl,--start-group placed around -l
+    # flags, breaking the grouping before the real linker sees it.
+    LIBTOOL_FLAGS="--preserve-dup-deps "
+    circular_deps="${MKLROOT}/lib/intel64/libmkl_core.a ${MKLROOT}/lib/intel64/libmkl_sequential.a "
+    MKL_LIBS=" $MKL_LIBS ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${circular_deps}  ${circular_deps}  ${circular_deps} -lpthread -lm -ldl"
 fi
 
 
@@ -730,7 +730,6 @@ AC_SUBST(CUDA_LIBS)
 AC_SUBST(libFastFFT_OBJECTS)
 AC_SUBST(MKL_LIBS)
 AC_SUBST(LIBTORCH_LIBS)
-AC_SUBST(LIBTORCH_RPATH)
 AC_SUBST(LIBTOOL_FLAGS)
 
 
@@ -742,6 +741,35 @@ AC_SUBST(LIBTOOL_FLAGS)
   AC_MSG_NOTICE([MKL_LIBS=$MKL_LIBS])
   AC_MSG_NOTICE([LIBTORCH_LIBS=$LIBTORCH_LIBS])
   AC_MSG_NOTICE([libFastFFT_OBJECTS=$libFastFFT_OBJECTS])
+
+# Lock cisTEM programs to their build-time shared libraries (wx, libtorch).
+#
+# WHY DT_RPATH (via --disable-new-dtags): the distribution container ships these
+# libs at the same fixed /opt paths as the build container, so an absolute rpath
+# is a stable lock. The modern linker default emits DT_RUNPATH, which
+# LD_LIBRARY_PATH overrides -- a stray LD_LIBRARY_PATH (conda, HPC modules) could
+# then load a different-ABI wx and abort the wxWidgets build-options check at
+# wxApp init, or load a different libtorch. DT_RPATH is searched before
+# LD_LIBRARY_PATH and cannot be overridden. wxFormBuilder is a separate binary
+# that keeps resolving the system wx; this lock applies only to cisTEM programs.
+#
+# WHY global rather than per-program: per-program rpath (and libtool's incidental
+# libdir hardcoding) gave inconsistent coverage -- wx was locked for some
+# programs and not others. LDFLAGS reaches every program via automake's link rule.
+cistem_rpath=""
+if test -n "$WX_LIBS" ; then
+	wx_libdir=`echo "$WX_LIBS" | $AWK '{for (i = 1; i <= NF; i++) if (substr($i, 1, 2) == "-L") { print substr($i, 3); exit } }'`
+	if test -n "$wx_libdir" ; then
+		cistem_rpath="$cistem_rpath -Wl,-rpath,$wx_libdir"
+	fi
+fi
+if test "x$use_libtorch" = "xyes" ; then
+	cistem_rpath="$cistem_rpath -Wl,-rpath,$LIBTORCH_ROOT/lib"
+fi
+if test -n "$cistem_rpath" ; then
+	LDFLAGS="$LDFLAGS -Wl,--disable-new-dtags$cistem_rpath"
+	AC_MSG_NOTICE([cisTEM library rpath lock:$cistem_rpath])
+fi
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 AC_CONFIG_HEADERS([cistem_config.h:cistem_config.in])

@@ -13,7 +13,6 @@
 # Output variables:
 #   LIBTORCH_CXX_FLAGS              : C++ flags for LibTorch include paths
 #   LIBTORCH_LIBS                   : Libraries to link (-ltorch -ltorch_cpu -lc10)
-#   LIBTORCH_RPATH                  : RPATH flags for runtime library location
 #   use_libtorch                    : "yes" or "no" indicating if LibTorch is available
 #
 # Preprocessor defines:
@@ -27,7 +26,6 @@ AC_DEFUN([AX_LIBTORCH],
     use_libtorch="no"
     LIBTORCH_CXX_FLAGS=""
     LIBTORCH_LIBS=""
-    LIBTORCH_RPATH=""
 
     # Check if user wants to enable libtorch (opt-in)
     AC_ARG_ENABLE(libtorch,
@@ -78,17 +76,10 @@ AC_DEFUN([AX_LIBTORCH],
             # Order matters: torch depends on torch_cpu, which depends on c10
             LIBTORCH_LIBS="-L${LIBTORCH_ROOT}/lib -ltorch -ltorch_cpu -lc10"
 
-            # Set RPATH for runtime library location
-            # This allows the executable to find libraries relative to its location
-            # Enables bundling the .so files with the distribution
-            # $ORIGIN is a special variable that expands to the directory containing the executable
-            LIBTORCH_RPATH="-Wl,-rpath,'\$\$ORIGIN/lib' -Wl,-rpath,'\$\$ORIGIN/../lib' -Wl,-rpath,'${LIBTORCH_ROOT}/lib'"
-
             AC_MSG_NOTICE([LibTorch configuration:])
             AC_MSG_NOTICE([  LIBTORCH_ROOT      = $LIBTORCH_ROOT])
             AC_MSG_NOTICE([  LIBTORCH_CXX_FLAGS = $LIBTORCH_CXX_FLAGS])
             AC_MSG_NOTICE([  LIBTORCH_LIBS      = $LIBTORCH_LIBS])
-            AC_MSG_NOTICE([  LIBTORCH_RPATH     = $LIBTORCH_RPATH])
         ])
     ])
 
@@ -98,5 +89,4 @@ AC_DEFUN([AX_LIBTORCH],
     # Substitute variables for use in Makefile.am
     AC_SUBST(LIBTORCH_CXX_FLAGS)
     AC_SUBST(LIBTORCH_LIBS)
-    AC_SUBST(LIBTORCH_RPATH)
 ])

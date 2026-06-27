@@ -167,6 +167,21 @@ void SamplesPrintResultCanFail(bool passed, int line) {
     }
 }
 
+void SamplesPrintResultSkipped(const char* reason, int line) {
+    if ( OutputIsAtTerminal( ) == true )
+        wxPrintf(ANSI_COLOR_BLUE "SKIPPED (Line : %i): %s" ANSI_COLOR_RESET, line, reason);
+    else
+        wxPrintf("SKIPPED (Line : %i): %s", line, reason);
+}
+
+// Caller-level skip: prints the "Testing <name> :" prefix then a SKIPPED result with reason.
+// For parking a whole sub-test from its runner without entering the implementation.
+void SamplesPrintTestSkip(const char* test_name, const char* reason, int line) {
+    bool placeholder = true;
+    SamplesBeginTest(test_name, placeholder);
+    SamplesPrintResultSkipped(reason, line);
+}
+
 void SamplesBeginTest(const char* test_name, bool& test_has_passed) {
     int length      = strlen(test_name);
     int blank_space = 45 - length;

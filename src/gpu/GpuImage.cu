@@ -783,7 +783,10 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_sum:
             if ( ! is_allocated_sum_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                // CUDA 13 NPP widened the scratch-buffer-size out-parameter of the
+                // nppi*GetBufferHostSize_*_Ctx family from int* to size_t*; n_elem
+                // (a byte count passed to cudaMallocAsync) must match that width.
+                size_t n_elem;
                 nppErr(nppiSumGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->sum_buffer, n_elem, stream));
                 is_allocated_sum_buffer = true;
@@ -793,7 +796,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_min:
             if ( ! is_allocated_min_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMinGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->min_buffer, n_elem, stream));
 
@@ -804,7 +807,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_minIDX:
             if ( ! is_allocated_minIDX_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMinIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->minIDX_buffer, n_elem, stream));
 
@@ -815,7 +818,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_max:
             if ( ! is_allocated_max_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->max_buffer, n_elem, stream));
 
@@ -826,7 +829,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_maxIDX:
             if ( ! is_allocated_maxIDX_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->maxIDX_buffer, n_elem, stream));
 
@@ -837,7 +840,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_minmax:
             if ( ! is_allocated_minmax_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMinMaxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->minmax_buffer, n_elem, stream));
 
@@ -848,7 +851,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_minmaxIDX:
             if ( ! is_allocated_minmaxIDX_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMinMaxIndxGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->minmaxIDX_buffer, n_elem, stream));
 
@@ -859,7 +862,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_mean:
             if ( ! is_allocated_mean_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMeanGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->mean_buffer, n_elem, stream));
 
@@ -869,7 +872,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_meanstddev:
             if ( ! is_allocated_meanstddev_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiMeanStdDevGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->meanstddev_buffer, n_elem, stream));
 
@@ -880,7 +883,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_countinrange:
             if ( ! is_allocated_countinrange_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiCountInRangeGetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->countinrange_buffer, n_elem, stream));
 
@@ -891,7 +894,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_l2norm:
             if ( ! is_allocated_l2norm_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiNormL2GetBufferHostSize_32f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->l2norm_buffer, n_elem, nppStream.hStream));
 
@@ -902,7 +905,7 @@ void GpuImage::BufferInit(BufferType bt, cudaStream_t stream, int n_elements) {
         case b_dotproduct:
             if ( ! is_allocated_dotproduct_buffer ) {
                 MyDebugAssertTrue(is_npp_loaded, "Error: NPP not loaded");
-                int n_elem;
+                size_t n_elem;
                 nppErr(nppiDotProdGetBufferHostSize_32f64f_C1R_Ctx(npp_ROI, &n_elem, nppStream));
                 cudaErr(cudaMallocAsync(&this->dotproduct_buffer, n_elem, nppStream.hStream));
 
@@ -1719,7 +1722,7 @@ _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cufftComplex* imag
                 sum3 = v;
             }
 #else
-            image_PS[real_idx] = ComplexModulusSquared(image_values[complex_idx]);
+            image_PS[real_idx]      = ComplexModulusSquared(image_values[complex_idx]);
             projection_PS[real_idx] = ComplexModulusSquared(projection_values[complex_idx]);
             if ( u > signed_CC_limit_sq ) {
                 cross_terms[real_idx] = fabsf(v);
@@ -1741,8 +1744,8 @@ _pre_GetWeightedCorrelationWithImageKernel(const __restrict__ cufftComplex* imag
         sum2 = 0.f;
         sum3 = 0.f;
 #else
-        cross_terms[real_idx] = 0.f;
-        image_PS[real_idx] = 0.f;
+        cross_terms[real_idx]   = 0.f;
+        image_PS[real_idx]      = 0.f;
         projection_PS[real_idx] = 0.f;
 #endif
     }

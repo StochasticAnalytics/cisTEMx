@@ -62,7 +62,7 @@ jobs:
         fetch-depth: 0
         
     - name: regenerate_project
-      run: ./regenerate_project.b
+      run: bash regenerate_project.sh
     - name: configure
       env:
         CC: ${{ inputs.CC }}

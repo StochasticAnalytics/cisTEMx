@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install clang-format-18 pre-commit hook for cisTEM development
-# This script should be run from the project root or called by regenerate_containers.sh
+# This script should be run from the project root or called by regenerate_project.sh
 
 set -e
 

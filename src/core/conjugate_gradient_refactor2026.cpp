@@ -372,15 +372,27 @@ PowellConjugateGradient::PerformLineSearch(int    dir_index,
                         parabolic_b * (step_a + step_c)) *
                        0.5 / (parabolic_a + parabolic_b);
 
-        // Best of the bracket points {b, c} [L44: lines 350-360]
-        double best_bracket_step, best_bracket_val;
-        if ( val_b <= val_c ) {
-            best_bracket_step = step_b;
-            best_bracket_val  = val_b;
-        }
-        else {
+        // Best of the bracket points. va04 [L44] selects only between {b, c}
+        // for the convergence target, relying on the invariant that endpoint
+        // a never holds the lowest value (val_a >= val_b in a well-formed
+        // bracket). The "invalid fit" branch above [L33] violates that
+        // invariant: its a<-b, b<-c rearrangement can move the lowest point
+        // into a. When the parabolic minimum d_min then converges onto a, a
+        // {b, c}-only check cannot see it, the probe regenerates a coincident
+        // point, and the search cycles without terminating. va04 escapes this
+        // only by float rounding keeping bracket values unequal; the
+        // double-precision position accumulation here can reach exact equality
+        // and expose the latent cycle. Including a in the selection closes it:
+        // for a well-formed bracket b is still chosen (no behavior change),
+        // and the degenerate case converges at the true minimum carried in a.
+        double best_bracket_step = step_b, best_bracket_val = val_b;
+        if ( val_c < best_bracket_val ) {
             best_bracket_step = step_c;
             best_bracket_val  = val_c;
+        }
+        if ( val_a < best_bracket_val ) {
+            best_bracket_step = step_a;
+            best_bracket_val  = val_a;
         }
 
         // Mode handling [L85/L86: lines 362-383]

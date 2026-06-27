@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install clang-format-14 pre-commit hook for cisTEM development
+# Install clang-format-18 pre-commit hook for cisTEM development
 # This script should be run from the project root or called by regenerate_containers.sh
 
 set -e
@@ -15,7 +15,7 @@ if [[ "$GIT_DIR" == *"/worktrees/"* ]]; then
     HOOKS_DIR="$MAIN_GIT_DIR/hooks"
 fi
 
-echo "Installing clang-format-14 pre-commit hook to: $HOOKS_DIR"
+echo "Installing clang-format-18 pre-commit hook to: $HOOKS_DIR"
 
 # Create hooks directory if it doesn't exist
 mkdir -p "$HOOKS_DIR"
@@ -23,17 +23,17 @@ mkdir -p "$HOOKS_DIR"
 # Create pre-commit hook for clang-format checking
 cat > "$HOOKS_DIR/pre-commit" << 'EOF'
 #!/bin/bash
-# Pre-commit hook to check C++ file formatting with clang-format-14
+# Pre-commit hook to check C++ file formatting with clang-format-18
 # This hook checks if staged C++ files are properly formatted according to .clang-format
 
 # Find the project root (where .clang-format is located)
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-CLANG_FORMAT="clang-format-14"
+CLANG_FORMAT="clang-format-18"
 
-# Check if clang-format-14 is available
+# Check if clang-format-18 is available
 if ! command -v $CLANG_FORMAT &> /dev/null; then
-    echo "Error: clang-format-14 not found in PATH"
-    echo "Please install clang-format-14 or update the pre-commit hook"
+    echo "Error: clang-format-18 not found in PATH"
+    echo "Please install clang-format-18 or update the pre-commit hook"
     exit 1
 fi
 
@@ -128,12 +128,12 @@ if [ ${#FORMAT_ISSUES[@]} -gt 0 ]; then
 set -e
 
 PROJECT_ROOT="$PROJECT_ROOT"
-echo "Formatting files with clang-format-14..."
+echo "Formatting files with clang-format-18..."
 
 FIXEOF
 
     for file in "${FORMAT_ISSUES[@]}"; do
-        echo "clang-format-14 -i \"$PROJECT_ROOT/$file\"" >> "$FIX_SCRIPT"
+        echo "clang-format-18 -i \"$PROJECT_ROOT/$file\"" >> "$FIX_SCRIPT"
     done
 
     cat >> "$FIX_SCRIPT" << 'FIXEOF'
@@ -161,7 +161,7 @@ FIXEOF
     echo "  $FIX_SCRIPT"
     echo ""
     echo "Or format files manually:"
-    echo "  clang-format-14 -i <file>"
+    echo "  clang-format-18 -i <file>"
     echo "  git add <file>"
     echo ""
     exit 1
@@ -174,4 +174,4 @@ EOF
 # Make the hook executable
 chmod +x "$HOOKS_DIR/pre-commit"
 
-echo "clang-format-14 pre-commit hook installed successfully!"
+echo "clang-format-18 pre-commit hook installed successfully!"

@@ -12,8 +12,8 @@ fi
 original_format_hash=440fdc47889766cbf5c6036feb8c4934
 post_format_hash=88ad6d70d449ba758ea127b2074256f5
 
-# Requires clang-format-14 
-clang_format_verision=14
+# Requires clang-format-18
+clang_format_verision=18
 clang_binary=""
 # Check version of clang-format, first looking for the generic name, override by specific name (or use if generic not available.)
 found_clang_version=0

@@ -601,7 +601,12 @@ if test "x$static_link" = "xtrue"; then
  	# There is no static library for libcilkrts. Suppress this warning.
  	LDFLAGS="$LDFLAGS -wd10237"
  else
-	LDFLAGS="$LDFLAGS -static"
+	# clang: statically link Intel's libiomp5 (the KMP-ABI OpenMP runtime that
+	# -fopenmp targets and MKL uses) -- analog of icpc's -qopenmp-link=static.
+	# Full archive path, not -liomp5: libtool drops -Wl,-Bstatic and would pick
+	# the .so. In LIBS (after objects) to resolve __kmpc_* refs; --as-needed
+	# sheds the implicit dynamic -lomp that -fopenmp appends.
+	LIBS="$LIBS -Wl,--as-needed /opt/intel/oneapi/compiler/latest/lib/libiomp5.a"
  fi
 fi
 

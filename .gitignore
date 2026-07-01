@@ -25,10 +25,15 @@ RemoteSystemsTempFiles
 /release_build/
 **/build*
 **/.DS_Store
+# Editor / devcontainer config is provided via symlinks into the
+# untracked plasmon-labs-devcontainer/ external repo (NOT a git submodule).
+# These entries must match the symlinks themselves, not just directory
+# contents — a symlink is a file, so a `dir/*` rule never matches it.
 .vscode
-/.devcontainer.json
-.devcontainer/*
-/devcontainer.json
+.vscode/
+/.devcontainer
+/.devcontainer.bak.*/
+/plasmon-labs-devcontainer/
 cistem_config.in*
 scripts/testing/post_format_test.cpp
 src/ext/

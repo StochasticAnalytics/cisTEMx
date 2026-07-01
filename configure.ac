@@ -479,6 +479,7 @@ fi
 use_mkl_threads="no"
 use_gnu_threads="no"
 use_mkl_sequential="yes"
+use_mkl_dynamic="no"
 AC_ARG_ENABLE(mkl-threads, AS_HELP_STRING([--enable-mkl-threads],[Compile with MKL threading using Intel threads [default=no]]),[
     use_mkl_threads="yes"
     use_mkl_sequential="no"
@@ -488,6 +489,14 @@ AC_ARG_ENABLE(gnu-threads, AS_HELP_STRING([--enable-gnu-threads],[Compile with M
     use_gnu_threads="yes"
     use_mkl_sequential="no"
 
+])
+# --enable-mkl-dynamic: link the MKL shared objects (.so) rather than the
+# static .a archives in the sequential path. Default off preserves the
+# historical static-archive link, so existing builds are unaffected; opt-in
+# produces a fully dynamic MKL whose sonames are resolved at load time (via the
+# -L search dir and LD_LIBRARY_PATH) instead of being embedded as archives.
+AC_ARG_ENABLE(mkl-dynamic, AS_HELP_STRING([--enable-mkl-dynamic],[Link the Intel MKL dynamically against the shared .so instead of the static archives [default=no]]),[
+    use_mkl_dynamic="yes"
 ])
 
 # Make sure we have the environmental variables set up
@@ -561,17 +570,40 @@ else
     # Use MKL sequential — what cisTEM has always linked against.
     AC_MSG_NOTICE([ Using the MKL sequential interface. ])
 
-    # The MKL static archives are mutually dependent: mkl_core references
-    # symbols in mkl_sequential and vice versa. A single left-to-right linker
-    # pass cannot resolve that, so pass the archives by explicit path and
-    # repeat the circular pair, letting later scans satisfy earlier
-    # back-references. --preserve-dup-deps stops libtool from collapsing the
-    # repeats. This explicit-archive form is used regardless of shared/static
-    # link mode because libtool reorders a -Wl,--start-group placed around -l
-    # flags, breaking the grouping before the real linker sees it.
-    LIBTOOL_FLAGS="--preserve-dup-deps "
-    circular_deps="${MKLROOT}/lib/intel64/libmkl_core.a ${MKLROOT}/lib/intel64/libmkl_sequential.a "
-    MKL_LIBS=" $MKL_LIBS ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${circular_deps}  ${circular_deps}  ${circular_deps} -lpthread -lm -ldl"
+    if test "x$use_mkl_dynamic" = "xyes"; then
+        # Dynamic sequential MKL (--enable-mkl-dynamic): link the shared objects
+        # via -l flags. Shared libraries resolve the mkl_core <-> mkl_sequential
+        # circular dependency at load time, so the static-archive --start-group /
+        # repeated-archive workaround in the else branch is unnecessary here.
+        # --no-as-needed keeps the linker from dropping the MKL sonames whose
+        # symbols are only pulled in through MKL's runtime CPU dispatch. ILP64
+        # (-lmkl_intel_ilp64) preserved to match the MKL_ILP64 define above;
+        # -L${MKLROOT}/lib/intel64 (already in LDFLAGS) is the link-time search
+        # path, LD_LIBRARY_PATH the load-time one.
+        #
+        # WHY nothing here defends against libtorch: libtorch_cpu.so ships an
+        # embedded MKL and exports its low-level mkl_dft_* kernel symbols
+        # globally; with system MKL dynamic they cross-bind system MKL's DFTI and
+        # segfault the first FFT plan. That collision is resolved at the container
+        # level by LD_PRELOAD-ing the system MKL libs (see the
+        # plasmon-labs-devcontainer base image), which wins every MKL symbol in
+        # one place. A per-binary link fix (pinning the kernel libs into
+        # DT_NEEDED) was rejected as brittle across MKL versions and libtool.
+        AC_MSG_NOTICE([ Linking the MKL dynamically (shared .so). ])
+        MKL_LIBS=" $MKL_LIBS -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl"
+    else
+        # The MKL static archives are mutually dependent: mkl_core references
+        # symbols in mkl_sequential and vice versa. A single left-to-right linker
+        # pass cannot resolve that, so pass the archives by explicit path and
+        # repeat the circular pair, letting later scans satisfy earlier
+        # back-references. --preserve-dup-deps stops libtool from collapsing the
+        # repeats. This explicit-archive form is used regardless of shared/static
+        # link mode because libtool reorders a -Wl,--start-group placed around -l
+        # flags, breaking the grouping before the real linker sees it.
+        LIBTOOL_FLAGS="--preserve-dup-deps "
+        circular_deps="${MKLROOT}/lib/intel64/libmkl_core.a ${MKLROOT}/lib/intel64/libmkl_sequential.a "
+        MKL_LIBS=" $MKL_LIBS ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${circular_deps}  ${circular_deps}  ${circular_deps} -lpthread -lm -ldl"
+    fi
 fi
 
 

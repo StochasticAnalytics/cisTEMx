@@ -164,19 +164,6 @@
             "id": "additional_compiler_flags",
             "description": "additional_compiler_flags",
             "default": ""
-        },
-        {
-            "type": "pickString",
-            "id": "remote_build",
-            "description": "Do a remote build?",
-            "options": ["no", "yes"],
-            "default": "no"
-        },
-        {
-            "type": "promptString",
-            "id": "remote_host",
-            "description": "SSH target for remote build (user@host). Ignored when remote_build=no.",
-            "default": "no"
         }
     ]
 }

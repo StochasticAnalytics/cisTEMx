@@ -48,6 +48,10 @@ worktrees/
 
 compile_commands.json
 
+# Claude Code project-scoped MCP config (currently empty/local). Remove this
+# ignore if you later want to commit a shared MCP server config.
+.mcp.json
+
 # Python
 # Byte-compiled / optimized / DLL files
 __pycache__/

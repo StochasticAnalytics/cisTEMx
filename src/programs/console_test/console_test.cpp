@@ -2404,7 +2404,6 @@ void MyTestApp::WriteDatabase(const char* dir, const char* filename) {
 	PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
 CREATE TABLE MASTER_SETTINGS(NUMBER INTEGER PRIMARY KEY, PROJECT_DIRECTORY TEXT, PROJECT_NAME TEXT, CURRENT_VERSION INTEGER, TOTAL_CPU_HOURS REAL, TOTAL_JOBS_RUN INTEGER );
-INSERT INTO MASTER_SETTINGS VALUES(1,'/tmp/1_0_test','1_0_test',1,0.0,0);
 CREATE TABLE RUNNING_JOBS(JOB_NUMBER INTEGER PRIMARY KEY, JOB_CODE TEXT, MANAGER_IP_ADDRESS INTEGER );
 CREATE TABLE RUN_PROFILES(RUN_PROFILE_ID INTEGER PRIMARY KEY, PROFILE_NAME TEXT, MANAGER_RUN_COMMAND TEXT, GUI_ADDRESS TEXT, CONTROLLER_ADDRESS TEXT, COMMANDS_ID INTEGER );
 INSERT INTO RUN_PROFILES VALUES(1,'Default Local','/groups/cryoadmin/software/CISTEM/cistem-1.0.0-beta/$command','','',1);
@@ -2430,6 +2429,12 @@ INSERT INTO RUN_PROFILE_COMMANDS_1 VALUES(0,'/groups/cryoadmin/software/CISTEM/c
 CREATE TABLE PROCESS_LOCK(NUMBER INTEGER PRIMARY KEY, ACTIVE_PROCESS INTEGER, ACTIVE_HOST TEXT );
 COMMIT;
 )sql");
+
+    // PROJECT_DIRECTORY must be the project's actual location (`dir`), not a
+    // hardcoded '/tmp/1_0_test'. When the temp dir is not /tmp (e.g. the
+    // container's /tmp/cistem_console_test.XXXX), the old literal made opening the
+    // project try to create Assets under a nonexistent /tmp/1_0_test.
+    database.ExecuteSQL(wxString::Format("INSERT INTO MASTER_SETTINGS VALUES(1,'%s','1_0_test',1,0.0,0);", dir));
     database.Close( );
 }
 

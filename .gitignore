@@ -33,7 +33,7 @@ RemoteSystemsTempFiles
 .vscode/
 /.devcontainer
 /.devcontainer.bak.*/
-/plasmon-labs-devcontainer/
+plasmon-labs-devcontainer/
 cistem_config.in*
 scripts/testing/post_format_test.cpp
 src/ext/

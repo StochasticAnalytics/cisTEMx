@@ -19,7 +19,7 @@
 // File-static variables for batch experiment state (confined to this translation unit)
 static bool  s_batch_experiment_active    = false;
 static float s_batch_experiment_end_value = 8.0f; // Stop after this value
-static float s_batch_experiment_step      = 0.5f; // Step size in Angstroms
+static float s_batch_experiment_step      = 0.25f; // Step size in Angstroms
 static int   s_first_volume_asset_idx     = 0;
 static int   s_number_of_volume_asset_idx = 0;
 static int   s_current_volume_asset_idx   = 0;
@@ -563,7 +563,7 @@ bool MatchTemplatePanel::CheckForOverFocus(bool& append_allow_over_focus) {
     int         group_list_id = image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )].id;
     int         total_members = image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )].number_of_members;
     bool        has_overfocus = main_frame->current_project.database.ReturnAllAssetIdsWithUnderfocus(
-                   group_list_id, total_members, underfocus_asset_ids);
+            group_list_id, total_members, underfocus_asset_ids);
 
     if ( ! has_overfocus )
         return true;

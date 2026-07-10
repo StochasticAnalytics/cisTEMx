@@ -213,6 +213,7 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
                                       "Allow images with over-focus (negative defocus values). Default false");
 
     command_line_parser.AddOption("", "L2-peristance-fraction", "min L2 cache available for persisting as fraction of input image size in fp16 bytes (defaults to 0 [off])", wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "gpu-batch-size-multiplier", "multiply the GPU CCF batch size by this factor, one of 1/2/4/8 (defaults to 4)", wxCMD_LINE_VAL_NUMBER);
 }
 
 // override the DoInteractiveUserInput
@@ -463,6 +464,12 @@ bool MatchTemplateApp::DoCalculation( ) {
     if ( command_line_parser.FoundSwitch("allow-over-focus") ) {
         SendInfo("Allowing over-focus (negative defocus) values\n");
         allow_over_focus = true;
+    }
+
+    int gpu_batch_size_multiplier = 4;
+    if ( command_line_parser.Found("gpu-batch-size-multiplier", &temp_long) ) {
+        SendInfo("Using GPU batch size multiplier: " + wxString::Format("%ld", temp_long) + "\n");
+        gpu_batch_size_multiplier = int(temp_long);
     }
 
     bool allow_rotation_for_speed{true};
@@ -992,13 +999,13 @@ bool MatchTemplateApp::DoCalculation( ) {
             data_sizer.whitening_filter_ptr->MakeThreadSafeForNThreads(max_threads);
             size_t L2_window_size;
             // note that we need the firstprivate so the shared ptr is intialized the first time it is encountered
-#pragma omp parallel num_threads(max_threads) default(none) shared(L2_window_size, first_gpu_loop, GPU, first_search_position, last_search_position, incPos, max_threads,                        \
-                                                                   d_input_image, angles, my_progress, template_reconstruction, use_fast_fft, projection_filter,                                 \
-                                                                   profile_timing, current_projection, psi_start, psi_step, psi_max,                                                             \
-                                                                   global_euler_search, number_of_search_positions, number_of_search_positions_per_thread, use_gpu_prj,                          \
-                                                                   data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size,                                                    \
-                                                                   correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, \
-                                                                   actual_number_of_angles_searched, defocus_step) firstprivate(template_reconstruction_gpu, L2_persistance_fraction, current_correlation_position)
+#pragma omp parallel num_threads(max_threads) default(none) shared(L2_window_size, first_gpu_loop, GPU, first_search_position, last_search_position, incPos, max_threads,                                  \
+                                                                           d_input_image, angles, my_progress, template_reconstruction, use_fast_fft, projection_filter,                                   \
+                                                                           profile_timing, current_projection, psi_start, psi_step, psi_max,                                                               \
+                                                                           global_euler_search, number_of_search_positions, number_of_search_positions_per_thread, use_gpu_prj, gpu_batch_size_multiplier, \
+                                                                           data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size,                                                      \
+                                                                           correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image,   \
+                                                                           actual_number_of_angles_searched, defocus_step) firstprivate(template_reconstruction_gpu, L2_persistance_fraction, current_correlation_position)
             {
                 int tIDX = ReturnThreadNumberOfCurrentThread( );
                 // gpuDev.SetGpu( );
@@ -1035,7 +1042,8 @@ bool MatchTemplateApp::DoCalculation( ) {
                                    number_of_search_positions_per_thread,
                                    is_running_locally,
                                    use_fast_fft,
-                                   use_gpu_prj);
+                                   use_gpu_prj,
+                                   gpu_batch_size_multiplier);
 
                     profile_timing.lap("Init GPU");
                     if ( ! use_gpu_prj ) { // If projections are on CPU, set CPU template for the core
@@ -1088,10 +1096,10 @@ bool MatchTemplateApp::DoCalculation( ) {
                 if ( use_gpu_prj )
                     projection_filter.SwapFourierSpaceQuadrants(false, true);
 
-#pragma omp parallel num_threads(max_threads) default(none) shared(data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size, max_intensity_projection,                                                            \
-                                                                   correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, actual_number_of_angles_searched, \
-                                                                   profile_timing, GPU, projection_filter, current_projection, angles, global_euler_search, number_of_search_positions_per_thread, use_gpu_prj,                    \
-                                                                   defocus_i, defocus_step, size_i, pixel_size_step, histogram_data) private(current_correlation_position)
+#pragma omp parallel num_threads(max_threads) default(none) shared(data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size, max_intensity_projection,                                                                    \
+                                                                           correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, actual_number_of_angles_searched, \
+                                                                           profile_timing, GPU, projection_filter, current_projection, angles, global_euler_search, number_of_search_positions_per_thread, use_gpu_prj,                    \
+                                                                           defocus_i, defocus_step, size_i, pixel_size_step, histogram_data) private(current_correlation_position)
 
                 {
                     int tIDX = ReturnThreadNumberOfCurrentThread( );

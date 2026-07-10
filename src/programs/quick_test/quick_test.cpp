@@ -18,7 +18,8 @@
 
 // Toggle which experiment to build — define exactly one:
 //#define cisTEM_test_shifts
-#define cisTEM_test_astigmatism
+//#define cisTEM_test_astigmatism
+#define cisTEM_test_scalloping
 
 class
         QuickTestApp : public MyApp {
@@ -42,6 +43,19 @@ IMPLEMENT_APP(QuickTestApp)
 // Optional command-line stuff
 void QuickTestApp::AddCommandLineOptions( ) {
     command_line_parser.AddLongSwitch("disable-user-input", "Disable interactive user input prompts. Default false");
+    command_line_parser.AddOption("", "noise-power-before-ctf", "Scalloping experiment: noise:signal power ratio 1:N before the CTF (default 1); sigma = sqrt(N)", wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "noise-power-after-ctf", "Scalloping experiment: noise:signal power ratio 1:N after the CTF (default 10); sigma = sqrt(N)", wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "sweep-original-peak-size", "Scalloping experiment: peak window size in px (default 48, positive even)", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-padding-multiplier", "Scalloping experiment: padded_peak_size = N*window (default 3)", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-upsample-factor", "Scalloping experiment: upsample_peak_size = N*padded (default 16)", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-padding-mode", "Scalloping experiment: 0=mirror (default), 1=zero pad, 2=Hann+zero pad", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "sweep-width-fraction", "Scalloping experiment: FWHM width fraction above baseline (default 0.5)", wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "shift-mode", "Scalloping experiment: 0=diagonal (default), 1=x only, 2=y only, 3=random azimuth (fixed magnitude)", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddOption("", "base-upsample-factor", "Scalloping experiment: Fourier-upsample the reference by this factor before the sweep (default 1; 2 -> 0.5 A/px)", wxCMD_LINE_VAL_DOUBLE);
+    command_line_parser.AddOption("", "n-replicates", "Scalloping experiment: independent noise realizations per (pixel size, offset) cell (default 10)", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddLongSwitch("probe-upsampler", "Scalloping experiment: run the synthetic-peak upsampler probe (recover a known sub-pixel shift of a clean Gaussian, swept over peak width and padding mode) and exit");
+    command_line_parser.AddLongSwitch("warmup", "Scalloping experiment: run many replicates at one fixed condition, report running mean/SEM of corrected peak height vs N (to choose n-replicates), and exit");
+    command_line_parser.AddLongSwitch("report-snr", "Scalloping experiment: compute and report the total power SNR (signal : pre-CTF-noise-through-CTF + post-CTF-noise) per pixel size, and exit");
 }
 
 // override the DoInteractiveUserInput
@@ -239,6 +253,485 @@ bool QuickTestApp::DoCalculation( ) {
 
     } // end of n_replicates
 #endif // cisTEM_test_astigmatism
+
+#ifdef cisTEM_test_scalloping
+    // ----------------------------------------------------------------------------------
+    // Scalloping-loss recovery experiment.
+    //
+    // For a noisy, CTF-distorted copy of a reference, measure the cross-correlation peak
+    // height across a range of sub-pixel offsets, both at integer-pixel sampling and after
+    // Fourier-upsampling peak-sampling correction. The correction targets the "scalloping
+    // loss": the peak-height deficit that grows as the true peak falls between samples.
+    //
+    // Peak extraction reuses the production algorithm exactly as make_template_result does:
+    // Image::FindPeakWithIntegerCoordinatesForManyPeaks returns the uncorrected height
+    // (peak_list) and the sampling-corrected height + sub-pixel offset (upsampled_peak_list).
+    // ----------------------------------------------------------------------------------
+
+    const bool debug_output = true; // save the reference and one noisy test image for inspection
+
+    const std::string input_ref_filename     = "build/base_img.mrc";
+    const std::string output_data_filename   = "build/scalloping_experiment.txt";
+    const std::string debug_ref_ctf_filename = "build/scalloping_debug_ref_with_ctf.mrc"; // noiseless CTF-filtered reference
+    const std::string debug_img_filename     = "build/scalloping_debug_img_ctf_noise.mrc"; // final target: CTF + noise
+
+    // CTF: 300 kV, Cs 2.7 mm, 0.07 amplitude contrast, 8000 A defocus, no astigmatism, no phase shift.
+    const float ctf_voltage      = 300.0f;
+    const float ctf_cs           = 2.7f;
+    const float ctf_amp_contrast = 0.07f;
+    const float ctf_defocus      = 8000.0f;
+
+    // Noise is specified as the noise:signal POWER (variance) ratio 1:N. The signal is normalized
+    // to unit variance immediately before each noise add, so the noise variance equals N and its
+    // standard deviation is sqrt(N). Defaults: 1:1 before the CTF, 1:10 after. Overridable from the
+    // command line so noise can be swept and driven to ~0 as a positive control without rebuilding.
+    float  noise_power_before_ctf = 1.0f;
+    float  noise_power_after_ctf  = 10.0f;
+    double temp_double;
+    if ( command_line_parser.Found("noise-power-before-ctf", &temp_double) )
+        noise_power_before_ctf = float(temp_double);
+    if ( command_line_parser.Found("noise-power-after-ctf", &temp_double) )
+        noise_power_after_ctf = float(temp_double);
+    const float noise_sigma_before_ctf = sqrtf(noise_power_before_ctf);
+    const float noise_sigma_after_ctf  = sqrtf(noise_power_after_ctf);
+    wxPrintf("Noise power 1:N -> before CTF 1:%.3f (sigma %.4f), after CTF 1:%.3f (sigma %.4f)\n",
+             noise_power_before_ctf, noise_sigma_before_ctf, noise_power_after_ctf, noise_sigma_after_ctf);
+
+    // Peak-correction upsampling parameters, command-line configurable. Defaults match the production
+    // peak finder: window 8, mirror pad (mode 0) to 2x (=16), upsample 8x (tile 128). Test window=16
+    // pad=2 upsample=16 (tile 512) as an alternative; 128, 512, and the 2x-padded correlation box are
+    // all 5-smooth even sizes for FFT efficiency.
+    //
+    // The sweep variant is used (not the production non-sweep call) because it bounds the sub-pixel
+    // search to +/-0.5 px; the non-sweep method searches a (N/2)*sqrt(2) radius and can report
+    // unphysical |offset| > 0.5.
+    int   sweep_original_peak_size = 8;
+    int   sweep_padding_multiplier = 2;
+    int   sweep_upsample_factor    = 8;
+    int   sweep_padding_mode       = 0;
+    float sweep_width_fraction     = 0.5f;
+    long  temp_long;
+    if ( command_line_parser.Found("sweep-original-peak-size", &temp_long) )
+        sweep_original_peak_size = int(temp_long);
+    if ( command_line_parser.Found("sweep-padding-multiplier", &temp_long) )
+        sweep_padding_multiplier = int(temp_long);
+    if ( command_line_parser.Found("sweep-upsample-factor", &temp_long) )
+        sweep_upsample_factor = int(temp_long);
+    if ( command_line_parser.Found("sweep-padding-mode", &temp_long) )
+        sweep_padding_mode = int(temp_long);
+    if ( command_line_parser.Found("sweep-width-fraction", &temp_double) )
+        sweep_width_fraction = float(temp_double);
+    wxPrintf("Peak upsampling: window=%i padding=%ix upsample=%ix mode=%i width_fraction=%.3f\n",
+             sweep_original_peak_size, sweep_padding_multiplier, sweep_upsample_factor,
+             sweep_padding_mode, sweep_width_fraction);
+
+    // Direction the sub-pixel displacement magnitude is applied. Axis-locked modes (x, y, diagonal)
+    // probe for systematic per-axis bias; random mode (fixed magnitude, uniform random azimuth per
+    // replicate) is the "real experiment" case — losses are not fully independent of direction
+    // because a digital pixel is effectively square, so averaging over direction at fixed magnitude
+    // characterizes that anisotropy.
+    enum ScallopingShiftMode : int { SHIFT_DIAGONAL = 0,
+                                     SHIFT_X        = 1,
+                                     SHIFT_Y        = 2,
+                                     SHIFT_RANDOM   = 3 };
+
+    ScallopingShiftMode shift_mode = SHIFT_DIAGONAL;
+    if ( command_line_parser.Found("shift-mode", &temp_long) )
+        shift_mode = ScallopingShiftMode(int(temp_long));
+    const char* shift_mode_name      = shift_mode == SHIFT_X ? "x" : shift_mode == SHIFT_Y ? "y"
+                                                             : shift_mode == SHIFT_RANDOM  ? "random"
+                                                                                           : "diagonal";
+    float       base_upsample_factor = 1.0f;
+    if ( command_line_parser.Found("base-upsample-factor", &temp_double) )
+        base_upsample_factor = float(temp_double);
+    // Replicates per (pixel size, offset) cell. Each draws fresh, independent noise (and, in random
+    // shift mode, a fresh azimuth) so the noisy peak-height measurement can be averaged; a single
+    // realization at 1:10 post-CTF noise is dominated by scatter.
+    int n_replicates = 10;
+    if ( command_line_parser.Found("n-replicates", &temp_long) )
+        n_replicates = int(temp_long);
+    wxPrintf("Shift mode: %s   base upsample factor: %.2f   replicates: %i\n", shift_mode_name, base_upsample_factor, n_replicates);
+
+    // Core-algo probe (positive control): does the sub-pixel upsampler recover a KNOWN shift of a
+    // clean synthetic peak? This removes the reference, CTF, and noise entirely. A Gaussian of
+    // controllable width sigma is built at the box center and shifted by a known sub-pixel amount via
+    // an exact Fourier phase shift, then handed to the same FindPeakWithIntegerCoordinatesForManyPeaksSweep
+    // the experiment uses. found should track the applied shift. Sweeping sigma isolates whether a
+    // failure is width-dependent (which the window knob only masks) or intrinsic to the padding mode;
+    // sweeping the mode tests the symmetrization hypothesis (mirror/Hann pad the tile into an even
+    // function, and an even function has no sub-pixel position to recover).
+    if ( command_line_parser.Found("probe-upsampler") ) {
+        const int                probe_dim    = 128;
+        const int                box_center   = probe_dim / 2;
+        const std::vector<float> probe_sigmas = {0.8f, 1.5f, 3.0f, 6.0f};
+        const std::vector<float> probe_shifts = {0.0f, 0.1f, 0.2f, 0.3f, 0.4f};
+        const std::vector<int>   probe_modes  = {0, 1, 2};
+        wxPrintf("\n# synthetic upsampler probe: window=%i padding=%ix upsample=%ix\n",
+                 sweep_original_peak_size, sweep_padding_multiplier, sweep_upsample_factor);
+        wxPrintf("# mode sigma applied found_dx found_dy\n");
+        for ( const int probe_mode : probe_modes ) {
+            for ( const float sigma : probe_sigmas ) {
+                for ( const float applied : probe_shifts ) {
+                    Image peak;
+                    peak.Allocate(probe_dim, probe_dim, 1, true);
+                    const float two_sigma_sq = 2.0f * sigma * sigma;
+                    for ( int j = 0; j < probe_dim; j++ ) {
+                        for ( int i = 0; i < probe_dim; i++ ) {
+                            const float dx                                                       = float(i - box_center);
+                            const float dy                                                       = float(j - box_center);
+                            peak.real_values[peak.ReturnReal1DAddressFromPhysicalCoord(i, j, 0)] = expf(-(dx * dx + dy * dy) / two_sigma_sq);
+                        }
+                    }
+                    peak.is_in_real_space         = true;
+                    peak.object_is_centred_in_box = true;
+                    peak.ForwardFFT( );
+                    peak.PhaseShift(applied, applied, 0.0f); // exact sub-pixel shift, in pixels
+                    peak.BackwardFFT( );
+                    peak.object_is_centred_in_box = true;
+
+                    const Peak         integer_peak = peak.FindPeakWithIntegerCoordinates( );
+                    std::vector<Peak>  peak_list, upsampled_peak_list;
+                    std::vector<float> fwhm_x_px, fwhm_y_px;
+                    std::vector<int>   upsample_status;
+                    peak.FindPeakWithIntegerCoordinatesForManyPeaksSweep(
+                            peak_list, upsampled_peak_list, fwhm_x_px, fwhm_y_px, upsample_status,
+                            0.5f * integer_peak.value, cistem::match_template::PEAK_THRESHOLD_SCALE, 10.0f, 0,
+                            sweep_original_peak_size, sweep_padding_multiplier, sweep_upsample_factor, probe_mode, sweep_width_fraction);
+                    const float found_dx = (peak_list[0].x - float(peak.physical_address_of_box_center_x)) + upsampled_peak_list[0].x;
+                    const float found_dy = (peak_list[0].y - float(peak.physical_address_of_box_center_y)) + upsampled_peak_list[0].y;
+                    wxPrintf("%i %.2f %.3f %.4f %.4f\n", probe_mode, sigma, applied, found_dx, found_dy);
+                }
+            }
+        }
+        return true;
+    }
+
+    // Sub-pixel offset MAGNITUDES applied to the target, 0 -> 0.5 px so the peak stays inside the
+    // origin pixel for any direction. shift_mode picks how the magnitude m is split into (dx, dy):
+    //   diagonal -> (m/sqrt2, m/sqrt2)     x -> (m, 0)     y -> (0, m)     random -> m*(cos,sin) theta
+    // All produce displacement magnitude m, so modes are compared at matched magnitude.
+    // 0 -> 0.5 px in 0.025 steps (21 values) finely samples the offset axis of the recovery grid.
+    std::vector<float> sub_pixel_offset_magnitudes;
+    for ( int off_idx = 0; off_idx <= 20; off_idx++ )
+        sub_pixel_offset_magnitudes.push_back(0.025f * float(off_idx));
+
+    // Read the perfect reference and its native sampling.
+    ImageFile ref_file(input_ref_filename, false);
+    float     native_pixel_size = ref_file.ReturnPixelSize( );
+    Image     perfect_ref;
+    perfect_ref.ReadSlices(&ref_file, 1, 1);
+    int native_dim = perfect_ref.logical_x_dimension;
+
+    // Optional Fourier upsampling of the reference: pad its transform to a larger even box, giving a
+    // finer effective pixel size. No real information is added (content stays band-limited to the
+    // original Nyquist); this tests whether finer base sampling changes the sub-pixel behaviour.
+    if ( base_upsample_factor > 1.0f ) {
+        const int upsampled_dim = ReturnClosestFactorizedUpper(int(roundf(float(native_dim) * base_upsample_factor)), 5, true);
+        perfect_ref.ForwardFFT( );
+        perfect_ref.Resize(upsampled_dim, upsampled_dim, 1);
+        perfect_ref.BackwardFFT( );
+        native_pixel_size *= float(native_dim) / float(upsampled_dim);
+        native_dim = upsampled_dim;
+    }
+    wxPrintf("Reference: %ix%i, effective pixel size %.4f A\n", native_dim, perfect_ref.logical_y_dimension, native_pixel_size);
+
+    // Pre-binning: crop the Fourier transform to bin. Effective pixel = native * native_dim / binned_dim.
+    // A ratio ladder 1..8 forms the pixel-size axis of the recovery grid; with --base-upsample-factor 2
+    // (native 0.5 A) this spans 0.5-4.0 A/px. Each binned dim is the largest 5-smooth even size <= the
+    // target (fast Fourier crop AND fast correlation FFT); duplicates from that rounding are dropped.
+    std::vector<int> binned_dims;
+    const int        n_pixel_sizes = 15;
+    int              last_bd       = -1;
+    for ( int ps_idx = 0; ps_idx < n_pixel_sizes; ps_idx++ ) {
+        const float ratio = 1.0f + (7.0f / float(n_pixel_sizes - 1)) * float(ps_idx); // 1.0 .. 8.0
+        const int   bd    = ReturnClosestFactorizedLower(int(roundf(float(native_dim) / ratio)), 5, true);
+        if ( bd < 2 * sweep_original_peak_size ) // correlation map must comfortably hold the peak tile
+            continue;
+        if ( bd == last_bd ) // dedup after factorized rounding
+            continue;
+        binned_dims.push_back(bd);
+        last_bd = bd;
+    }
+
+    const float pi_f = 3.14159265358979323846f;
+
+    // ---- shared inner routines -------------------------------------------------------------------
+
+    // Anti-alias preparation of a correlation input. real_img_normalized is a real-space, zero-mean,
+    // unit-variance image; this tapers the box edge to remove the boundary discontinuity, zero-pads
+    // to padded_dim (linearizing the cross-correlation so there is no circular wraparound), and
+    // forward-transforms. Mutates real_img_normalized (taper is in place). This is the fix for the
+    // aliasing that a raw (untapered, unpadded) cross-correlation would otherwise inject.
+    auto prepare_correlation_input = [&](Image& real_img_normalized, Image& out_padded_fft, int padded_dim) {
+        real_img_normalized.TaperEdges( );
+        out_padded_fft.Allocate(padded_dim, padded_dim, 1, true);
+        real_img_normalized.ClipInto(&out_padded_fft, 0.0f);
+        out_padded_fft.ForwardFFT( );
+    };
+
+    // Build everything that depends only on the pixel size (binning): the clean reference FFT (reused
+    // to seed every target), the CTF, the conjugated & prepared correlation template, the clean
+    // post-CTF signal std (for the post-CTF noise scaling), and the 2x-padded correlation box size.
+    auto build_pixel_context = [&](int binned_dim, Image& ref_fft, CTF& ctf, Image& template_conj_fft,
+                                   float& sigma_signal_post_ctf, int& padded_dim, float& pixel_size,
+                                   bool save_debug_ref) {
+        pixel_size = native_pixel_size * float(native_dim) / float(binned_dim);
+
+        Image binned_ref;
+        binned_ref.CopyFrom(&perfect_ref);
+        if ( binned_dim != native_dim ) {
+            binned_ref.ForwardFFT( );
+            binned_ref.Resize(binned_dim, binned_dim, 1);
+            binned_ref.BackwardFFT( );
+        }
+        // Zero mean, unit variance so template and target share a scale (raw base_img values ~1e-5
+        // would otherwise make the correlation magnitude negligible and the noise ratios meaningless).
+        binned_ref.ZeroFloatAndNormalize( );
+
+        ref_fft.CopyFrom(&binned_ref);
+        ref_fft.ForwardFFT( );
+
+        ctf = CTF(ctf_voltage, ctf_cs, ctf_amp_contrast, ctf_defocus, ctf_defocus, 0.0f, pixel_size, 0.0f);
+
+        // The perfect reference AS APPLIED in the cross-correlation: CTF-filtered, normalized, real.
+        Image ctf_ref;
+        ctf_ref.CopyFrom(&ref_fft);
+        ctf_ref.ApplyCTF(ctf);
+        ctf_ref.BackwardFFT( );
+        ctf_ref.ZeroFloatAndNormalize( );
+        if ( save_debug_ref )
+            ctf_ref.QuickAndDirtyWriteSlice(debug_ref_ctf_filename, 1, true, pixel_size);
+
+        // Correlation box = 2x the binned image, rounded up to a 5-smooth even size.
+        padded_dim = ReturnClosestFactorizedUpper(2 * binned_dim, 5, true);
+
+        // Template = conj(FFT of the prepared CTF reference). Reused for every replicate; never mutated.
+        prepare_correlation_input(ctf_ref, template_conj_fft, padded_dim);
+        template_conj_fft.Conj( );
+
+        // Clean post-CTF signal std (dim D, no taper/pad). PhaseShift preserves power, so the post-CTF
+        // signal power is independent of the applied sub-pixel shift.
+        Image clean_ctf_signal;
+        clean_ctf_signal.CopyFrom(&ref_fft);
+        clean_ctf_signal.ApplyCTF(ctf);
+        clean_ctf_signal.BackwardFFT( );
+        sigma_signal_post_ctf = sqrtf(clean_ctf_signal.ReturnVarianceOfRealValues( ));
+    };
+
+    // One replicate: build a shifted, CTF-distorted, doubly-noised target from the clean reference
+    // FFT, prepare it (zero-mean, taper, 2x pad), cross-correlate against the prepared conjugated
+    // template, and read the uncorrected (integer) and sampling-corrected (upsampled) peak heights
+    // and the measured offset from box center.
+    auto run_one = [&](Image& ref_fft, CTF& ctf, Image& template_conj_fft, float sigma_signal_post_ctf,
+                       int padded_dim, float pixel_size, float shift_x, float shift_y, bool save_debug_noisy,
+                       float& found_dx, float& found_dy, float& integer_height, float& corrected_height,
+                       float& box_center_value) {
+        Image target;
+        target.CopyFrom(&ref_fft); // Fourier space
+        target.PhaseShift(shift_x, shift_y, 0.0f);
+        target.BackwardFFT( );
+        // Pre-CTF noise on the pure signal normalized to unit variance -> genuine 1:1 (variance 1).
+        // AddNoise draws a fresh, independent, time-seeded realization each call.
+        target.ZeroFloatAndNormalize( );
+        target.AddNoise(NoiseType::GAUSSIAN, 0.0f, noise_sigma_before_ctf);
+        target.ForwardFFT( );
+        target.ApplyCTF(ctf);
+        target.BackwardFFT( );
+        // Post-CTF noise scaled by the clean post-CTF SIGNAL std (not the composite std), so the signal
+        // component sits at unit variance; the "1:N" add is then a true ratio relative to the signal.
+        target.AddConstant(-target.ReturnAverageOfRealValues( ));
+        target.DivideByConstant(sigma_signal_post_ctf);
+        target.AddNoise(NoiseType::GAUSSIAN, 0.0f, noise_sigma_after_ctf);
+
+        if ( save_debug_noisy )
+            target.QuickAndDirtyWriteSlice(debug_img_filename, 1, true, pixel_size);
+
+        // Prepare (zero-mean, taper, 2x pad) then cross-correlate. Multiply (not conjugate-multiply):
+        // the template is already conjugated, so this yields fft(target) * conj(fft(ctf_ref)).
+        target.ZeroFloatAndNormalize( );
+        Image target_padded;
+        prepare_correlation_input(target, target_padded, padded_dim);
+        target_padded.MultiplyPixelWise(template_conj_fft);
+
+        // Center the zero-lag peak: for even dims SwapRealSpaceQuadrants applies the same N/2 phase
+        // shift regardless of the flag and toggles object_is_centred_in_box false -> true, which the
+        // peak finders assert.
+        target_padded.object_is_centred_in_box = false;
+        target_padded.SwapRealSpaceQuadrants( );
+        target_padded.BackwardFFT( );
+
+        // Correlation value at the KNOWN zero-lag location (box center). At zero applied offset the
+        // true signal peak sits here on-grid, so averaging this over replicates is an unbiased
+        // (zero-mean-noise) estimator of the true peak height. Real-space, centered.
+        box_center_value = target_padded.ReturnRealPixelFromPhysicalCoord(
+                target_padded.physical_address_of_box_center_x, target_padded.physical_address_of_box_center_y, 0);
+
+        const Peak         integer_peak = target_padded.FindPeakWithIntegerCoordinates( );
+        std::vector<Peak>  peak_list;
+        std::vector<Peak>  upsampled_peak_list;
+        std::vector<float> fwhm_x_px;
+        std::vector<float> fwhm_y_px;
+        std::vector<int>   upsample_status;
+        target_padded.FindPeakWithIntegerCoordinatesForManyPeaksSweep(
+                peak_list, upsampled_peak_list, fwhm_x_px, fwhm_y_px, upsample_status,
+                0.5f * integer_peak.value, cistem::match_template::PEAK_THRESHOLD_SCALE, 10.0f, 0,
+                sweep_original_peak_size, sweep_padding_multiplier, sweep_upsample_factor,
+                sweep_padding_mode, sweep_width_fraction);
+        MyDebugAssertTrue(! peak_list.empty( ), "No peak crossed threshold in the correlation map");
+
+        found_dx         = (peak_list[0].x - float(target_padded.physical_address_of_box_center_x)) + upsampled_peak_list[0].x;
+        found_dy         = (peak_list[0].y - float(target_padded.physical_address_of_box_center_y)) + upsampled_peak_list[0].y;
+        integer_height   = peak_list[0].value; // uncorrected, at the integer pixel
+        corrected_height = upsampled_peak_list[0].value; // after sub-pixel upsampling correction
+    };
+
+    // Split a displacement magnitude into per-axis shifts by mode (random draws a fresh azimuth).
+    auto compute_shift = [&](float magnitude, float& shift_x, float& shift_y) {
+        if ( shift_mode == SHIFT_X ) {
+            shift_x = magnitude;
+            shift_y = 0.0f;
+        }
+        else if ( shift_mode == SHIFT_Y ) {
+            shift_x = 0.0f;
+            shift_y = magnitude;
+        }
+        else if ( shift_mode == SHIFT_RANDOM ) {
+            const float theta = (global_random_number_generator.GetUniformRandom( ) + 1.0f) * pi_f; // [0, 2pi]
+            shift_x           = magnitude * cosf(theta);
+            shift_y           = magnitude * sinf(theta);
+        }
+        else { // SHIFT_DIAGONAL
+            const float d = magnitude / sqrtf(2.0f);
+            shift_x       = d;
+            shift_y       = d;
+        }
+    };
+
+    // ---- warmup: how many replicates does the noisy measurement need? --------------------------
+    if ( command_line_parser.Found("warmup") ) {
+        if ( binned_dims.empty( ) ) {
+            wxPrintf("No valid pixel sizes for warmup.\n");
+            return true;
+        }
+        const int   warm_binned_dim = binned_dims[binned_dims.size( ) / 2];
+        const float warm_magnitude  = 0.25f;
+        const int   n_warm          = 300;
+
+        Image ref_fft, template_conj_fft;
+        CTF   ctf;
+        float sigma_signal_post_ctf, pixel_size;
+        int   padded_dim;
+        build_pixel_context(warm_binned_dim, ref_fft, ctf, template_conj_fft, sigma_signal_post_ctf, padded_dim, pixel_size, false);
+
+        NumericTextFile warm_file("build/scalloping_warmup.txt", OPEN_TO_WRITE, 4);
+        warm_file.WriteCommentLine("warmup pixel_size %.4f magnitude %.4f shift_mode %s", pixel_size, warm_magnitude, shift_mode_name);
+        warm_file.WriteCommentLine("replicate corrected_height running_mean running_sem");
+        wxPrintf("\n# warmup px=%.4f magnitude=%.3f N=%i\n# n corrected running_mean running_sem\n", pixel_size, warm_magnitude, n_warm);
+
+        double sum = 0.0, sum_sq = 0.0;
+        for ( int rep = 0; rep < n_warm; rep++ ) {
+            float shift_x, shift_y;
+            compute_shift(warm_magnitude, shift_x, shift_y);
+            float found_dx, found_dy, integer_height, corrected_height, box_center_value;
+            run_one(ref_fft, ctf, template_conj_fft, sigma_signal_post_ctf, padded_dim, pixel_size,
+                    shift_x, shift_y, false, found_dx, found_dy, integer_height, corrected_height,
+                    box_center_value);
+            sum += corrected_height;
+            sum_sq += double(corrected_height) * double(corrected_height);
+            const int    n      = rep + 1;
+            const double mean   = sum / n;
+            const double var    = n > 1 ? (sum_sq - sum * sum / n) / (n - 1) : 0.0;
+            const double sem    = n > 1 ? sqrt(var / n) : 0.0;
+            float        row[4] = {float(n), corrected_height, float(mean), float(sem)};
+            warm_file.WriteLine(row);
+            if ( n % 10 == 0 || n == n_warm )
+                wxPrintf("%i %.5f %.5f %.5f\n", n, corrected_height, float(mean), float(sem));
+        }
+        warm_file.Close( );
+        wxPrintf("\nWrote build/scalloping_warmup.txt\n");
+        return true;
+    }
+
+    // ---- report total SNR per pixel size (for figure annotation) --------------------------------
+    // Total power SNR at the correlation input = signal_power : total_noise_power. The clean CTF
+    // reference is normalized to unit variance, so the post-CTF noise contributes its nominal power
+    // directly; the pre-CTF noise contributes only after passing through the CTF (which reshapes its
+    // spectrum), so its post-CTF power is measured, not assumed. The pre/post split is a methods
+    // detail; this single number characterizes how hard a cell is.
+    if ( command_line_parser.Found("report-snr") ) {
+        NumericTextFile snr_file("build/scalloping_snr.txt", OPEN_TO_WRITE, 2);
+        snr_file.WriteCommentLine("noise_power_before_ctf %.4f noise_power_after_ctf %.4f", noise_power_before_ctf, noise_power_after_ctf);
+        snr_file.WriteCommentLine("pixel_size total_power_snr");
+        wxPrintf("\n# pixel_size total_power_snr\n");
+        for ( const int bd : binned_dims ) {
+            Image ref_fft, template_conj_fft;
+            CTF   ctf;
+            float sigma_signal_post_ctf, pixel_size;
+            int   padded_dim;
+            build_pixel_context(bd, ref_fft, ctf, template_conj_fft, sigma_signal_post_ctf, padded_dim, pixel_size, false);
+
+            // Variance of a pre-CTF noise realization after the CTF, relative to the clean post-CTF
+            // signal variance (which the target normalization sets to 1). PhaseShift/normalization make
+            // the signal power 1; post-CTF noise adds noise_power_after directly.
+            Image pre_noise;
+            pre_noise.Allocate(bd, bd, 1, true);
+            pre_noise.FillWithNoise(NoiseType::GAUSSIAN, 0.0f, noise_sigma_before_ctf);
+            pre_noise.ForwardFFT( );
+            pre_noise.ApplyCTF(ctf);
+            pre_noise.BackwardFFT( );
+            const float pre_noise_power = pre_noise.ReturnVarianceOfRealValues( ) / (sigma_signal_post_ctf * sigma_signal_post_ctf);
+            const float total_power_snr = 1.0f / (pre_noise_power + noise_power_after_ctf);
+
+            float row[2] = {pixel_size, total_power_snr};
+            snr_file.WriteLine(row);
+            wxPrintf("%.4f %.5f\n", pixel_size, total_power_snr);
+        }
+        snr_file.Close( );
+        wxPrintf("\nWrote build/scalloping_snr.txt\n");
+        return true;
+    }
+
+    // ---- main sweep: (pixel size) x (offset magnitude) x (replicate) -----------------------------
+    const int       records_per_line = 10;
+    NumericTextFile output_file(output_data_filename, OPEN_TO_WRITE, records_per_line);
+    output_file.WriteCommentLine("noise_before_ctf %.4f noise_after_ctf %.4f", noise_sigma_before_ctf, noise_sigma_after_ctf);
+    output_file.WriteCommentLine("shift_mode %s base_upsample_factor %.3f n_replicates %i", shift_mode_name, base_upsample_factor, n_replicates);
+    output_file.WriteCommentLine("upsample_window %i padding_mult %i upsample_factor %i padding_mode %i width_fraction %.3f",
+                                 sweep_original_peak_size, sweep_padding_multiplier, sweep_upsample_factor, sweep_padding_mode, sweep_width_fraction);
+    output_file.WriteCommentLine("pixel_size replicate applied_magnitude applied_dx applied_dy found_dx found_dy integer_peak_height corrected_peak_height box_center_value");
+
+    bool debug_img_saved = false;
+
+    for ( size_t bin_idx = 0; bin_idx < binned_dims.size( ); bin_idx++ ) {
+        Image ref_fft, template_conj_fft;
+        CTF   ctf;
+        float sigma_signal_post_ctf, pixel_size;
+        int   padded_dim;
+        build_pixel_context(binned_dims[bin_idx], ref_fft, ctf, template_conj_fft, sigma_signal_post_ctf, padded_dim, pixel_size, debug_output && bin_idx == 0);
+
+        for ( const float offset_magnitude : sub_pixel_offset_magnitudes ) {
+            for ( int rep = 0; rep < n_replicates; rep++ ) {
+                float shift_x, shift_y;
+                compute_shift(offset_magnitude, shift_x, shift_y);
+                const bool save_this = debug_output && ! debug_img_saved;
+                float      found_dx, found_dy, integer_peak_height, corrected_height, box_center_value;
+                run_one(ref_fft, ctf, template_conj_fft, sigma_signal_post_ctf, padded_dim, pixel_size,
+                        shift_x, shift_y, save_this, found_dx, found_dy, integer_peak_height, corrected_height,
+                        box_center_value);
+                if ( save_this )
+                    debug_img_saved = true;
+
+                float record[10] = {pixel_size, float(rep), offset_magnitude, shift_x, shift_y,
+                                    found_dx, found_dy, integer_peak_height, corrected_height, box_center_value};
+                output_file.WriteLine(record);
+            }
+            wxPrintf("px=%.3f magnitude=%.3f  (%i replicates)\n", pixel_size, offset_magnitude, n_replicates);
+        }
+    }
+
+    output_file.Close( );
+    wxPrintf("\nWrote %s\n", output_data_filename.c_str( ));
+#endif // cisTEM_test_scalloping
 
     return true;
 }

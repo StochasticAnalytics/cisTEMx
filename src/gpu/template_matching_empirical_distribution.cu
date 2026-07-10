@@ -52,20 +52,29 @@ inline __device__ __host__ bool test_gt_zero(T value) {
  * @param real_memory_allocated The allocated memory size (includes +2 FFTW padding in X dimension)
  * @return Optimal number of images to process per batch
  */
-inline int DetermineBatchSizeFromImageMemory(int real_memory_allocated) {
+inline int DetermineBatchSizeFromImageMemory(int real_memory_allocated, int batch_size_multiplier = 4) {
+    MyDebugAssertTrue(batch_size_multiplier == 1 || batch_size_multiplier == 2 || batch_size_multiplier == 4 || batch_size_multiplier == 8,
+                      "gpu batch size multiplier must be 1, 2, 4, or 8 (got %d)", batch_size_multiplier);
     // Thresholds account for FFTW padding (+2 in X dimension)
     constexpr int threshold_4k = 4098 * 4096; // ~16.8M elements
     constexpr int threshold_2k = 2050 * 2048; // ~4.2M elements
     constexpr int threshold_1k = 1026 * 1024; // ~1.05M elements
 
+    // Base stack sizes are half the multiplier-1 batch; the default multiplier of 4 restores the
+    // measured 40-stack at 4k (base 10 x 4), while multipliers 1/2/4/8 -> 10/20/40/80 give finer
+    // low-end control and reach the 80 ceiling. Larger batch amortizes the per-batch sum-array
+    // read-modify-write DRAM traffic (traffic ~ 1/batch on this DRAM-bandwidth-bound workload).
+    int base_batch_size;
     if ( real_memory_allocated > threshold_4k )
-        return 10;
+        base_batch_size = 5;
     else if ( real_memory_allocated > threshold_2k )
-        return 20;
+        base_batch_size = 10;
     else if ( real_memory_allocated > threshold_1k )
-        return 40;
+        base_batch_size = 20;
     else
-        return 60;
+        base_batch_size = 30;
+
+    return base_batch_size * batch_size_multiplier;
 }
 
 /**
@@ -80,11 +89,12 @@ inline int DetermineBatchSizeFromImageMemory(int real_memory_allocated) {
 template <typename ccfType, typename mipType>
 TM_EmpiricalDistribution<ccfType, mipType>::TM_EmpiricalDistribution(GpuImage* reference_image,
                                                                      int2      pre_padding,
-                                                                     int2      roi) : pre_padding_{pre_padding},
-                                                                                 roi_{roi},
-                                                                                 higher_order_moments_{false},
-                                                                                 image_plane_mem_allocated_{reference_image->real_memory_allocated},
-                                                                                 n_imgs_to_process_at_once_{DetermineBatchSizeFromImageMemory(reference_image->real_memory_allocated)} {
+                                                                     int2      roi,
+                                                                     int       batch_size_multiplier) : pre_padding_{pre_padding},
+                                                                                                  roi_{roi},
+                                                                                                  higher_order_moments_{false},
+                                                                                                  image_plane_mem_allocated_{reference_image->real_memory_allocated},
+                                                                                                  n_imgs_to_process_at_once_{DetermineBatchSizeFromImageMemory(reference_image->real_memory_allocated, batch_size_multiplier)} {
 
     // Design Note: This constructor initializes all necessary GPU resources.
     // - A dedicated CUDA stream (`calc_stream_`) is created for all operations within this class instance.

@@ -131,7 +131,8 @@ class TM_EmpiricalDistribution {
  */
     TM_EmpiricalDistribution(GpuImage* reference_image,
                              int2      pre_padding,
-                             int2      roi);
+                             int2      roi,
+                             int       batch_size_multiplier = 4);
 
     /**
      * @brief Destructor for TM_EmpiricalDistribution.

@@ -63,6 +63,26 @@ if test "$want_cuda" = "yes" ; then
   	libdir=lib64
 
 	# set CUDA flags for static compilation. This is required for cufft callbacks.
+	#
+	# WHY -lcufft_static (both branches below): classic cuFFT device callbacks
+	# (cufftXtSetCallback) only relink into the FFT kernels when cuFFT is linked
+	# statically. The static archive embeds a per-config PTX kernel database
+	# (~225 MB in .ldata of each GPU binary as of CUDA 13). Shared -lcufft links
+	# fine but the callbacks fail at runtime.
+	#
+	# TO SWITCH TO SHARED -lcufft, first remove every cufftXtSetCallback reference
+	# from compiled code (only then can the flag flip safely):
+	#   LIVE  - src/gpu/TemplateMatchingCore.cu:568 -> GpuImage::BackwardFFTAfterComplexConjMul
+	#           (non-FastFFT CCF path; runs when "Use Fast FFT"=No or FastFFT not built).
+	#           Callback impl: src/gpu/GpuImage.cu (cufftXtSetCallback ~lines 3275/3277/3285),
+	#           explicit instantiations at GpuImage.cu ~3299-3300,
+	#           device callback functions in src/gpu/gpu_image_cuFFT_callbacks.h.
+	#   DEAD  - GpuImage::ForwardFFTAndClipInto (no callers)
+	#   DEAD  - GpuImage::CalculateCrossCorrelationImageWith (GPU overload has no callers;
+	#           program call sites bind the CPU Image:: overload)
+	#   DEAD  - GpuImage::ForwardFFT fp16 branch (is_half_precision hard-set false)
+	# The LIVE reference is the blocker: retiring the non-FastFFT template-matching
+	# path (or replacing its callback with a plain kernel + cufftExecC2R) removes it.
     if test "x$static_link" = "xtrue"
 	then
       AC_MSG_NOTICE([static linking of cuda libs])

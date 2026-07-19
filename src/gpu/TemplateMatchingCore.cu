@@ -52,14 +52,11 @@
 
 #include "TemplateMatchingCore.h"
 
+#include <memory> // std::unique_ptr for the FastFFT descriptor-constructed transformer
+
 #ifdef cisTEM_USING_FastFFT
-#ifdef cisTEM_BUILDING_FastFFT
-#include "../../include/FastFFT/include/FastFFT.h"
-#include "../../include/FastFFT/include/detail/functors.h"
-#else
 #include "/opt/FastFFT/include/FastFFT.h"
 #include "/opt/FastFFT/include/detail/functors.h"
-#endif
 #endif
 // Implementation is in the header as it is only used here for now.
 /**
@@ -373,7 +370,10 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
     }
 
 #ifdef cisTEM_USING_FastFFT
-    FastFFT::FourierTransformer<float, __half, __half2, 2> FT;
+    // FastFFT new-descriptor constructor (SetForwardFFTPlan/SetInverseFFTPlan removed 2026-07) has no
+    // default construction, but this FT must outlive the plan-setup block and be reused across the search
+    // loop below, so hold it by unique_ptr and emplace it once the descriptor is filled.
+    std::unique_ptr<FastFFT::FourierTransformer<float, __half, __half2, 2>> FT;
 
     // float scale_factor = powf((float)d_current_projection[0].number_of_real_space_pixels, -2.0);
     // float scale_factor = 1.f;
@@ -384,11 +384,20 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
 
     if ( use_fast_fft ) {
 
-        // TODO: overload that takes and short4's int4's instead of the individual values
-        FT.SetForwardFFTPlan(current_projection[0].logical_x_dimension, current_projection[0].logical_y_dimension, current_projection[0].logical_z_dimension,
-                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
-        FT.SetInverseFFTPlan(d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z,
-                             d_padded_reference.dims.x, d_padded_reference.dims.y, d_padded_reference.dims.z, true);
+        // Field mapping per include/detail/plan_descriptor.h migration table: fwd input -> input_size,
+        // fwd output -> fourier_size (== inv input), inv output -> output_size; both padded flags were
+        // true, the descriptor default.
+        FastFFT::PlanDescriptor plan{ };
+        plan.input_size   = {static_cast<std::size_t>(current_projection[0].logical_x_dimension),
+                             static_cast<std::size_t>(current_projection[0].logical_y_dimension),
+                             static_cast<std::size_t>(current_projection[0].logical_z_dimension)};
+        plan.fourier_size = {static_cast<std::size_t>(d_padded_reference.dims.x),
+                             static_cast<std::size_t>(d_padded_reference.dims.y),
+                             static_cast<std::size_t>(d_padded_reference.dims.z)};
+        plan.output_size  = {static_cast<std::size_t>(d_padded_reference.dims.x),
+                             static_cast<std::size_t>(d_padded_reference.dims.y),
+                             static_cast<std::size_t>(d_padded_reference.dims.z)};
+        FT                = std::make_unique<FastFFT::FourierTransformer<float, __half, __half2, 2>>(plan);
     }
 
 #endif
@@ -531,12 +540,12 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
                 // Input: d_current_projection[idx].real_values_fp16 (from normalization)
                 //        d_input_image->complex_values_fp16 (pre-loaded shared input)
                 // Output: my_dist->GetCCFArray()
-                FT.FwdImageInvFFT(d_current_projection[current_projection_idx].real_values_fp16,
-                                  (__half2*)d_input_image->complex_values_fp16,
-                                  my_dist->GetCCFArray( ),
-                                  noop,
-                                  conj_mul_then_scale,
-                                  noop);
+                FT->FwdImageInvFFT(d_current_projection[current_projection_idx].real_values_fp16,
+                                   (__half2*)d_input_image->complex_values_fp16,
+                                   my_dist->GetCCFArray( ),
+                                   noop,
+                                   conj_mul_then_scale,
+                                   noop);
 
                 // CRITICAL: Mark projection slot as free AFTER the FFT completes reading from it.
                 // The event must be recorded on cudaStreamPerThread (where the FFT runs), not on

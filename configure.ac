@@ -247,8 +247,6 @@ AC_ARG_ENABLE(debugmode, AS_HELP_STRING([--enable-debugmode],[Compile in debug m
 # BEGIN CUDA CHECKS AND SETS
 ###############################
 
-# This also has an effect in submodule_FastFFT on the FastFFT_FLAGS
-want_gpu_debug="no"
 AC_ARG_WITH([gpu-debug],
   AS_HELP_STRING([--with-gpu-debug=LEVEL],[GPU debug level: 1=checks only, 2=+syncs [default=0]]),
   [gpu_debug_level=$withval], [gpu_debug_level=0])
@@ -257,7 +255,6 @@ if test "$gpu_debug_level" -gt 0; then
   AC_DEFINE_UNQUOTED([ENABLE_GPU_DEBUG], [$gpu_debug_level], [GPU debug level])
   AC_MSG_NOTICE([Compiling with GPU debug level $gpu_debug_level])
   NVCCFLAGS="$NVCCFLAGS -DENABLE_GPU_DEBUG=$gpu_debug_level"
-  want_gpu_debug="yes"
 fi 
   
 # Call the m4 macro to check and setup for FastFFT if present and requested. Must be run after AX_CUDA
@@ -281,8 +278,8 @@ if test "x$want_cuda" = "xyes" ; then
     fi
 
     AC_MSG_NOTICE([Adding the CUDA includes Setting up NVCC initial flags])
-    CUDA_CPPFLAGS="$FastFFT_CUDA_FLAGS $FastFFT_DEFINES $CUDA_CFLAGS $NVCCFLAGS"
-    CUDA_CXXFLAGS="$FastFFT_CUDA_FLAGS $FastFFT_DEFINES $CUDA_CFLAGS $NVCCFLAGS"
+    CUDA_CPPFLAGS="$CUDA_CFLAGS $NVCCFLAGS"
+    CUDA_CXXFLAGS="$CUDA_CFLAGS $NVCCFLAGS"
     
     CXXFLAGS="$CXXFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"
     CPPFLAGS="$CPPFLAGS $use_gpu_cache_hints $CUDA_CFLAGS"

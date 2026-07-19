@@ -3,6 +3,7 @@
 	for information on actual data management / addressing see the image_data_array class..
 
 */
+#include <limits>
 #include "../../include/ieee-754-half/half.hpp"
 
 class ReconstructedVolume;
@@ -589,7 +590,11 @@ class Image {
     //   sweep_padding_mode: 0 = mirror reflection (production behavior),
     //                       1 = zero pad (place tile at top-left, rest stays zero),
     //                       2 = Hann window applied to tile, then zero pad.
-    void FindPeakWithIntegerCoordinatesForManyPeaksSweep(std::vector<Peak>& peak_list, std::vector<Peak>& upsampled_peak_list, std::vector<float>& fwhm_x_upsampled_px, std::vector<float>& fwhm_y_upsampled_px, std::vector<int>& upsample_status, const float peak_threshold, const float peak_threshold_scale, const float exclusion_radius, const int wanted_min_distance_from_edges, const int sweep_original_peak_size, const int sweep_padding_multiplier, const int sweep_upsample_factor, const int sweep_padding_mode, const float sweep_width_fraction);
+    //   sweep_fwhm_baseline: reference floor for the FWHM half-height walk. Default
+    //                       sentinel -std::numeric_limits<float>::max() means "use
+    //                       peak_threshold" (back-compat); pass 0 to measure a
+    //                       physical half-max above a zero floor.
+    void FindPeakWithIntegerCoordinatesForManyPeaksSweep(std::vector<Peak>& peak_list, std::vector<Peak>& upsampled_peak_list, std::vector<float>& fwhm_x_upsampled_px, std::vector<float>& fwhm_y_upsampled_px, std::vector<int>& upsample_status, const float peak_threshold, const float peak_threshold_scale, const float exclusion_radius, const int wanted_min_distance_from_edges, const int sweep_original_peak_size, const int sweep_padding_multiplier, const int sweep_upsample_factor, const int sweep_padding_mode, const float sweep_width_fraction, const float sweep_fwhm_baseline = -std::numeric_limits<float>::max( ));
     Peak FindPeakWithParabolaFit(float wanted_min_radius = 0.0, float wanted_max_radius = FLT_MAX, int wanted_min_distance_from_edges = 0);
 
     void SubSampleWithNoisyResampling(Image* first_sampled_image, Image* second_sampled_image);

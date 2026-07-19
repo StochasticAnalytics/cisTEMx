@@ -42,6 +42,13 @@ class TemplateMatchingDataSizer {
     int search_image_valid_area_upper_bound_y;
 
     // n elements that are not valid search results,  pre_padding.x then is also the first valid physical x-index in zero based coordinates
+    // pre_padding/roi are in UN-ROTATED (input image) coordinates and are consumed only by
+    // ResizeImage_postSearch, which runs after the search results have been rotated back.
+    // pre_padding_search/roi_search are the SAME rectangle expressed in the coordinates the search
+    // runs in, i.e. after the optional RotateForSpeed 90-degree rotation in ResizeImage_preSearch.
+    // Anything indexing the search image or a statistical image DURING the search (the MIP
+    // aggregation loops in match_template.cpp, the GPU histogram/accumulation kernel) must use the
+    // _search variants; they are equal to the un-rotated pair when no rotation was applied.
     int2 pre_padding;
     int2 pre_padding_search;
     // logical x/y size of the region of interest.
@@ -65,6 +72,7 @@ class TemplateMatchingDataSizer {
     bool  resampling_is_needed{false};
     bool  resizing_is_needed{false};
     bool  is_rotated_by_90{false};
+    bool  process_full_k3{false};
     bool  use_fast_fft{false};
     bool  sizing_is_set{false};
     bool  padding_is_set{false};
@@ -247,6 +255,10 @@ class TemplateMatchingDataSizer {
 
     inline int GetPrePaddingY( ) const {
         return pre_padding.y;
+    }
+
+    inline int GetPrePaddingSearchX( ) const {
+        return pre_padding_search.x;
     }
 
     inline int GetPrePaddingSearchY( ) const {

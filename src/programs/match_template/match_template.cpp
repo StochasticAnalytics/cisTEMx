@@ -12,11 +12,7 @@
 #include "../../constants/constants.h"
 
 #if defined(cisTEM_USING_FastFFT) && defined(ENABLEGPU)
-#ifdef cisTEM_BUILDING_FastFFT
-#include "../../../include/FastFFT/include/FastFFT.h"
-#else
 #include "/opt/FastFFT/include/FastFFT.h"
-#endif
 #endif
 
 #include "template_matching_data_sizer.h"
@@ -907,8 +903,8 @@ bool MatchTemplateApp::DoCalculation( ) {
 
         // FastFFT new-descriptor constructor (SetForwardFFTPlan/SetInverseFFTPlan removed 2026-07).
         // Field mapping per include/detail/plan_descriptor.h migration table: fwd input -> input_size,
-        // fwd output -> fourier_size (== inv input, matches here), inv output -> output_size; both
-        // padded flags were true, the descriptor default.
+        // fwd output -> fourier_size (== inv input), inv output -> output_size; both padded flags were
+        // true, the descriptor default.
         // PlanExtent stores std::size_t; the source dimensions are int. Brace-init narrows on that
         // signed-to-unsigned conversion regardless of value, since the compiler cannot know these
         // logical dimensions are always positive here, so the explicit cast is required, not stylistic.
@@ -1037,8 +1033,10 @@ bool MatchTemplateApp::DoCalculation( ) {
                                    psi_step,
                                    angles,
                                    global_euler_search,
-                                   data_sizer.GetPrePadding( ),
-                                   data_sizer.GetRoi( ),
+                                   // Search-space (post RotateForSpeed) bounds: these index the GPU
+                                   // input image and statistical arrays, which are in search space.
+                                   data_sizer.GetPrePaddingSearch( ),
+                                   data_sizer.GetRoiSearch( ),
                                    t_first_search_position,
                                    t_last_search_position,
                                    my_progress,
@@ -1131,8 +1129,11 @@ bool MatchTemplateApp::DoCalculation( ) {
 
                         // Aggregate results into global host arrays
                         // Note: even if we have ignored some invalid boundary values, copy over everything here
-                        for ( int current_y = data_sizer.GetPrePaddingY( ); current_y < data_sizer.GetPrePaddingY( ) + data_sizer.GetRoiY( ); current_y++ ) {
-                            for ( int current_x = data_sizer.GetPrePaddingX( ); current_x < data_sizer.GetPrePaddingX( ) + data_sizer.GetRoiX( ); current_x++ ) {
+                        // The MIP and best_* images are allocated at the (possibly RotateForSpeed-rotated)
+                        // search image dimensions, so iterate the valid area in SEARCH-space coordinates.
+                        // pre_padding/roi are un-rotated and are only valid post-search (after ResizeImage_postSearch un-rotates).
+                        for ( int current_y = data_sizer.GetPrePaddingSearchY( ); current_y < data_sizer.GetPrePaddingSearchY( ) + data_sizer.GetRoiSearchY( ); current_y++ ) {
+                            for ( int current_x = data_sizer.GetPrePaddingSearchX( ); current_x < data_sizer.GetPrePaddingSearchX( ) + data_sizer.GetRoiSearchX( ); current_x++ ) {
                                 // first mip
                                 long address = max_intensity_projection.ReturnReal1DAddressFromPhysicalCoord(current_x, current_y, 0);
 
@@ -1227,8 +1228,11 @@ bool MatchTemplateApp::DoCalculation( ) {
 
                         // update mip, and histogram..
 
-                        for ( int current_y = data_sizer.GetPrePaddingY( ); current_y < data_sizer.GetPrePaddingY( ) + data_sizer.GetRoiY( ); current_y++ ) {
-                            for ( int current_x = data_sizer.GetPrePaddingX( ); current_x < data_sizer.GetPrePaddingX( ) + data_sizer.GetRoiX( ); current_x++ ) {
+                        // Search-space coordinates: padded_reference / the MIP / best_* are all allocated
+                        // at the (possibly RotateForSpeed-rotated) search image dimensions. See the GPU
+                        // aggregation loop above.
+                        for ( int current_y = data_sizer.GetPrePaddingSearchY( ); current_y < data_sizer.GetPrePaddingSearchY( ) + data_sizer.GetRoiSearchY( ); current_y++ ) {
+                            for ( int current_x = data_sizer.GetPrePaddingSearchX( ); current_x < data_sizer.GetPrePaddingSearchX( ) + data_sizer.GetRoiSearchX( ); current_x++ ) {
                                 // first mip
                                 long address = max_intensity_projection.ReturnReal1DAddressFromPhysicalCoord(current_x, current_y, 0);
                                 if ( padded_reference.real_values[address] > max_intensity_projection.real_values[address] ) {

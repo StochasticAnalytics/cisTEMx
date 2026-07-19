@@ -175,7 +175,7 @@ void TM_EmpiricalDistribution<ccfType, mipType>::AllocateAndZeroStatisticalArray
     cudaErr(cudaMemsetAsync(theta_phi, 0, image_plane_mem_allocated_ * sizeof(mipType), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(psi, 0, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(theta, 0, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
-    cudaErr(cudaMemsetAsync(phi, 0, image_plane_mem_allocated_ * sizeof(decltype(phi)), calc_stream_[0]));
+    cudaErr(cudaMemsetAsync(phi, 0, image_plane_mem_allocated_ * sizeof(ccfType), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(ccf_array_.at(0), 0, image_plane_mem_allocated_ * n_imgs_to_process_at_once_ * sizeof(ccfType), calc_stream_[0]));
     cudaErr(cudaMemsetAsync(ccf_array_.at(1), 0, image_plane_mem_allocated_ * n_imgs_to_process_at_once_ * sizeof(ccfType), calc_stream_[0]));
 

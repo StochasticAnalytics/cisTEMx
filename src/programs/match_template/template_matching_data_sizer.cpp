@@ -11,11 +11,7 @@
 #include "../../constants/constants.h"
 
 #if defined(cisTEM_USING_FastFFT) && defined(ENABLEGPU)
-#ifdef cisTEM_BUILDING_FastFFT
-#include "../../../include/FastFFT/include/FastFFT.h"
-#else
 #include "/opt/FastFFT/include/FastFFT.h"
-#endif
 #endif
 
 #include "template_matching_data_sizer.h"
@@ -167,24 +163,31 @@ void TemplateMatchingDataSizer::PreProcessInputImage(Image& input_image, bool sw
 void TemplateMatchingDataSizer::CheckSizing( ) {
     // TODO: remove thiss
     if ( use_fast_fft ) {
-        // We currently can only use FastFFT for power of 2 size images and template
-        // TODO: the limit on templates should be trivial to remove since they are padded.
-        // TOOD: Should probably consider this in the code above working out next good size, rather than only allowing power of 2,
-        //       which will take a k3 to 8k x 8k it would be better to pad either
-        //       a) crop to 4k x 4k (lossy but immediately supported)
-        //       b) split into two images and pad each to either 4k x 4k (possibly a bit slower and not yet supported)
-        // FIXME:
-        if ( image_search_size.x != image_search_size.y ) {
-            parent_match_template_app_ptr->SendInfo("FastFFT currently only supports square images, padding smaller up\n");
-        }
-        if ( image_search_size.x > image_search_size.y ) {
-            image_search_size.y = image_search_size.x;
+        if ( process_full_k3 ) {
+            // Non-square 4096 x 6144 K3 layout handled by the decomposed-6144 FastFFT path
+            // (6144 = 3*2048). Skip the square-up and the 4096 cap that constrain the
+            // standard FastFFT path; the exact size was already set in GetFFTSize.
         }
         else {
-            image_search_size.x = image_search_size.y;
-        }
-        if ( image_search_size.x > 4096 || image_search_size.y > 4096 ) {
-            parent_match_template_app_ptr->SendError("FastFFT only supports images up to 4096x4096\n");
+            // We currently can only use FastFFT for power of 2 size images and template
+            // TODO: the limit on templates should be trivial to remove since they are padded.
+            // TOOD: Should probably consider this in the code above working out next good size, rather than only allowing power of 2,
+            //       which will take a k3 to 8k x 8k it would be better to pad either
+            //       a) crop to 4k x 4k (lossy but immediately supported)
+            //       b) split into two images and pad each to either 4k x 4k (possibly a bit slower and not yet supported)
+            // FIXME:
+            if ( image_search_size.x != image_search_size.y ) {
+                parent_match_template_app_ptr->SendInfo("FastFFT currently only supports square images, padding smaller up\n");
+            }
+            if ( image_search_size.x > image_search_size.y ) {
+                image_search_size.y = image_search_size.x;
+            }
+            else {
+                image_search_size.x = image_search_size.y;
+            }
+            if ( image_search_size.x > 4096 || image_search_size.y > 4096 ) {
+                parent_match_template_app_ptr->SendError("FastFFT only supports images up to 4096x4096\n");
+            }
         }
     }
     else {
@@ -283,20 +286,40 @@ void TemplateMatchingDataSizer::GetFFTSize( ) {
     }
 
     // When FastFFT is enabled, primes are limited to 2 by the calling method.
-    int factor_result_pos;
-    for ( auto& prime_value : primes ) {
-        factor_result_pos = ReturnClosestFactorizedUpper(image_cropped_size.x, prime_value, true, MUST_BE_FACTOR_OF);
-        if ( (float)(-image_cropped_size.x + factor_result_pos) < float(image_cropped_size.x) * max_increase_by_fraction_of_image ) {
-            image_search_size.x = factor_result_pos;
-            break;
+    // process_full_k3: a K3-shaped image (long axis in (4096, 6144]) cannot be squared to a
+    // power-of-two <= 4096 without cropping (lossy). FastFFT now supports a non-square
+    // 4096 x 6144 transform via the decomposed-6144 path (6144 = 3*2048), so pad to exactly
+    // that box instead. The later RotateForSpeed step lands the 6144 (non-power-of-two) axis
+    // on Y, which is the second-axis-only orientation the decomposed path requires.
+    const int k3_long_axis  = std::max(image_cropped_size.x, image_cropped_size.y);
+    const int k3_short_axis = std::min(image_cropped_size.x, image_cropped_size.y);
+    if ( use_fast_fft && k3_long_axis > 4096 && k3_long_axis <= 6144 && k3_short_axis <= 4096 ) {
+        process_full_k3 = true;
+        if ( image_cropped_size.x >= image_cropped_size.y ) {
+            image_search_size.x = 6144;
+            image_search_size.y = 4096;
+        }
+        else {
+            image_search_size.x = 4096;
+            image_search_size.y = 6144;
         }
     }
+    else {
+        int factor_result_pos;
+        for ( auto& prime_value : primes ) {
+            factor_result_pos = ReturnClosestFactorizedUpper(image_cropped_size.x, prime_value, true, MUST_BE_FACTOR_OF);
+            if ( (float)(-image_cropped_size.x + factor_result_pos) < float(image_cropped_size.x) * max_increase_by_fraction_of_image ) {
+                image_search_size.x = factor_result_pos;
+                break;
+            }
+        }
 
-    for ( auto& prime_value : primes ) {
-        factor_result_pos = ReturnClosestFactorizedUpper(image_cropped_size.y, prime_value, true, MUST_BE_FACTOR_OF);
-        if ( (float)(-image_cropped_size.y + factor_result_pos) < float(image_cropped_size.y) * max_increase_by_fraction_of_image ) {
-            image_search_size.y = factor_result_pos;
-            break;
+        for ( auto& prime_value : primes ) {
+            factor_result_pos = ReturnClosestFactorizedUpper(image_cropped_size.y, prime_value, true, MUST_BE_FACTOR_OF);
+            if ( (float)(-image_cropped_size.y + factor_result_pos) < float(image_cropped_size.y) * max_increase_by_fraction_of_image ) {
+                image_search_size.y = factor_result_pos;
+                break;
+            }
         }
     }
 
@@ -422,6 +445,16 @@ void TemplateMatchingDataSizer::SetValidSearchImageIndiciesFromPadding(const int
 
     roi.x = search_image_valid_area_upper_bound_x - search_image_valid_area_lower_bound_x + 1;
     roi.y = search_image_valid_area_upper_bound_y - search_image_valid_area_lower_bound_y + 1;
+
+    // pre_padding/roi are, and must remain, in UN-ROTATED coordinates: the post-search path
+    // (ResizeImage_postSearch) consumes them only after the search image and every statistical
+    // image have been rotated back. pre_padding_search/roi_search are the same rectangle expressed
+    // in the coordinates the search actually runs in. They are only different when
+    // ResizeImage_preSearch rotates for speed, which sets them there; initialize them to the
+    // un-rotated values here so they are never indeterminate (every consumer that indexes a
+    // search-space image must use the _search variants).
+    pre_padding_search = pre_padding;
+    roi_search         = roi;
 
     number_of_pixels_for_normalization = long(image_search_size.x - post_padding_x - pre_padding_x) *
                                          long(image_search_size.y - post_padding_y - pre_padding_y);
@@ -647,11 +680,55 @@ void TemplateMatchingDataSizer::ResizeImage_preSearch(Image& input_image, const 
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
             wxPrintf("Rotating the search image for speed\n");
         }
-        input_image.RotateInPlaceAboutZBy90Degrees(true);
+        // Image::RotateInPlaceAboutZBy90Degrees(rotate_by_positive_90 = true, preserve_origin) maps,
+        // per pixel,   x_new = Y_old - y_old - 1 + shift,   y_new = x_old,   new dims = (Y_old, X_old)
+        // where X_old/Y_old are the dimensions BEFORE the rotation and shift is 1 only when
+        // preserve_origin is true and Y_old is even (else 0).
+        //
+        // pre_padding/roi are, and must stay, UN-ROTATED (ResizeImage_postSearch consumes them after
+        // the un-rotate). Everything that indexes the search image or any statistical image DURING
+        // the search needs that same rectangle in rotated coordinates, so map it here. The map is a
+        // bijection, so the image of  x_old in [pre_padding.x, pre_padding.x + roi.x),
+        //                             y_old in [pre_padding.y, pre_padding.y + roi.y)
+        // is exactly  y_new in [pre_padding.x, pre_padding.x + roi.x)
+        //             x_new in [Y_old - pre_padding.y - roi.y + shift, Y_old - pre_padding.y + shift).
+        //
+        // K3 check (6144 x 4096 search image, pre_padding = (192, 2), roi = (5760, 4092), shift = 0):
+        //   pre_padding_search = (2, 192), roi_search = (4092, 5760)
+        //   -> x_new in [2, 4094) and y_new in [192, 5952), both inside the rotated 4096 x 6144 image.
+        //   Corners map as expected: (192, 2) -> (4093, 192) and (5951, 4093) -> (2, 5951).
+        constexpr bool preserve_origin             = false; // MUST match the argument passed below.
+        const int      x_dimension_before_rotation = input_image.logical_x_dimension;
+        const int      y_dimension_before_rotation = input_image.logical_y_dimension;
+        const int      rotation_shift_value        = (preserve_origin && IsEven(y_dimension_before_rotation)) ? 1 : 0;
+
+        input_image.RotateInPlaceAboutZBy90Degrees(true, preserve_origin);
         // bool preserve_origin = true;
         // input_reconstruction.RotateInPlaceAboutZBy90Degrees(true, preserve_origin);
         // The amplitude spectrum is also rotated
         is_rotated_by_90 = true;
+
+        pre_padding_search.x = y_dimension_before_rotation - pre_padding.y - roi.y + rotation_shift_value;
+        pre_padding_search.y = pre_padding.x;
+        roi_search.x         = roi.y;
+        roi_search.y         = roi.x;
+
+        // Always-on (not MyDebugAssert*): a wrong rectangle here is an out-of-bounds write in the MIP
+        // aggregation loop and in the GPU histogram kernel, which release builds would do silently.
+        MyAssertTrue(input_image.logical_x_dimension == y_dimension_before_rotation && input_image.logical_y_dimension == x_dimension_before_rotation,
+                     "Rotated search image dimensions (%d, %d) are not the swap of the pre-rotation dimensions (%d, %d)",
+                     input_image.logical_x_dimension, input_image.logical_y_dimension, x_dimension_before_rotation, y_dimension_before_rotation);
+        MyAssertTrue(pre_padding_search.x >= 0 && roi_search.x > 0 && pre_padding_search.x + roi_search.x <= input_image.logical_x_dimension,
+                     "Rotated search ROI x-range [%d, %d) is outside the rotated search image x dimension %d",
+                     pre_padding_search.x, pre_padding_search.x + roi_search.x, input_image.logical_x_dimension);
+        MyAssertTrue(pre_padding_search.y >= 0 && roi_search.y > 0 && pre_padding_search.y + roi_search.y <= input_image.logical_y_dimension,
+                     "Rotated search ROI y-range [%d, %d) is outside the rotated search image y dimension %d",
+                     pre_padding_search.y, pre_padding_search.y + roi_search.y, input_image.logical_y_dimension);
+
+        if ( ReturnThreadNumberOfCurrentThread( ) == 0 ) {
+            wxPrintf("Rotated valid-search area: pre_padding %i %i roi %i %i -> pre_padding_search %i %i roi_search %i %i\n",
+                     pre_padding.x, pre_padding.y, roi.x, roi.y, pre_padding_search.x, pre_padding_search.y, roi_search.x, roi_search.y);
+        }
 #ifdef DEBUG_IMG_POSTPROCESS_OUTPUT
         if ( ReturnThreadNumberOfCurrentThread( ) == 0 )
             input_image.QuickAndDirtyWriteSlice(DEBUG_IMG_POSTPROCESS_OUTPUT "/input_image_rotated.mrc", 1);
@@ -662,6 +739,11 @@ void TemplateMatchingDataSizer::ResizeImage_preSearch(Image& input_image, const 
             wxPrintf("Not rotating the search image for speed even though it is enabled\n");
         }
         is_rotated_by_90 = false;
+        // No rotation: search-space coordinates are the un-rotated coordinates. Set explicitly on this
+        // branch too (they are also initialized in SetValidSearchImageIndiciesFromPadding) so that
+        // neither branch can leave them indeterminate.
+        pre_padding_search = pre_padding;
+        roi_search         = roi;
     }
 #endif
 };
@@ -678,8 +760,30 @@ void TemplateMatchingDataSizer::ResizeImage_postSearch(Image&     max_intensity_
                                                        const int  n_threads) {
 
     MyDebugAssertTrue(sizing_is_set, "Sizing has not been set");
-    MyDebugAssertFalse(use_fast_fft ? is_rotated_by_90 : false, "Rotating the search image when using fastfft does  not make sense given the current square size restriction of FastFFT");
+    MyDebugAssertFalse((use_fast_fft && ! process_full_k3) ? is_rotated_by_90 : false, "Rotating the search image when using fastfft does  not make sense given the current square size restriction of FastFFT");
     MyDebugAssertTrue((resizing_is_needed != resampling_is_needed) || (! resampling_is_needed && ! resizing_is_needed), "Resizing and resampling are mutually exclusive");
+
+    // process_full_k3 pads a K3 to a non-square 4096 x 6144 and (unlike the standard square
+    // FastFFT path) rotates for speed, so resizing_is_needed is set and the normal un-rotate
+    // below (in the no-resize/resample branch) never runs. Rotation is always the FIRST
+    // transform inverted (see the note in ResizeImage_preSearch): undo it up front so all the
+    // padding/roi/resize logic that follows operates in the original image orientation.
+    if ( process_full_k3 && is_rotated_by_90 ) {
+        max_intensity_projection.RotateInPlaceAboutZBy90Degrees(false);
+        best_psi.RotateInPlaceAboutZBy90Degrees(false);
+        // Account for the pre-rotation: psi needs 90 added, then clamped to (0,360].
+        best_psi.AddConstant(90.0f);
+        for ( int idx = 0; idx < best_psi.real_memory_allocated; idx++ ) {
+            best_psi.real_values[idx] = clamp_angular_range_0_to_2pi(best_psi.real_values[idx], true);
+        }
+        best_theta.RotateInPlaceAboutZBy90Degrees(false);
+        best_phi.RotateInPlaceAboutZBy90Degrees(false);
+        best_defocus.RotateInPlaceAboutZBy90Degrees(false);
+        best_pixel_size.RotateInPlaceAboutZBy90Degrees(false);
+        correlation_pixel_sum_image.RotateInPlaceAboutZBy90Degrees(false);
+        correlation_pixel_sum_of_squares_image.RotateInPlaceAboutZBy90Degrees(false);
+        is_rotated_by_90 = false;
+    }
 
     cistem_timer::StopWatch timer;
     const int               n_images = 8;

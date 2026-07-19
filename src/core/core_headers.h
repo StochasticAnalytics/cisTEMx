@@ -73,6 +73,8 @@ typedef struct CurvePoint {
 #include <unordered_map>
 #include <random>
 #include <functional>
+#include <limits>
+#include <typeinfo>
 #ifdef MKL
 // These are in $MKLROOT/include
 #include <fftw/fftw3.h>
@@ -223,8 +225,6 @@ class StackDump : public wxStackWalker // so we can give backtraces..
 #include <nppi_arithmetic_and_logical_operations.h>
 #include <nppi_statistics_functions.h>
 #include <npps_arithmetic_and_logical_operations.h>
-#include <typeinfo>
-#include <limits>
 #endif
 
 #include "padded_coordinates.h"

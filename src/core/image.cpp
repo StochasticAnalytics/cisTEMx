@@ -10145,6 +10145,12 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaks(std::vector<Peak>& peak_l
  *       through the upsampled peak max, in upsampled pixel units. Set to -1.0f
  *       when upsampling did not run for that peak (peak_threshold_scale == 1.0f
  *       or the peak was too close to the MIP edge to extract).
+ *
+ * sweep_fwhm_baseline sets the reference floor for the FWHM half-height walk.
+ * The -std::numeric_limits<float>::max() sentinel (default) keeps the historical
+ * behavior of walking from peak_threshold; passing an explicit value (e.g. 0)
+ * measures a physical half-max above that floor, decoupled from the
+ * peak-acceptance threshold.
  */
 void Image::FindPeakWithIntegerCoordinatesForManyPeaksSweep(std::vector<Peak>&  peak_list,
                                                             std::vector<Peak>&  upsampled_peak_list,
@@ -10159,7 +10165,8 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaksSweep(std::vector<Peak>&  
                                                             const int           sweep_padding_multiplier,
                                                             const int           sweep_upsample_factor,
                                                             const int           sweep_padding_mode,
-                                                            const float         sweep_width_fraction) {
+                                                            const float         sweep_width_fraction,
+                                                            const float         sweep_fwhm_baseline) {
     MyDebugAssertTrue(is_in_memory, "Memory not allocated");
     MyDebugAssertTrue(is_in_real_space == true, "Image not in real space");
     MyDebugAssertTrue(object_is_centred_in_box, "This method is specialized for objects centered in the box");
@@ -10433,7 +10440,10 @@ void Image::FindPeakWithIntegerCoordinatesForManyPeaksSweep(std::vector<Peak>&  
                     const int peak_py = box_center_y + int(roundf(upsampled_found_peak.y));
 
                     if ( peak_px >= tile_x0 && peak_px <= tile_x1 && peak_py >= tile_y0 && peak_py <= tile_y1 ) {
-                        const float baseline  = peak_threshold;
+                        // negative-max sentinel => walk from peak_threshold (historical);
+                        // an explicit value (e.g. 0) gives a physical half-max above
+                        // that floor, decoupled from the peak-acceptance threshold.
+                        const float baseline  = (sweep_fwhm_baseline == -std::numeric_limits<float>::max( )) ? peak_threshold : sweep_fwhm_baseline;
                         const float peak_max  = upsampled_found_peak.value;
                         const float excursion = peak_max - baseline;
 

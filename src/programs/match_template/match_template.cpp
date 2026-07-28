@@ -1097,7 +1097,7 @@ bool MatchTemplateApp::DoCalculation( ) {
 #pragma omp parallel num_threads(max_threads) default(none) shared(data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size, max_intensity_projection,                                                                    \
                                                                            correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, actual_number_of_angles_searched, \
                                                                            profile_timing, GPU, projection_filter, current_projection, angles, global_euler_search, number_of_search_positions_per_thread, use_gpu_prj,                    \
-                                                                           defocus_i, defocus_step, size_i, pixel_size_step, histogram_data) private(current_correlation_position)
+                                                                           defocus_i, defocus_step, size_i, pixel_size_step, histogram_data) firstprivate(current_correlation_position)
 
                 {
                     int tIDX = ReturnThreadNumberOfCurrentThread( );

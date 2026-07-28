@@ -21,6 +21,14 @@
  * internally and does not make the class methods thread-safe for concurrent host calls.
  */
 
+// Measurement build: suppress the projection/MIP queueing so the speedup those queues and
+// their private CUDA streams provide can be measured by difference. Every change on this
+// branch is under this define -- grep SUPRESS_QUEUES. Defined per-file (this file does not
+// include projection_queue.cuh, which carries its own copy).
+#define SUPRESS_QUEUES
+// NOT defined: the MIP batch stays on --gpu-batch-size-multiplier so it can be swept.
+// #define SUPRESS_QUEUES_MIP_BATCH
+
 #include "gpu_core_headers.h"
 #include "gpu_indexing_functions.h"
 
@@ -55,6 +63,24 @@ inline __device__ __host__ bool test_gt_zero(T value) {
 inline int DetermineBatchSizeFromImageMemory(int real_memory_allocated, int batch_size_multiplier = 4) {
     MyDebugAssertTrue(batch_size_multiplier == 1 || batch_size_multiplier == 2 || batch_size_multiplier == 4 || batch_size_multiplier == 8,
                       "gpu batch size multiplier must be 1, 2, 4, or 8 (got %d)", batch_size_multiplier);
+#ifdef SUPRESS_QUEUES_MIP_BATCH
+    // One image per batch: no MIP batching to overlap or amortize.
+    //
+    // SIZE OF THIS KNOB: the default multiplier is 4, so a normal run batches base x 4 --
+    // 20 at the 4k tier, 40 at 2k, 80 at 1k, 120 below that. Suppressing to 1 is therefore a
+    // 20x to 120x cut depending on image size, not a small one, and it multiplies the launch
+    // count on the accumulate path by the same factor while removing the per-batch sum-array
+    // read-modify-write amortization noted below (traffic ~ 1/batch on this DRAM-bound
+    // workload). Expect this knob, not the stream substitution, to dominate the measured delta.
+    //
+    // Returned before the memory tiers because the smallest batch reachable through the CLI is
+    // 5 (base 5 x multiplier 1), so --gpu-batch-size-multiplier cannot express 1.
+    // n_imgs_to_process_at_once_ derives from this, so the CCF/angle allocation sizes, the
+    // flush trigger in TemplateMatchingCore.cu, and the kernel's inner slice loop all follow.
+    // The assert above is deliberately left live so an illegal multiplier is still caught in a
+    // suppressed build.
+    return 1;
+#endif
     // Thresholds account for FFTW padding (+2 in X dimension)
     constexpr int threshold_4k = 4098 * 4096; // ~16.8M elements
     constexpr int threshold_2k = 2050 * 2048; // ~4.2M elements
@@ -111,7 +137,14 @@ TM_EmpiricalDistribution<ccfType, mipType>::TM_EmpiricalDistribution(GpuImage* r
     my_rng_ = std::make_unique<RandomNumberGenerator>(pi_v<float>);
 
     cudaErr(cudaDeviceGetStreamPriorityRange(&least_priority, &highest_priority));
+#ifdef SUPRESS_QUEUES
+    // Substituted at the handle, so all ~30 async allocs/memsets/copies/kernels that pass
+    // calc_stream_[0] land on the per-thread default stream with no call-site changes. The
+    // accumulate work can then no longer overlap the CCF production that feeds it.
+    calc_stream_[0] = cudaStreamPerThread;
+#else
     cudaErr(cudaStreamCreateWithPriority(&calc_stream_[0], cudaStreamNonBlocking, least_priority));
+#endif
     cudaErr(cudaEventCreateWithFlags(&mip_stack_is_ready_event_[0], cudaEventBlockingSync | cudaEventDisableTiming)); // blocking sync makes the host wait if calling cudaEventSynchronize
     // Events for synchronizing CCF buffer writes (on cudaStreamPerThread) with kernel reads (on calc_stream_)
     for ( int i = 0; i < 2; i++ ) {
@@ -251,7 +284,11 @@ void TM_EmpiricalDistribution<ccfType, mipType>::Delete( ) {
     for ( int i = 0; i < 2; i++ ) {
         cudaErr(cudaEventDestroy(ccf_dbl_buffer_ready_event_[i]));
     }
+#ifndef SUPRESS_QUEUES
     cudaErr(cudaStreamDestroy(calc_stream_[0]));
+#else
+    // calc_stream_[0] holds cudaStreamPerThread, which must not be destroyed.
+#endif
 
     object_initialized_ = false;
 }

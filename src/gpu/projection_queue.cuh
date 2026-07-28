@@ -1,11 +1,25 @@
 #ifndef __SRC_GPU_PROJECTION_QUEUE_CUH__
 #define __SRC_GPU_PROJECTION_QUEUE_CUH__
 
+// Measurement build: suppress the projection/MIP queueing so the speedup those queues and
+// their private CUDA streams provide can be measured by difference. Every change on this
+// branch is under this define -- grep SUPRESS_QUEUES. Also defined in
+// template_matching_empirical_distribution.cu.
+#define SUPRESS_QUEUES
+
 /**
  * @brief Defines the number of projection slots in the ProjectionQueue.
  * This determines how many projections can be processed asynchronously.
  */
+#ifdef SUPRESS_QUEUES
+// Depth 1: the queue still exists, but a slot can never be reused while another projection
+// is in flight, so GetAvailableProjectionIDX() blocks on the single slot every iteration.
+// This one constant also sizes the per-slot event/stream arrays below, the create/destroy
+// loops, ResetQueues(), and the projection buffers in TemplateMatchingCore.cu:127-131.
+constexpr int n_prjs = 1;
+#else
 constexpr int n_prjs = 20;
+#endif
 
 #include "../core/stopwatch.h"
 
@@ -100,8 +114,17 @@ class ProjectionQueue {
         int lowest_priority, highest_priority;
         cudaErr(cudaDeviceGetStreamPriorityRange(&lowest_priority, &highest_priority));
         for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
+#ifdef SUPRESS_QUEUES
+            // Hand every slot the per-thread default stream instead of a private one. The handle
+            // is substituted here rather than at the ~40 call sites that pass
+            // gpu_projection_stream[idx], so no consumer can be missed. The build already uses
+            // --default-stream per-thread (m4/ax_cuda.m4:268), so this is the stream each OpenMP
+            // thread is already on: threads stay isolated, work within a thread serializes.
+            gpu_projection_stream[i] = cudaStreamPerThread;
+#else
             // Create dedicated streams for projection operations, potentially with a specific priority.
             cudaErr(cudaStreamCreateWithPriority(&gpu_projection_stream[i], cudaStreamNonBlocking, lowest_priority));
+#endif
             // Events for signaling GPU projection readiness (for main stream to wait on).
             cudaErr(cudaEventCreateWithFlags(&gpu_projection_is_ready_Event[i], cudaEventBlockingSync | cudaEventDisableTiming));
             // Events for signaling CPU buffer/GPU slot reusability (for host to wait on).
@@ -139,10 +162,15 @@ class ProjectionQueue {
             cudaErr(cudaEventDestroy(projection_slot_is_writeable_Event[i]));
         }
 
+#ifndef SUPRESS_QUEUES
         // 3. Destroy streams (now guaranteed empty)
         for ( int i = 0; i < n_prjs_in_queue_; i++ ) {
             cudaErr(cudaStreamDestroy(gpu_projection_stream[i]));
         }
+#else
+        // No streams were created -- the slots hold cudaStreamPerThread, and destroying that
+        // handle is illegal. The synchronize and event teardown above still apply.
+#endif
     }
 
     /**

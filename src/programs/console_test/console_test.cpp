@@ -138,7 +138,28 @@ bool MyTestApp::DoCalculation( ) {
         wxPrintf("ProjectX Library Tester");
     wxPrintf("   **\n");
 
-    //wxPrintf("")
+#ifdef CISTEM_VERSION_TEXT
+    wxPrintf("     cisTEM version : %s\n", CISTEM_VERSION_TEXT);
+#endif
+#ifdef CISTEM_CURRENT_BRANCH
+    wxPrintf("        From branch : %s\n", CISTEM_CURRENT_BRANCH);
+#endif
+#ifdef CISTEM_TIME_READABLE
+    wxPrintf("    Commit datetime : %s\n", CISTEM_TIME_READABLE);
+#endif
+#ifdef DEBUG
+    wxPrintf("        Build flags : DEBUG");
+#ifdef SHOW_CISTEM_GPU_OPTIONS
+    wxPrintf(" ENABLEGPU");
+#endif
+#ifdef MKL
+    wxPrintf(" MKL");
+#endif
+#ifdef EXPERIMENTAL
+    wxPrintf(" EXPERIMENTAL");
+#endif
+    wxPrintf("\n");
+#endif
 
     WriteEmbeddedFiles( );
     wxPrintf("\n");

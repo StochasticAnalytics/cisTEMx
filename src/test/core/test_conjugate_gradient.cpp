@@ -1186,9 +1186,9 @@ TEST_CASE("Powell minimizer: CTF from real micrograph",
           "[ConjugateGradient][integration][ctf]") {
 
     // Check for reference images
-    const char* ref_dir = std::getenv("CISTEM_REF_IMAGES");
+    const char* ref_dir = std::getenv("PLASMONLABS_REF_IMAGES");
     if ( ! ref_dir ) {
-        WARN("CISTEM_REF_IMAGES not set — skipping real-data CTF tests");
+        WARN("PLASMONLABS_REF_IMAGES not set — skipping real-data CTF tests");
         return;
     }
 
@@ -1333,9 +1333,9 @@ TEST_CASE("Powell minimizer: CTF from real micrograph",
 TEST_CASE("Powell minimizer: projection CTF fitting",
           "[ConjugateGradient][integration][projection]") {
 
-    const char* ref_dir = std::getenv("CISTEM_REF_IMAGES");
+    const char* ref_dir = std::getenv("PLASMONLABS_REF_IMAGES");
     if ( ! ref_dir ) {
-        WARN("CISTEM_REF_IMAGES not set — skipping projection CTF tests");
+        WARN("PLASMONLABS_REF_IMAGES not set — skipping projection CTF tests");
         return;
     }
 

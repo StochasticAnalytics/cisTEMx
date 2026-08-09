@@ -70,11 +70,13 @@ class ProgressBar {
     ProgressBar(long wanted_total_number_of_ticks, bool wanted_limit_to_100_percent = true);
 
     // Destructor
-
-    ~ProgressBar( );
+    // WHY virtual: Update/CallOnUpdate are virtual override points, so deletion may happen
+    // through a ProgressBar* to a derived object; a non-virtual destructor would make that
+    // undefined behavior (and -Wdelete-non-abstract-non-virtual-dtor flags every delete site).
+    virtual ~ProgressBar( );
 
     // Methods
 
     virtual void Update(long current_tick);
-    virtual void CallOnUpdate( ){ }; // function that can be overidden to have control on extra things passed progressbars should do (this is primarily used for allowing GUI panels to track progress bars
+    virtual void CallOnUpdate( ) {}; // function that can be overidden to have control on extra things passed progressbars should do (this is primarily used for allowing GUI panels to track progress bars
 };

@@ -477,7 +477,11 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
                                                                                                                  swap_real_space_quadrants_during_projection,
                                                                                                                  apply_shifts,
                                                                                                                  true,
-                                                                                                                 projection_queue.gpu_projection_stream[current_projection_idx]);
+                                                                                                                 projection_queue.gpu_projection_stream[current_projection_idx],
+                                                                                                                 // ewald_wavelength_pixels is calibrated against input_ctf's grid;
+                                                                                                                 // the projection's grid is coarser by the real-space binning factor
+                                                                                                                 // (identical when the lerp-resizing path is off, where both are 1:1).
+                                                                                                                 ewald_wavelength_pixels / real_space_binning_factor);
 
                 average_of_reals = 0.f;
                 average_on_edge  = 0.f;

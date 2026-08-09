@@ -8,10 +8,43 @@
 #ifndef GPUIMAGE_H_
 #define GPUIMAGE_H_
 
+// cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE — Feature gate for the FastFFT-based
+// 3d texture preparation experiment in match_template. Comment out to
+// disable the experimental path project-wide.
+// To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+#define cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+
+// cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE — Selects which 3d texture the volume
+// carries and how it is fetched: 0 (the pre-existing tex_real/tex_imag pair
+// from CopyHostToDeviceTextureComplex), 16 (FastFFT's single interleaved
+// __half2 texture), or 32 (FastFFT's single interleaved float2 texture).
+// Requires cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE above. One binary tests one
+// value at a time.
+// To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE
+// 16 (fp16 texels) is required by the FastFFT extent menu for the 1728/2048 padding tranche.
+#define cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE 16
+
+// cisTEM_EXPERIMENTAL_EWALD_PROJECTION — Feature gate for sampling template
+// projections on the curved Ewald sphere in GpuImage::ExtractSliceShiftAndCtf,
+// the adjoint of the correct_ewald_sphere insertion in Reconstruct3D::InsertSlice.
+// The curved two-beam fetch REPLACES the flat central-slice fetch at compile time
+// (no kernel branching); a wavelength of 0.f makes the two beams coincide, so the
+// gated binary still reproduces the flat result exactly when the feature is not
+// requested at runtime (at the cost of a redundant second texture fetch).
+// Comment out to disable the experimental path project-wide.
+// To find all gated code: grep -rn cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+#define cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+
+#include <memory>
+
 #include "../constants/constants.h"
 // #include "TensorManager.h"
 #include "../programs/refine3d/batched_search.h"
 #include "core_extensions/data_views/pointers.h"
+
+#ifdef cisTEM_USING_FastFFT
+#include "/opt/FastFFT/include/FastFFT.h"
+#endif
 
 class BatchedSearch;
 
@@ -113,6 +146,41 @@ class GpuImage {
     cudaArray*          cuArray_imag = 0;
 
     bool is_allocated_texture_cache;
+
+#ifdef cisTEM_USING_FastFFT
+    // Hand-off record from DestroyPlan(KeepTexture); currently only the texture is kept.
+    std::shared_ptr<FastFFT::PlanResources> fastfft_plan_resources;
+#endif
+
+    // ---- 3d Fourier volume texture, shared by the two preparation paths ----
+    // Two paths can leave a projectable 3d Fourier volume in texture memory:
+    //   * CopyHostToDeviceTextureComplex -- a de-interlaced tex_real/tex_imag pair of
+    //     single-channel float textures, whose logical box is dims.
+    //   * FastFFT FwdFFTToTexture + DestroyPlan(KeepTexture) -- ONE interleaved texture
+    //     (fp16 or fp32 texels) recorded in fastfft_plan_resources.
+    // Both deliver the same layout contract, which is what lets the ExtractSlice* coordinate
+    // math be shared: DC at physical tile (1, N/2, N/2), k_x fastest, positive-k_x half only.
+    //
+    // WHY the accessors instead of reading dims directly: on the FastFFT path the transform is
+    // implicitly zero-padded, so the texture's logical box is the PADDED size while dims still
+    // describes the unpadded host volume this vessel was constructed from. Any coordinate
+    // centering or Fourier-space binning ratio computed from dims would then be wrong by the
+    // padding factor. These are the single place that distinction is resolved.
+    inline bool HasVolumeTexture( ) const {
+#ifdef cisTEM_USING_FastFFT
+        if ( fastfft_plan_resources )
+            return fastfft_plan_resources->fetch != 0;
+#endif
+        return is_allocated_texture_cache;
+    }
+
+    inline int ReturnVolumeTextureLogicalY( ) const {
+#ifdef cisTEM_USING_FastFFT
+        if ( fastfft_plan_resources )
+            return int(fastfft_plan_resources->logical_y);
+#endif
+        return dims.y;
+    }
 
     // TODO: This is currently unused. What was the thinking?
     enum ImageType : size_t { real16f    = sizeof(__half),
@@ -446,6 +514,13 @@ class GpuImage {
 
     void ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& angles_and_shifts, float pixel_size, float resolution_limit = 1.f, bool apply_resolution_limit = true, bool whiten_spectrum = false);
 
+    // ewald_wavelength_in_pixels: electron wavelength divided by the pixel size of THIS 2d
+    // projection image (the CTF::Init convention). 0.f requests the flat central slice; any
+    // other value samples the two Ewald-sphere beams and combines them with the weak-phase
+    // complex-ctf model P = 0.5 * (conj(c) V+ + c V-), where the ctf image is expected to
+    // carry c = -sin(chi) - i cos(chi) (times any filters) in its real/imag channels. The
+    // wavelength's sign selects which beam takes the conjugate (curvature handedness).
+    // Requires a build with cisTEM_EXPERIMENTAL_EWALD_PROJECTION defined (asserts otherwise).
     template <bool apply_ctf, bool use_ctf_texture>
     void ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
                                  GpuImage*        ctf_image,
@@ -456,8 +531,9 @@ class GpuImage {
                                  bool             apply_resolution_limit,
                                  bool             swap_quadrants,
                                  bool             apply_shifts,
-                                 bool             zero_central_pixel = false,
-                                 cudaStream_t     stream             = cudaStreamPerThread);
+                                 bool             zero_central_pixel         = false,
+                                 cudaStream_t     stream                     = cudaStreamPerThread,
+                                 float            ewald_wavelength_in_pixels = 0.f);
 
     void Abs( );
     void AbsDiff(GpuImage& other_image); // inplace

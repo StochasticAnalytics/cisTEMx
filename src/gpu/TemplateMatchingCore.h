@@ -64,6 +64,13 @@ class TemplateMatchingCore {
     bool  use_lerp_for_resizing{ };
     float binning_factor = 1.f;
 
+    // Electron wavelength in units of the pixel size input_ctf was initialized with
+    // (CTF::GetWavelength() convention), for the curved-Ewald projection experiment
+    // (cisTEM_EXPERIMENTAL_EWALD_PROJECTION; match_template --ewald-curved-projection).
+    // Converted to the projection grid's pixel units at the ExtractSliceShiftAndCtf call
+    // by dividing out the real-space binning factor. 0 requests the flat central slice.
+    float ewald_wavelength_pixels{0.f};
+
     std::vector<Image> current_projection;
     // Generally not used, except for --disable-gpu-prj
     Image* cpu_template = nullptr;

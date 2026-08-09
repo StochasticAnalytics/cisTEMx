@@ -25,13 +25,21 @@ TemplateMatchingDataSizer::TemplateMatchingDataSizer(MyApp* wanted_parent_ptr,
                                                      Image& wanted_template,
                                                      float  wanted_pixel_size,
                                                      float  wanted_template_padding)
-    : parent_match_template_app_ptr{wanted_parent_ptr},
-      pixel_size{wanted_pixel_size},
-      template_padding{wanted_template_padding} {
+    // Initializer order follows the member declaration order in the header (pixel_size,
+    // template_padding, then parent_match_template_app_ptr), which is the order members are
+    // actually constructed in; listing them out of order draws -Wreorder-ctor.
+    : pixel_size{wanted_pixel_size},
+      template_padding{wanted_template_padding},
+      parent_match_template_app_ptr{wanted_parent_ptr} {
 
     MyDebugAssertTrue(pixel_size > 0.0f, "Pixel size must be greater than zero");
     // TODO: remove this constraint
+#ifdef cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+    MyAssertTrue(template_padding == 0.0f || template_padding == 1.0f || template_padding == 512.0f || template_padding == 1024.0f || template_padding == 1728.0f || template_padding == 2048.0f,
+                 "Padding must be one of 0, 1, 512, 1024, 1728, 2048");
+#else
     MyAssertTrue(template_padding == 1.0f, "Padding must be  equal to 1.0");
+#endif
     image_size.x = input_image.logical_x_dimension;
     image_size.y = input_image.logical_y_dimension;
     image_size.z = input_image.logical_z_dimension;
@@ -202,7 +210,6 @@ void TemplateMatchingDataSizer::CheckSizing( ) {
 void TemplateMatchingDataSizer::GetFFTSize( ) {
 
     // We can downsample the template at arbitrary pixel sizes using LERP, so we only need to consider the image size.
-    int   bin_offset_2d             = 0;
     float closest_2d_binning_factor = 1.f;
 
     // We want the binning to be isotropic, and the easiest way to ensure that is to first pad any non-square input_image to a square size in realspace.

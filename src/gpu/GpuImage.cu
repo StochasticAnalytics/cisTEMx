@@ -5182,6 +5182,96 @@ void GpuImage::ExtractSlice(GpuImage* volume_to_extract_from, AnglesAndShifts& a
     is_in_real_space         = false;
 }
 
+/**
+ * @brief Sample the 3d Fourier volume texture at (tu, tv, tw) and return the complex value.
+ *
+ * conjugate_sign is +1 when the coordinate landed in the stored positive-k_x half and -1 when
+ * the caller reflected through the origin to reach it, in which case the imaginary part is
+ * negated to return the Friedel mate.
+ *
+ * WHY the compile-time switch: the two volume-preparation paths hold the SAME logical content
+ * in DIFFERENT texel layouts -- CopyHostToDeviceTextureComplex de-interlaces into a pair of
+ * single-channel float textures, FastFFT's FwdFFTToTexture writes one interleaved texture. They
+ * agree on the layout contract the caller's coordinate math depends on (DC at physical tile
+ * (1, N/2, N/2), k_x fastest), so the fetch is the only thing that differs.
+ * cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE (GpuImage.h) selects which, one value per binary; the
+ * matching host-side handle selection lives in GpuImage::ExtractSliceShiftAndCtf.
+ *
+ * WHY one fetch expression covers both FastFFT texel types: an fp16 plan's array is created
+ * with cudaCreateChannelDescHalf2 ({16,16,0,0,Float}), and CUDA has no __half2 texture-fetch
+ * specialization (__nv_itex_trait in texture_indirect_functions.h) -- half-width float channels
+ * are promoted to fp32 by the fetch hardware before filtering. float2 is therefore the correct
+ * fetch type for fp16 and fp32 texels alike, and only the texel width in the plan differs.
+ */
+__device__ __forceinline__ float2 FetchVolumeComplexTexel(const cudaTextureObject_t tex_real,
+                                                          const cudaTextureObject_t tex_imag,
+                                                          const float               tu,
+                                                          const float               tv,
+                                                          const float               tw,
+                                                          const float               conjugate_sign) {
+#if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
+    const float2 texel = tex3D<float2>(tex_real, tu, tv, tw);
+    return make_float2(texel.x, conjugate_sign * texel.y);
+#else
+    return make_float2(tex3D<float>(tex_real, tu, tv, tw),
+                       conjugate_sign * tex3D<float>(tex_imag, tu, tv, tw));
+#endif
+}
+
+#ifdef cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+/**
+ * @brief Rotate a 2d-grid Fourier coordinate (x2d, y2d, z2d) into the 3d volume grid and sample it.
+ *
+ * Factors the Friedel-mate reflection, Fourier-space binning rescale, and swapped-layout
+ * centering out of the per-beam Ewald fetches. The reflection must be applied per sample point
+ * rather than once per output pixel: the two beam-sphere samples of one output pixel can land
+ * in different k_x half-spaces, so each sample owns its conjugate decision.
+ */
+__device__ __forceinline__ float2 RotateAndFetchVolumeTexel(const cudaTextureObject_t tex_real,
+                                                            const cudaTextureObject_t tex_imag,
+                                                            const float               x2d,
+                                                            const float               y2d,
+                                                            const float               z2d,
+                                                            const float3              col1,
+                                                            const float3              col2,
+                                                            const float3              col3,
+                                                            const bool                do_binning,
+                                                            const float               fourier_space_binning_factor,
+                                                            const int                 NY_3d) {
+    // Based on RotationMatrix.RotateCoords()
+    float tu = x2d * col1.x + y2d * col2.x + z2d * col3.x;
+    float tv = x2d * col1.y + y2d * col2.y + z2d * col3.y;
+    float tw = x2d * col1.z + y2d * col2.z + z2d * col3.z;
+
+    // We have only the positive X half of the FFT; reflect through the origin and take the
+    // complex conjugate (Friedel mate) when the rotated coordinate lands in the missing half.
+    float conjugate_sign = 1.f;
+    if ( tu < 0 ) {
+        conjugate_sign = -1.f;
+        tu             = -tu;
+        tv             = -tv;
+        tw             = -tw;
+    }
+
+    if ( do_binning ) {
+        // The binning is only supported for down sampling, so the reflection above is not impacted:
+        // the real space binning factor must be >= 1.0f meaning the fourier_space binning factor is
+        // <= 1.0f, so this scaling always leaves us in-bounds in the 3d.
+        tu *= fourier_space_binning_factor;
+        tv *= fourier_space_binning_factor;
+        tw *= fourier_space_binning_factor;
+    }
+    // Now convert the logical Fourier coordinate to the Swapped Fourier *physical* coordinate
+    // The logical origin is physically at X = 1, Y = Z = 0 + NY/2
+    // Also: include the 1/2 pixel offset to account for different conventions between cuda and cisTEM
+    tu += 1.5f;
+    tv += (float(NY_3d / 2) + 0.5f);
+    tw += (float(NY_3d / 2) + 0.5f);
+
+    return FetchVolumeComplexTexel(tex_real, tex_imag, tu, tv, tw, conjugate_sign);
+}
+#endif // cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+
 // FIXME: Now explicitly assuming a real-valued CTF (which is almost always true)
 template <bool apply_ctf, typename CTF_t>
 __global__ // __global__void, replacing return type with EnableIf
@@ -5194,15 +5284,28 @@ __global__ // __global__void, replacing return type with EnableIf
                                       float2                    shifts,
                                       const int                 NX,
                                       const int                 NY,
-                                      const int                 NY_3d,
-                                      const float3              col1,
-                                      const float3              col2,
-                                      const bool                do_binning,
-                                      const float               fourier_space_binning_factor,
-                                      const float               resolution_limit,
-                                      const bool                apply_resolution_limit,
-                                      const bool                zero_central_pixel,
-                                      const float               one_over_two_sigma_squared) {
+                                      // INVARIANT: the 3d volume texture and the 2d CTF texture live on the SAME
+                                      // grid, which is why one extent and one rescaling factor serve both fetches
+                                      // below. The CTF image is calculated at whatever size it is allocated
+                                      // (Image::CalculateCTFImage walks its own fourier_voxel_size), so when the
+                                      // volume is zero-padded the CTF must be allocated at the padded size to
+                                      // keep this invariant. If they are allowed to diverge, the CTF fetch runs
+                                      // off the end of its array and returns the zero border colour silently.
+                                      const int    NY_3d,
+                                      const float3 col1,
+                                      const float3 col2,
+#ifdef cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+                                      const float3 col3,
+                                      // theta(g) per 2d Fourier index: 0.5 * wavelength_in_2d_pixels / NY.
+                                      // 0.f collapses both beams onto the flat central slice.
+                                      const float ewald_theta_per_index,
+#endif
+                                      const bool  do_binning,
+                                      const float fourier_space_binning_factor,
+                                      const float resolution_limit,
+                                      const bool  apply_resolution_limit,
+                                      const bool  zero_central_pixel,
+                                      const float one_over_two_sigma_squared) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     if ( x >= NX ) {
         return;
@@ -5217,7 +5320,12 @@ __global__ // __global__void, replacing return type with EnableIf
         return;
     }
 
+#ifdef cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+    // tw is owned by RotateAndFetchVolumeTexel on this path
+    float u, v, tu, tv, frequency_sq;
+#else
     float u, v, tu, tv, tw, frequency_sq;
+#endif
 
     constexpr bool use_ctf_texture = std::is_same_v<CTF_t, cudaTextureObject_t>;
 
@@ -5254,6 +5362,55 @@ __global__ // __global__void, replacing return type with EnableIf
     }
     else {
 
+#ifdef cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+        // Sample the two Ewald-sphere beam intersections instead of the flat central slice
+        // (Wolf, DeRosier & Grigorieff 2006, Ultramicroscopy 106): the recorded image at 2d
+        // frequency g carries contributions from the volume sampled on the +/- beam spheres at
+        // (g cos(theta), +/- |g| sin(theta)), theta = 0.5 * |g| * wavelength. The weak-phase
+        // combination with the COMPLEX ctf happens below, after the shift phase is prepared.
+        // Both samples sit at radius |g| exactly (cos^2 + sin^2), so the resolution limit
+        // applied above needs no adjustment.
+        float       sin_theta, cos_theta;
+        const float g_2d = sqrtf(frequency_sq);
+        __sincosf(ewald_theta_per_index * g_2d, &sin_theta, &cos_theta);
+
+        const float2 beam_plus  = RotateAndFetchVolumeTexel(tex_real, tex_imag, u * cos_theta, v * cos_theta, g_2d * sin_theta,
+                                                            col1, col2, col3, do_binning, fourier_space_binning_factor, NY_3d);
+        const float2 beam_minus = RotateAndFetchVolumeTexel(tex_real, tex_imag, u * cos_theta, v * cos_theta, -g_2d * sin_theta,
+                                                            col1, col2, col3, do_binning, fourier_space_binning_factor, NY_3d);
+
+        // Resuse y to get the address and then x as the bin number
+        y = y * NX + x;
+
+        // Get the phase shift exp(phi) = cos(phi) + i*sin(phi)
+        __sincosf(shifts.x + shifts.y, &tv, &tu);
+
+        if constexpr ( ! use_ctf_texture && apply_ctf ) {
+            ctf_value = ctf_image[y];
+        }
+        // Weak-phase two-beam combination with the COMPLEX ctf, c = -sin(chi) - i cos(chi)
+        // (CTF::EvaluateComplex convention; match_template builds the projection filter as
+        // c * whitening under --ewald-curved-projection, and as the plain real filter with
+        // ~zero imaginary part otherwise): P(g) = 0.5 * (conj(c) V+ + c V-). When the beams
+        // coincide (wavelength 0) the imaginary parts cancel and this degenerates to
+        // Re(c) * V, the flat-slice model, so no flat special case is needed. Which physical
+        // beam takes the conjugate depends on the z-direction convention; --ewald-prj-invert
+        // flips it and the correct assignment is established empirically.
+        float2 combined;
+        if constexpr ( apply_ctf ) {
+            const float2 c              = __half22float2(ctf_value);
+            const float2 c_conj         = make_float2(c.x, -c.y);
+            const float2 weighted_plus  = ComplexMul((Complex)c_conj, (Complex)beam_plus);
+            const float2 weighted_minus = ComplexMul((Complex)c, (Complex)beam_minus);
+            combined                    = make_float2(0.5f * (weighted_plus.x + weighted_minus.x),
+                                                      0.5f * (weighted_plus.y + weighted_minus.y));
+        }
+        else {
+            combined = make_float2(0.5f * (beam_plus.x + beam_minus.x),
+                                   0.5f * (beam_plus.y + beam_minus.y));
+        }
+        outputData[y] = ComplexMul((Complex)make_float2(tu, tv), (Complex)combined);
+#else
         // Based on RotationMatrix.RotateCoords()
         tu = u * col1.x + v * col2.x;
         tv = u * col1.y + v * col2.y;
@@ -5284,9 +5441,10 @@ __global__ // __global__void, replacing return type with EnableIf
         tv += (float(NY_3d / 2) + 0.5f);
         tw += (float(NY_3d / 2) + 0.5f);
 
-        // reuse u and v to grab results
-        v = u * tex3D<float>(tex_imag, tu, tv, tw);
-        u = tex3D<float>(tex_real, tu, tv, tw);
+        // reuse u and v to grab results (u carries the +/-1 conjugate sign on the way in)
+        const float2 volume_value = FetchVolumeComplexTexel(tex_real, tex_imag, tu, tv, tw, u);
+        u                         = volume_value.x;
+        v                         = volume_value.y;
 
         // Resuse y to get the address and then x as the bin number
         y = y * NX + x;
@@ -5307,6 +5465,7 @@ __global__ // __global__void, replacing return type with EnableIf
         else {
             outputData[y] = output_val;
         }
+#endif // cisTEM_EXPERIMENTAL_EWALD_PROJECTION
     }
 }
 
@@ -5321,19 +5480,47 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
                                        bool             swap_quadrants,
                                        bool             apply_shifts,
                                        bool             zero_central_pixel,
-                                       cudaStream_t     stream) {
+                                       cudaStream_t     stream,
+                                       float            ewald_wavelength_in_pixels) {
     MyDebugAssertTrue(dims.z == 1, "Error: attempting to project 3d to 3d");
     MyDebugAssertTrue(volume_to_extract_from->dims.z > 1, "Error: attempting to project 2d to 2d");
     MyDebugAssertTrue(is_in_memory_gpu, "Error: gpu memory not allocated");
-    MyDebugAssertTrue(volume_to_extract_from->is_allocated_texture_cache, "3d volume not allocated in the texture cache");
+    MyDebugAssertTrue(volume_to_extract_from->HasVolumeTexture( ), "3d volume not allocated in the texture cache");
     // MyDebugAssertTrue(IsCubic( ), "Image volume to project is not cubic"); // This is checked on call to CopyHostToDeviceTextureComplex
     MyDebugAssertFalse(volume_to_extract_from->object_is_centred_in_box, "Image volume quadrants not swapped");
     MyDebugAssertTrue(volume_to_extract_from->is_fft_centered_in_box, "Image volume Fourier quadrants not swapped as required for texture locality");
     // MyDebugAssertTrue(real_space_binning_factor >= 1.0f, "Error: real space binning factor must be >= 1.0");
+
+    // The texture handles the kernel samples. The interleaved FastFFT delivery carries the whole
+    // complex value in one texture, so the second handle is a placeholder the fetch never reads;
+    // it is set from the first rather than from tex_imag because tex_imag is left indeterminate
+    // on a vessel that was never through CopyHostToDeviceTextureComplex.
+#if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
+    MyDebugAssertTrue(volume_to_extract_from->fastfft_plan_resources.get( ) != nullptr,
+                      "This binary was built for the interleaved FastFFT 3d texture (cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0) but the volume carries the tex_real/tex_imag pair");
+    const cudaTextureObject_t volume_tex_real = volume_to_extract_from->fastfft_plan_resources->fetch;
+    const cudaTextureObject_t volume_tex_imag = volume_tex_real;
+#else
+    const cudaTextureObject_t volume_tex_real = volume_to_extract_from->tex_real;
+    const cudaTextureObject_t volume_tex_imag = volume_to_extract_from->tex_imag;
+#endif
+
+    // The logical box the texture represents, which is the PADDED transform size on the FastFFT
+    // path and volume_to_extract_from->dims.y otherwise. Both the volume coordinate centering
+    // and the volume Fourier-space binning ratio below are properties of the texture, not of the
+    // host volume the vessel was built from, so both read it from here. The CTF texture is a
+    // separate image with its own extent and is deliberately NOT derived from this.
+    const int volume_logical_y = volume_to_extract_from->ReturnVolumeTextureLogicalY( );
     if ( apply_ctf ) {
         // FIXME:
         if constexpr ( use_ctf_texture ) {
             MyDebugAssertTrue(ctf_image->is_allocated_texture_cache, "Error: ctf texture cache not allocated");
+            // The kernel centers and rescales both texture fetches with ONE extent, so the CTF
+            // image must be allocated on the volume's grid -- including when the volume is
+            // zero-padded by the FastFFT path. A silent divergence sends the CTF fetch out of
+            // bounds, where Border addressing returns 0 and every projection loses its CTF.
+            MyDebugAssertTrue(ctf_image->dims.y == volume_to_extract_from->ReturnVolumeTextureLogicalY( ),
+                              "Error: ctf image and 3d volume texture must share a grid");
         }
         else {
             MyDebugAssertTrue(ctf_image->real_values_fp16 != nullptr, "Error: ctf fp16 gpu memory not allocated");
@@ -5353,6 +5540,18 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
     float*       m    = &angles_and_shifts.euler_matrix.m[0][0];
     const float3 col1 = make_float3(m[0], m[3], m[6]);
     const float3 col2 = make_float3(m[1], m[4], m[7]);
+#ifdef cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+    // The Ewald sample points leave the z = 0 plane, so the rotation's third column is needed too.
+    const float3 col3 = make_float3(m[2], m[5], m[8]);
+    // theta(g) = 0.5 * g_physical * wavelength = (0.5 * wavelength_in_2d_pixels / NY_2d) * g_index.
+    // Defined on THIS image's grid (ewald_wavelength_in_pixels is wavelength / this grid's pixel
+    // size, the CTF::Init convention); the kernel's fourier_space_binning_factor then maps the
+    // curved coordinate into the volume grid the same way it maps the flat one.
+    const float ewald_theta_per_index = 0.5f * ewald_wavelength_in_pixels / float(dims.y);
+#else
+    MyDebugAssertTrue(ewald_wavelength_in_pixels == 0.0f,
+                      "Error: a non-zero Ewald wavelength was passed to a binary built without cisTEM_EXPERIMENTAL_EWALD_PROJECTION");
+#endif
 
     float resolution_limit_pixel = resolution_limit * dims.x;
 
@@ -5366,7 +5565,7 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
     // The spatial frequency to interpolate from the 3d to the 3d will be based on the smaller 2d's dimensions.
     // Spatial freq = 0.5 in the small image would come from spatial freq 0.25 when binned by 2.
     // Rather than pass in information about the volumes size, adjust the binning factor to convey this.
-    float vol_ratio = float(volume_to_extract_from->dims.y) / float(dims.y);
+    float vol_ratio = float(volume_logical_y) / float(dims.y);
     // If binning = 2 and vol ratio = 2, then the physical coord calculated in the kernel will already be correct
     // if binning = 2 and vol ratio = 1, then the physical coord calculated in the kernel will be half the size of the volume
     fourier_space_binning_factor = vol_ratio / real_space_binning_factor;
@@ -5401,17 +5600,21 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
 
     if constexpr ( use_ctf_texture ) {
         precheck;
-        ExtractSliceShiftAndCtfKernel<apply_ctf><<<gridDims, threadsPerBlock, 0, stream>>>(volume_to_extract_from->tex_real,
-                                                                                           volume_to_extract_from->tex_imag,
+        ExtractSliceShiftAndCtfKernel<apply_ctf><<<gridDims, threadsPerBlock, 0, stream>>>(volume_tex_real,
+                                                                                           volume_tex_imag,
                                                                                            (float2*)complex_values,
                                                                                            ctf_image->tex_real, //(__half2*)ctf_image->ctf_complex_buffer_16f,
                                                                                            ctf_image->tex_imag,
                                                                                            shifts,
                                                                                            dims.w / 2,
                                                                                            dims.y,
-                                                                                           volume_to_extract_from->dims.y,
+                                                                                           volume_logical_y,
                                                                                            col1,
                                                                                            col2,
+#ifdef cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+                                                                                           col3,
+                                                                                           ewald_theta_per_index,
+#endif
                                                                                            do_binning,
                                                                                            fourier_space_binning_factor,
                                                                                            resolution_limit_pixel,
@@ -5423,17 +5626,21 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
     }
     else {
         precheck;
-        ExtractSliceShiftAndCtfKernel<apply_ctf><<<gridDims, threadsPerBlock, 0, stream>>>(volume_to_extract_from->tex_real,
-                                                                                           volume_to_extract_from->tex_imag,
+        ExtractSliceShiftAndCtfKernel<apply_ctf><<<gridDims, threadsPerBlock, 0, stream>>>(volume_tex_real,
+                                                                                           volume_tex_imag,
                                                                                            (float2*)complex_values,
                                                                                            (__half2*)ctf_image->complex_values_fp16, //(__half2*)ctf_image->ctf_complex_buffer_16f,
                                                                                            (__half2*)ctf_image->complex_values_fp16, // just a dummy so we can keep the signature the same
                                                                                            shifts,
                                                                                            dims.w / 2,
                                                                                            dims.y,
-                                                                                           volume_to_extract_from->dims.y,
+                                                                                           volume_logical_y,
                                                                                            col1,
                                                                                            col2,
+#ifdef cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+                                                                                           col3,
+                                                                                           ewald_theta_per_index,
+#endif
                                                                                            do_binning,
                                                                                            fourier_space_binning_factor,
                                                                                            resolution_limit_pixel,
@@ -5454,7 +5661,7 @@ void GpuImage::ExtractSliceShiftAndCtf(GpuImage*        volume_to_extract_from,
 }
 
 // instantiate the template
-template void GpuImage::ExtractSliceShiftAndCtf<true, true>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t);
-template void GpuImage::ExtractSliceShiftAndCtf<true, false>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t);
-template void GpuImage::ExtractSliceShiftAndCtf<false, true>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t);
-template void GpuImage::ExtractSliceShiftAndCtf<false, false>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t);
+template void GpuImage::ExtractSliceShiftAndCtf<true, true>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t, float);
+template void GpuImage::ExtractSliceShiftAndCtf<true, false>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t, float);
+template void GpuImage::ExtractSliceShiftAndCtf<false, true>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t, float);
+template void GpuImage::ExtractSliceShiftAndCtf<false, false>(GpuImage*, GpuImage*, AnglesAndShifts&, float, float, float, bool, bool, bool, bool, cudaStream_t, float);

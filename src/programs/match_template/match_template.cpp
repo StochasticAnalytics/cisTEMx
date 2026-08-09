@@ -210,6 +210,8 @@ void MatchTemplateApp::AddCommandLineOptions( ) {
 
     command_line_parser.AddOption("", "L2-peristance-fraction", "min L2 cache available for persisting as fraction of input image size in fp16 bytes (defaults to 0 [off])", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddOption("", "gpu-batch-size-multiplier", "multiply the GPU CCF batch size by this factor, one of 1/2/4/8 (defaults to 4)", wxCMD_LINE_VAL_NUMBER);
+    command_line_parser.AddLongSwitch("ewald-curved-projection", "Sample GPU template projections on the curved Ewald sphere (two-beam average) instead of the flat central slice. Requires a cisTEM_EXPERIMENTAL_EWALD_PROJECTION build. Default false");
+    command_line_parser.AddLongSwitch("ewald-prj-invert", "Invert the Ewald curvature direction (negates the wavelength passed to the projection kernel). Control test: the symmetric two-beam average is predicted to be invariant under this flip, so any output change indicates an implementation asymmetry. Requires --ewald-curved-projection");
 }
 
 // override the DoInteractiveUserInput
@@ -288,7 +290,11 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     defocus_step            = my_input->GetFloatFromUser("Defocus step (A) (0.0 = no search)", "Step size used in the defocus search", "50.0", 0.0);
     pixel_size_search_range = my_input->GetFloatFromUser("Pixel size search range (A)", "Search range (-value ... + value) around current pixel size", "0.1", 0.0);
     pixel_size_step         = my_input->GetFloatFromUser("Pixel size step (A) (0.0 = no search)", "Step size used in the pixel size search", "0.01", 0.0);
-    padding                 = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "1.0", 1.0, 2.0);
+#ifdef cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+    padding = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "1.0", 0.0, 2048.0);
+#else
+    padding = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "1.0", 1.0, 2.0);
+#endif
     //    ctf_refinement = my_input->GetYesNoFromUser("Refine defocus", "Should the particle defocus be refined?", "No");
     particle_radius_angstroms = my_input->GetFloatFromUser("Mask radius for global search (A) (0.0 = max)", "Radius of a circular mask to be applied to the input images during global search", "0.0", 0.0);
     my_symmetry               = my_input->GetSymmetryFromUser("Template symmetry", "The symmetry of the template reconstruction", "C1");
@@ -408,10 +414,39 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
  *
  * @return True if the calculation completes successfully, false otherwise.
  */
+#if defined(ENABLEGPU) && defined(cisTEM_EXPERIMENTAL_EWALD_PROJECTION)
+// SwapFourierSpaceQuadrants for a COMPLEX-valued ctf image (the curved-Ewald projection
+// filter: real = -sin(chi) * whitening, imag = -cos(chi) * whitening). The is_a_ctf_image
+// swap path round-trips through a c2r BackwardFFT, which assumes a Hermitian input; both
+// components here are real and EVEN in g, so the complex image is NOT Hermitian and the
+// direct path would corrupt the quadrature part. Each component alone IS the valid case,
+// so swap the two separately and recombine into the real/imag channels the GPU ctf
+// texture pair carries.
+static void SwapFourierSpaceQuadrantsOfComplexCtf(Image& ctf_image) {
+    Image re_part;
+    Image im_part;
+    re_part.Allocate(ctf_image.logical_x_dimension, ctf_image.logical_y_dimension, false);
+    im_part.Allocate(ctf_image.logical_x_dimension, ctf_image.logical_y_dimension, false);
+    for ( long address = 0; address < ctf_image.real_memory_allocated / 2; address++ ) {
+        re_part.complex_values[address] = real(ctf_image.complex_values[address]) + I * 0.0f;
+        im_part.complex_values[address] = imag(ctf_image.complex_values[address]) + I * 0.0f;
+    }
+    re_part.is_in_real_space = false;
+    im_part.is_in_real_space = false;
+    re_part.SwapFourierSpaceQuadrants(false, true);
+    im_part.SwapFourierSpaceQuadrants(false, true);
+    // The swapped components are relocated real values (imaginary parts are fp round-trip
+    // noise); taking real() re-zeroes that noise.
+    for ( long address = 0; address < ctf_image.real_memory_allocated / 2; address++ ) {
+        ctf_image.complex_values[address] = MakeComplex(real(re_part.complex_values[address]), real(im_part.complex_values[address]));
+    }
+    ctf_image.is_in_real_space       = false;
+    ctf_image.is_fft_centered_in_box = true;
+}
+#endif
+
 bool MatchTemplateApp::DoCalculation( ) {
     MyDebugPrintGA1("match_template DoCalculation ENTRY pid=%d is_running_locally=%d", (int)getpid( ), (int)is_running_locally);
-
-    bool is_rotated_by_90 = false;
 
     // In particular histogram_min, histogram_max, histogram_step, histogram_number_of_points, histogram_first_bin_midpoint
     using namespace cistem::match_template;
@@ -466,6 +501,28 @@ bool MatchTemplateApp::DoCalculation( ) {
     if ( command_line_parser.Found("gpu-batch-size-multiplier", &temp_long) ) {
         SendInfo("Using GPU batch size multiplier: " + wxString::Format("%ld", temp_long) + "\n");
         gpu_batch_size_multiplier = int(temp_long);
+    }
+
+    bool use_ewald_curved_projection = false;
+    if ( command_line_parser.FoundSwitch("ewald-curved-projection") ) {
+#if defined(ENABLEGPU) && defined(cisTEM_EXPERIMENTAL_EWALD_PROJECTION)
+        SendInfo("Sampling template projections on the curved Ewald sphere\n");
+        use_ewald_curved_projection = true;
+#else
+        // Fail loudly rather than silently searching with flat projections the user did not ask for.
+        MyAssertTrue(false, "--ewald-curved-projection requires a GPU build with cisTEM_EXPERIMENTAL_EWALD_PROJECTION defined (see GpuImage.h)");
+#endif
+    }
+    // Default curvature sign determined empirically on the EMPIAR-10568 apoferritin A/B
+    // (2026-08-07): with the complex-ctf two-beam model, this sign improved 11-14 of the top-20
+    // scaled-MIP sites at all three test defoci while the opposite sign degraded all of them.
+    // The sign folds the full convention stack (rotation matrix, volume z-axis, swapped texture
+    // layout), so it is a measured property of this code path, not derivable a priori.
+    float ewald_curvature_sign = -1.0f;
+    if ( command_line_parser.FoundSwitch("ewald-prj-invert") ) {
+        MyAssertTrue(use_ewald_curved_projection, "--ewald-prj-invert requires --ewald-curved-projection");
+        SendInfo("Inverting the Ewald curvature direction\n");
+        ewald_curvature_sign *= -1.0f;
     }
 
     bool allow_rotation_for_speed{true};
@@ -688,10 +745,17 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     data_sizer.PrintImageSizes( );
 
-    // Apply padding to the reconstruction if specified
+    // Apply padding to the reconstruction if specified.
+    // On the experimental FastFFT texture path `padding` is an absolute output box edge (512,
+    // 1024, ...), not the 1.0-2.0 multiplier this resize was written for, and the zero-pad
+    // happens implicitly inside the transform rather than in the host volume. Reaching this
+    // resize with the new sentinel values would request (N * padding)^3 voxels.
+#if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
+#else
     if ( padding != 1.0f ) {
         input_reconstruction.Resize(input_reconstruction.logical_x_dimension * padding, input_reconstruction.logical_y_dimension * padding, input_reconstruction.logical_z_dimension * padding, input_reconstruction.ReturnAverageOfRealValuesOnEdges( ));
     }
+#endif
 
     // Allocate memory for output images and statistical arrays
     profile_timing.start("Allocate and zero arrays");
@@ -742,7 +806,29 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     CTF input_ctf;
     input_ctf.Init(voltage_kV, spherical_aberration_mm, amplitude_contrast, defocus1, defocus2, defocus_angle, 0.0, 0.0, 0.0, wanted_pre_projection_pixel_size, deg_2_rad(phase_shift));
-    projection_filter.Allocate(wanted_pre_projection_template_size, wanted_pre_projection_template_size, false);
+
+    // Electron wavelength for the curved-Ewald projection experiment, in units of the pixel size
+    // input_ctf was initialized with (CTF::Init divides by pixel size); TemplateMatchingCore
+    // converts to the projection grid's units at the ExtractSliceShiftAndCtf call. 0 keeps the
+    // flat central-slice projection. Non-const so the omp default(none) shared list below can
+    // name it across compiler OpenMP-version differences in const predetermination.
+    // maybe_unused: consumed only inside the ENABLEGPU omp region, so the CPU TU sees no use.
+    // The curvature sign rides on the wavelength: sin(-theta) = -sin(theta) flips the beam
+    // z displacements while cos is unchanged, so no kernel-side sign parameter is needed.
+    [[maybe_unused]] float ewald_wavelength_for_gpu_prj = use_ewald_curved_projection ? ewald_curvature_sign * input_ctf.GetWavelength( ) : 0.0f;
+    // The GPU projection kernel centers and rescales the 3d volume fetch and the CTF fetch with a
+    // SINGLE extent, so the CTF image must live on the same grid as the volume texture. The
+    // FastFFT path zero-pads the volume to `padding`, and CalculateCTFImage evaluates the CTF on
+    // whatever grid it is allocated on, so allocating the filter at the padded size is what keeps
+    // the two in step -- a padded volume against an unpadded filter drives the CTF fetch out of
+    // bounds and silently returns the zero border colour.
+    int wanted_projection_filter_size = wanted_pre_projection_template_size;
+#if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
+    if ( padding > 1.0f )
+        wanted_projection_filter_size = myroundint(padding);
+#endif
+
+    projection_filter.Allocate(wanted_projection_filter_size, wanted_projection_filter_size, false);
     template_reconstruction.Allocate(wanted_pre_projection_template_size, wanted_pre_projection_template_size, wanted_pre_projection_template_size, true);
 
 // We want the output projection to always be the search size
@@ -753,8 +839,13 @@ bool MatchTemplateApp::DoCalculation( ) {
 #endif
 
     // NOTE: note supported with resampling
+    // padded_projection feeds the CPU projection path only; same multiplier-vs-box-edge
+    // mismatch as the reconstruction resize above, so it is gated the same way.
+#if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
+#else
     if ( padding != 1.0f )
         padded_projection.Allocate(input_reconstruction.logical_x_dimension * padding, input_reconstruction.logical_x_dimension * padding, false);
+#endif
 
     profile_timing.lap("Allocate and zero arrays");
     MyDebugPrintGA1("match_template DoCalculation allocated and zeroed work arrays");
@@ -965,7 +1056,18 @@ bool MatchTemplateApp::DoCalculation( ) {
         profile_timing.lap("ChangePixelSize");
         profile_timing.start("SwapRealSpaceQuadrants");
         template_reconstruction.ZeroCentralPixel( );
+#if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
+        // The FastFFT texture prep below must receive the volume as it sits (object centered in
+        // the box): the centered store's parity sign IS the quadrant swap, so a host-side swap
+        // here would apply it twice. The swap is also incompatible with implicit zero-padding --
+        // corner-anchored padding of a wrap-split object separates its halves with zeros instead
+        // of preserving the cyclic wrap. Only the non-FastFFT preps (padding == 0 escape hatch,
+        // or the CPU projection path) still consume a swapped host volume.
+        if ( ! (use_gpu && use_gpu_prj && padding != 0.0f) )
+            template_reconstruction.SwapRealSpaceQuadrants( );
+#else
         template_reconstruction.SwapRealSpaceQuadrants( );
+#endif
         profile_timing.lap("SwapRealSpaceQuadrants");
 
         // Prepare template for GPU if enabled
@@ -978,21 +1080,108 @@ bool MatchTemplateApp::DoCalculation( ) {
                 // FIXME: move this (and the above CPU steps) into a method to prepare the 3d reference.
                 profile_timing.start("Swap Fourier Quadrants");
                 template_reconstruction.BackwardFFT( );
-                // FIXME: this should be a GPU method (or also a ...) and it should optionally be combined with a copy to texture.
-                template_reconstruction.SwapFourierSpaceQuadrants(false);
                 profile_timing.lap("Swap Fourier Quadrants");
-                // We only want to have one copy of the 3d template in texture memory that each thread can then reference.
-                // First allocate a shared pointer and construct the GpuImage based on the CPU template
-                // TODO: Initially, i had this set to use
-                // GpuImage::InitializeBasedOnCpuImage(tmp_vol, false, true); where the memory is instructed not to be pinned.
-                // This should be fine now, but .
-                profile_timing.start("CopyHostToDeviceTextureComplex");
 
-                // Create GpuImage from the CPU template and copy to GPU texture memory.
-                template_reconstruction_gpu = std::make_shared<GpuImage>(template_reconstruction);
-                template_reconstruction_gpu->CopyHostToDeviceTextureComplex<3>(template_reconstruction);
+// The TYPE test must match the one guarding the fetch in GpuImage::ExtractSliceShiftAndCtf.
+// Without it a TYPE == 0 binary would build the interleaved FastFFT texture here while the
+// kernel compiled the tex_real/tex_imag pair fetch, and would then sample texture handles that
+// were never assigned on this vessel.
+#if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
+                // padding == 0.0f: use the existing CopyHostToDeviceTextureComplex path even though the gate is enabled.
+                if ( padding != 0.0f ) {
+                    profile_timing.start("FastFFT Texture Prep");
 
-                profile_timing.lap("CopyHostToDeviceTextureComplex");
+                    // FastFFT zero-pads the input implicitly, so the input must already be zero-floated
+                    // (and normalized) going in.
+                    template_reconstruction.ZeroFloatAndNormalize( );
+
+                    GpuImage tmp_copy;
+                    tmp_copy.Init(template_reconstruction);
+                    tmp_copy.CopyHostToDevice(template_reconstruction);
+
+                    FastFFT::PlanDescriptor plan{ };
+                    plan.input_size = {static_cast<std::size_t>(template_reconstruction.logical_x_dimension),
+                                       static_cast<std::size_t>(template_reconstruction.logical_y_dimension),
+                                       static_cast<std::size_t>(template_reconstruction.logical_z_dimension)};
+                    // padding == 1.0f: FastFFT method, no size change (fourier_size defaults to input_size).
+                    // Any other value is the padded output box size passed to the plan constructor.
+                    if ( padding != 1.0f ) {
+                        plan.fourier_size = {static_cast<std::size_t>(padding), static_cast<std::size_t>(padding), static_cast<std::size_t>(padding)};
+                    }
+                    plan.centered_fwd_output = true;
+                    plan.fwd_output_delivery = FastFFT::FwdOutputDelivery::surface3d;
+#if cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE == 16
+                    plan.fwd_output_texel = FastFFT::FwdOutputTexel::fp16;
+#else
+                    plan.fwd_output_texel = FastFFT::FwdOutputTexel::fp32;
+#endif
+
+                    FastFFT::FourierTransformer<float, float, float2, 3> FT(plan);
+
+                    // Match GpuImage::ExtractSlice's existing texture-sampling convention (the cudaTextureDesc
+                    // set up in CopyHostToDeviceTextureComplex/CopyHostToDeviceTextureRealValued): unnormalized
+                    // coordinates, linear filtering, and Border addressing are already FastFFT's plan defaults;
+                    // only the border color differs (FastFFT defaults to NaN, cisTEM's existing textures leave
+                    // it at zero via memset) and needs to be overridden to match.
+                    cudaTextureDesc texture_fetch_descriptor = FT.GetTextureFetchDescriptor( );
+                    texture_fetch_descriptor.borderColor[0]  = 0.f;
+                    texture_fetch_descriptor.borderColor[1]  = 0.f;
+                    texture_fetch_descriptor.borderColor[2]  = 0.f;
+                    texture_fetch_descriptor.borderColor[3]  = 0.f;
+                    FT.SetTextureFetchDescriptor(texture_fetch_descriptor);
+
+                    // The bare call's default store delivers the spectrum of the object moved
+                    // from box center to the origin -- the quadrant-swap convention
+                    // ExtractSliceShiftAndCtf requires -- for both the same-size and the
+                    // implicitly zero-padded plans, with no parity phase left in the texels
+                    // (a parity-carrying texture cannot be trilinearly interpolated).
+                    // Verified against the CPU SwapRealSpaceQuadrants +
+                    // SwapFourierSpaceQuadrants reference to fp noise (max component diff
+                    // 6e-8 at 256^3 and 3e-8 at 256->512) by the probe in
+                    // src/programs/quick_test/quick_test.cpp.
+                    FT.FwdFFTToTexture(tmp_copy.real_values);
+
+                    // allocate_real_values = false: this vessel only carries metadata + fastfft_plan_resources,
+                    // never a device real_values/complex_values buffer of its own, so no host->device
+                    // transfer ever happens for it -- pin_host_memory = false since there is nothing to pin
+                    // for (tmp_copy's Init already pinned this same host buffer for its own transfer above).
+                    template_reconstruction_gpu = std::make_shared<GpuImage>( );
+                    template_reconstruction_gpu->Init(template_reconstruction, /* pin_host_memory = */ false, /* allocate_real_values = */ false);
+                    template_reconstruction_gpu->fastfft_plan_resources = FT.DestroyPlan(FastFFT::KeepTexture);
+
+                    // Init copied its metadata from a real-space host volume, but what this vessel
+                    // carries is the centered momentum-space texture. Restate the flags so they
+                    // describe the texture rather than the host image: the FastFFT delivery is
+                    // centered by contract (centered_fwd_output = true above), which is the state
+                    // the else-branch reaches via SwapFourierSpaceQuadrants; and the store's fused
+                    // parity/displacement phases land the object's center at the origin, which is
+                    // the state the else-branch reaches via the host-side SwapRealSpaceQuadrants
+                    // this path skips (so the host flag Init copied says centred == true here).
+                    // ExtractSliceShiftAndCtf asserts on all three.
+                    template_reconstruction_gpu->is_in_real_space         = false;
+                    template_reconstruction_gpu->is_fft_centered_in_box   = true;
+                    template_reconstruction_gpu->object_is_centred_in_box = false;
+
+                    profile_timing.lap("FastFFT Texture Prep");
+                }
+                else
+#endif
+                {
+                    // FIXME: this should be a GPU method (or also a ...) and it should optionally be combined with a copy to texture.
+                    template_reconstruction.SwapFourierSpaceQuadrants(false);
+                    // We only want to have one copy of the 3d template in texture memory that each thread can then reference.
+                    // First allocate a shared pointer and construct the GpuImage based on the CPU template
+                    // TODO: Initially, i had this set to use
+                    // GpuImage::InitializeBasedOnCpuImage(tmp_vol, false, true); where the memory is instructed not to be pinned.
+                    // This should be fine now, but .
+                    profile_timing.start("CopyHostToDeviceTextureComplex");
+
+                    // Create GpuImage from the CPU template and copy to GPU texture memory.
+                    template_reconstruction_gpu = std::make_shared<GpuImage>(template_reconstruction);
+                    template_reconstruction_gpu->CopyHostToDeviceTextureComplex<3>(template_reconstruction);
+
+                    profile_timing.lap("CopyHostToDeviceTextureComplex");
+                }
             }
 
             data_sizer.whitening_filter_ptr->MakeThreadSafeForNThreads(max_threads);
@@ -1004,7 +1193,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                                                                            global_euler_search, number_of_search_positions, number_of_search_positions_per_thread, use_gpu_prj, gpu_batch_size_multiplier, \
                                                                            data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size,                                                      \
                                                                            correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image,   \
-                                                                           actual_number_of_angles_searched, defocus_step) firstprivate(template_reconstruction_gpu, L2_persistance_fraction, current_correlation_position)
+                                                                           actual_number_of_angles_searched, defocus_step, ewald_wavelength_for_gpu_prj) firstprivate(template_reconstruction_gpu, L2_persistance_fraction)
             {
                 int tIDX = ReturnThreadNumberOfCurrentThread( );
                 // gpuDev.SetGpu( );
@@ -1016,6 +1205,7 @@ bool MatchTemplateApp::DoCalculation( ) {
                     GPU[tIDX].use_lerp_for_resizing = true;
                     GPU[tIDX].binning_factor        = data_sizer.GetFullBinningFactor( );
 #endif
+                    GPU[tIDX].ewald_wavelength_pixels = ewald_wavelength_for_gpu_prj;
 
                     // Determine the range of Euler search positions for this thread
                     int t_first_search_position = first_search_position + (tIDX * incPos);
@@ -1082,7 +1272,15 @@ bool MatchTemplateApp::DoCalculation( ) {
                                  deg_2_rad(defocus_angle));
             // Reset this bool since we will overwrite all values in the CTF image.
             projection_filter.is_fft_centered_in_box = false;
+#if defined(ENABLEGPU) && defined(cisTEM_EXPERIMENTAL_EWALD_PROJECTION)
+            // Under --ewald-curved-projection the filter is the COMPLEX ctf
+            // (CTF::EvaluateComplex: -sin(chi) - i cos(chi)); the quadrature (cos) part rides
+            // the imaginary channel the GPU ctf texture pair already carries, feeding the
+            // per-beam weighting in ExtractSliceShiftAndCtfKernel. Real filter otherwise.
+            projection_filter.CalculateCTFImage(input_ctf, use_ewald_curved_projection);
+#else
             projection_filter.CalculateCTFImage(input_ctf);
+#endif
             projection_filter.ApplyCurveFilter(data_sizer.whitening_filter_ptr.get( ));
 
             profile_timing.lap("Ctf and whitening filter");
@@ -1094,13 +1292,29 @@ bool MatchTemplateApp::DoCalculation( ) {
                 // Rather than multiplying the projection by the ctf_image, we will interpolate from it
                 // This allows intra projection down sampling and also keeps the ctf in fast read only cache.
                 // As with the 3d volume, we have to swap the fourier space quadrants and shift x by 1 to have spatially local interp
-                if ( use_gpu_prj )
+                if ( use_gpu_prj ) {
+#if defined(cisTEM_EXPERIMENTAL_EWALD_PROJECTION)
+                    if ( use_ewald_curved_projection )
+                        SwapFourierSpaceQuadrantsOfComplexCtf(projection_filter);
+                    else
+                        projection_filter.SwapFourierSpaceQuadrants(false, true);
+#else
                     projection_filter.SwapFourierSpaceQuadrants(false, true);
+#endif
+                }
 
+// current_correlation_position is SHARED by design: it is a single-writer progress counter --
+// inside RunInnerLoop only thread 0 increments it and feeds the ProgressBar (guarded by
+// ReturnThreadNumberOfCurrentThread() == 0), non-local workers never write it, and the outer
+// serial code between defocus/pixel-size planes relies on the accumulated value carrying over
+// so the bar's numerator spans the sweep like its denominator does. The two earlier sharing
+// classes were both defects: private() copied in garbage (aborted runs, fixed 52ac25f9) and
+// firstprivate() copied in a perpetual 0, restarting the bar every plane (~20x inflated ETA
+// on a 21-plane sweep).
 #pragma omp parallel num_threads(max_threads) default(none) shared(data_sizer, best_psi, best_theta, best_phi, best_defocus, best_pixel_size, max_intensity_projection,                                                                    \
                                                                            correlation_pixel_sum, correlation_pixel_sum_image, correlation_pixel_sum_of_squares, correlation_pixel_sum_of_squares_image, actual_number_of_angles_searched, \
                                                                            profile_timing, GPU, projection_filter, current_projection, angles, global_euler_search, number_of_search_positions_per_thread, use_gpu_prj,                    \
-                                                                           defocus_i, defocus_step, size_i, pixel_size_step, histogram_data) firstprivate(current_correlation_position)
+                                                                           defocus_i, defocus_step, size_i, pixel_size_step, histogram_data, current_correlation_position)
 
                 {
                     int tIDX = ReturnThreadNumberOfCurrentThread( );

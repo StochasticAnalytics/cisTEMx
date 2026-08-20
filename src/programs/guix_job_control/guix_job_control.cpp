@@ -156,6 +156,22 @@ wxThread::ExitCode LaunchJobThread::Entry( ) {
 IMPLEMENT_APP(JobControlApp)
 
 bool JobControlApp::OnInit( ) {
+    // CISTEM_JOB_CONTROL_LOG_DIR: when set, mirror this process's
+    // stdout/stderr into <dir>/job_control_<pid>.log. The GUI spawns
+    // job_control through wxExecute, which pipes the child's output back
+    // into the GUI process — so on a crash every wxPrintf here is lost.
+    // Line-buffered so a segfault loses at most the current line.
+    const char* log_dir_env = getenv("CISTEM_JOB_CONTROL_LOG_DIR");
+    if ( log_dir_env != NULL && log_dir_env[0] != '\0' ) {
+        wxString log_path = wxString::Format("%s/job_control_%d.log", log_dir_env, (int)getpid( ));
+        if ( freopen(log_path.ToUTF8( ).data( ), "a", stdout) != NULL ) {
+            setvbuf(stdout, NULL, _IOLBF, 0);
+        }
+        if ( freopen(log_path.ToUTF8( ).data( ), "a", stderr) != NULL ) {
+            setvbuf(stderr, NULL, _IOLBF, 0);
+        }
+    }
+
     MyDebugPrintGA1("JobControlApp::OnInit begin pid=%d", (int)getpid( ));
     number_of_received_jobs    = 0;
     all_jobs_are_finished      = false;

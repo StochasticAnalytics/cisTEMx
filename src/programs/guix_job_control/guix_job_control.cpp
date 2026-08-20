@@ -83,6 +83,7 @@ class
     void HandleSocketYouAreConnected(wxSocketBase* connected_socket);
     void HandleSocketJobPackage(wxSocketBase* connected_socket, JobPackage* received_package);
     void HandleSocketTimeToDie(wxSocketBase* connected_socket);
+    void HandleSocketIAmADedicatedMaster(wxSocketBase* connected_socket);
     void HandleSocketIHaveAnError(wxSocketBase* connected_socket, wxString error_message);
     void HandleSocketIHaveInfo(wxSocketBase* connected_socket, wxString info_message);
     void HandleSocketJobResult(wxSocketBase* connected_socket, JobResult* received_result);
@@ -965,6 +966,18 @@ void JobControlApp::HandleSocketTimeToDie(wxSocketBase* connected_socket) {
 //	WriteToSocket(connected_socket, socket_sending_job_package, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
 //	current_job_package.SendJobPackage(connected_socket);
 //}
+
+void JobControlApp::HandleSocketIAmADedicatedMaster(wxSocketBase* connected_socket) {
+    // The CISTEM_MASTER_ONLY master serves and aggregates only — it must not
+    // count toward the connected-worker total, both because the GUI would
+    // misreport it as a compute worker and because SendNumberofConnections
+    // shuts the server down when the total reaches the number of launched
+    // commands, which would lock out the last real worker.
+
+    number_of_workers_already_connected--;
+    MyDebugPrintGA1("dedicated master announced itself, connected count corrected to %d", (int)number_of_workers_already_connected);
+    SendNumberofConnections( );
+}
 
 void JobControlApp::HandleSocketIHaveAnError(wxSocketBase* connected_socket, wxString error_message) {
     // pass the error message up to the GUI..

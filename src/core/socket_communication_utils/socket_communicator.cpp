@@ -13,9 +13,21 @@ wxThread::ExitCode SocketServerThread::Entry( ) {
             MyPrintWithDetails("Error: Can't get shutdown lock");
     }
 
-    for ( short int current_port = START_PORT; current_port <= END_PORT; current_port++ ) {
-        //wxPrintf("looking at port %hi\n", current_port);
-        if ( current_port == END_PORT ) {
+    // by default, scan [START_PORT, END_PORT] for a free port (original behavior). When a
+    // wanted_ports list was supplied via SetupServer, try ONLY those ports, in order.
+
+    int number_of_ports_to_try;
+
+    if ( number_of_wanted_ports > 0 )
+        number_of_ports_to_try = number_of_wanted_ports;
+    else
+        number_of_ports_to_try = END_PORT - START_PORT; // the original scan never actually tries END_PORT itself
+
+    int current_port;
+
+    for ( int port_counter = 0; port_counter <= number_of_ports_to_try; port_counter++ ) {
+        //wxPrintf("looking at port %i\n", current_port);
+        if ( port_counter == number_of_ports_to_try ) {
             wxPrintf("Server: Could not find a valid port !\n\n");
 
             { // for mutex
@@ -37,8 +49,13 @@ wxThread::ExitCode SocketServerThread::Entry( ) {
             return (wxThread::ExitCode)-1;
         }
 
-        my_port = current_port;
-        my_address.Service(my_port);
+        if ( number_of_wanted_ports > 0 )
+            current_port = wanted_ports[port_counter];
+        else
+            current_port = START_PORT + port_counter;
+
+        my_port = (short int)current_port;
+        my_address.Service((unsigned short)current_port);
 
         wxMutexLocker socket_server_lock(parent_pointer->server_mutex);
         if ( socket_server_lock.IsOk( ) == true ) {
@@ -50,7 +67,10 @@ wxThread::ExitCode SocketServerThread::Entry( ) {
                 // setup events for the socket server..
 
                 all_my_ip_addresses = ReturnIPAddress( );
-                my_port_string      = wxString::Format("%hi", my_port);
+                my_port_string      = wxString::Format("%i", current_port);
+
+                if ( number_of_wanted_ports > 0 )
+                    wxPrintf("Server: bound wanted port %i\n", current_port);
 
                 { // for mutex
                     wxMutexLocker server_is_running_lock(parent_pointer->server_is_running_mutex);
@@ -169,7 +189,7 @@ SocketCommunicator::SocketCommunicator( ) {
 SocketCommunicator::~SocketCommunicator( ) {
 }
 
-bool SocketCommunicator::SetupServer( ) {
+bool SocketCommunicator::SetupServer(const int* wanted_ports, int number_of_wanted_ports) {
     // check a server is not already running..
     //	MyDebugAssertFalse(server_is_running, "Error: trying to start a server, but a server is already running");
     MyDebugAssertTrue(server_thread == NULL, "Error: trying to start a server, but server_thread != NULL");
@@ -179,6 +199,19 @@ bool SocketCommunicator::SetupServer( ) {
     //wxPrintf("Starting server thread\n");
 
     server_thread = new SocketServerThread(this);
+
+    if ( wanted_ports != NULL && number_of_wanted_ports > 0 ) {
+        MyDebugAssertTrue(number_of_wanted_ports <= SocketServerThread::MAX_WANTED_PORTS, "Error: too many wanted ports");
+
+        if ( number_of_wanted_ports > SocketServerThread::MAX_WANTED_PORTS )
+            number_of_wanted_ports = SocketServerThread::MAX_WANTED_PORTS;
+
+        for ( int counter = 0; counter < number_of_wanted_ports; counter++ ) {
+            server_thread->wanted_ports[counter] = wanted_ports[counter];
+        }
+
+        server_thread->number_of_wanted_ports = number_of_wanted_ports;
+    }
 
     if ( server_thread->Run( ) != wxTHREAD_NO_ERROR ) {
         MyPrintWithDetails("Warning: Can't create the server thread!");

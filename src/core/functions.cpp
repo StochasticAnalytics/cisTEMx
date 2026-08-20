@@ -484,6 +484,20 @@ wxString ReturnIPAddressFromSocket(wxSocketBase* socket) {
     return ip_address;
 }
 
+wxString ReturnPeerIPAddressFromSocket(wxSocketBase* socket) {
+    // unlike ReturnIPAddressFromSocket (which returns the LOCAL address of the
+    // connection), this returns the address of the connected PEER - use it when
+    // deciding where a connection actually came from (e.g. through a tunnel).
+
+    wxString      ip_address;
+    wxIPV4address peer_address;
+
+    socket->GetPeer(peer_address);
+    ip_address = peer_address.IPAddress( );
+
+    return ip_address;
+}
+
 // Test whether the filename's extension matches; case insensitive
 bool FilenameExtensionMatches(std::string filename, std::string extension) {
     wxFileName input_filename_wx(filename);

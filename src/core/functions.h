@@ -383,6 +383,7 @@ inline bool DoesFileExistWithWait(wxString filename, int max_wait_time_in_second
 
 wxArrayString ReturnIPAddress( );
 wxString      ReturnIPAddressFromSocket(wxSocketBase* socket);
+wxString      ReturnPeerIPAddressFromSocket(wxSocketBase* socket);
 
 float CalculateAngularStep(float required_resolution, float radius_in_angstroms);
 

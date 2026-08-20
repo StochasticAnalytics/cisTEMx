@@ -540,8 +540,8 @@ void LaunchJobThread::LaunchRemoteJob( ) {
             for ( auto& kv : tunnel_map ) {
                 wxString target = kv.first;
                 wxString probe  = RunAndCapture(wxString::Format(
-                         "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%d 2>/dev/null && echo in_use || echo free'\" 2>/dev/null",
-                         target, try_port));
+                        "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%d 2>/dev/null && echo in_use || echo free'\" 2>/dev/null",
+                        target, try_port));
                 MyDebugPrintGA1("master-port reserve probe target='%s' port=%d result='%s'", target, try_port, probe);
                 if ( ! probe.Contains("free") ) {
                     free_on_all = false;
@@ -715,7 +715,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
         return;
     }
 
-    wxString peer_ip = ReturnIPAddressFromSocket(new_connection);
+    wxString peer_ip = ReturnPeerIPAddressFromSocket(new_connection);
     MyDebugPrintGA1("HandleNewSocketConnection peer_ip='%s'", peer_ip);
 
     if ( (memcmp(identification_code, current_job_code, SOCKET_CODE_SIZE) != 0) ) {
@@ -863,12 +863,17 @@ void JobControlApp::HandleSocketJobPackage(wxSocketBase* connected_socket, JobPa
 
     current_address_according_to_gui = ReturnIPAddressFromSocket(gui_socket);
 
+    // If the GUI connection is local (loopback), don't prepend 127.0.0.1 as the FIRST
+    // address workers try - ReturnServerAllIpAddresses() already orders real interfaces
+    // first (with 127.0.0.1 last), which is what remote workers need.
+    bool gui_address_is_loopback = (current_address_according_to_gui == "127.0.0.1");
+
     my_possible_ip_addresses.Clear( );
-    if ( current_address_according_to_gui.IsEmpty( ) == false )
+    if ( current_address_according_to_gui.IsEmpty( ) == false && gui_address_is_loopback == false )
         my_possible_ip_addresses.Add(current_address_according_to_gui);
 
     for ( int counter = 0; counter < buffer_addresses.GetCount( ); counter++ ) {
-        if ( buffer_addresses.Item(counter) != current_address_according_to_gui )
+        if ( gui_address_is_loopback == true || buffer_addresses.Item(counter) != current_address_according_to_gui )
             my_possible_ip_addresses.Add(buffer_addresses.Item(counter));
     }
 

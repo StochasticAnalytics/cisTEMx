@@ -67,6 +67,14 @@ class
     // and IPv4 127.0.0.1 traffic routed into the zombie).
     wxString master_tunnel_remote_port;
 
+    // Every ssh tunnel we spawn carries this high-entropy marker (job-code based) in a
+    // harmless -o SendEnv option, so the daemonized 'ssh -f -N' processes are exactly
+    // identifiable and killable later - they used to be orphaned forever.
+    wxString tunnel_kill_marker;
+    bool     have_launched_tunnels;
+
+    void KillAllTunnels( );
+
     friend class LaunchJobThread;
 
     // Socket Handling overrides..
@@ -102,6 +110,7 @@ class
 
   public:
     virtual bool OnInit( );
+    virtual int  OnExit( );
     void         OnEventLoopEnter(wxEventLoopBase* loop);
 };
 
@@ -151,6 +160,7 @@ bool JobControlApp::OnInit( ) {
     all_jobs_are_finished      = false;
     master_tunnels_established = false;
     master_tunnel_remote_port  = "";
+    have_launched_tunnels      = false;
     remote_tunnel_targets.Empty( );
     MyDebugPrintGA1("JobControlApp::OnInit counters reset");
 
@@ -223,6 +233,10 @@ void JobControlApp::OnEventLoopEnter(wxEventLoopBase* loop) {
         for ( counter = 0; counter < SOCKET_CODE_SIZE; counter++ ) {
             current_job_code[counter] = command_line_parser.GetParam(2).GetChar(counter);
         }
+
+        // marker embedded in every ssh tunnel command line, so we can kill exactly our tunnels later
+
+        tunnel_kill_marker = "CISTEM_TUNNEL_" + command_line_parser.GetParam(2);
 
         // Attempt to connect to the gui..
 
@@ -310,6 +324,23 @@ static wxString ExtractSSHTarget(const wxString& cmd) {
 }
 
 // END SSH_TUNNEL_HACK
+
+void JobControlApp::KillAllTunnels( ) {
+    // kill every 'ssh -f -N' tunnel we spawned - they all carry tunnel_kill_marker
+    // (job-code based, high entropy) in their command line, and nothing else does.
+
+    if ( have_launched_tunnels == false )
+        return;
+
+    wxPrintf("SSH_TUNNEL: killing all tunnels tagged %s\n", tunnel_kill_marker);
+    system(wxString::Format("pkill -f %s", tunnel_kill_marker).ToUTF8( ).data( ));
+    have_launched_tunnels = false;
+}
+
+int JobControlApp::OnExit( ) {
+    KillAllTunnels( );
+    return 0;
+}
 
 void LaunchJobThread::LaunchRemoteJob( ) {
     MyDebugPrintGA1("LaunchRemoteJob ENTRY pid=%d tid=%ld", (int)getpid( ), (long)wxThread::GetCurrentId( ));
@@ -399,6 +430,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
             if ( ssh_test != "ok" ) {
                 MyDebugPrintGA1("tunnel target='%s' SSH TEST FAILED, aborting LaunchRemoteJob", target);
                 QueueInfo(wxString::Format("SSH_TUNNEL_ERROR: Cannot SSH to %s _ aborting", target));
+                main_thread_pointer->KillAllTunnels( );
                 return;
             }
             wxPrintf("SSH_TUNNEL: Connectivity to %s confirmed\n", target);
@@ -423,20 +455,22 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 }
                 MyDebugPrintGA1("tunnel target='%s' trying port %d (forwarding to localhost:%s)", target, try_port, port_number);
                 wxString tunnel_cmd = wxString::Format(
-                        "ssh -f -N -o ExitOnForwardFailure=yes -R %d:localhost:%s %s 2>/dev/null",
-                        try_port, port_number, target);
+                        "ssh -f -N -o SendEnv=%s -o ExitOnForwardFailure=yes -R %d:localhost:%s %s 2>/dev/null",
+                        main_thread_pointer->tunnel_kill_marker, try_port, port_number, target);
                 int ret = system(tunnel_cmd.ToUTF8( ).data( ));
                 MyDebugPrintGA1("tunnel target='%s' port %d ssh -f -N returned %d", target, try_port, ret);
                 if ( ret == 0 ) {
-                    remote_port      = wxString::Format("%d", try_port);
-                    next_tunnel_port = try_port + 1;
-                    tunnel_ok        = true;
+                    main_thread_pointer->have_launched_tunnels = true;
+                    remote_port                                = wxString::Format("%d", try_port);
+                    next_tunnel_port                           = try_port + 1;
+                    tunnel_ok                                  = true;
                     MyDebugPrintGA1("tunnel target='%s' SUCCESS on port %d", target, try_port);
                     break;
                 }
             }
             if ( ! tunnel_ok ) {
                 QueueInfo(wxString::Format("SSH_TUNNEL_ERROR: No free port for %s _ aborting", target));
+                main_thread_pointer->KillAllTunnels( );
                 return;
             }
 
@@ -560,6 +594,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         if ( ! reserved ) {
             QueueInfo("SSH_TUNNEL_ERROR: could not reserve a master-tunnel port free on all remotes _ aborting");
             MyDebugPrintGA1("master-port reserve FAILED, aborting");
+            main_thread_pointer->KillAllTunnels( );
             return;
         }
     }
@@ -771,8 +806,8 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
                     for ( size_t ii = 0; ii < remote_tunnel_targets.GetCount( ); ii++ ) {
                         wxString target     = remote_tunnel_targets[ii];
                         wxString tunnel_cmd = wxString::Format(
-                                "ssh -f -N -o ExitOnForwardFailure=yes -R %s:127.0.0.1:%s %s 2>/dev/null",
-                                master_tunnel_remote_port, master_port, target);
+                                "ssh -f -N -o SendEnv=%s -o ExitOnForwardFailure=yes -R %s:127.0.0.1:%s %s 2>/dev/null",
+                                tunnel_kill_marker, master_tunnel_remote_port, master_port, target);
                         MyDebugPrintGA1("master tunnel target='%s' cmd='%s'", target, tunnel_cmd);
                         int ret = system(tunnel_cmd.ToUTF8( ).data( ));
                         MyDebugPrintGA1("master tunnel target='%s' ssh returned %d", target, ret);
@@ -780,6 +815,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
                             wxPrintf("SSH_TUNNEL: WARNING: master tunnel to %s failed (ret=%d)\n", target, ret);
                         }
                         else {
+                            have_launched_tunnels = true;
                             wxPrintf("SSH_TUNNEL: master tunnel to %s established (remote %s -> salina 127.0.0.1:%s)\n", target, master_tunnel_remote_port, master_port);
                         }
                     }
@@ -901,6 +937,8 @@ void JobControlApp::HandleSocketTimeToDie(wxSocketBase* connected_socket) {
         StopMonitoringAndDestroySocket(master_socket);
     }
 
+    KillAllTunnels( );
+
     ShutDownServer( );
 
     // close GUI connection
@@ -993,6 +1031,8 @@ void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
             StopMonitoringAndDestroySocket(master_socket);
         }
 
+        KillAllTunnels( );
+
         ShutDownServer( );
 
         // close GUI connection
@@ -1015,6 +1055,8 @@ void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         {
             MyDebugPrint("Controller got disconnect from master...");
             SendError("Controller received a disconnect from the master before the job was finished..");
+
+            KillAllTunnels( );
 
             ShutDownServer( );
 

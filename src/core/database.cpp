@@ -2783,8 +2783,20 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
 #endif
         return_strings = ReturnStringArrayFromSelectCommand(wxString::Format("SELECT name FROM sqlite_master WHERE type='table' AND name  LIKE '%s_%';", std::get<0>(table)));
         for ( counter = 0; counter < return_strings.GetCount( ); counter++ ) {
-            // Make sure it is not any of the static columns that happen to match
+            // Make sure it is not any of the static tables that happen to match
             if ( any_of(static_tables.begin( ), static_tables.end( ), [&](TableData& table) { return return_strings[counter].IsSameAs(std::get<0>(table)); }) ) {
+                continue;
+            }
+            // Skip tables that match a more specific (longer) dynamic table prefix.
+            // E.g. REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_1 matches the
+            // LIKE pattern for REFINEMENT_PACKAGE_CONTAINED_PARTICLES_ but should
+            // only be checked against REFINEMENT_PACKAGE_CONTAINED_PARTICLES_MULTI_VIEW_.
+            wxString current_prefix = std::get<TABLE_NAME>(table);
+            if ( any_of(dynamic_tables.begin( ), dynamic_tables.end( ), [&](TableData& other) {
+                     wxString other_prefix = std::get<TABLE_NAME>(other);
+                     return other_prefix.length( ) > current_prefix.length( ) &&
+                            return_strings[counter].StartsWith(other_prefix);
+                 }) ) {
                 continue;
             }
             for ( col_counter = 0; col_counter < std::get<TABLE_COLUMNS>(table).size( ); col_counter++ ) {

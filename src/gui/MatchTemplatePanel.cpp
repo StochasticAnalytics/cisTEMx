@@ -1,33 +1,76 @@
 
 
-// BATCH_HIGH_RES_EXPERIMENT: Uncomment to enable batch iteration over high-res limit values
-// When enabled, clicking StartEstimation will automatically cycle through values:
-// - First run: GUI value as-is
-// - Subsequent runs: 0.5A steps landing on half/whole numbers up to end_value
-// - NOTE: there is no check that the user has supplied the --max-search-size which will change the resolution to be the highest for a given size. There
-//         is no plan to fix this directly, as we will make that CLI option a radio in this GUI and THEN we can fix it. For now, if you aren't BAH, you shouldn not be building with this hack anyway.
-// #define BATCH_HIGH_RES_EXPERIMENT
-// #define BATCH_ALL_TEMPLATES
-
-// Mutually exclusive hacks
-#if defined(BATCH_HIGH_RES_EXPERIMENT) && defined(BATCH_ALL_TEMPLATES)
-#error "BATCH_HIGH_RES_EXPERIMENT && BATCH_ALL_TEMPLATES cannot be defined together"
-#endif
-
-#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
-#include <cmath>
-// File-static variables for batch experiment state (confined to this translation unit)
-static bool  s_batch_experiment_active    = false;
-static float s_batch_experiment_end_value = 8.0f; // Stop after this value
-static float s_batch_experiment_step      = 0.5f; // Step size in Angstroms
-static int   s_first_volume_asset_idx     = 0;
-static int   s_number_of_volume_asset_idx = 0;
-static int   s_current_volume_asset_idx   = 0;
-#endif
+// Batch experiment modes (runtime, selected via environment variables at launch):
+//   CISTEM_EXPERIMENTAL_BATCH=high-res       clicking StartEstimation cycles the high-res
+//                                            limit from the GUI value up to _END in _STEP
+//                                            Angstrom increments (values land on the step grid)
+//   CISTEM_EXPERIMENTAL_BATCH=all-templates  clicking StartEstimation runs every template in
+//                                            the reference dropdown, starting from the selection
+// Optional overrides for the high-res sweep:
+//   CISTEM_EXPERIMENTAL_BATCH_HIGH_RES_END   stop after this value (default 8.0)
+//   CISTEM_EXPERIMENTAL_BATCH_HIGH_RES_STEP  step size in Angstroms (default 0.5)
+// NOTE: there is no check that the user has supplied the --max-search-size which will change
+// the resolution to be the highest for a given size. There is no plan to fix this directly,
+// as we will make that CLI option a radio in this GUI and THEN we can fix it.
 
 //#include "../core/core_headers.h"
 #include "../constants/constants.h"
 #include "../core/gui_core_headers.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+
+namespace {
+
+enum class BatchExperimentMode { none,
+                                 high_res_sweep,
+                                 all_templates };
+
+struct BatchExperimentConfig {
+    BatchExperimentMode mode               = BatchExperimentMode::none;
+    float               high_res_end_value = 8.0f;
+    float               high_res_step      = 0.5f;
+    wxString            invalid_env_warning; // non-empty if any env var failed to parse
+};
+
+const BatchExperimentConfig& GetBatchExperimentConfig( ) {
+    static const BatchExperimentConfig config = []( ) {
+        BatchExperimentConfig cfg;
+        if ( const char* env = std::getenv("CISTEM_EXPERIMENTAL_BATCH") ) {
+            const wxString val{env};
+            if ( val == "high-res" )
+                cfg.mode = BatchExperimentMode::high_res_sweep;
+            else if ( val == "all-templates" )
+                cfg.mode = BatchExperimentMode::all_templates;
+            else
+                cfg.invalid_env_warning << "CISTEM_EXPERIMENTAL_BATCH='" << val
+                                        << "' not recognized (use 'high-res' or 'all-templates'); batch mode disabled.\n";
+        }
+        auto parse_positive_float = [&cfg](const char* name, float& target) {
+            if ( const char* env = std::getenv(name) ) {
+                char*       end    = nullptr;
+                const float parsed = std::strtof(env, &end);
+                if ( end != env && *end == '\0' && parsed > 0.0f )
+                    target = parsed;
+                else
+                    cfg.invalid_env_warning << name << "='" << env << "' is not a positive number; using default "
+                                            << wxString::Format("%.2f", target) << ".\n";
+            }
+        };
+        parse_positive_float("CISTEM_EXPERIMENTAL_BATCH_HIGH_RES_END", cfg.high_res_end_value);
+        parse_positive_float("CISTEM_EXPERIMENTAL_BATCH_HIGH_RES_STEP", cfg.high_res_step);
+        return cfg;
+    }( );
+    return config;
+}
+
+// Batch experiment state (confined to this translation unit)
+bool s_batch_experiment_active    = false;
+int  s_number_of_volume_asset_idx = 0; // snapshot of the reference count, taken at batch activation
+int  s_current_volume_asset_idx   = 0;
+
+} // namespace
 
 // extern MyMovieAssetPanel *movie_asset_panel;
 extern MyImageAssetPanel*         image_asset_panel;
@@ -117,10 +160,6 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     });
 
     GroupComboBox->AssetComboBox->Bind(wxEVT_COMMAND_COMBOBOX_SELECTED, &MatchTemplatePanel::OnGroupComboBox, this);
-
-#ifdef BATCH_ALL_TEMPLATES
-    s_number_of_volume_asset_idx = volume_asset_panel->all_assets_list->number_of_assets;
-#endif
 }
 
 /*
@@ -833,40 +872,56 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     MyDebugPrintGA1("MatchTemplatePanel::StartEstimationClick ENTRY");
 
-#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
+    const BatchExperimentConfig& batch_config = GetBatchExperimentConfig( );
 
-    // We are running already, print the update
-    if ( s_batch_experiment_active ) {
-#ifdef BATCH_ALL_TEMPLATES
-        // Log what we're running (value was already set in ProcessAllJobsFinished)
-        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running ref index %d/%d: %s\n",
-                                       s_current_volume_asset_idx,
-                                       s_number_of_volume_asset_idx,
-                                       volume_asset_panel->ReturnAssetShortFilename(s_current_volume_asset_idx).ToUTF8( ).data( )));
-#else
-        // Log what we're running (value was already set in ProcessAllJobsFinished)
-        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
-                                       HighResolutionLimitNumericCtrl->ReturnValue( )));
-#endif
+    if ( ! batch_config.invalid_env_warning.IsEmpty( ) ) {
+        static bool warned_once = false;
+        if ( ! warned_once ) {
+            warned_once = true;
+            WriteErrorText("BATCH EXPERIMENT: " + batch_config.invalid_env_warning);
+        }
     }
-    else {
-        // First click - activate batch mode
-        // Print starting message
-        s_batch_experiment_active  = true;
-        s_current_volume_asset_idx = ReferenceSelectPanel->GetSelection( );
-        VolumeAsset* temp_volume   = volume_asset_panel->ReturnAssetPointer(ReferenceSelectPanel->GetSelection( ));
-#ifdef BATCH_ALL_TEMPLATES
-        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run all templates in dropdown starting from %d (%s)",
-                                       s_current_volume_asset_idx,
-                                       temp_volume->filename.GetName( )));
-#else
-        WriteInfoText(wxString::Format("BATCH EXPERIMENT: Starting. Will run from %.2f to %.2f in %.1fA steps",
-                                       HighResolutionLimitNumericCtrl->ReturnValue( ),
-                                       s_batch_experiment_end_value,
-                                       s_batch_experiment_step));
-#endif
+
+    if ( batch_config.mode != BatchExperimentMode::none ) {
+        if ( s_batch_experiment_active ) {
+            // Log what we're running (value/selection was already advanced in ProcessAllJobsFinished)
+            if ( batch_config.mode == BatchExperimentMode::all_templates ) {
+                WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running ref index %d/%d: %s\n",
+                                               s_current_volume_asset_idx,
+                                               s_number_of_volume_asset_idx,
+                                               volume_asset_panel->ReturnAssetShortFilename(s_current_volume_asset_idx).ToUTF8( ).data( )));
+            }
+            else {
+                WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
+                                               HighResolutionLimitNumericCtrl->ReturnValue( )));
+            }
+        }
+        else if ( ReferenceSelectPanel->GetSelection( ) == wxNOT_FOUND ) {
+            WriteErrorText("BATCH EXPERIMENT: no reference selected; batch mode not activated.");
+        }
+        else {
+            // First click - activate batch mode, snapshot the state it iterates over, and
+            // print the configured values once per activation.
+            s_batch_experiment_active  = true;
+            s_current_volume_asset_idx = ReferenceSelectPanel->GetSelection( );
+            if ( batch_config.mode == BatchExperimentMode::all_templates ) {
+                s_number_of_volume_asset_idx = volume_asset_panel->all_assets_list->number_of_assets;
+                VolumeAsset* temp_volume     = volume_asset_panel->ReturnAssetPointer(s_current_volume_asset_idx);
+                WriteInfoText(wxString::Format("BATCH EXPERIMENT (CISTEM_EXPERIMENTAL_BATCH=all-templates): "
+                                               "Starting. Will run all %d templates in dropdown starting from index %d (%s)",
+                                               s_number_of_volume_asset_idx,
+                                               s_current_volume_asset_idx,
+                                               temp_volume->filename.GetName( )));
+            }
+            else {
+                WriteInfoText(wxString::Format("BATCH EXPERIMENT (CISTEM_EXPERIMENTAL_BATCH=high-res): "
+                                               "Starting. Will run from %.2f to %.2f A (HIGH_RES_END) in %.2f A steps (HIGH_RES_STEP)",
+                                               HighResolutionLimitNumericCtrl->ReturnValue( ),
+                                               batch_config.high_res_end_value,
+                                               batch_config.high_res_step));
+            }
+        }
     }
-#endif // print info block
 
     // Over-focus check MUST be called before active_group.CopyFrom() below.
     // If the user creates a new filtered group, CheckForOverFocus changes the
@@ -1389,13 +1444,11 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     ProgressPanel->Layout( );
     cached_results.Clear( );
 
-#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
     // Cancel batch experiment on user termination
     if ( s_batch_experiment_active ) {
         s_batch_experiment_active = false;
         WriteInfoText("BATCH EXPERIMENT: Cancelled by user");
     }
-#endif
 
     //running_job = false;
 }
@@ -1532,21 +1585,20 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     // Kill the job (in case it isn't already dead)
     main_frame->job_controller.KillJob(my_job_id);
 
-// Key section to advance to the next experiment in the batch
-#if defined(BATCH_HIGH_RES_EXPERIMENT) || defined(BATCH_ALL_TEMPLATES)
-#ifdef BATCH_HIGH_RES_EXPERIMENT
-    if ( s_batch_experiment_active ) {
-        float current_value = HighResolutionLimitNumericCtrl->ReturnValue( );
+    // Key section to advance to the next experiment in the batch
+    if ( s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::high_res_sweep ) {
+        const float step          = GetBatchExperimentConfig( ).high_res_step;
+        float       current_value = HighResolutionLimitNumericCtrl->ReturnValue( );
 
-        // Calculate next value: round up to next 0.5 boundary
-        float next_value = std::ceil(current_value * 2.0f) / 2.0f;
+        // Calculate next value: round up to the next step-grid boundary
+        float next_value = std::ceil(current_value / step) * step;
         if ( next_value <= current_value ) {
-            next_value = current_value + s_batch_experiment_step;
+            next_value = current_value + step;
         }
-        // Ensure it lands on 0.5 boundary
-        next_value = std::round(next_value * 2.0f) / 2.0f;
+        // Ensure it lands on the step grid (guard float noise from the division)
+        next_value = std::round(next_value / step) * step;
 
-        if ( next_value <= s_batch_experiment_end_value ) {
+        if ( next_value <= GetBatchExperimentConfig( ).high_res_end_value ) {
             WriteInfoText(wxString::Format("\nBATCH EXPERIMENT: Completed %.2f, next = %.2f",
                                            current_value, next_value));
 
@@ -1569,12 +1621,14 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
                                            current_value));
         }
     }
-#endif
 
-#ifdef BATCH_ALL_TEMPLATES
-    if ( s_batch_experiment_active ) {
+    if ( s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::all_templates ) {
+        // Re-read the live asset count: if assets were removed mid-batch, the activation-time
+        // snapshot would run SetSelection/ReturnAssetPointer off the end of the shrunk list.
+        const int live_count = int(volume_asset_panel->all_assets_list->number_of_assets);
+        const int last_idx   = std::min(s_number_of_volume_asset_idx, live_count);
 
-        if ( s_current_volume_asset_idx + 1 < s_number_of_volume_asset_idx ) {
+        if ( s_current_volume_asset_idx + 1 < last_idx ) {
             WriteInfoText(wxString::Format("BATCH EXPERIMENT: Completed template idx %d, next = %d/%d",
                                            s_current_volume_asset_idx,
                                            s_current_volume_asset_idx + 1,
@@ -1599,8 +1653,6 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             WriteInfoText(wxString::Format("BATCH EXPERIMENT: All templates are completed!"));
         }
     }
-#endif
-#endif // batch block
 
     WriteInfoText("All Jobs have finished.");
     ProgressBar->SetValue(100);

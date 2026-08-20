@@ -102,6 +102,9 @@ class TemplateMatchingCore {
 
     int n_global_search_images_to_save;
 
+    // CLI-tunable factor applied to the auto-selected GPU CCF batch size (1/2/4/8; default 4). See match_template --gpu-batch-size-multiplier.
+    int batch_size_multiplier_{4};
+
     bool is_running_locally;
     bool use_fast_fft;
 
@@ -219,6 +222,7 @@ class TemplateMatchingCore {
               bool                      is_running_locally,
               bool                      use_fast_fft,
               bool                      use_gpu_prj,
+              int                       batch_size_multiplier                  = 4,
               int                       number_of_global_search_images_to_save = 1);
 
     bool                is_set_L2_cache_persisting{ };

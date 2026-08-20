@@ -92,6 +92,7 @@ void TemplateMatchingCore::Init(MyApp*                    parent_pointer,
                                 bool                      is_running_locally,
                                 bool                      use_fast_fft,
                                 bool                      use_gpu_prj,
+                                int                       batch_size_multiplier,
                                 int                       number_of_global_search_images_to_save) {
 
     // --- Thread Safety Note ---
@@ -113,6 +114,7 @@ void TemplateMatchingCore::Init(MyApp*                    parent_pointer,
     this->angles                         = angles;
     this->global_euler_search            = global_euler_search;
     this->n_global_search_images_to_save = number_of_global_search_images_to_save;
+    this->batch_size_multiplier_         = batch_size_multiplier;
 
     MyDebugAssertFalse(number_of_global_search_images_to_save > 1, "Only one peak per search position is currently supported");
 
@@ -347,7 +349,7 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
 
     if ( this_is_the_first_run_on_inner_loop ) {
         d_padded_reference.CopyFP32toFP16buffer(false);
-        my_dist = std::make_unique<TM_EmpiricalDistribution<__half, __half2>>(d_input_image.get( ), pre_padding, roi);
+        my_dist = std::make_unique<TM_EmpiricalDistribution<__half, __half2>>(d_input_image.get( ), pre_padding, roi, batch_size_multiplier_);
     }
     else {
         my_dist->ZeroHistogram( );

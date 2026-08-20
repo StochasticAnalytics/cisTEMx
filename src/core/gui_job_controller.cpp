@@ -94,24 +94,65 @@ bool GuiJobController::LaunchJob(GuiJob* job_to_launch) {
     return true;
 }
 
-void GuiJobController::GenerateJobCode(unsigned char* job_code) {
-    srand(time(NULL));
+// Fill code_to_fill with cryptographically random characters from [A-Za-z0-9] (alphanumeric only -
+// job codes ride worker command lines, so they must stay shell-safe). Uses rejection sampling to
+// avoid modulo bias. Returns false if /dev/urandom cannot be read.
+static bool FillWithSecureRandomAlphanumeric(unsigned char* code_to_fill, int code_size) {
+    static const char allowed_characters[]     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    static const int  number_of_allowed        = 62;
+    static const int  largest_unbiased_value   = 248; // largest multiple of 62 that fits in a byte
+    int               number_of_filled_entries = 0;
 
+    FILE* urandom_file = fopen("/dev/urandom", "rb");
+    if ( urandom_file == NULL )
+        return false;
+
+    while ( number_of_filled_entries < code_size ) {
+        unsigned char random_byte;
+
+        if ( fread(&random_byte, 1, 1, urandom_file) != 1 ) {
+            fclose(urandom_file);
+            return false;
+        }
+
+        if ( random_byte >= largest_unbiased_value )
+            continue;
+
+        code_to_fill[number_of_filled_entries] = (unsigned char)allowed_characters[random_byte % number_of_allowed];
+        number_of_filled_entries++;
+    }
+
+    fclose(urandom_file);
+    return true;
+}
+
+void GuiJobController::GenerateJobCode(unsigned char* job_code) {
     long          counter;
     unsigned char temp_code[SOCKET_CODE_SIZE];
 
-    for ( counter = 0; counter < SOCKET_CODE_SIZE; counter++ ) {
-        temp_code[counter] = (unsigned char)(rand( ) % 9 + 48);
-        //if (temp_code[counter] == 92) temp_code[counter] = 123; // slashes screw things up
-    }
+    bool have_secure_code = FillWithSecureRandomAlphanumeric(temp_code, SOCKET_CODE_SIZE);
 
     // this is extremely unlikely, but just in case the job code is already being used, we do this check..
 
-    while ( ReturnJobNumberFromJobCode(temp_code) != -1 ) {
+    while ( have_secure_code == true && ReturnJobNumberFromJobCode(temp_code) != -1 ) {
+        have_secure_code = FillWithSecureRandomAlphanumeric(temp_code, SOCKET_CODE_SIZE);
+    }
+
+    if ( have_secure_code == false ) {
+        // never abort the GUI over this - fall back to the old (weak, guessable) generator with a warning..
+
+        wxPrintf("Warning: could not read /dev/urandom - falling back to weak pseudo-random job codes\n");
+
+        srand(time(NULL));
+
         for ( counter = 0; counter < SOCKET_CODE_SIZE; counter++ ) {
             temp_code[counter] = (unsigned char)(rand( ) % 9 + 48);
-            //if (temp_code[counter] == 92) temp_code[counter] = 123; // slashes screw things up
-            //if (temp_code[counter] == 96) temp_code[counter] = 125;
+        }
+
+        while ( ReturnJobNumberFromJobCode(temp_code) != -1 ) {
+            for ( counter = 0; counter < SOCKET_CODE_SIZE; counter++ ) {
+                temp_code[counter] = (unsigned char)(rand( ) % 9 + 48);
+            }
         }
     }
 

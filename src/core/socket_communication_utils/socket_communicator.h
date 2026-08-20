@@ -87,6 +87,8 @@ class SocketCommunicator {
 
     virtual void HandleSocketNumberOfConnections(wxSocketBase* connected_socket, int received_number_of_connections) { wxPrintf("Warning:: Unhandled Socket Message(HandleSocketNumberOfConnections)\n"); }
 
+    virtual void HandleSocketIAmADedicatedMaster(wxSocketBase* connected_socket) { wxPrintf("Warning:: Unhandled Socket Message(HandleSocketIAmADedicatedMaster)\n"); }
+
     //virtual void HandleSocketResultWithImageToWrite(wxSocketBase *connected_socket, Image *image_to_write, wxString filename_to_write_to, int position_in_stack) {wxPrintf("Warning:: Unhandled Socket Message(HandleSocketResultWithImageToWrite)\n");}
     virtual void HandleSocketResultWithImageToWrite(wxSocketBase* connected_socket, wxString filename_to_write_to, int position_in_stack) { wxPrintf("Warning:: Unhandled Socket Message(HandleSocketResultWithImageToWrite)\n"); } // No longer sending image, see the comment in socket_communicator.cpp
 

@@ -674,6 +674,9 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                 else if ( memcmp(socket_input_buffer, socket_time_to_die, SOCKET_CODE_SIZE) == 0 ) {
                                     parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketTimeToDie, parent_pointer, monitored_sockets[socket_counter]));
                                 }
+                                else if ( memcmp(socket_input_buffer, socket_i_am_a_dedicated_master, SOCKET_CODE_SIZE) == 0 ) {
+                                    parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketIAmADedicatedMaster, parent_pointer, monitored_sockets[socket_counter]));
+                                }
                                 else if ( memcmp(socket_input_buffer, socket_ready_to_send_single_job, SOCKET_CODE_SIZE) == 0 ) {
                                     RunJob* received_job = new RunJob;
                                     if ( received_job->RecieveJob(monitored_sockets[socket_counter]) == true ) {

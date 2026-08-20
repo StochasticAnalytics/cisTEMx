@@ -841,6 +841,16 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
     SendwxStringToSocket(&my_ip_address, connected_socket);
     SendwxStringToSocket(&my_port_string, connected_socket);
 
+    if ( i_am_a_master_only == true ) {
+        // Tell the controller not to count this process as a connected worker:
+        // it serves and aggregates only, and counting it would both misreport
+        // the connected total to the GUI and make the controller shut its
+        // server down one real worker early (see SendNumberofConnections).
+        // Sent after the ip/port strings above, so it sits in the socket
+        // buffer until the controller starts monitoring this socket.
+        WriteToSocket(connected_socket, socket_i_am_a_dedicated_master, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+    }
+
     // ok, now get the job details from the conduit controller
 
     //WriteToSocket(connected_socket, socket_send_job_details, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);

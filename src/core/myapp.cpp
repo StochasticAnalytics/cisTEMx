@@ -741,9 +741,46 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
 
     i_am_the_master = true;
 
+    // CISTEM_MASTER_ONLY: when set (and non-empty) this process only serves, aggregates and
+    // reports - it does not connect itself as a worker or run a CalculateThread - and its
+    // server must bind the first free port of a 4-port window derived from the job code, so
+    // that pre-established tunnels can forward to a known port.
+
+    const char* master_only_env    = getenv("CISTEM_MASTER_ONLY");
+    const bool  i_am_a_master_only = (master_only_env != NULL && master_only_env[0] != '\0');
+
     // we need to start a server so that the workers can connect..
 
-    SetupServer( );
+    if ( i_am_a_master_only == true ) {
+        // derive the port window from the job code with 32-bit FNV-1a:
+        // base = 41000 + (hash mod 7996), window = base .. base + 3
+
+        wxUint32 job_code_hash = 2166136261u;
+
+        for ( int counter = 0; counter < SOCKET_CODE_SIZE; counter++ ) {
+            job_code_hash = (job_code_hash ^ (wxUint32)current_job_code[counter]) * 16777619u;
+        }
+
+        const int base_port = 41000 + (int)(job_code_hash % 7996u);
+        int       derived_ports[4];
+
+        for ( int counter = 0; counter < 4; counter++ ) {
+            derived_ports[counter] = base_port + counter;
+        }
+
+        if ( SetupServer(derived_ports, 4) == false ) {
+            wxPrintf("SSH_TUNNEL_ERROR: CISTEM_MASTER_ONLY master could not bind any port of the derived window %i-%i - aborting\n", base_port, base_port + 3);
+            SocketSendError(wxString::Format("SSH_TUNNEL_ERROR: CISTEM_MASTER_ONLY master could not bind any port of the derived window %i-%i - aborting", base_port, base_port + 3));
+            ExitMainLoop( );
+            exit(-1);
+            return;
+        }
+
+        wxPrintf("CISTEM_MASTER_ONLY: master server bound port %s (window %i-%i)\n", ReturnServerPortString( ), base_port, base_port + 3);
+    }
+    else {
+        SetupServer( );
+    }
 
     // bind to the master queue timer..
 
@@ -754,41 +791,46 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
 
     my_ip_address = ReturnIPAddressFromSocket(connected_socket);
 
-    // connect myself as a worker..
-
     master_ip_address  = my_ip_address;
     master_port_string = my_port_string;
     master_port        = my_port;
 
-    master_socket = new wxSocketClient( );
-    master_socket->SetFlags(SOCKET_FLAGS);
-    master_socket->Notify(false);
+    if ( i_am_a_master_only == false ) {
+        // connect myself as a worker..
 
-    active_controller_address.Hostname("localhost");
-    active_controller_address.Service(master_port);
+        master_socket = new wxSocketClient( );
+        master_socket->SetFlags(SOCKET_FLAGS);
+        master_socket->Notify(false);
 
-    master_socket->Connect(active_controller_address, false);
-    master_socket->WaitOnConnect(30);
+        active_controller_address.Hostname("localhost");
+        active_controller_address.Service(master_port);
 
-    master_socket->SetFlags(SOCKET_FLAGS);
+        master_socket->Connect(active_controller_address, false);
+        master_socket->WaitOnConnect(30);
 
-    if ( master_socket->IsConnected( ) == false ) {
-        master_socket->Close( );
-        MyDebugPrint("JOB : Failed ! Unable to connect\n");
+        master_socket->SetFlags(SOCKET_FLAGS);
+
+        if ( master_socket->IsConnected( ) == false ) {
+            master_socket->Close( );
+            MyDebugPrint("JOB : Failed ! Unable to connect\n");
+        }
+        else {
+            MonitorSocket(master_socket);
+
+            // Start the worker thread..
+            stopwatch.Start( );
+            work_thread = new CalculateThread(this, GetMaxJobWaitTimeInSeconds( ));
+
+            if ( work_thread->Run( ) != wxTHREAD_NO_ERROR ) {
+                MyPrintWithDetails("Can't create the thread!");
+                delete work_thread;
+                work_thread = NULL;
+                ExitMainLoop( );
+            }
+        }
     }
     else {
-        MonitorSocket(master_socket);
-
-        // Start the worker thread..
-        stopwatch.Start( );
-        work_thread = new CalculateThread(this, GetMaxJobWaitTimeInSeconds( ));
-
-        if ( work_thread->Run( ) != wxTHREAD_NO_ERROR ) {
-            MyPrintWithDetails("Can't create the thread!");
-            delete work_thread;
-            work_thread = NULL;
-            ExitMainLoop( );
-        }
+        wxPrintf("CISTEM_MASTER_ONLY: not connecting myself as a worker, serving/aggregating only\n");
     }
 
     // I have to send my ip address to the controller..

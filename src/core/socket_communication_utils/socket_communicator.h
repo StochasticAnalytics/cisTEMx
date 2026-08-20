@@ -32,7 +32,10 @@ class SocketCommunicator {
     SocketCommunicator( );
     ~SocketCommunicator( );
 
-    bool SetupServer( );
+    // With no arguments the server binds the first free port in [START_PORT, END_PORT] (original
+    // behavior). When wanted_ports is supplied, ONLY those ports are tried, in order, and setup
+    // fails if none of them can be bound.
+    bool SetupServer(const int* wanted_ports = NULL, int number_of_wanted_ports = 0);
     void ShutDownServer( );
 
     void ShutDownSocketMonitor( );
@@ -98,9 +101,12 @@ class SocketCommunicator {
 
 class SocketServerThread : public wxThread {
   public:
+    static const int MAX_WANTED_PORTS = 8;
+
     SocketServerThread(SocketCommunicator* handler) : wxThread(wxTHREAD_DETACHED) {
-        parent_pointer  = handler;
-        should_shutdown = false;
+        parent_pointer         = handler;
+        should_shutdown        = false;
+        number_of_wanted_ports = 0;
     }
 
     ~SocketServerThread( );
@@ -110,6 +116,10 @@ class SocketServerThread : public wxThread {
     wxArrayString all_my_ip_addresses;
     wxString      my_port_string;
     short int     my_port;
+
+    // when number_of_wanted_ports > 0, bind only these ports (set before Run())
+    int wanted_ports[MAX_WANTED_PORTS];
+    int number_of_wanted_ports;
 
     bool should_shutdown;
 

@@ -28,7 +28,7 @@ const int MAX_GPU_COUNT = 32;
 
 /**
  * @defgroup gpu_debug GPU Error Checking and Debug Levels
- * @brief Three-tier error checking system controlled by ENABLE_GPU_DEBUG preprocessor define
+ * @brief Four-tier error checking system controlled by ENABLE_GPU_DEBUG preprocessor define
  *
  * @section debug_levels Debug Levels
  *
@@ -39,17 +39,26 @@ const int MAX_GPU_COUNT = 32;
  *
  * **Level 1 (ENABLE_GPU_DEBUG == 1): Fast Development Mode**
  * - cudaErr(), nppErr(), cufftErr(), cuTensorErr() check return codes and exit on failure
- * - postcheck and precheck are no-ops (no stream synchronization)
+ * - postcheck and precheck are no-ops (no synchronization)
  * - Catches API errors but NOT asynchronous kernel execution errors
- * - Minimal performance overhead - use for day-to-day development
- * - Recommended for CI builds to balance speed and error detection
+ * - Use for day-to-day development and CI builds
  *
- * **Level 2 (ENABLE_GPU_DEBUG >= 2): Full Synchronous Debugging**
+ * **Level 2 (ENABLE_GPU_DEBUG == 2): Synchronous Stream Debugging**
  * - All API error checking active (same as Level 1)
- * - postcheck synchronizes streams to catch kernel execution errors
+ * - postcheck(stream) synchronizes the given stream to catch kernel execution errors
  * - precheck clears stale error state before kernel launches
- * - Significant performance impact due to forced synchronization after every kernel
+ * - Serializes host and device work on the checked stream; expect a substantial
+ *   slowdown (not quantified - it depends entirely on the kernel/transfer mix)
  * - Use when debugging race conditions, memory corruption, or kernel crashes
+ * - Only catches errors on the stream passed to postcheck: if the launch and the
+ *   check disagree about the stream (a bookkeeping bug), the error is missed
+ *
+ * **Level 3 (ENABLE_GPU_DEBUG >= 3): Device-Wide Synchronous Debugging**
+ * - Same as Level 2, but postcheck calls cudaDeviceSynchronize() instead of
+ *   cudaStreamSynchronize(), ignoring its stream argument
+ * - Catches execution errors even when the stream bookkeeping is wrong, since the
+ *   whole device is drained at every check - the most ballistic option
+ * - Slowest level; use when Level 2 comes up clean but you still suspect an async error
  *
  * @section error_macros Error Checking Macros
  *
@@ -65,45 +74,21 @@ const int MAX_GPU_COUNT = 32;
  * **cuTensorErr(err)** - Wraps cuTensor library calls
  *
  * **precheck** - Clears lingering GPU error state before kernel launch
- * - Only active at Level 2
+ * - Only active at Level >= 2
  * - Critical for isolating which kernel actually caused an error
  * - Without this, kernel B might report an error that kernel A caused
+ *
+ * **postcheck(stream)** - Checks for kernel launch and execution errors
+ * - Only active at Level >= 2
+ * - Calls cudaPeekAtLastError() to catch invalid launch parameters
+ * - Level 2: cudaStreamSynchronize(stream) to catch execution errors on that stream;
+ *   pass the SAME stream the kernel was launched on or errors are missed
+ * - Level 3: cudaDeviceSynchronize(), which does not depend on the stream argument
  * @code
  * precheck;
- * myKernel<<<grid, block, 0, stream>>>(args);
- * stream(stream);
- * @endcode
- *
- * **postcheck** - Checks for kernel launch and execution errors (implicit stream)
- * - Only active at Level 2
- * - Calls cudaPeekAtLastError() to catch invalid launch parameters
- * - Calls cudaStreamSynchronize() to wait for kernel completion and catch execution errors
- * - Uses implicit cudaStreamPerThread which can be fragile
- * - Prefer postcheck_withstream() for explicit stream control
- *
- * **postcheck_withstream(stream)** - Checks for kernel errors on explicit stream
- * - Only active at Level 2
- * - Same error checking as postcheck but requires explicit stream argument
- * - Preferred over postcheck - forces developers to be aware of stream context
- * - Prevents bugs where kernel uses different stream than error check
- * @code
  * myKernel<<<grid, block, 0, my_stream>>>(args);
- * postcheck_withstream(my_stream);  // Explicitly check the correct stream
+ * postcheck(my_stream);
  * @endcode
- *
- * @section performance_implications Performance Implications
- *
- * **Level 0**: No overhead (macros are empty)
- *
- * **Level 1**: ~1-5% overhead from API error checking
- * - Function call overhead from checking return codes
- * - Negligible compared to kernel execution time
- *
- * **Level 2**: 10-100x slowdown depending on kernel characteristics
- * - cudaStreamSynchronize() forces CPU to wait for GPU completion after every kernel
- * - Destroys pipelining and overlapping of kernels/transfers
- * - Short kernels suffer most (synchronization overhead >> kernel time)
- * - Long-running kernels less affected (synchronization overhead << kernel time)
  *
  * @section usage_guidelines Usage Guidelines
  *
@@ -111,21 +96,20 @@ const int MAX_GPU_COUNT = 32;
  * - Level 0: Final production builds, performance benchmarking
  * - Level 1: Daily development, CI automated testing, performance profiling with error detection
  * - Level 2: Debugging crashes, investigating race conditions, validating kernel correctness
+ * - Level 3: When Level 2 misses an error because a launch/check stream mismatch is suspected
  *
- * **Why postcheck_withstream requires explicit stream:**
- * - Kernel launch uses explicit stream: myKernel<<<grid, block, 0, stream>>>
- * - postcheck uses implicit cudaStreamPerThread which may differ from kernel's stream
- * - If streams don't match, postcheck synchronizes wrong stream and misses errors
- * - postcheck_withstream forces stream consistency and prevents this class of bugs
- * - FIXME note at line 65: Eventually postcheck should be removed in favor of postcheck_withstream
- *
- * @note At Level 2, every postcheck/postcheck_withstream synchronizes a stream. This means
- *       GPU parallelism is completely disabled - kernels execute serially. This is intentional
+ * @note At Level >= 2, every postcheck synchronizes (a stream at 2, the device at 3),
+ *       so kernels execute serially with respect to the host. This is intentional
  *       for debugging but catastrophic for performance.
  *
  * @warning Level 0 will silently allow data corruption. Only use in production builds where
- *          code has been thoroughly validated at Level 1 or Level 2.
+ *          code has been thoroughly validated at a higher level.
  */
+
+// Failure reporter for the GPU error macros: call-site context to cerr, then DEBUG_ABORT
+// (stack dump + abort in debug builds). A macro, not a function, so __FILE__/__LINE__/
+// __PRETTY_FUNCTION__ resolve at the macro use site.
+#define print_debug_to_cerr(msg) { std::cerr << msg << "\nFrom " << __FILE__ << ":" << __LINE__ << "\n" << __PRETTY_FUNCTION__ << std::endl; DEBUG_ABORT }
 
 #if !defined(ENABLE_GPU_DEBUG) || ENABLE_GPU_DEBUG == 0
 
@@ -139,8 +123,7 @@ const int MAX_GPU_COUNT = 32;
 
 #elif ENABLE_GPU_DEBUG >= 1
 
-// Level 1: Error checking without expensive synchronization
-// This provides maximum debugging detail but is slow - syncs after every kernel launch
+// Level >= 1: API return-code checking (no synchronization here; that is postcheck's job)
 #define cudaErr(error) { auto status = static_cast<cudaError_t>(error); if (status != cudaSuccess && status != cudaErrorNotReady) { std::cerr << "Failed Assert: " << cudaGetErrorString(status) << " :-> "; print_debug_to_cerr("");} }
 
 #define nppErr(npp_stat) { if (npp_stat != NPP_SUCCESS) { std::cerr << "Failed Assert NPP_CHECK_NPP NPP_SUCCESS = (" << NPP_SUCCESS << ") - npp_stat = " << npp_stat << " Find error codes at /usr/local/cuda/targets/x86_64-linux/include/nppdefs.h:(170)\n\n"; print_debug_to_cerr("");} } 
@@ -162,10 +145,16 @@ const int MAX_GPU_COUNT = 32;
 #define postcheck(stream)  // No-op at level 1
 #endif
 
-#if ENABLE_GPU_DEBUG >=2 
+#if ENABLE_GPU_DEBUG >= 2
 #define precheck { cudaErr(cudaGetLastError()) }
-// FIXME: We should just make postCheck require the stream
+
+#if ENABLE_GPU_DEBUG >= 3
+// Level 3: device-wide sync - catches async errors even when the launch/check stream bookkeeping is wrong
+#define postcheck(stream) { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaDeviceSynchronize(); cudaErr(error); }
+#else
+// Level 2: sync the checked stream - relies on postcheck being passed the launch stream
 #define postcheck(stream) { cudaErr(cudaPeekAtLastError()); cudaError_t error = cudaStreamSynchronize(stream); cudaErr(error); }
+#endif
 
 #endif
 

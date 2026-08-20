@@ -248,7 +248,7 @@ AC_ARG_ENABLE(debugmode, AS_HELP_STRING([--enable-debugmode],[Compile in debug m
 ###############################
 
 AC_ARG_WITH([gpu-debug],
-  AS_HELP_STRING([--with-gpu-debug=LEVEL],[GPU debug level: 1=checks only, 2=+syncs [default=0]]),
+  AS_HELP_STRING([--with-gpu-debug=LEVEL],[GPU debug level: 1=checks only, 2=+stream syncs, 3=+device-wide syncs [default=0]]),
   [gpu_debug_level=$withval], [gpu_debug_level=0])
 
 if test "$gpu_debug_level" -gt 0; then

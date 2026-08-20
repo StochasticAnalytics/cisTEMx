@@ -9,10 +9,13 @@
 #define GPUIMAGE_H_
 
 // cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE — Feature gate for the FastFFT-based
-// 3d texture preparation experiment in match_template. Comment out to
-// disable the experimental path project-wide.
+// 3d texture preparation experiment in match_template. OFF by default:
+// binaries built with it select the interleaved FastFFT texture fetch in
+// ExtractSliceShiftAndCtf, which is incompatible with volumes prepared by
+// CopyHostToDeviceTextureComplex (every non-match_template caller).
+// Uncomment to enable the experimental path project-wide.
 // To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
-#define cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+// #define cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
 
 // cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE — Selects which 3d texture the volume
 // carries and how it is fetched: 0 (the pre-existing tex_real/tex_imag pair
@@ -22,7 +25,7 @@
 // value at a time.
 // To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE
 // 16 (fp16 texels) is required by the FastFFT extent menu for the 1728/2048 padding tranche.
-#define cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE 16
+// #define cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE 16
 
 // cisTEM_EXPERIMENTAL_EWALD_PROJECTION — Feature gate for sampling template
 // projections on the curved Ewald sphere in GpuImage::ExtractSliceShiftAndCtf,
@@ -31,9 +34,10 @@
 // (no kernel branching); a wavelength of 0.f makes the two beams coincide, so the
 // gated binary still reproduces the flat result exactly when the feature is not
 // requested at runtime (at the cost of a redundant second texture fetch).
-// Comment out to disable the experimental path project-wide.
+// OFF by default; uncomment to enable the experimental path project-wide
+// (match_template's --ewald-curved-projection switch then becomes usable).
 // To find all gated code: grep -rn cisTEM_EXPERIMENTAL_EWALD_PROJECTION
-#define cisTEM_EXPERIMENTAL_EWALD_PROJECTION
+// #define cisTEM_EXPERIMENTAL_EWALD_PROJECTION
 
 #include <memory>
 

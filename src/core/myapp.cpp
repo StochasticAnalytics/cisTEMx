@@ -31,8 +31,9 @@ bool MyApp::OnInit( ) {
     controller_socket = NULL;
     master_socket     = NULL;
 
-    connected_to_the_master = false;
-    currently_running_a_job = false;
+    connected_to_the_master   = false;
+    currently_running_a_job   = false;
+    i_am_a_non_compute_leader = false;
 
     time_of_last_queue_send        = 0;
     time_of_last_master_queue_send = 0;
@@ -741,17 +742,17 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
 
     i_am_the_master = true;
 
-    // CISTEM_MASTER_ONLY: when set (and non-empty) this process only serves, aggregates and
-    // reports - it does not connect itself as a worker or run a CalculateThread - and its
-    // server must bind the first free port of a 4-port window derived from the job code, so
-    // that pre-established tunnels can forward to a known port.
+    // CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE: when set (and non-empty) this process only serves,
+    // aggregates and reports - it does not connect itself as a worker or run a CalculateThread -
+    // and its server must bind the first free port of a 4-port window derived from the job code,
+    // so that pre-established tunnels can forward to a known port.
 
-    const char* master_only_env    = getenv("CISTEM_MASTER_ONLY");
-    const bool  i_am_a_master_only = (master_only_env != NULL && master_only_env[0] != '\0');
+    const char* leader_non_compute_env = getenv("CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE");
+    i_am_a_non_compute_leader          = (leader_non_compute_env != NULL && leader_non_compute_env[0] != '\0');
 
     // we need to start a server so that the workers can connect..
 
-    if ( i_am_a_master_only == true ) {
+    if ( i_am_a_non_compute_leader == true ) {
         // derive the port window from the job code with 32-bit FNV-1a:
         // base = 41000 + (hash mod 7996), window = base .. base + 3
 
@@ -769,14 +770,14 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
         }
 
         if ( SetupServer(derived_ports, 4) == false ) {
-            wxPrintf("SSH_TUNNEL_ERROR: CISTEM_MASTER_ONLY master could not bind any port of the derived window %i-%i - aborting\n", base_port, base_port + 3);
-            SocketSendError(wxString::Format("SSH_TUNNEL_ERROR: CISTEM_MASTER_ONLY master could not bind any port of the derived window %i-%i - aborting", base_port, base_port + 3));
+            wxPrintf("SSH_TUNNEL_ERROR: LEADER_NON_COMPUTE master could not bind any port of the derived window %i-%i - aborting\n", base_port, base_port + 3);
+            SocketSendError(wxString::Format("SSH_TUNNEL_ERROR: LEADER_NON_COMPUTE master could not bind any port of the derived window %i-%i - aborting", base_port, base_port + 3));
             ExitMainLoop( );
             exit(-1);
             return;
         }
 
-        wxPrintf("CISTEM_MASTER_ONLY: master server bound port %s (window %i-%i)\n", ReturnServerPortString( ), base_port, base_port + 3);
+        wxPrintf("LEADER_NON_COMPUTE: master server bound port %s (window %i-%i)\n", ReturnServerPortString( ), base_port, base_port + 3);
     }
     else {
         SetupServer( );
@@ -795,7 +796,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
     master_port_string = my_port_string;
     master_port        = my_port;
 
-    if ( i_am_a_master_only == false ) {
+    if ( i_am_a_non_compute_leader == false ) {
         // connect myself as a worker..
 
         master_socket = new wxSocketClient( );
@@ -830,7 +831,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
         }
     }
     else {
-        wxPrintf("CISTEM_MASTER_ONLY: not connecting myself as a worker, serving/aggregating only\n");
+        wxPrintf("LEADER_NON_COMPUTE: not connecting myself as a worker, serving/aggregating only\n");
     }
 
     // I have to send my ip address to the controller..
@@ -841,7 +842,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
     SendwxStringToSocket(&my_ip_address, connected_socket);
     SendwxStringToSocket(&my_port_string, connected_socket);
 
-    if ( i_am_a_master_only == true ) {
+    if ( i_am_a_non_compute_leader == true ) {
         // Tell the controller not to count this process as a connected worker:
         // it serves and aggregates only, and counting it would both misreport
         // the connected total to the GUI and make the controller shut its
@@ -1149,7 +1150,12 @@ void MyApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned cha
         else
             number_of_commands_to_run = current_job_package.my_profile.ReturnTotalJobs( );
 
-        if ( worker_socket_pointers.GetCount( ) == number_of_commands_to_run - 1 ) {
+        // A computing master occupies one of the launched seats and also connects to its own
+        // server, so it expects number_of_commands_to_run - 1 remote workers. A non-compute
+        // leader is launched outside the run-profile seats and does not self-connect, so every
+        // expected connection is a real worker.
+        int expected_worker_connections = i_am_a_non_compute_leader ? number_of_commands_to_run : number_of_commands_to_run - 1;
+        if ( worker_socket_pointers.GetCount( ) == expected_worker_connections ) {
             SocketSendInfo("All workers have re-connected to the master.");
         }
     }

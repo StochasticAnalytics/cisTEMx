@@ -104,7 +104,7 @@ class
     void SendJobResultQueue(ArrayofJobResults& queue_to_send);
 
     void SendAllJobsFinished(long total_timing_from_master);
-    void SendNumberofConnections( );
+    void SendNumberofConnections(bool check_shutdown_gate = true);
 
     void OnThreadLaunchJob(wxThreadEvent& event);
     void OnThreadSendInfo(wxThreadEvent& event);
@@ -737,9 +737,12 @@ void JobControlApp::SendAllJobsFinished(long total_timing_from_master) {
     WriteToSocket(gui_socket, &total_timing_from_master, sizeof(long), true, "SendTotalMillisecondsSpentOnThreads", FUNCTION_DETAILS_AS_WXSTRING);
 }
 
-void JobControlApp::SendNumberofConnections( ) {
+void JobControlApp::SendNumberofConnections(bool check_shutdown_gate) {
     WriteToSocket(gui_socket, socket_number_of_connections, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
     WriteToSocket(gui_socket, &number_of_workers_already_connected, 4, true, "SendNumberOfConnections", FUNCTION_DETAILS_AS_WXSTRING);
+
+    if ( check_shutdown_gate == false )
+        return;
 
     int number_of_commands_to_run;
 
@@ -748,8 +751,11 @@ void JobControlApp::SendNumberofConnections( ) {
     else
         number_of_commands_to_run = current_job_package.my_profile.ReturnTotalJobs( );
 
-    if ( number_of_workers_already_connected == number_of_commands_to_run ) {
-
+    // >= not ==: while a dedicated (non-compute) leader is connected but its announcement has
+    // not yet been processed, the count transiently includes it; if every real worker connects
+    // inside that window the count can pass the gate without ever equalling it. Once the count
+    // reaches the gate all expected processes have phoned home, so shutting down is correct.
+    if ( number_of_workers_already_connected >= number_of_commands_to_run ) {
         ShutDownServer( );
         MyDebugPrint("Socket Server is now shutdown\n");
     }
@@ -847,7 +853,13 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
 
             number_of_workers_already_connected++;
             MyDebugPrintGA1("HandleNewSocketConnection master count now %d", (int)number_of_workers_already_connected);
-            SendNumberofConnections( );
+            // Report the count to the GUI but skip the shutdown gate: a non-compute leader is
+            // still included in the count at this point (its dedicated-master announcement is
+            // processed later, off the monitor thread), so with fleet-only run-profile totals
+            // the gate could fire now and shut the server down before any real worker has
+            // connected. The gate is evaluated on worker connections and again when the
+            // announcement corrects the count.
+            SendNumberofConnections(false);
         }
         else // we have a master, tell this worker who it's master is.
         {
@@ -984,7 +996,7 @@ void JobControlApp::HandleSocketTimeToDie(wxSocketBase* connected_socket) {
 //}
 
 void JobControlApp::HandleSocketIAmADedicatedMaster(wxSocketBase* connected_socket) {
-    // The CISTEM_MASTER_ONLY master serves and aggregates only — it must not
+    // The CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE master serves and aggregates only — it must not
     // count toward the connected-worker total, both because the GUI would
     // misreport it as a compute worker and because SendNumberofConnections
     // shuts the server down when the total reaches the number of launched

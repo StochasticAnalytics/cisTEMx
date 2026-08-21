@@ -22,7 +22,7 @@ TiffFile::~TiffFile( ) {
  * a long time. If you want to save that time, set check_only_the_first_image to true.
  * This is risky because we may not notice that the file is corrupt or has unusual dimensions.
  */
-bool TiffFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_the_first_image, int eer_super_res_factor, int eer_frames_per_image) {
+bool TiffFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_the_first_image, int eer_super_res_factor, int eer_frames_per_image, bool create_if_missing) {
 
     MyDebugAssertFalse(tif != NULL, "File already open: %s", wanted_filename);
     MyDebugAssertFalse(wait_for_file_to_exist, "Waiting for file to exist not implemented for tif files");
@@ -164,7 +164,7 @@ void TiffFile::ReadSliceFromDisk(int slice_number, float* output_array) {
     ReadSlicesFromDisk(slice_number, slice_number, output_array);
 }
 
-void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array) {
+void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array, int output_padding_jump) {
     MyDebugAssertTrue(tif != NULL, "File must be open");
     MyDebugAssertTrue(start_slice > 0 && end_slice >= start_slice && end_slice <= number_of_images, "Bad start or end slice number");
 
@@ -360,6 +360,8 @@ void TiffFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_
         }
 
     } // end of loop over slices
+
+    RespaceTightRowsToPadded(output_array, ReturnXSize( ), long(ReturnYSize( )) * (end_slice - start_slice + 1), output_padding_jump);
 }
 
 void TiffFile::WriteSliceToDisk(int slice_number, float* input_array) {

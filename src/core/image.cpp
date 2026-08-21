@@ -5075,11 +5075,9 @@ void Image::ReadSlices(ImageFile* input_file, long start_slice, long end_slice) 
     is_in_real_space         = true;
     object_is_centred_in_box = true;
 
-    input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values);
-
-    // we need to respace this to take into account the FFTW padding..
-
-    AddFFTWPadding( );
+    // The read honours padding_jump_value, so the data arrive already in FFTW layout and
+    // no separate respace pass (AddFFTWPadding) is needed.
+    input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values, padding_jump_value);
 }
 
 //!> \brief Read a set of slices from disk (FFTW padding is done automatically)
@@ -5106,11 +5104,9 @@ void Image::ReadSlices(MRCFile* input_file, long start_slice, long end_slice) {
     is_in_real_space         = true;
     object_is_centred_in_box = true;
 
-    input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values);
-
-    // we need to respace this to take into account the FFTW padding..
-
-    AddFFTWPadding( );
+    // The read honours padding_jump_value, so the data arrive already in FFTW layout and
+    // no separate respace pass (AddFFTWPadding) is needed.
+    input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values, padding_jump_value);
 }
 
 void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice) {
@@ -5132,11 +5128,9 @@ void Image::ReadSlices(EerFile* input_file, long start_slice, long end_slice) {
     is_in_real_space         = true;
     object_is_centred_in_box = true;
 
-    input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values);
-
-    // we need to respace this to take into account the FFTW padding..
-
-    AddFFTWPadding( );
+    // The read honours padding_jump_value, so the data arrive already in FFTW layout and
+    // no separate respace pass (AddFFTWPadding) is needed.
+    input_file->ReadSlicesFromDisk(start_slice, end_slice, real_values, padding_jump_value);
 }
 
 //!> \brief Read a set of slices from disk (FFTW padding is done automatically)
@@ -5269,21 +5263,14 @@ void Image::QuickAndDirtyReadSlices(std::string filename, int first_slice_to_rea
 void Image::AddFFTWPadding( ) {
     MyDebugAssertTrue(is_in_memory, "Image not allocated!");
 
-    int x, y, z;
+    // Respace tight rows into the FFTW-padded layout with one memmove per row, walking from
+    // the back so no row is overwritten before it has been read. Row 0 is already in place.
+    const long row_length = logical_x_dimension;
+    const long padded_row = row_length + padding_jump_value;
+    const long total_rows = long(logical_y_dimension) * long(logical_z_dimension);
 
-    long current_write_position = real_memory_allocated - (1 + padding_jump_value);
-    long current_read_position  = (long(logical_x_dimension) * long(logical_y_dimension) * long(logical_z_dimension)) - 1;
-
-    for ( z = 0; z < logical_z_dimension; z++ ) {
-        for ( y = 0; y < logical_y_dimension; y++ ) {
-            for ( x = 0; x < logical_x_dimension; x++ ) {
-                real_values[current_write_position] = real_values[current_read_position];
-                current_write_position--;
-                current_read_position--;
-            }
-
-            current_write_position -= padding_jump_value;
-        }
+    for ( long row = total_rows - 1; row > 0; row-- ) {
+        memmove(&real_values[row * padded_row], &real_values[row * row_length], sizeof(float) * row_length);
     }
 }
 
@@ -5292,21 +5279,13 @@ void Image::AddFFTWPadding( ) {
 void Image::RemoveFFTWPadding( ) {
     MyDebugAssertTrue(is_in_memory, "Image not allocated!");
 
-    int x, y, z;
+    // Inverse of AddFFTWPadding: walk forwards, one memmove per row. Row 0 is already in place.
+    const long row_length = logical_x_dimension;
+    const long padded_row = row_length + padding_jump_value;
+    const long total_rows = long(logical_y_dimension) * long(logical_z_dimension);
 
-    long current_write_position = 0;
-    long current_read_position  = 0;
-
-    for ( z = 0; z < logical_z_dimension; z++ ) {
-        for ( y = 0; y < logical_y_dimension; y++ ) {
-            for ( x = 0; x < logical_x_dimension; x++ ) {
-                real_values[current_write_position] = real_values[current_read_position];
-                current_write_position++;
-                current_read_position++;
-            }
-
-            current_read_position += padding_jump_value;
-        }
+    for ( long row = 1; row < total_rows; row++ ) {
+        memmove(&real_values[row * row_length], &real_values[row * padded_row], sizeof(float) * row_length);
     }
 }
 

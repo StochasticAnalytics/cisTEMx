@@ -41,7 +41,7 @@ DMFile::~DMFile( ) {
     CloseFile( );
 }
 
-bool DMFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool only_check_the_first_image, int eer_super_res_factor, int eer_frames_per_image) {
+bool DMFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool only_check_the_first_image, int eer_super_res_factor, int eer_frames_per_image, bool create_if_missing) {
     MyDebugAssertFalse(overwrite, "Overwriting is not supported for DM files");
     MyDebugAssertFalse(wait_for_file_to_exist, "Waiting for file to exist not supported for DM files");
     unsigned char* fake_pointer;
@@ -61,9 +61,10 @@ bool DMFile::IsOpen( ) {
     return filename != "";
 }
 
-void DMFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array) {
+void DMFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array, int output_padding_jump) {
     MyDebugAssertTrue(start_slice == end_slice, "Can only read single slice at a time from DM files. Sorry");
     ReadSliceFromDisk(start_slice, output_array);
+    RespaceTightRowsToPadded(output_array, ReturnXSize( ), ReturnYSize( ), output_padding_jump);
 }
 
 // Wanted_slice should be numbered from 0. It's assumed output_array is already allocated to correct dimensions

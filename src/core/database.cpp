@@ -2766,6 +2766,11 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
     MyDebugAssertTrue(is_open == true, "database not open!");
     TableChanges  missing_tables;
     ColumnChanges missing_columns;
+    // Hold a single transaction across the whole walk: every per-table/per-column query below
+    // is otherwise its own implicit transaction, and with the unix-dotfile VFS each one pays a
+    // full lock-file create/fsync/delete cycle. On a network filesystem that turns this walk
+    // into minutes (issue #538); inside one transaction the lock is taken once.
+    Begin( );
     // Check Static Tables
     wxArrayString return_strings;
     int           count;
@@ -2837,6 +2842,7 @@ std::pair<Database::TableChanges, Database::ColumnChanges> Database::CheckSchema
         }
     }
 
+    Commit( );
     return std::pair<TableChanges, ColumnChanges>(missing_tables, missing_columns);
 }
 

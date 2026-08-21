@@ -26,7 +26,7 @@ EerFile::~EerFile( ) {
 }
 
 //
-bool EerFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_the_first_image, int eer_super_res_factor, int eer_frames_per_image) {
+bool EerFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_the_first_image, int eer_super_res_factor, int eer_frames_per_image, bool create_if_missing) {
 
     MyDebugAssertFalse(tif != NULL, "File already open: %s", wanted_filename);
     MyDebugAssertFalse(wait_for_file_to_exist, "Waiting for file to exist not implemented for tif files");
@@ -174,7 +174,7 @@ void EerFile::ReadSliceFromDisk(int slice_number, float* output_array) {
  * output_array must be allocated to the correct dimensions (logical_dimension_x * logical_dimension_y * super_res_factor**2 * number_of_frames)
  * and will be zeroed internally
  */
-void EerFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array) {
+void EerFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array, int output_padding_jump) {
     MyDebugAssertTrue(tif != NULL, "File must be open");
     MyDebugAssertTrue(start_slice > 0 && end_slice >= start_slice && end_slice <= number_of_images, "Bad start or end slice number");
     MyDebugAssertTrue(number_of_eer_frames_per_image > 0, "You have not yet set the number of EER frames per image");
@@ -199,6 +199,8 @@ void EerFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
         //MyDebugPrint("Reading slice %i of %i (EER frames %i to %i)",slice_counter,number_of_images, start_eer_frame,finish_eer_frame);
         DecodeToFloatArray(start_eer_frame, finish_eer_frame, &output_array[start_pos_in_output_array]);
     }
+
+    RespaceTightRowsToPadded(output_array, ReturnXSize( ), long(ReturnYSize( )) * (end_slice - start_slice + 1), output_padding_jump);
 }
 
 /*

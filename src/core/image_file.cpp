@@ -50,7 +50,7 @@ void ImageFile::SetFileTypeFromExtension( ) {
     }
 }
 
-bool ImageFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_the_first_image, int eer_super_res_factor, int eer_frames_per_image) {
+bool ImageFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_the_first_image, int eer_super_res_factor, int eer_frames_per_image, bool create_if_missing) {
     bool file_seems_ok = false;
     filename           = wanted_filename;
     SetFileTypeFromExtension( );
@@ -63,7 +63,7 @@ bool ImageFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_
     }
     switch ( file_type ) {
         case TIFF_FILE: file_seems_ok = tiff_file.OpenFile(wanted_filename, overwrite, wait_for_file_to_exist, check_only_the_first_image, eer_super_res_factor, eer_frames_per_image); break;
-        case MRC_FILE: file_seems_ok = mrc_file.OpenFile(wanted_filename, overwrite, wait_for_file_to_exist, check_only_the_first_image, eer_super_res_factor, eer_frames_per_image); break;
+        case MRC_FILE: file_seems_ok = mrc_file.OpenFile(wanted_filename, overwrite, wait_for_file_to_exist, check_only_the_first_image, eer_super_res_factor, eer_frames_per_image, create_if_missing); break;
         case DM_FILE: file_seems_ok = dm_file.OpenFile(wanted_filename, overwrite, wait_for_file_to_exist, check_only_the_first_image, eer_super_res_factor, eer_frames_per_image); break;
         case EER_FILE: file_seems_ok = eer_file.OpenFile(wanted_filename, overwrite, wait_for_file_to_exist, check_only_the_first_image, eer_super_res_factor, eer_frames_per_image); break;
         default:
@@ -88,12 +88,12 @@ void ImageFile::ReadSliceFromDisk(int slice_number, float* output_array) {
     ReadSlicesFromDisk(slice_number, slice_number, output_array);
 }
 
-void ImageFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array) {
+void ImageFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array, int output_padding_jump) {
     switch ( file_type ) {
-        case TIFF_FILE: tiff_file.ReadSlicesFromDisk(start_slice, end_slice, output_array); break;
-        case MRC_FILE: mrc_file.ReadSlicesFromDisk(start_slice, end_slice, output_array); break;
-        case DM_FILE: dm_file.ReadSlicesFromDisk(start_slice - 1, end_slice - 1, output_array); break;
-        case EER_FILE: eer_file.ReadSlicesFromDisk(start_slice, end_slice, output_array); break;
+        case TIFF_FILE: tiff_file.ReadSlicesFromDisk(start_slice, end_slice, output_array, output_padding_jump); break;
+        case MRC_FILE: mrc_file.ReadSlicesFromDisk(start_slice, end_slice, output_array, output_padding_jump); break;
+        case DM_FILE: dm_file.ReadSlicesFromDisk(start_slice - 1, end_slice - 1, output_array, output_padding_jump); break;
+        case EER_FILE: eer_file.ReadSlicesFromDisk(start_slice, end_slice, output_array, output_padding_jump); break;
         default:
             MyPrintWithDetails("Unsupported file type\n");
             DEBUG_ABORT;

@@ -755,6 +755,12 @@ void MyMainFrame::OpenProject(wxString project_filename) {
         // Note: the second to last arg must be incremented if additional actions are added below.
         OneSecondProgressDialog* my_dialog = new OneSecondProgressDialog("Open Project", "Opening Project", 12, this);
 
+        // One read transaction across all the panel imports below: they are read-only batch
+        // selects, and each statement otherwise runs as its own implicit transaction, paying a
+        // full dotfile-VFS lock cycle on network filesystems (same cost model as CheckSchema,
+        // issue #538). Nothing inside this block may call Database::Begin()/Commit().
+        current_project.database.Begin( );
+
         movie_asset_panel->ImportAllFromDatabase( );
         my_dialog->Update(1, "Opening project (loading image assets...)");
         image_asset_panel->ImportAllFromDatabase( );
@@ -787,6 +793,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
 
         my_dialog->Update(11, "Opening project (finishing...)");
         picking_results_panel->OnProjectOpen( );
+        current_project.database.Commit( );
         my_dialog->Update(12, "Opening project (all done)");
 
         SetTitle("cisTEM - [" + current_project.project_name + "]");
@@ -794,6 +801,9 @@ void MyMainFrame::OpenProject(wxString project_filename) {
         my_dialog->Destroy( );
 
         AddProjectToRecentProjects(project_filename);
+        // TODO: consider pushing this clear onto a background thread. It is six rmdir/mkdir
+        // pairs, which is ~constant filesystem-metadata cost (seconds each on a network
+        // filesystem), and nothing reads scratch until a job is launched.
         ClearScratchDirectory( );
         overview_panel->SetProjectInfo( );
 
@@ -803,6 +813,8 @@ void MyMainFrame::OpenProject(wxString project_filename) {
             current_workflow = "Single Particle";
         }
 
+        // Single transaction for the workflow reads + the RecordCurrentWorkflowInDB write.
+        current_project.database.Begin( );
         if ( current_project.database.is_open ) {
             // Need to check if there is already a value recorded first.
             // Know database is open so check what is currently recorded
@@ -832,6 +844,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
             SwitchWorkflowPanels(current_workflow);
             ManuallyUpdateWorkflowMenuCheckBox( );
         }
+        current_project.database.Commit( );
     }
     else {
         wxMessageBox(wxString::Format("Error Opening database :- \n%s\n\nDoes the file exist?", project_filename), "Cannot open database!", wxICON_ERROR);

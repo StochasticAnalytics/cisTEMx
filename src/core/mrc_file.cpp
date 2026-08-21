@@ -51,7 +51,7 @@ void MRCFile::FlushFile( ) {
     }
 }
 
-bool MRCFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_first_image, int eer_super_res_factor, int eer_frames_per_image) {
+bool MRCFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist, bool check_only_first_image, int eer_super_res_factor, int eer_frames_per_image, bool create_if_missing) {
     //	MyDebugAssertFalse(my_file->is_open(), "File Already Open: %s",wanted_filename);
     CloseFile( );
 
@@ -67,6 +67,13 @@ bool MRCFile::OpenFile(std::string wanted_filename, bool overwrite, bool wait_fo
         }
         else {
             file_already_exists = DoesFileExist(wanted_filename);
+        }
+
+        // Read-intent callers (e.g. the display panels) must not have a missing or mistyped
+        // path silently created as an empty file by the ios::trunc branch below - they pass
+        // create_if_missing = false and get a clean failure instead.
+        if ( file_already_exists == false && overwrite == false && create_if_missing == false ) {
+            return false;
         }
 
         //MyDebugPrintWithDetails("%s File size = %li\n",wanted_filename,ReturnFileSizeInBytesAlternative(wanted_filename));
@@ -134,7 +141,7 @@ void MRCFile::SetPixelSize(float wanted_pixel_size) {
     my_header.SetPixelSize(wanted_pixel_size);
 }
 
-void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array) {
+void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array, int output_padding_jump) {
 
     using half = half_float::half;
 
@@ -193,6 +200,26 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
         if ( current_position != seek_position )
             my_file->seekg(seek_position);
 
+        // Axis-order handling: cisTEM always writes MAPC/MAPR/MAPS = 1/2/3. Only the
+        // section-fastest transpose (maps == 1, mapc == 3) is remapped below. Header words
+        // that name no supported ordering (commonly 0/0/0 from writers that leave them
+        // unset; the MRC2014 default is 1/2/3) are treated as native rather than aborting.
+        const bool axis_order_is_native     = (my_header.ReturnMapC( ) == 1 && my_header.ReturnMapR( ) == 2 && my_header.ReturnMapS( ) == 3);
+        bool       axis_order_is_transposed = (! axis_order_is_native && my_header.ReturnMapS( ) == 1 && my_header.ReturnMapC( ) == 3);
+        if ( ! axis_order_is_native && ! axis_order_is_transposed ) {
+            MyPrintfRed("Warning: MRC header MAPC/MAPR/MAPS = %i/%i/%i is not a supported ordering - assuming the default 1/2/3 (no remap)\n", my_header.ReturnMapC( ), my_header.ReturnMapR( ), my_header.ReturnMapS( ));
+        }
+        if ( axis_order_is_transposed && (start_slice != 1 || end_slice != my_header.ReturnDimensionZ( )) ) {
+            MyPrintfRed("Warning: partial reads of an axis-transposed MRC file are not supported - data will be left in file order\n");
+            axis_order_is_transposed = false;
+        }
+
+        // The conversion loops below write straight into the padded layout unless a transpose
+        // remap follows, in which case they stay tight and the remap output is respaced.
+        const long row_length           = long(my_header.ReturnDimensionX( ));
+        const long number_of_rows       = long(my_header.ReturnDimensionY( )) * (long(end_slice - start_slice) + 1);
+        const int  convert_padding_jump = axis_order_is_transposed ? 0 : output_padding_jump;
+
         // we need a temp array for non float formats..
 
         //	wxPrintf("seek_position = %li\n", (seek_position - 1024) / 1679616 + 1);
@@ -220,16 +247,21 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
                         output_array[output_counter] = float(hi_4bits);
                         output_counter++;
                     }
+                    RespaceTightRowsToPadded(output_array, row_length, number_of_rows, convert_padding_jump);
                 }
                 else {
+                    long in_position  = 0;
+                    long out_position = 0;
                     if ( my_header.PixelDataAreSigned( ) ) {
-                        for ( long counter = 0; counter < records_to_read; counter++ ) {
-                            output_array[counter] = float(temp_signed_char_array[counter] + 128);
+                        for ( long row = 0; row < number_of_rows; row++, out_position += convert_padding_jump ) {
+                            for ( long x_position = 0; x_position < row_length; x_position++, in_position++, out_position++ )
+                                output_array[out_position] = float(temp_signed_char_array[in_position] + 128);
                         }
                     }
                     else {
-                        for ( long counter = 0; counter < records_to_read; counter++ ) {
-                            output_array[counter] = float(temp_unsigned_char_array[counter]);
+                        for ( long row = 0; row < number_of_rows; row++, out_position += convert_padding_jump ) {
+                            for ( long x_position = 0; x_position < row_length; x_position++, in_position++, out_position++ )
+                                output_array[out_position] = float(temp_unsigned_char_array[in_position]);
                         }
                     }
                 }
@@ -242,8 +274,11 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
                 short* temp_short_array = new short[records_to_read];
                 my_file->read((char*)temp_short_array, records_to_read * 2);
 
-                for ( long counter = 0; counter < records_to_read; counter++ ) {
-                    output_array[counter] = float(temp_short_array[counter]);
+                long in_position  = 0;
+                long out_position = 0;
+                for ( long row = 0; row < number_of_rows; row++, out_position += convert_padding_jump ) {
+                    for ( long x_position = 0; x_position < row_length; x_position++, in_position++, out_position++ )
+                        output_array[out_position] = float(temp_short_array[in_position]);
                 }
 
                 delete[] temp_short_array;
@@ -252,15 +287,20 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
             // 4-byte real
             case 2:
                 my_file->read((char*)output_array, records_to_read * 4);
+                RespaceTightRowsToPadded(output_array, row_length, number_of_rows, convert_padding_jump);
                 break;
 
             // 2-byte real
             case 12: {
                 std::vector<half> temp_half_array(records_to_read);
                 my_file->read((char*)temp_half_array.data( ), records_to_read * 2);
-                for ( long counter = 0; counter < records_to_read; counter++ ) {
-                    // float() operator overloaded in half_float namespace
-                    output_array[counter] = float(temp_half_array[counter]);
+                long in_position  = 0;
+                long out_position = 0;
+                for ( long row = 0; row < number_of_rows; row++, out_position += convert_padding_jump ) {
+                    for ( long x_position = 0; x_position < row_length; x_position++, in_position++, out_position++ ) {
+                        // float() operator overloaded in half_float namespace
+                        output_array[out_position] = float(temp_half_array[in_position]);
+                    }
                 }
             } break;
 
@@ -268,8 +308,11 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
             case 6: {
                 unsigned short int* temp_int_array = new unsigned short int[records_to_read];
                 my_file->read((char*)temp_int_array, records_to_read * 2);
-                for ( long counter = 0; counter < records_to_read; counter++ ) {
-                    output_array[counter] = float(temp_int_array[counter]);
+                long in_position  = 0;
+                long out_position = 0;
+                for ( long row = 0; row < number_of_rows; row++, out_position += convert_padding_jump ) {
+                    for ( long x_position = 0; x_position < row_length; x_position++, in_position++, out_position++ )
+                        output_array[out_position] = float(temp_int_array[in_position]);
                 }
                 delete[] temp_int_array;
             } break;
@@ -320,6 +363,8 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
 
                 delete[] temp_char_array;
 
+                RespaceTightRowsToPadded(output_array, row_length, number_of_rows, convert_padding_jump);
+
             } break;
 
             default: {
@@ -345,10 +390,7 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
             int row_index;
             int sec_index;
 
-            if ( my_header.ReturnMapC( ) == 1 && my_header.ReturnMapR( ) == 2 && my_header.ReturnMapS( ) == 3 ) {
-                // Nothing to do, this is how cisTEM expects the data to be laid out
-            }
-            else if ( my_header.ReturnMapS( ) == 1 && my_header.ReturnMapC( ) == 3 ) {
+            if ( axis_order_is_transposed ) {
 
                 // Allocate a temp array and copy data over
                 float* temp_array;
@@ -379,10 +421,10 @@ void MRCFile::ReadSlicesFromDisk(int start_slice, int end_slice, float* output_a
 
                 // Deallocate temp array
                 delete[] temp_array;
-            }
-            else {
-                wxPrintf("Ooops, strange ordering of data in MRC file not yet supported");
-                DEBUG_ABORT;
+
+                // The gather above wrote the tight layout (the conversion loops stay tight
+                // when a remap is pending); respace to the requested padded layout now.
+                RespaceTightRowsToPadded(output_array, row_length, number_of_rows, output_padding_jump);
             }
         }
     }

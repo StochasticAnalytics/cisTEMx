@@ -36,11 +36,11 @@ class ImageFile : public AbstractImageFile {
 
     bool IsOpen( );
 
-    bool OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist = false, bool check_only_the_first_image = false, int eer_super_res_factor = 1, int eer_frames_per_image = 0);
+    bool OpenFile(std::string wanted_filename, bool overwrite, bool wait_for_file_to_exist = false, bool check_only_the_first_image = false, int eer_super_res_factor = 1, int eer_frames_per_image = 0, bool create_if_missing = true);
     void CloseFile( );
 
     void ReadSliceFromDisk(int slice_number, float* output_array);
-    void ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array);
+    void ReadSlicesFromDisk(int start_slice, int end_slice, float* output_array, int output_padding_jump = 0);
 
     void WriteSliceToDisk(int slice_number, float* input_array);
     void WriteSlicesToDisk(int start_slice, int end_slice, float* input_array);

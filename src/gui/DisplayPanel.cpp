@@ -812,11 +812,9 @@ void DisplayPanel::OpenFile(wxString wanted_filename, wxString wanted_tab_title,
         current_image_location = 1;
     }
 
-    if ( ! DoesFileExist(wanted_filename) ) {
-        wxMessageBox(wxString::Format("Error, File does not exist (%s)", wanted_filename), wxT("Error"), wxOK | wxICON_INFORMATION, this);
-        return;
-    }
-
+    // No up-front existence check: MRCFile::OpenFile stats the file itself, so the check here
+    // was a second filesystem round trip per open. create_if_missing = false below turns a
+    // missing path into a clean open failure instead of a silently created empty file.
     if ( popup_exists ) {
         DisplayNotebookPanel* current_panel = ReturnCurrentPanel( );
 
@@ -848,10 +846,10 @@ void DisplayPanel::OpenFile(wxString wanted_filename, wxString wanted_tab_title,
             my_panel->grey_values_decided_by = LOCAL_GREYS;
     }
 
-    my_panel->my_file.OpenFile(wanted_filename.ToStdString( ), false);
+    my_panel->my_file.OpenFile(wanted_filename.ToStdString( ), false, false, false, 1, 0, false);
 
     if ( ! my_panel->my_file.IsOpen( ) ) {
-        wxMessageBox(wxString::Format("Error, Cannot open file (%s)", wanted_filename), wxT("Error"), wxOK | wxICON_INFORMATION, this);
+        wxMessageBox(wxString::Format("Error, Cannot open file - does it exist? (%s)", wanted_filename), wxT("Error"), wxOK | wxICON_INFORMATION, this);
         return;
     }
 
@@ -965,11 +963,8 @@ void DisplayPanel::ChangeFileForTabNumber(int wanted_tab_number, wxString wanted
     if ( current_panel == NULL )
         return;
 
-    if ( ! DoesFileExist(wanted_filename) ) {
-        wxMessageBox(wxString::Format("Error, File does not exist (%s)", wanted_filename), wxT("Error"), wxOK | wxICON_INFORMATION, this);
-        return;
-    }
-
+    // As in OpenFile above: skip the redundant pre-check, let the open fail cleanly on a
+    // missing path via create_if_missing = false.
     if ( current_panel->input_is_a_file ) {
         if ( current_panel->my_file.IsOpen( ) )
             current_panel->my_file.CloseFile( );
@@ -980,10 +975,10 @@ void DisplayPanel::ChangeFileForTabNumber(int wanted_tab_number, wxString wanted
         }
     }
 
-    current_panel->my_file.OpenFile(wanted_filename.ToStdString( ), false);
+    current_panel->my_file.OpenFile(wanted_filename.ToStdString( ), false, false, false, 1, 0, false);
 
     if ( ! current_panel->my_file.IsOpen( ) ) {
-        wxMessageBox(wxString::Format("Error, Cannot open file (%s)", wanted_filename), wxT("Error"), wxOK | wxICON_INFORMATION, this);
+        wxMessageBox(wxString::Format("Error, Cannot open file - does it exist? (%s)", wanted_filename), wxT("Error"), wxOK | wxICON_INFORMATION, this);
         return;
     }
     // which images are we including..

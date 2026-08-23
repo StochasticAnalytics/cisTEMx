@@ -285,7 +285,7 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
         current_job_package.jobs[number_of_dispatched_jobs].SendJob(socket);
         socket_to_worker_job_pointer_hash[socket] = &current_job_package.jobs[number_of_dispatched_jobs];
         number_of_dispatched_jobs++;
-        wxPrintf("MASTER: dispatched job %i/%i to socket %p\n", number_of_dispatched_jobs, current_job_package.number_of_jobs, (void*)socket);
+        wxPrintf("MASTER: dispatched job %li/%li to socket %p\n", (long)number_of_dispatched_jobs, (long)current_job_package.number_of_jobs, (void*)socket);
         MyDebugPrintWithDetails("LEADER-PATH: dispatched job %i to %p\n", number_of_dispatched_jobs, (void*)socket);
     }
     else {
@@ -420,7 +420,7 @@ void MyApp::OnMasterHeartbeatTimer(wxTimerEvent& event) {
 
     wxString heartbeat = wxString::Format("MASTER: %i of %i workers connected, %i/%i jobs dispatched, %i finished",
                                           (int)worker_socket_pointers.GetCount( ), expected_workers,
-                                          number_of_dispatched_jobs, current_job_package.number_of_jobs, number_of_finished_jobs);
+                                          (int)number_of_dispatched_jobs, (int)current_job_package.number_of_jobs, (int)number_of_finished_jobs);
     wxPrintf("%s\n", heartbeat);
     SocketSendInfo(heartbeat);
 }
@@ -1225,7 +1225,7 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
     //connected_socket->Destroy();
 
     number_of_timing_results_received++;
-    wxPrintf("MASTER: timing result %i/%i received (finished %i/%i)\n", number_of_timing_results_received, max_number_of_connected_workers, number_of_finished_jobs, current_job_package.number_of_jobs);
+    wxPrintf("MASTER: timing result %li/%li received (finished %li/%li)\n", (long)number_of_timing_results_received, (long)max_number_of_connected_workers, (long)number_of_finished_jobs, (long)current_job_package.number_of_jobs);
     MyDebugPrintWithDetails("LEADER-PATH: timing from %p, %li ms\n", (void*)connected_socket, received_timing_in_milliseconds);
 
     // check if we have all timings, and all results (this is checked in two places - socket send timing and receive results as it is not certain will happen last)

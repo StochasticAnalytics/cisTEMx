@@ -154,7 +154,13 @@ inline bool ReadFromSocket(wxSocketBase* socket, void* buffer, wxUint32 nbytes, 
             socket->Read(buffer, nbytes);
 
             if ( socket->LastReadCount( ) != nbytes ) {
-                MyDebugPrintWithDetails("Socket didn't read all bytes! (%u / %u)", socket->LastReadCount( ), nbytes);
+                // 0 bytes means the peer closed before sending anything - a routine disconnect
+                // the caller already turns into HandleSocketDisconnect (the worker shim's 10 s
+                // tunnel watchdog does exactly this to every forwarded port: connect, close,
+                // send nothing - 172 of these in one sweep hour, each printing a stack dump).
+                // Only a PARTIAL read means the stream lost framing and deserves the loud report.
+                if ( socket->LastReadCount( ) != 0 )
+                    MyDebugPrintWithDetails("Socket didn't read all bytes! (%u / %u)", socket->LastReadCount( ), nbytes);
                 return false;
             }
             if ( socket->Error( ) == true ) {

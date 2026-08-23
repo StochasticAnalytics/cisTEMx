@@ -23,8 +23,7 @@ bool MyApp::OnInit( ) {
 
     max_number_of_connected_workers = 0;
 
-    zombie_timer           = NULL;
-    master_heartbeat_timer = NULL;
+    zombie_timer = NULL;
     // Never assigned on the non-compute leader (it starts no CalculateThread), and every
     // teardown path calls work_thread->Kill() behind a != NULL guard - uninitialized stack
     // garbage here made that a wild pthread kill (the leader-only teardown segfault, and a
@@ -242,10 +241,8 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
         current_job_package.jobs[number_of_dispatched_jobs].SendJob(socket);
         socket_to_worker_job_pointer_hash[socket] = &current_job_package.jobs[number_of_dispatched_jobs];
         number_of_dispatched_jobs++;
-        wxPrintf("MASTER: dispatched job %li/%li to socket %p\n", (long)number_of_dispatched_jobs, (long)current_job_package.number_of_jobs, (void*)socket);
     }
     else {
-        wxPrintf("MASTER: no jobs left, telling socket %p to die\n", (void*)socket);
         WriteToSocket(socket, socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
         // stop monitoring the socket..
         //StopMonitoringSocket(socket); stopped doing this for timings
@@ -304,13 +301,9 @@ void MyApp::SendAllJobsFinished( ) {
 void MyApp::OnZombieTimer(wxTimerEvent& event) {
     if ( i_am_a_zombie == true ) {
         number_of_failed_connections++;
-        wxPrintf("WORKER: no traffic %i0s after connecting to %s:%i (attempt %i of 5)\n",
-                 2 * number_of_failed_connections, active_controller_address.IPAddress( ), (int)active_controller_address.Service( ), number_of_failed_connections);
 
-        if ( number_of_failed_connections >= 5 ) {
-            wxPrintf("WORKER: giving up after 5 dead connections, exiting\n");
+        if ( number_of_failed_connections >= 5 )
             ExitMainLoop( );
-        }
 
         if ( connected_to_the_master == true ) {
             master_socket->Close( );
@@ -355,27 +348,6 @@ void MyApp::OnZombieTimer(wxTimerEvent& event) {
         zombie_timer = new wxTimer(this, 1);
         zombie_timer->StartOnce(20000);
     }
-}
-
-void MyApp::OnMasterHeartbeatTimer(wxTimerEvent& event) {
-    if ( controller_socket == NULL ) // tearing down
-        return;
-
-    int number_of_commands_to_run;
-    if ( current_job_package.number_of_jobs + 1 < current_job_package.my_profile.ReturnTotalJobs( ) )
-        number_of_commands_to_run = current_job_package.number_of_jobs + 1;
-    else
-        number_of_commands_to_run = current_job_package.my_profile.ReturnTotalJobs( );
-    // Both modes expect number_of_commands_to_run connections in worker_socket_pointers: the
-    // non-compute leader sees N real workers; a computing master sees N-1 remote workers plus
-    // its own self-connection.
-    const int expected_workers = number_of_commands_to_run;
-
-    wxString heartbeat = wxString::Format("MASTER: %i of %i workers connected, %i/%i jobs dispatched, %i finished",
-                                          (int)worker_socket_pointers.GetCount( ), expected_workers,
-                                          (int)number_of_dispatched_jobs, (int)current_job_package.number_of_jobs, (int)number_of_finished_jobs);
-    wxPrintf("%s\n", heartbeat);
-    SocketSendInfo(heartbeat);
 }
 
 void MyApp::OnMasterQueueTimer(wxTimerEvent& event) {
@@ -820,15 +792,6 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
 
     Bind(wxEVT_TIMER, wxTimerEventHandler(MyApp::OnMasterQueueTimer), this, 3);
 
-    // Heartbeat: the master is the only process that knows whether the fleet is
-    // actually arriving; without this a run where every worker dies before reaching
-    // the master still looks healthy in the GUI (the controller connection count
-    // keeps climbing). One line a minute to the info panel makes that divergence
-    // visible immediately.
-    Bind(wxEVT_TIMER, wxTimerEventHandler(MyApp::OnMasterHeartbeatTimer), this, 4);
-    master_heartbeat_timer = new wxTimer(this, 4);
-    master_heartbeat_timer->Start(60000);
-
     my_port        = ReturnServerPort( );
     my_port_string = ReturnServerPortString( );
 
@@ -1071,11 +1034,6 @@ void MyApp::HandleSocketSendNextJob(wxSocketBase* connected_socket, JobResult* r
 
             // time to die!
 
-            if ( master_heartbeat_timer != NULL ) {
-                master_heartbeat_timer->Stop( );
-                delete master_heartbeat_timer;
-                master_heartbeat_timer = NULL;
-            }
             StopMonitoringAndDestroySocket(connected_socket);
             ShutDownSocketMonitor( );
             delete received_result;
@@ -1173,12 +1131,10 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
     worker_socket_pointers.Remove(connected_socket);
 
     number_of_timing_results_received++;
-    wxPrintf("MASTER: timing result %li/%li received (finished %li/%li)\n", (long)number_of_timing_results_received, (long)max_number_of_connected_workers, (long)number_of_finished_jobs, (long)current_job_package.number_of_jobs);
 
     // check if we have all timings, and all results (this is checked in two places - socket send timing and receive results as it is not certain will happen last)
 
     if ( number_of_finished_jobs == current_job_package.number_of_jobs && number_of_timing_results_received == max_number_of_connected_workers ) {
-        wxPrintf("MASTER: all jobs finished and all timings in, sending all-jobs-finished\n");
         SendAllJobsFinished( );
 
         if ( current_job_package.ReturnNumberOfJobsRemaining( ) != 0 ) {
@@ -1188,12 +1144,6 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
         // time to die!
 
         wxSleep(5);
-
-        if ( master_heartbeat_timer != NULL ) {
-            master_heartbeat_timer->Stop( );
-            delete master_heartbeat_timer;
-            master_heartbeat_timer = NULL;
-        }
 
         controller_socket->Destroy( );
         controller_socket = NULL;
@@ -1238,7 +1188,6 @@ void MyApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned cha
         // leader is launched outside the run-profile seats and does not self-connect, so every
         // expected connection is a real worker.
         int expected_worker_connections = i_am_a_non_compute_leader ? number_of_commands_to_run : number_of_commands_to_run - 1;
-        wxPrintf("MASTER: worker socket %p connected (%i of %i expected)\n", (void*)new_connection, (int)worker_socket_pointers.GetCount( ), expected_worker_connections);
         if ( worker_socket_pointers.GetCount( ) == expected_worker_connections ) {
             SocketSendInfo("All workers have re-connected to the master.");
         }
@@ -1305,12 +1254,6 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
 
         worker_socket_pointers.Clear( );
 
-        if ( master_heartbeat_timer != NULL ) {
-            master_heartbeat_timer->Stop( );
-            delete master_heartbeat_timer;
-            master_heartbeat_timer = NULL;
-        }
-
         StopMonitoringAndDestroySocket(controller_socket);
         controller_socket = NULL;
 
@@ -1338,10 +1281,6 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         // that never requested a job (or whose entry was erased when it was told to die)
         // would insert a NULL and the print below would crash the master.
         const bool disconnected_worker_had_a_job = (socket_to_worker_job_pointer_hash.count(connected_socket) != 0 && socket_to_worker_job_pointer_hash[connected_socket] != NULL);
-
-        wxPrintf("MASTER: worker socket %p disconnected (had_job=%i dispatched=%i/%i finished=%i timings=%i connected=%i)\n",
-                 (void*)connected_socket, (int)disconnected_worker_had_a_job, number_of_dispatched_jobs, current_job_package.number_of_jobs,
-                 number_of_finished_jobs, number_of_timing_results_received, (int)worker_socket_pointers.GetCount( ));
 
         if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
             SocketSendError("Error: A worker has disconnected before all jobs are finished.");

@@ -89,7 +89,6 @@ class
 #endif
 {
     wxTimer* zombie_timer;
-    wxTimer* master_heartbeat_timer; // periodic connected/dispatched report from the master to the GUI
     bool     i_am_a_zombie;
     int      number_of_failed_connections;
 
@@ -101,7 +100,6 @@ class
 
     void OnQueueTimer(wxTimerEvent& event);
     void OnMasterQueueTimer(wxTimerEvent& event);
-    void OnMasterHeartbeatTimer(wxTimerEvent& event);
     void OnZombieTimer(wxTimerEvent& event);
 
     virtual float GetMaxJobWaitTimeInSeconds( ) { return 30.0f; }

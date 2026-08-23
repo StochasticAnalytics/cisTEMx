@@ -1290,7 +1290,7 @@ void MyApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned cha
         // expected connection is a real worker.
         int expected_worker_connections = i_am_a_non_compute_leader ? number_of_commands_to_run : number_of_commands_to_run - 1;
         wxPrintf("MASTER: worker socket %p connected (%i of %i expected)\n", (void*)new_connection, (int)worker_socket_pointers.GetCount( ), expected_worker_connections);
-        MyDebugPrintWithDetails("LEADER-PATH: worker connected %p (%i of %i), max_connected=%i dispatched=%i\n", (void*)new_connection, (int)worker_socket_pointers.GetCount( ), expected_worker_connections, max_number_of_connected_workers, number_of_dispatched_jobs);
+        MyDebugPrintWithDetails("LEADER-PATH: worker connected %p (%i of %i), max_connected=%i dispatched=%i\n", (void*)new_connection, (int)worker_socket_pointers.GetCount( ), expected_worker_connections, (int)max_number_of_connected_workers, (int)number_of_dispatched_jobs);
         if ( worker_socket_pointers.GetCount( ) == expected_worker_connections ) {
             SocketSendInfo("All workers have re-connected to the master.");
         }

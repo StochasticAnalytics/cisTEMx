@@ -12,6 +12,49 @@
 #include <execinfo.h>
 #include <csignal>
 #include <cstdlib>
+#include <dirent.h>
+#include <fcntl.h>
+
+// Every child this process spawns (the non-compute leader, run-profile commands, ssh tunnels,
+// pkill, the log mirror) must NOT inherit our open file descriptors. wxWidgets does not open
+// its sockets close-on-exec, so a child forked with system()/popen() keeps a duplicate of
+// every socket we hold at that instant - including our LISTENING socket and the epoll
+// registrations tied to it. Consequence, observed 2026-08-23 (core pid 1096123): when the
+// shutdown gate closed our listener, the long-lived leader still held a dup, so the kernel
+// kept the socket (and our epoll entry for its already-freed wxSocketImpl) alive; the next
+// connection to the controller port - the worker shim's 10 s watchdog probe - completed the
+// handshake against that zombie listener, EPOLLIN fired on the stale entry, and the event
+// loop called through a freed object: SIGSEGV in wxEpollDispatcher::Dispatch. Marking fds
+// close-on-exec right before each spawn removes the sharing; 0/1/2 stay inherited on purpose.
+static void MarkAllFdsCloseOnExec( ) {
+    DIR* fd_dir = opendir("/proc/self/fd");
+    if ( fd_dir == NULL )
+        return;
+    const int      dir_fd = dirfd(fd_dir);
+    struct dirent* entry;
+    while ( (entry = readdir(fd_dir)) != NULL ) {
+        if ( entry->d_name[0] < '0' || entry->d_name[0] > '9' )
+            continue;
+        const int fd = atoi(entry->d_name);
+        if ( fd <= 2 || fd == dir_fd )
+            continue;
+        const int flags = fcntl(fd, F_GETFD);
+        if ( flags >= 0 && (flags & FD_CLOEXEC) == 0 )
+            fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+    }
+    closedir(fd_dir);
+}
+
+// system()/popen() that do not leak our descriptors into the child (see above).
+static int SystemNoInherit(const char* command) {
+    MarkAllFdsCloseOnExec( );
+    return system(command);
+}
+
+static FILE* PopenNoInherit(const char* command, const char* mode) {
+    MarkAllFdsCloseOnExec( );
+    return popen(command, mode);
+}
 
 // LEADERTRACE: job_control has been seen dying with NO output at all (the leader then logs
 // "disconnect from controller", the fleet loses its master and aborts). Every way this process
@@ -228,6 +271,9 @@ bool JobControlApp::OnInit( ) {
             setvbuf(stderr, NULL, _IOLBF, 0);
         if ( original_stdout >= 0 ) {
             wxString mirror = wxString::Format("tail --pid=%d -n +1 -F '%s' >&%d 2>/dev/null &", (int)getpid( ), log_path, original_stdout);
+            // Plain system() on purpose: the child must inherit original_stdout for the >&N
+            // redirect, and at this point (OnInit, before any socket exists) there is nothing
+            // else to leak. Every later spawn goes through SystemNoInherit/PopenNoInherit.
             if ( system(mirror.ToUTF8( ).data( )) != 0 ) {
                 // non-fatal: the log file is still the source of truth
             }
@@ -415,7 +461,7 @@ static const bool USE_SSH_TUNNEL = true;
 // Run a command and capture stdout. Returns empty string on failure.
 static wxString RunAndCapture(const wxString& cmd) {
     wxString result;
-    FILE*    fp = popen(cmd.ToUTF8( ).data( ), "r");
+    FILE*    fp = PopenNoInherit(cmd.ToUTF8( ).data( ), "r");
     if ( fp ) {
         char buf[512];
         while ( fgets(buf, sizeof(buf), fp) != NULL ) {
@@ -458,7 +504,7 @@ void JobControlApp::KillAllTunnels( ) {
         return;
 
     wxPrintf("SSH_TUNNEL: killing all tunnels tagged %s\n", tunnel_kill_marker);
-    system(wxString::Format("pkill -f %s", tunnel_kill_marker).ToUTF8( ).data( ));
+    SystemNoInherit(wxString::Format("pkill -f %s", tunnel_kill_marker).ToUTF8( ).data( ));
     have_launched_tunnels = false;
 }
 
@@ -583,7 +629,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 wxString tunnel_cmd = wxString::Format(
                         "ssh -f -N -o SendEnv=%s -o ExitOnForwardFailure=yes -R %d:localhost:%s %s 2>/dev/null",
                         main_thread_pointer->tunnel_kill_marker, try_port, port_number, target);
-                int ret = system(tunnel_cmd.ToUTF8( ).data( ));
+                int ret = SystemNoInherit(tunnel_cmd.ToUTF8( ).data( ));
                 MyDebugPrintGA1("tunnel target='%s' port %d ssh -f -N returned %d", target, try_port, ret);
                 if ( ret == 0 ) {
                     main_thread_pointer->have_launched_tunnels = true;
@@ -755,7 +801,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         QueueInfo(wxString::Format("Job Control : Launching dedicated non-compute leader: '%s'", leader_command));
         MyDebugPrintWithDetails("LEADER-PATH: launching leader '%s'\n", leader_command);
         MyDebugPrintGA1("launching non-compute leader: '%s'", leader_command);
-        int leader_ret = system(leader_command.ToUTF8( ).data( ));
+        int leader_ret = SystemNoInherit(leader_command.ToUTF8( ).data( ));
         if ( leader_ret != 0 ) {
             QueueInfo(wxString::Format("LEADER_NON_COMPUTE ERROR: leader launch returned %i - aborting launch", leader_ret));
             main_thread_pointer->KillAllTunnels( );
@@ -846,7 +892,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
             //wxQueueEvent(main_thread_pointer, test_event);
             //wxExecute(execution_command);
             MyDebugPrintGA1("about to system() iter=%ld copy=%ld", command_counter, process_counter);
-            int sysret = system(execution_command.ToUTF8( ).data( ));
+            int sysret = SystemNoInherit(execution_command.ToUTF8( ).data( ));
             MyDebugPrintGA1("system() returned %d for iter=%ld copy=%ld", sysret, command_counter, process_counter);
             number_of_commands_run++;
         }
@@ -1000,7 +1046,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
                                 "ssh -f -N -o SendEnv=%s -o ExitOnForwardFailure=yes -R %s:127.0.0.1:%s %s 2>/dev/null",
                                 tunnel_kill_marker, master_tunnel_remote_port, master_port, target);
                         MyDebugPrintGA1("master tunnel target='%s' cmd='%s'", target, tunnel_cmd);
-                        int ret = system(tunnel_cmd.ToUTF8( ).data( ));
+                        int ret = SystemNoInherit(tunnel_cmd.ToUTF8( ).data( ));
                         MyDebugPrintGA1("master tunnel target='%s' ssh returned %d", target, ret);
                         if ( ret != 0 ) {
                             wxPrintf("SSH_TUNNEL: WARNING: master tunnel to %s failed (ret=%d)\n", target, ret);

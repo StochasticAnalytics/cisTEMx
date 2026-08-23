@@ -930,6 +930,15 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     if ( resume ) {
         images_to_resume = CheckForUnfinishedWork(true, true);
         job_id_to_resume = match_template_results_panel->ResultDataView->ReturnActiveJobID( );
+
+        // Never build an empty job package: if the active job has nothing left to resume
+        // (finished job with a stale resume tick, or a batch continuation that failed to
+        // clear the resume state) a 0-image group would submit a 0/0-job run.
+        if ( images_to_resume.GetCount( ) == 0 ) {
+            WriteErrorText("Resume is checked but the active job has no unfinished images - nothing to run. Uncheck Resume to start a new job.");
+            return;
+        }
+
         active_group.RemoveAll( );
         for ( long counter = 0; counter < images_to_resume.GetCount( ); counter++ ) {
             // The active group contains array positions in the image asset
@@ -1602,6 +1611,13 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             // Update the GUI so the Call after has the updated state
             HighResolutionLimitNumericCtrl->ChangeValueFloat(next_value);
 
+            // A continuation leg is a fresh job. If the leg that just finished was started
+            // from a resume, the resume state is still set and StartEstimationClick would
+            // re-enter the resume path, find zero unfinished images for the now-complete
+            // job, and submit an empty 0/0 package. Clear it before re-clicking.
+            ResumeRunCheckBox->SetValue(false);
+            set_up_to_resume_job = false;
+
             // Use CallAfter for safe event loop handling
             CallAfter([this]( ) {
                 if ( s_batch_experiment_active ) {
@@ -1634,6 +1650,11 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             // Update the GUI so the Call after has the updated state
             s_current_volume_asset_idx++;
             ReferenceSelectPanel->SetSelection(s_current_volume_asset_idx);
+
+            // A continuation leg is a fresh job - clear any leftover resume state (see the
+            // matching comment in the high-res block above).
+            ResumeRunCheckBox->SetValue(false);
+            set_up_to_resume_job = false;
 
             // Use CallAfter for safe event loop handling
             CallAfter([this]( ) {

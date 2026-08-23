@@ -734,11 +734,19 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         // same reverse tunnels the fleet uses. The env prefix scopes leader mode to this one
         // child; our own copy of the variable was scrubbed in OnInit so the fleet below
         // stays clean. One thread is enough - it serves and aggregates, never computes.
-        // executable_default begins with the profile's bare executable_name, so prefixing the
+        // The leader runs on THIS host, so it is handed the same comma-separated list of our
+        // own numeric addresses (including 127.0.0.1) that local workers have always been given,
+        // NOT the run profile's controller_address override - that override exists for remote
+        // workers (e.g. a DNS name they can reach from outside) and would make the leader do a
+        // name lookup and dial our external interface from next door.
+        // The invocation begins with the profile's bare executable_name, so prefixing the
         // directory turns it into an absolute invocation; empty dir falls back to PATH lookup.
-        wxString leader_invocation = executable_default;
+        wxString leader_invocation = current_run_profile.executable_name + " " + ip_address + " " + port_number + " ";
+        for ( counter = 0; counter < SOCKET_CODE_SIZE; counter++ ) {
+            leader_invocation += job_code[counter];
+        }
         if ( main_thread_pointer->leader_binary_dir.IsEmpty( ) == false )
-            leader_invocation = main_thread_pointer->leader_binary_dir + "/" + executable_default;
+            leader_invocation = main_thread_pointer->leader_binary_dir + "/" + leader_invocation;
 
         // stdbuf -oL/-eL: the leader inherits our log-file stdout, which is block-buffered
         // for a file - a signal death (segfault) would lose everything it ever printed.

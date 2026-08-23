@@ -9,14 +9,14 @@
 #define GPUIMAGE_H_
 
 // cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE — Feature gate for the FastFFT-based
-// 3d texture preparation experiment in match_template. OFF by default:
-// binaries built with it select the interleaved FastFFT texture fetch in
-// ExtractSliceShiftAndCtf, which is incompatible with volumes prepared by
-// CopyHostToDeviceTextureComplex (every non-match_template caller).
+// 3d texture preparation experiment in match_template. It only decides how
+// match_template PREPARES its reference volume (FastFFT FwdFFTToTexture vs
+// CopyHostToDeviceTextureComplex); GpuImage::ExtractSliceShiftAndCtf selects
+// the matching fetch at runtime from the volume itself (fastfft_plan_resources),
+// so enabling it project-wide no longer breaks the other callers (2274540d).
 // ON in debug builds (--enable-debugmode defines DEBUG): every debug binary
-// carries the FastFFT texture path so it is exercised by default; release
-// builds keep the classic path (see 2274540d for what the project-wide enable
-// breaks in non-match_template callers).
+// exercises the FastFFT texture path by default; release builds keep the
+// classic preparation.
 // To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
 #ifdef DEBUG
 #define cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE

@@ -1105,10 +1105,10 @@ bool MatchTemplateApp::DoCalculation( ) {
                 template_reconstruction.BackwardFFT( );
                 profile_timing.lap("Swap Fourier Quadrants");
 
-// The TYPE test must match the one guarding the fetch in GpuImage::ExtractSliceShiftAndCtf.
-// Without it a TYPE == 0 binary would build the interleaved FastFFT texture here while the
-// kernel compiled the tex_real/tex_imag pair fetch, and would then sample texture handles that
-// were never assigned on this vessel.
+// Which texture this vessel ends up carrying is recorded on the vessel itself
+// (fastfft_plan_resources set by the FastFFT branch, tex_real/tex_imag by the other);
+// GpuImage::ExtractSliceShiftAndCtf picks the matching fetch at runtime, so either branch
+// projects correctly. TYPE only decides the texel width FastFFT writes.
 #if defined(cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE) && defined(cisTEM_USING_FastFFT) && cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE != 0
                 // padding == 0.0f: use the existing CopyHostToDeviceTextureComplex path even though the gate is enabled.
                 if ( padding != 0.0f ) {

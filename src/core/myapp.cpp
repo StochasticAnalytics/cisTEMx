@@ -234,6 +234,18 @@ void MyApp::AddCommandLineOptions( ) {
 }
 
 void MyApp::SendNextJobTo(wxSocketBase* socket) {
+    // Jobs orphaned by a worker that died mid-flight are re-issued first: without this a
+    // death after full dispatch loses the job forever and the run can never finish (the
+    // all-done gate needs number_of_finished_jobs == number_of_jobs). Late-connecting
+    // stragglers - which otherwise just get told to die - become the recovery path.
+    if ( ! jobs_to_redispatch.empty( ) ) {
+        RunJob* orphaned_job = jobs_to_redispatch.back( );
+        jobs_to_redispatch.pop_back( );
+        orphaned_job->SendJob(socket);
+        socket_to_worker_job_pointer_hash[socket] = orphaned_job;
+        return;
+    }
+
     // if we haven't dispatched all jobs yet, then send it, otherwise tell the worker to die..
 
     if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
@@ -1282,12 +1294,19 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         // would insert a NULL and the print below would crash the master.
         const bool disconnected_worker_had_a_job = (socket_to_worker_job_pointer_hash.count(connected_socket) != 0 && socket_to_worker_job_pointer_hash[connected_socket] != NULL);
 
-        if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
+        // Report EVERY death that takes an unfinished job with it - the old guard
+        // (number_of_dispatched_jobs < number_of_jobs) made a death AFTER full dispatch,
+        // i.e. exactly the endgame case, silent: the job vanished with no message and the
+        // run hung with N-1 of N results recorded. Queue the orphaned job for re-dispatch
+        // so the next worker that asks (including a late straggler) picks it up.
+        if ( disconnected_worker_had_a_job && socket_to_worker_job_pointer_hash[connected_socket]->has_been_run == false ) {
+            SocketSendError("Error: A worker has disconnected with an unfinished job; it will be re-dispatched.");
+            SocketSendInfo("The disconnected worker was running a job with the following arguments:\n" + socket_to_worker_job_pointer_hash[connected_socket]->PrintAllArgumentsTowxString( ));
+            jobs_to_redispatch.push_back(socket_to_worker_job_pointer_hash[connected_socket]);
+        }
+        else if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
             SocketSendError("Error: A worker has disconnected before all jobs are finished.");
-            if ( disconnected_worker_had_a_job )
-                SocketSendInfo("The disconnected worker was running a job with the following arguments:\n" + socket_to_worker_job_pointer_hash[connected_socket]->PrintAllArgumentsTowxString( ));
-            else
-                SocketSendInfo("The disconnected worker had no job assigned.");
+            SocketSendInfo("The disconnected worker had no job assigned.");
         }
 
         socket_to_worker_job_pointer_hash.erase(connected_socket);
@@ -1296,6 +1315,36 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         // then masquerade as this dead worker, one false disconnect per probe).
         worker_socket_pointers.Remove(connected_socket);
         StopMonitoringAndDestroySocket(connected_socket);
+
+        // This worker is gone and will never send its thread timing, so it must not stay
+        // counted by the all-done gate (number_of_timing_results_received ==
+        // max_number_of_connected_workers). Workers that FINISHED were already erased from
+        // worker_socket_pointers in HandleSocketSendThreadTiming, so this branch only sees
+        // genuinely unfinished deaths - e.g. an idle-queue straggler that condor matches
+        // after the work is done, which connects and dies at the handshake. Without the
+        // decrement one such death wedges the run at the finish line: all results are in,
+        // but the gate arithmetic is permanently one short and socket_all_jobs_finished is
+        // never sent (observed 2026-08-23: 58/58 images done, 4 straggler EOF-deaths, GUI
+        // meter frozen). Decrement and re-evaluate the gate here, since this death may be
+        // exactly what completes it.
+        max_number_of_connected_workers--;
+        if ( number_of_finished_jobs == current_job_package.number_of_jobs && number_of_timing_results_received == max_number_of_connected_workers ) {
+            SendAllJobsFinished( );
+
+            if ( current_job_package.ReturnNumberOfJobsRemaining( ) != 0 ) {
+                SocketSendError("All jobs should be finished, but job package is not empty.");
+            }
+
+            // time to die! (mirrors the gate sites in HandleSocketSendNextJob / HandleSocketSendThreadTiming)
+            ShutDownServer( );
+            ShutDownSocketMonitor( );
+
+            if ( work_thread != NULL )
+                work_thread->Kill( );
+
+            ExitMainLoop( );
+            return;
+        }
     }
     else // i am a worker and the master died.. time to die
     {

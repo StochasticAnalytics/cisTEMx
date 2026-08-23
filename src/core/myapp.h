@@ -192,6 +192,11 @@ class
     // HashMap to keep track of which socket is currently working on which job
     SocketJobPointerHash socket_to_worker_job_pointer_hash;
 
+    // Jobs whose worker died before finishing them (eviction, crash, dropped tunnel).
+    // SendNextJobTo re-issues these before advancing number_of_dispatched_jobs, so a
+    // death after full dispatch no longer loses the job forever and wedges the run.
+    std::vector<RunJob*> jobs_to_redispatch;
+
     wxCmdLineParser command_line_parser;
 
     virtual bool DoCalculation( ) = 0;

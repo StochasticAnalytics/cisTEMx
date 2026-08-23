@@ -77,7 +77,28 @@ class AggregatedTemplateResult {
      * @param number_of_expected_results The total number of partial results expected for this image.
      */
     void AddResult(float* result_array, long array_size, int result_number, int number_of_expected_results);
+
+    // TMDBG: canary just past collated_data_array, to catch an overrun of the block
+    // that RemoveAt frees (the free that aborts under MALLOC_CHECK_).
+    long tmdbg_allocated_floats;
+    void TmdbgCheckGuard(const char* where);
 };
+
+// ---- TMDBG: temporary heap-corruption instrumentation. Grep TMDBG to remove. ----
+// MyDebugPrintWithDetails is a no-op in release builds, so give it a body in THIS TU
+// only. fflush: the leader's stdout is a pipe (block buffered), so an abort would
+// otherwise discard every line we printed.
+#undef MyDebugPrintWithDetails
+#define MyDebugPrintWithDetails(...)                  \
+    {                                                 \
+        wxPrintf(__VA_ARGS__);                        \
+        wxPrintf("   [%s:%i]\n", __FILE__, __LINE__); \
+        fflush(stdout);                               \
+    }
+constexpr long   TMDBG_GUARD_FLOATS = 64;
+constexpr float  TMDBG_GUARD_VALUE  = -98765.4321f;
+constexpr double TMDBG_GUARD_DOUBLE = -98765.4321;
+// ---- end TMDBG ----
 
 WX_DECLARE_OBJARRAY(AggregatedTemplateResult, ArrayOfAggregatedTemplateResults);
 #include <wx/arrimpl.cpp> // this is a magic incantation which must be done!
@@ -291,7 +312,9 @@ void MatchTemplateApp::DoInteractiveUserInput( ) {
     pixel_size_search_range = my_input->GetFloatFromUser("Pixel size search range (A)", "Search range (-value ... + value) around current pixel size", "0.1", 0.0);
     pixel_size_step         = my_input->GetFloatFromUser("Pixel size step (A) (0.0 = no search)", "Step size used in the pixel size search", "0.01", 0.0);
 #ifdef cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
-    padding = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "1.0", 0.0, 2048.0);
+    // FastFFT texture path: this is the absolute output box edge (legal rank-3 extents are
+    // 32..512 pow2, 512, 1024, 1728, 2048) and must be >= the volume extent; 1024 default.
+    padding = my_input->GetFloatFromUser("Padding factor", "Padded output box edge for the FastFFT texture prep (512/1024/1728/2048), must be >= the volume size", "1024", 0.0, 2048.0);
 #else
     padding = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the input volume is padded to improve projections", "1.0", 1.0, 2.0);
 #endif
@@ -1465,7 +1488,9 @@ bool MatchTemplateApp::DoCalculation( ) {
                                 current_bin     = int((mip_value - histogram_min) / histogram_step);
                                 //current_bin = int(double((padded_reference.real_values[address]) - histogram_min) / histogram_step);
 
-                                if ( current_bin >= 0 && current_bin <= histogram_number_of_points ) {
+                                // < not <=: histogram_data has histogram_number_of_points bins; a value landing
+                                // exactly on the top edge wrote histogram_data[N] (heap overrun).
+                                if ( current_bin >= 0 && current_bin < histogram_number_of_points ) {
                                     histogram_data[current_bin] += 1;
                                 }
 
@@ -1626,11 +1651,17 @@ bool MatchTemplateApp::DoCalculation( ) {
         // Write out histogram text file
         NumericTextFile histogram_file(output_histogram_file, OPEN_TO_WRITE, 4);
 
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE new expected_survival_histogram");
         double* expected_survival_histogram = new double[histogram_number_of_points];
-        double* survival_histogram          = new double[histogram_number_of_points];
+        MyDebugPrintWithDetails("LEADERTRACE AFTER new expected_survival_histogram");
+        double* survival_histogram = new double[histogram_number_of_points];
         ZeroDoubleArray(survival_histogram, histogram_number_of_points);
 
-        for ( int line_counter = 0; line_counter <= histogram_number_of_points; line_counter++ ) {
+        // < not <=: expected_survival_histogram holds histogram_number_of_points doubles and every
+        // consumer reads indices < N; <= wrote one double past the block - an 8-byte heap overrun
+        // surfacing later/intermittently as "corrupted size vs. prev_size" (glibc) or
+        // "free(): invalid pointer" (MALLOC_CHECK_).
+        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
             expected_survival_histogram[line_counter] = (erfc((histogram_first_bin_midpoint + histogram_step * float(line_counter)) / sqrtf(2.0f)) / 2.0f) * float(actual_number_of_angles_searched) * float(fraction_of_search_positions_that_are_independent) / n_expected_false_positives;
         }
 
@@ -1802,6 +1833,8 @@ bool MatchTemplateApp::DoCalculation( ) {
  * @param number_of_expected_results The total number of partial results expected for this image.
  */
 void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, long array_size, int result_number, int number_of_expected_results) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER MasterHandleProgramDefinedResult");
+    MyDebugPrintWithDetails("LEADER-PATH: MasterHandleProgramDefinedResult entry: array_size=%li result_number=%i expected=%i\n", array_size, result_number, number_of_expected_results);
     MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult result_number=%d expected=%d array_size=%ld", result_number, number_of_expected_results, array_size);
 
     // do we have this image number already?
@@ -1901,19 +1934,41 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         bool using_binned_ref = input_binning_factor > 1.0f ? true : false;
 
+        { // TMDBG: does the buffer the worker sent match the layout the master assumes?
+            const long tmdbg_needed = (long)cistem::match_template::COUNT +
+                                      (long)image_real_memory_allocated * (long)cistem::match_template::number_of_output_images +
+                                      (long)cistem::match_template::histogram_number_of_points * (long)sizeof(long) / (long)sizeof(float);
+            MyDebugPrintWithDetails("TMDBG finalize entry: image=%i IRMA=%i size=%ix%i needed=%ld allocated=%ld slack=%ld received=%i/%i",
+                                    aggregated_results[array_location].image_number, image_real_memory_allocated,
+                                    image_size_x, image_size_y, tmdbg_needed,
+                                    aggregated_results[array_location].tmdbg_allocated_floats,
+                                    aggregated_results[array_location].tmdbg_allocated_floats - tmdbg_needed,
+                                    aggregated_results[array_location].number_of_received_results, number_of_expected_results);
+            aggregated_results[array_location].TmdbgCheckGuard("finalize entry");
+        }
+
         timer.lap("Initialize objects");
         timer.start("Initialize volume and mip");
+        MyDebugPrintWithDetails("TMDBG declare ImageFile");
         ImageFile input_reconstruction_file;
+        MyDebugPrintWithDetails("TMDBG open input_reconstruction_file");
         input_reconstruction_file.OpenFile(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[1].ReturnStringArgument( ), false);
 
         temp_image.Allocate(int(image_size_x), int(image_size_y), true);
+        MyDebugPrintWithDetails("TMDBG temp_image allocated");
 
         // Fill the temp_image with data from the collated mip before passing it on to be rescaled.
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_mip_data[pixel_counter];
         }
 
+        // TMDBG: the rescale loop below runs to mip_image->real_memory_allocated but writes
+        // into collated_pixel_sums / _square_sums, which are only IRMA floats long.
+        MyDebugPrintWithDetails("TMDBG temp_image.real_memory_allocated=%ld vs IRMA=%i (difference %ld)",
+                                temp_image.real_memory_allocated, image_real_memory_allocated,
+                                temp_image.real_memory_allocated - (long)image_real_memory_allocated);
         scaled_mip.CopyFrom(&temp_image);
+        MyDebugPrintWithDetails("TMDBG scaled_mip copied");
         timer.lap("Initialize volume and mip");
         timer.start("Rescale mip and stats");
         RescaleMipAndStatisticalArraysByGlobalMeanAndStdDev(&temp_image,
@@ -1929,27 +1984,42 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
             aggregated_results[array_location].collated_mip_data[pixel_counter] = temp_image.real_values[pixel_counter];
         }
         timer.lap("Rescale mip and stats");
+        MyDebugPrintWithDetails("TMDBG rescale+resample histogram done");
+        aggregated_results[array_location].TmdbgCheckGuard("after rescale+resample histogram"); // TMDBG
 
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE timer.start(WriteImages)");
         timer.start("Write output images");
+        MyDebugPrintWithDetails("LEADERTRACE AFTER timer.start(WriteImages)");
+        MyDebugPrintWithDetails("TMDBG open mip file");
         MRCFile mip_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[21].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         mip_output_file.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(mip)");
         temp_image.WriteSlice(&mip_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(mip)");
         mip_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote mip + header");
 
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE wxPrintf(WritingResult)");
         wxPrintf("Writing result %i\n", aggregated_results[array_location].image_number - 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER wxPrintf(WritingResult)");
+        MyDebugPrintWithDetails("LEADER-PATH: writing maps for image %i (array_location %i)\n", aggregated_results[array_location].image_number, array_location);
 
         // psi
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_psi_data[pixel_counter];
         }
+        MyDebugPrintWithDetails("TMDBG open psi file");
         MRCFile psi_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[22].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         psi_output_file.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(psi)");
         temp_image.WriteSlice(&psi_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(psi)");
         psi_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote psi + header");
 
         psi_image.CopyFrom(&temp_image);
         //theta
@@ -1957,13 +2027,17 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_theta_data[pixel_counter];
         }
+        MyDebugPrintWithDetails("TMDBG open theta file");
         MRCFile theta_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[23].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         theta_output_file.SetOutputToFP16( );
 #endif
 
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(theta)");
         temp_image.WriteSlice(&theta_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(theta)");
         theta_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote theta + header");
 
         theta_image.CopyFrom(&temp_image);
 
@@ -1972,12 +2046,16 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_phi_data[pixel_counter];
         }
+        MyDebugPrintWithDetails("TMDBG open phi file");
         MRCFile phi_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[24].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         phi_output_file.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(phi)");
         temp_image.WriteSlice(&phi_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(phi)");
         phi_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote phi + header");
 
         phi_image.CopyFrom(&temp_image);
 
@@ -1986,12 +2064,16 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_defocus_data[pixel_counter];
         }
+        MyDebugPrintWithDetails("TMDBG open defocus file");
         MRCFile defocus_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[25].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         defocus_output_file.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(defocus)");
         temp_image.WriteSlice(&defocus_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(defocus)");
         defocus_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote defocus + header");
 
         defocus_image.CopyFrom(&temp_image);
 
@@ -2000,22 +2082,30 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_pixel_size_data[pixel_counter];
         }
+        MyDebugPrintWithDetails("TMDBG open pixel_size file");
         MRCFile pixel_size_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[26].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         pixel_size_output_file.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(pixel_size)");
         temp_image.WriteSlice(&pixel_size_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(pixel_size)");
         pixel_size_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote pixel_size + header");
 
         pixel_size_image.CopyFrom(&temp_image);
 
         // Write scaled MIP (locally normalized if flat fielding enabled)
+        MyDebugPrintWithDetails("TMDBG open scaled_mip file");
         MRCFile scaled_mip_output_mrcfile(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[27].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         scaled_mip_output_mrcfile.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(scaled_mip master)");
         scaled_mip.WriteSlice(&scaled_mip_output_mrcfile, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(scaled_mip master)");
         scaled_mip_output_mrcfile.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote scaled_mip + header");
 
         // Write statistical sum and sum_of_squares maps
         // sums
@@ -2023,34 +2113,53 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_pixel_sums[pixel_counter];
         }
+        MyDebugPrintWithDetails("TMDBG open sum file");
         MRCFile sum_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[36].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         sum_output_file.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(sum)");
         temp_image.WriteSlice(&sum_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(sum)");
         sum_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote sum + header");
         // square sums
 
         for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
             temp_image.real_values[pixel_counter] = aggregated_results[array_location].collated_pixel_square_sums[pixel_counter];
         }
+        MyDebugPrintWithDetails("TMDBG open square_sum file");
         MRCFile square_sum_output_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[28].ReturnStringArgument( ), true);
 #ifdef USE_FP16_PARTICLE_STACKS
         square_sum_output_file.SetOutputToFP16( );
 #endif
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteSlice(square_sum)");
         temp_image.WriteSlice(&square_sum_output_file, 1);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteSlice(square_sum)");
         square_sum_output_file.SetPixelSizeAndWriteHeader(search_pixel_size);
+        MyDebugPrintWithDetails("TMDBG wrote square_sum + header");
 
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE timer.lap(WriteImages)");
         timer.lap("Write output images");
+        MyDebugPrintWithDetails("LEADERTRACE AFTER timer.lap(WriteImages)");
+        aggregated_results[array_location].TmdbgCheckGuard("after writing output images"); // TMDBG
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE timer.start(histogram)");
         timer.start("Set and write histogram");
+        MyDebugPrintWithDetails("LEADERTRACE AFTER timer.start(histogram)");
         float expected_threshold;
 
         // Write histogram text file
         //NumericTextFile histogram_file(wxString::Format("%s/histogram_%i.txt", directory_for_writing_results, aggregated_results[array_location].image_number), OPEN_TO_WRITE, 4);
+        MyDebugPrintWithDetails("TMDBG open histogram file");
         NumericTextFile histogram_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( ), OPEN_TO_WRITE, 4);
 
-        double* expected_survival_histogram = new double[histogram_number_of_points];
-        double* survival_histogram          = new double[histogram_number_of_points];
+        double* expected_survival_histogram = new double[histogram_number_of_points + 2]; // TMDBG +2 guard
+        double* survival_histogram          = new double[histogram_number_of_points + 2]; // TMDBG +2 guard
+        // TMDBG canaries
+        expected_survival_histogram[histogram_number_of_points]     = TMDBG_GUARD_DOUBLE;
+        expected_survival_histogram[histogram_number_of_points + 1] = TMDBG_GUARD_DOUBLE;
+        survival_histogram[histogram_number_of_points]              = TMDBG_GUARD_DOUBLE;
+        survival_histogram[histogram_number_of_points + 1]          = TMDBG_GUARD_DOUBLE;
 
         double temp_double_array[5];
 
@@ -2061,7 +2170,11 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
             survival_histogram[line_counter] = survival_histogram[line_counter + 1] + aggregated_results[array_location].collated_histogram_data[line_counter];
         }
 
-        for ( int line_counter = 0; line_counter <= histogram_number_of_points; line_counter++ ) {
+        // < not <=: expected_survival_histogram holds histogram_number_of_points doubles and every
+        // consumer reads indices < N; <= wrote one double past the block - an 8-byte heap overrun
+        // surfacing later/intermittently as "corrupted size vs. prev_size" (glibc) or
+        // "free(): invalid pointer" (MALLOC_CHECK_).
+        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
             expected_survival_histogram[line_counter] = (erfc((histogram_first_bin_midpoint + histogram_step * float(line_counter)) / sqrtf(2.0f)) / 2.0f) * (number_of_valid_search_pixels * number_of_search_positions / n_expected_false_positives);
         }
 
@@ -2108,7 +2221,9 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         }
 
         histogram_file.Close( );
+        MyDebugPrintWithDetails("TMDBG histogram file closed");
         timer.lap("Set and write histogram");
+        aggregated_results[array_location].TmdbgCheckGuard("after histogram text file"); // TMDBG
         timer.start("Initialize results image");
         // Calculate the result image, and keep the peak info to send back...
 
@@ -2118,12 +2233,15 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         if ( using_binned_ref )
             min_peak_radius_squared /= (input_binning_factor * input_binning_factor);
 
+        MyDebugPrintWithDetails("TMDBG allocate result_image");
         result_image.Allocate(scaled_mip.logical_x_dimension, scaled_mip.logical_y_dimension, 1);
         result_image.SetToConstant(0.0f);
 
+        MyDebugPrintWithDetails("TMDBG read reconstruction slices");
         input_reconstruction.ReadSlices(&input_reconstruction_file, 1, input_reconstruction_file.ReturnNumberOfSlices( ));
 
         // assume cube
+        MyDebugPrintWithDetails("TMDBG allocate current_projection");
         current_projection.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_x_dimension, false);
         timer.lap("Initialize results image");
 
@@ -2132,14 +2250,19 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         std::vector<Peak> peak_list;
         std::vector<Peak> upsampled_peak_list;
         timer.start("Extract peaks");
+        MyDebugPrintWithDetails("TMDBG find peaks");
         scaled_mip.FindPeakWithIntegerCoordinatesForManyPeaks(peak_list, upsampled_peak_list, expected_threshold, resample_search_ratio, sqrtf(min_peak_radius_squared), 4);
         timer.lap("Extract peaks");
+        MyDebugPrintWithDetails("TMDBG peaks found");
+        aggregated_results[array_location].TmdbgCheckGuard("after peak extraction"); // TMDBG
 
+        MyDebugPrintWithDetails("TMDBG construct extractor");
         TemplateMatchingPeakExtractor extractor(
                 scaled_mip, phi_image, theta_image, psi_image,
                 defocus_image, &pixel_size_image,
                 search_pixel_size / input_binning_factor, search_pixel_size);
 
+        MyDebugPrintWithDetails("TMDBG transfer+sort peak info");
         extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list,
                                           aggregated_results[array_location].use_peak_sampling_correction,
                                           all_peak_infos);
@@ -2149,11 +2272,24 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         wxString peak_info_path = histogram_path;
         peak_info_path.Replace("_histogram_", "_peak_info_");
 
+        MyDebugPrintWithDetails("TMDBG open peak_info file");
         NumericTextFile peak_info_file(peak_info_path, OPEN_TO_WRITE, 8);
         peak_info_file.WriteCommentLine("x_pos y_pos defocus corrected_peak_height original_score above_threshold sub_pixel_x sub_pixel_y");
 
         double peak_data[8];
-        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+        // TMDBG: this loop indexes peak_list / upsampled_peak_list by the peak_infos count;
+        // if they disagree it reads past the end of those vectors.
+        const int tmdbg_n_infos = int(all_peak_infos.GetCount( ));
+        const int tmdbg_n_peaks = int(peak_list.size( ));
+        const int tmdbg_n_ups   = int(upsampled_peak_list.size( ));
+        MyDebugPrintWithDetails("TMDBG peaks: all_peak_infos=%i peak_list=%i upsampled_peak_list=%i",
+                                tmdbg_n_infos, tmdbg_n_peaks, tmdbg_n_ups);
+        int tmdbg_n_safe = tmdbg_n_infos < tmdbg_n_peaks ? tmdbg_n_infos : tmdbg_n_peaks;
+        if ( tmdbg_n_ups < tmdbg_n_safe )
+            tmdbg_n_safe = tmdbg_n_ups;
+        if ( tmdbg_n_safe != tmdbg_n_infos )
+            MyDebugPrintWithDetails("TMDBG *** peak count mismatch, clamping %i -> %i ***", tmdbg_n_infos, tmdbg_n_safe);
+        for ( int i = 0; i < tmdbg_n_safe; i++ ) {
             peak_data[0] = all_peak_infos[i].x_pos;
             peak_data[1] = all_peak_infos[i].y_pos;
             peak_data[2] = all_peak_infos[i].defocus;
@@ -2165,8 +2301,10 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
             peak_info_file.WriteLine(peak_data);
         }
         peak_info_file.Close( );
+        MyDebugPrintWithDetails("TMDBG peak_info file closed");
 
         timer.start("Create result images");
+        MyDebugPrintWithDetails("TMDBG CreateResultImages");
         extractor.CreateResultImages(
                 peak_list,
                 all_peak_infos,
@@ -2176,10 +2314,14 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
                 false);
 
         timer.lap("Create result images");
+        MyDebugPrintWithDetails("TMDBG CreateResultImages done");
+        aggregated_results[array_location].TmdbgCheckGuard("after CreateResultImages"); // TMDBG
 
         timer.start("Save result image");
+        MyDebugPrintWithDetails("TMDBG write result image");
         result_image.QuickAndDirtyWriteSlice(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[38].ReturnStringArgument( ), 1, true, search_pixel_size);
         timer.lap("Save result image");
+        MyDebugPrintWithDetails("TMDBG result image written");
 
         timer.start("Send results to GUI");
         // tell the gui that this result is available...
@@ -2188,19 +2330,39 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         float                              high_res_limit_used = 2.0f * search_pixel_size;
         MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult calling SendTemplateMatchingResultToSocket image=%d high_res=%f peaks=%lu",
                         aggregated_results[array_location].image_number, high_res_limit_used, (unsigned long)all_peak_infos.GetCount( ));
+        MyDebugPrintWithDetails("TMDBG send result to GUI socket");
         SendTemplateMatchingResultToSocket(controller_socket, aggregated_results[array_location].image_number, high_res_limit_used, expected_threshold, all_peak_infos, blank_changes);
         MyDebugPrintGA1("match_template MasterHandleProgramDefinedResult SendTemplateMatchingResultToSocket returned");
         timer.lap("Send results to GUI");
+        MyDebugPrintWithDetails("TMDBG result sent");
         // Clean up: remove the completed AggregatedTemplateResult and associated memory
         // this should be done now.. so delete it
 
         timer.start("Cleanup");
+        aggregated_results[array_location].TmdbgCheckGuard("immediately before RemoveAt"); // TMDBG
+        // TMDBG: survival-histogram canaries
+        if ( expected_survival_histogram[histogram_number_of_points] != TMDBG_GUARD_DOUBLE ||
+             expected_survival_histogram[histogram_number_of_points + 1] != TMDBG_GUARD_DOUBLE )
+            MyDebugPrintWithDetails("TMDBG *** expected_survival_histogram OVERRUN ***");
+        if ( survival_histogram[histogram_number_of_points] != TMDBG_GUARD_DOUBLE ||
+             survival_histogram[histogram_number_of_points + 1] != TMDBG_GUARD_DOUBLE )
+            MyDebugPrintWithDetails("TMDBG *** survival_histogram OVERRUN ***");
+        MyDebugPrintWithDetails("TMDBG about to RemoveAt(%i)", array_location);
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE RemoveAt");
         aggregated_results.RemoveAt(array_location);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER RemoveAt");
+        MyDebugPrintWithDetails("TMDBG RemoveAt survived");
+        MyDebugPrintWithDetails("TMDBG free expected_survival_histogram");
         delete[] expected_survival_histogram;
+        MyDebugPrintWithDetails("TMDBG freed expected_survival_histogram");
+        MyDebugPrintWithDetails("TMDBG free survival_histogram");
         delete[] survival_histogram;
+        MyDebugPrintWithDetails("TMDBG freed survival_histogram");
         timer.lap("Cleanup");
+        MyDebugPrintWithDetails("TMDBG leaving scope -> destructors next (Images, MRCFiles, vectors, peak arrays)");
         timer.print_times( );
     }
+    MyDebugPrintWithDetails("TMDBG finalize returned cleanly, all destructors ran");
 }
 
 /**
@@ -2225,12 +2387,28 @@ AggregatedTemplateResult::AggregatedTemplateResult( ) {
     collated_pixel_sums        = NULL;
     collated_pixel_square_sums = NULL;
     collated_histogram_data    = NULL;
+    tmdbg_allocated_floats     = 0; // TMDBG
 }
 
 /**
  * @brief Destructor for AggregatedTemplateResult.
  * Frees the `collated_data_array` if it was allocated.
  */
+// TMDBG: verify the canary; prints the first broken word and where we were.
+void AggregatedTemplateResult::TmdbgCheckGuard(const char* where) {
+    if ( collated_data_array == NULL || tmdbg_allocated_floats == 0 )
+        return;
+    for ( long tmdbg_i = 0; tmdbg_i < TMDBG_GUARD_FLOATS; tmdbg_i++ ) {
+        const float tmdbg_v = collated_data_array[tmdbg_allocated_floats + tmdbg_i];
+        if ( tmdbg_v != TMDBG_GUARD_VALUE ) {
+            MyDebugPrintWithDetails("TMDBG *** OVERRUN DETECTED *** at [%s]: guard word %ld of %ld = %g (buffer = %ld floats)",
+                                    where, tmdbg_i, TMDBG_GUARD_FLOATS, tmdbg_v, tmdbg_allocated_floats);
+            return;
+        }
+    }
+    MyDebugPrintWithDetails("TMDBG guard intact at [%s]", where);
+}
+
 AggregatedTemplateResult::~AggregatedTemplateResult( ) {
     MyDebugPrintGA1("match_template AggregatedTemplateResult dtor");
     if ( collated_data_array != NULL )
@@ -2263,6 +2441,7 @@ AggregatedTemplateResult::~AggregatedTemplateResult( ) {
  * @param number_of_expected_results The total number of partial results expected for this image (used for logging).
  */
 void AggregatedTemplateResult::AddResult(float* result_array, long array_size, int result_number, int number_of_expected_results) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER AddResult");
     MyDebugPrintGA1("match_template AggregatedTemplateResult::AddResult result_number=%d expected=%d array_size=%ld", result_number, number_of_expected_results, array_size);
 
     int offset = cistem::match_template::COUNT; // Offset to the start of actual image data after header info
@@ -2278,8 +2457,16 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
     // If this is the first result, allocate memory and set up pointers
     // FIXME: change to nullptr
     if ( collated_data_array == NULL ) {
-        collated_data_array = new float[array_size]; // Allocate the main buffer
+        collated_data_array = new float[array_size + TMDBG_GUARD_FLOATS]; // TMDBG: +guard
+        MyDebugPrintWithDetails("LEADERTRACE collated_data_array allocation (after)");
         ZeroFloatArray(collated_data_array, array_size);
+        // TMDBG: stamp the canary and record the nominal size
+        tmdbg_allocated_floats = array_size;
+        for ( long tmdbg_i = 0; tmdbg_i < TMDBG_GUARD_FLOATS; tmdbg_i++ )
+            collated_data_array[array_size + tmdbg_i] = TMDBG_GUARD_VALUE;
+        MyDebugPrintWithDetails("TMDBG AddResult: allocated %ld floats (+%ld guard), IRMA=%i, histogram at float %ld, buffer ends at float %ld",
+                                array_size, TMDBG_GUARD_FLOATS, image_real_memory_allocated,
+                                (long)offset + (long)image_real_memory_allocated * 8, array_size);
         number_of_received_results      = 0;
         total_number_of_angles_searched = 0.0f;
         disable_flat_fielding           = result_array[cistem::match_template::disable_flat_fielding]; // FIXME: shouldn't we check that these are consistent across all results?
@@ -2324,6 +2511,7 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
 
     // handle the images..
 
+    MyDebugPrintWithDetails("LEADERTRACE mip/psi/theta/phi/defocus/pixel_size merge loop enter");
     for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
         if ( result_mip_data[pixel_counter] > collated_mip_data[pixel_counter] ) {
             collated_mip_data[pixel_counter]        = result_mip_data[pixel_counter];
@@ -2337,22 +2525,27 @@ void AggregatedTemplateResult::AddResult(float* result_array, long array_size, i
 
     // sums and sum of squares
 
+    MyDebugPrintWithDetails("LEADERTRACE pixel_sums accumulate loop enter");
     for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
         collated_pixel_sums[pixel_counter] += result_pixel_sums[pixel_counter];
     }
 
+    MyDebugPrintWithDetails("LEADERTRACE square_sums accumulate loop enter");
     for ( pixel_counter = 0; pixel_counter < image_real_memory_allocated; pixel_counter++ ) {
         collated_pixel_square_sums[pixel_counter] += result_pixel_square_sums[pixel_counter];
     }
 
     // handle the histogram..
 
+    MyDebugPrintWithDetails("LEADERTRACE histogram accumulate loop enter");
     for ( pixel_counter = 0; pixel_counter < histogram_number_of_points; pixel_counter++ ) {
         collated_histogram_data[pixel_counter] += input_histogram_data[pixel_counter];
     }
 
     number_of_received_results++;
+    MyDebugPrintWithDetails("LEADERTRACE number_of_received_results++ (AddResult exit)");
     wxPrintf("Received %i of %i results\n", number_of_received_results, number_of_expected_results);
+    TmdbgCheckGuard(wxString::Format("AddResult exit, result %d/%d", number_of_received_results, number_of_expected_results).ToUTF8( ).data( ));
 }
 
 /**

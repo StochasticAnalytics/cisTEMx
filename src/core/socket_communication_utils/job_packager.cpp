@@ -1561,6 +1561,12 @@ JobResult::JobResult( ) {
 }
 
 JobResult::JobResult(int wanted_result_size, float* wanted_result_data) {
+    // Members must be initialized before SetResult: it frees the previous buffer when
+    // result_size/result_data look live, and uninitialized stack garbage here made that
+    // a delete[] of a wild pointer (silent heap corruption whenever this ctor was used).
+    job_number  = -1;
+    result_size = 0;
+    result_data = NULL;
     SetResult(wanted_result_size, wanted_result_data);
 }
 
@@ -1694,6 +1700,13 @@ bool JobResult::ReceiveFromSocket(wxSocketBase* wanted_socket) {
     byte_pointer[1] = job_number_and_result_size[5];
     byte_pointer[2] = job_number_and_result_size[6];
     byte_pointer[3] = job_number_and_result_size[7];
+
+    // A nonsensical size means the stream has lost framing - allocating from it (or the
+    // result_size * 4 read below wrapping) would smash the heap. 2^30 floats = 4GB.
+    if ( new_result_size < 0 || new_result_size > 1073741824 ) {
+        wxPrintf("SOCKET: BOGUS job result size %i (job number %i) from socket %p - refusing to read\n", new_result_size, job_number, (void*)wanted_socket);
+        return false;
+    }
 
     if ( new_result_size != result_size ) {
         if ( result_size != 0 && result_data != NULL ) {

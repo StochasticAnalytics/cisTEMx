@@ -2,12 +2,50 @@
 #include <wx/app.h>
 #include <wx/cmdline.h>
 #include <cstdio>
+#include <unistd.h>
 #include <map>
 #include "wx/socket.h"
 #include <wx/evtloop.h>
 
 #include "../../core/core_headers.h"
 #include "../../core/socket_communication_utils/socket_codes.h"
+#include <execinfo.h>
+#include <csignal>
+#include <cstdlib>
+
+// LEADERTRACE: job_control has been seen dying with NO output at all (the leader then logs
+// "disconnect from controller", the fleet loses its master and aborts). Every way this process
+// can end must name itself: a fatal-signal backtrace (async-signal-safe, fd 2) and an atexit
+// hook so that even a clean exit()/ExitMainLoop path leaves a trail with a backtrace.
+// Always on - job_control is cheap and never touches CUDA, so there is no libcuda/handler
+// interaction to worry about.
+namespace {
+void JobControlFatalSignal(int signal_number) {
+    void*      backtrace_addresses[64];
+    const int  depth  = backtrace(backtrace_addresses, 64);
+    const char msg1[] = "\nJOB_CONTROL FATAL SIGNAL ";
+    const char msg2[] = " - backtrace (addr2line against cisTEM_job_control for lines):\n";
+    char       signal_digits[4];
+    int        n = 0, s = signal_number;
+    if ( s >= 10 )
+        signal_digits[n++] = '0' + (s / 10);
+    signal_digits[n++] = '0' + (s % 10);
+    write(2, msg1, sizeof(msg1) - 1);
+    write(2, signal_digits, n);
+    write(2, msg2, sizeof(msg2) - 1);
+    backtrace_symbols_fd(backtrace_addresses, depth, 2);
+    signal(signal_number, SIG_DFL);
+    raise(signal_number);
+}
+
+void JobControlAtExit( ) {
+    void*      backtrace_addresses[64];
+    const int  depth = backtrace(backtrace_addresses, 64);
+    const char msg[] = "\nJOB_CONTROL: exit() reached - backtrace of the exit path:\n";
+    write(2, msg, sizeof(msg) - 1);
+    backtrace_symbols_fd(backtrace_addresses, depth, 2);
+}
+} // namespace
 
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_LAUNCHJOB, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_SENDINFO, wxThreadEvent);
@@ -72,6 +110,19 @@ class
     // identifiable and killable later - they used to be orphaned forever.
     wxString tunnel_kill_marker;
     bool     have_launched_tunnels;
+
+    // CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE was set in this controller's environment:
+    // launch one extra LOCAL copy of the worker binary as a dedicated non-compute leader
+    // before the run-profile fleet, so it wins master election. The variable itself is
+    // removed from our environment in OnInit and passed only to that one child, so fleet
+    // workers launched from here can never inherit leader mode.
+    bool launch_non_compute_leader;
+
+    // When the variable's value contains a '/', it names the directory holding the worker
+    // binary the leader should run (the profile's executable_name is a bare program name,
+    // so without this the leader resolves through OUR PATH - which inside a dist container
+    // finds the packaged binary, not a locally deployed one). Empty means resolve via PATH.
+    wxString leader_binary_dir;
 
     void KillAllTunnels( );
 
@@ -164,15 +215,50 @@ bool JobControlApp::OnInit( ) {
     const char* log_dir_env = getenv("CISTEM_JOB_CONTROL_LOG_DIR");
     if ( log_dir_env != NULL && log_dir_env[0] != '\0' ) {
         wxString log_path = wxString::Format("%s/job_control_%d.log", log_dir_env, (int)getpid( ));
-        if ( freopen(log_path.ToUTF8( ).data( ), "a", stdout) != NULL ) {
+        // freopen to the file (a regular-file write never blocks), then mirror the file to the
+        // terminal we were born on with a SEPARATE tail process. The earlier tee approach put
+        // a blocking pipe on the main thread of every writer - when the terminal/pipe stopped
+        // draining, tee blocked, and the leader (whose stdout this is) froze inside wxPrintf
+        // with its event loop dead (seen: 15 jobs dispatched, then silence). tail can stall
+        // all it likes; nothing upstream waits on it, and --pid ends it with this process.
+        const int original_stdout = dup(STDOUT_FILENO);
+        if ( freopen(log_path.ToUTF8( ).data( ), "a", stdout) != NULL )
             setvbuf(stdout, NULL, _IOLBF, 0);
-        }
-        if ( freopen(log_path.ToUTF8( ).data( ), "a", stderr) != NULL ) {
+        if ( freopen(log_path.ToUTF8( ).data( ), "a", stderr) != NULL )
             setvbuf(stderr, NULL, _IOLBF, 0);
+        if ( original_stdout >= 0 ) {
+            wxString mirror = wxString::Format("tail --pid=%d -n +1 -F '%s' >&%d 2>/dev/null &", (int)getpid( ), log_path, original_stdout);
+            if ( system(mirror.ToUTF8( ).data( )) != 0 ) {
+                // non-fatal: the log file is still the source of truth
+            }
+        }
+        // Stable name for the newest log (each run is a fresh pid): tail -f this instead
+        // of hunting for the current pid-named file. Best effort - a failure only costs
+        // the convenience link.
+        wxString latest_link = wxString::Format("%s/job_control_latest.log", log_dir_env);
+        unlink(latest_link.ToUTF8( ).data( ));
+        if ( symlink(log_path.ToUTF8( ).data( ), latest_link.ToUTF8( ).data( )) != 0 ) {
+            // non-fatal
         }
     }
 
     MyDebugPrintGA1("JobControlApp::OnInit begin pid=%d", (int)getpid( ));
+    {
+        // Pre-warm backtrace() (lazy unwinder load mallocs) so the handlers are allocation-free.
+        void* warm[8];
+        backtrace(warm, 8);
+        signal(SIGSEGV, JobControlFatalSignal);
+        signal(SIGBUS, JobControlFatalSignal);
+        signal(SIGABRT, JobControlFatalSignal);
+        signal(SIGFPE, JobControlFatalSignal);
+        signal(SIGILL, JobControlFatalSignal);
+        signal(SIGTERM, JobControlFatalSignal);
+        signal(SIGHUP, JobControlFatalSignal);
+        signal(SIGINT, JobControlFatalSignal);
+        signal(SIGPIPE, JobControlFatalSignal);
+        atexit(JobControlAtExit);
+        MyDebugPrintWithDetails("LEADERTRACE job_control pid %d: fatal-signal + atexit tracing armed", (int)getpid( ));
+    }
     number_of_received_jobs    = 0;
     all_jobs_are_finished      = false;
     master_tunnels_established = false;
@@ -180,6 +266,28 @@ bool JobControlApp::OnInit( ) {
     have_launched_tunnels      = false;
     remote_tunnel_targets.Empty( );
     MyDebugPrintGA1("JobControlApp::OnInit counters reset");
+
+    // Claim the leader flag for this process and scrub it from our environment BEFORE any
+    // child is launched: local run commands (and anything else spawned via system/wxExecute)
+    // inherit our environment, and a fleet worker that inherits the variable would go
+    // non-compute if it happened to win master election. Only the leader child launched in
+    // LaunchRemoteJob gets the variable, via an explicit env prefix on its command line.
+    const char* leader_env    = getenv("CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE");
+    launch_non_compute_leader = (leader_env != NULL && leader_env[0] != '\0' && strcmp(leader_env, "0") != 0); // "0" means off
+    leader_binary_dir         = "";
+    if ( launch_non_compute_leader == true ) {
+        // A value containing '/' names the directory the leader binary lives in; any other
+        // non-empty value (e.g. "1") means the leader resolves through PATH like the fleet.
+        wxString leader_env_value = wxString::FromUTF8(leader_env);
+        if ( leader_env_value.Contains("/") == true ) {
+            leader_binary_dir = leader_env_value;
+            while ( leader_binary_dir.EndsWith("/") )
+                leader_binary_dir.RemoveLast( );
+        }
+        unsetenv("CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE");
+        wxPrintf("LEADER_NON_COMPUTE: controller will launch a local dedicated leader before the fleet%s\n",
+                 leader_binary_dir.IsEmpty( ) ? "" : (" from " + leader_binary_dir).ToUTF8( ).data( ));
+    }
 
     MyDebugPrint("Job Controller: Running...\n");
     MyDebugPrintGA1("JobControlApp::OnInit returning true");
@@ -355,6 +463,7 @@ void JobControlApp::KillAllTunnels( ) {
 }
 
 int JobControlApp::OnExit( ) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::OnExit (received_jobs=%d all_finished=%d)", number_of_received_jobs, (int)all_jobs_are_finished);
     KillAllTunnels( );
     return 0;
 }
@@ -618,6 +727,55 @@ void LaunchJobThread::LaunchRemoteJob( ) {
 
     wxMilliSleep(2000);
 
+    if ( main_thread_pointer->launch_non_compute_leader == true ) {
+        // Launch the dedicated non-compute leader: a plain local copy of the worker binary,
+        // outside the run-profile seats and without any run-command wrapper, because it must
+        // execute on this host - co-located with the controller and reachable through the
+        // same reverse tunnels the fleet uses. The env prefix scopes leader mode to this one
+        // child; our own copy of the variable was scrubbed in OnInit so the fleet below
+        // stays clean. One thread is enough - it serves and aggregates, never computes.
+        // executable_default begins with the profile's bare executable_name, so prefixing the
+        // directory turns it into an absolute invocation; empty dir falls back to PATH lookup.
+        wxString leader_invocation = executable_default;
+        if ( main_thread_pointer->leader_binary_dir.IsEmpty( ) == false )
+            leader_invocation = main_thread_pointer->leader_binary_dir + "/" + executable_default;
+
+        // stdbuf -oL/-eL: the leader inherits our log-file stdout, which is block-buffered
+        // for a file - a signal death (segfault) would lose everything it ever printed.
+        // Line buffering caps the loss at one line.
+        wxString leader_command = "env CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE=1 stdbuf -oL -eL " + leader_invocation + " 1 &";
+        QueueInfo(wxString::Format("Job Control : Launching dedicated non-compute leader: '%s'", leader_command));
+        MyDebugPrintWithDetails("LEADER-PATH: launching leader '%s'\n", leader_command);
+        MyDebugPrintGA1("launching non-compute leader: '%s'", leader_command);
+        int leader_ret = system(leader_command.ToUTF8( ).data( ));
+        if ( leader_ret != 0 ) {
+            QueueInfo(wxString::Format("LEADER_NON_COMPUTE ERROR: leader launch returned %i - aborting launch", leader_ret));
+            main_thread_pointer->KillAllTunnels( );
+            return;
+        }
+
+        // Hold the fleet until the leader has actually won master election - if a fleet
+        // worker connected first IT would be elected master instead, and the leader would
+        // join as a worker that never computes, stalling every job dispatched to it.
+        // have_assigned_master is written on the main thread when the first connection is
+        // accepted; polling a bool from this launch thread matches how the tunnel state is
+        // already shared.
+        int waited_ms = 0;
+        while ( main_thread_pointer->have_assigned_master == false && waited_ms < 120000 ) {
+            wxMilliSleep(100);
+            waited_ms += 100;
+        }
+
+        if ( main_thread_pointer->have_assigned_master == false ) {
+            QueueInfo("LEADER_NON_COMPUTE ERROR: leader did not connect within 120s - aborting launch");
+            MyDebugPrintGA1("non-compute leader election timeout");
+            main_thread_pointer->KillAllTunnels( );
+            return;
+        }
+
+        MyDebugPrintGA1("non-compute leader elected master after %d ms, launching fleet", waited_ms);
+    }
+
     if ( actual_number_of_jobs < current_run_profile.ReturnTotalJobs( ) )
         number_of_commands_to_run = actual_number_of_jobs;
     else
@@ -756,6 +914,7 @@ void JobControlApp::SendNumberofConnections(bool check_shutdown_gate) {
     // inside that window the count can pass the gate without ever equalling it. Once the count
     // reaches the gate all expected processes have phoned home, so shutting down is correct.
     if ( number_of_workers_already_connected >= number_of_commands_to_run ) {
+        MyDebugPrintWithDetails("LEADER-PATH: shutdown gate fired (%d >= %d)\n", (int)number_of_workers_already_connected, number_of_commands_to_run);
         ShutDownServer( );
         MyDebugPrint("Socket Server is now shutdown\n");
     }
@@ -796,6 +955,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
 
             master_socket        = new_connection;
             have_assigned_master = true;
+            MyDebugPrintWithDetails("LEADER-PATH: master elected, socket %p peer %s\n", (void*)new_connection, peer_ip);
 
             WriteToSocket(new_connection, socket_you_are_the_master, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
             MyDebugPrintGA1("HandleNewSocketConnection sent socket_you_are_the_master, sending job package");
@@ -851,15 +1011,21 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
 
             MonitorSocket(new_connection);
 
-            number_of_workers_already_connected++;
-            MyDebugPrintGA1("HandleNewSocketConnection master count now %d", (int)number_of_workers_already_connected);
-            // Report the count to the GUI but skip the shutdown gate: a non-compute leader is
-            // still included in the count at this point (its dedicated-master announcement is
-            // processed later, off the monitor thread), so with fleet-only run-profile totals
-            // the gate could fire now and shut the server down before any real worker has
-            // connected. The gate is evaluated on worker connections and again when the
-            // announcement corrects the count.
-            SendNumberofConnections(false);
+            // A leader we launched ourselves is known to be non-compute in advance: never
+            // count it, so the GUI count stays monotonic over real workers only (counting
+            // then correcting on the announcement made the GUI bounce 0 -> 1 -> 0). An
+            // externally-launched master is still counted here; if it is a dedicated
+            // leader, its announcement corrects the count later - so its count is
+            // reported with the shutdown gate skipped, since with fleet-only run-profile
+            // totals the gate could otherwise fire before any real worker has connected.
+            if ( launch_non_compute_leader == false ) {
+                number_of_workers_already_connected++;
+                MyDebugPrintGA1("HandleNewSocketConnection master count now %d", (int)number_of_workers_already_connected);
+                SendNumberofConnections(false);
+            }
+            else {
+                MyDebugPrintGA1("HandleNewSocketConnection our own non-compute leader connected, not counted");
+            }
         }
         else // we have a master, tell this worker who it's master is.
         {
@@ -882,6 +1048,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
             WriteToSocket(new_connection, socket_you_are_a_worker, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
             SendwxStringToSocket(&effective_master_ip, new_connection);
             SendwxStringToSocket(&effective_master_port, new_connection);
+            MyDebugPrintWithDetails("LEADER-PATH: worker %s redirected to master %s:%s\n", peer_ip, effective_master_ip, effective_master_port);
             MyDebugPrintGA1("HandleNewSocketConnection worker peer=%s told master, monitoring socket", peer_ip);
 
             // that should be the end of our interactions with the worker
@@ -961,6 +1128,7 @@ void JobControlApp::HandleSocketJobPackage(wxSocketBase* connected_socket, JobPa
 }
 
 void JobControlApp::HandleSocketTimeToDie(wxSocketBase* connected_socket) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketTimeToDie socket=%p (gui=%p master=%p) received_jobs=%d all_finished=%d - GUI told us to die, exiting", (void*)connected_socket, (void*)gui_socket, (void*)master_socket, number_of_received_jobs, (int)all_jobs_are_finished);
     if ( have_assigned_master == true ) {
         WriteToSocket(master_socket, socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
         StopMonitoringAndDestroySocket(master_socket);
@@ -1002,52 +1170,72 @@ void JobControlApp::HandleSocketIAmADedicatedMaster(wxSocketBase* connected_sock
     // shuts the server down when the total reaches the number of launched
     // commands, which would lock out the last real worker.
 
-    number_of_workers_already_connected--;
-    MyDebugPrintGA1("dedicated master announced itself, connected count corrected to %d", (int)number_of_workers_already_connected);
+    // Only correct the count for an externally-launched leader: a leader we launched
+    // ourselves was never counted at connect (see HandleNewSocketConnection).
+    MyDebugPrintWithDetails("LEADER-PATH: dedicated-master announce received, count=%d launched_leader=%d\n", (int)number_of_workers_already_connected, (int)launch_non_compute_leader);
+    if ( launch_non_compute_leader == false ) {
+        number_of_workers_already_connected--;
+        MyDebugPrintGA1("dedicated master announced itself, connected count corrected to %d", (int)number_of_workers_already_connected);
+    }
+    else {
+        MyDebugPrintGA1("our own non-compute leader announced itself, count unchanged at %d", (int)number_of_workers_already_connected);
+    }
     SendNumberofConnections( );
 }
 
 void JobControlApp::HandleSocketIHaveAnError(wxSocketBase* connected_socket, wxString error_message) {
     // pass the error message up to the GUI..
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketIHaveAnError from %p: '%s'", (void*)connected_socket, error_message);
 
     SendError(error_message);
 }
 
 void JobControlApp::HandleSocketIHaveInfo(wxSocketBase* connected_socket, wxString info_message) {
     // pass the error message up to the GUI..
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketIHaveInfo from %p: '%s'", (void*)connected_socket, info_message);
 
     SendInfo(info_message);
 }
 
 void JobControlApp::HandleSocketJobResult(wxSocketBase* connected_socket, JobResult* received_result) {
     // pass the result onto the GUI...
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketJobResult from %p job=%d size=%d", (void*)connected_socket, received_result == NULL ? -1 : received_result->job_number, received_result == NULL ? -1 : received_result->result_size);
 
     SendJobResult(received_result);
+    MyDebugPrintWithDetails("LEADERTRACE AFTER SendJobResult");
 
     // delete it..
 
     delete received_result;
+    MyDebugPrintWithDetails("LEADERTRACE AFTER delete received_result");
 }
 
 void JobControlApp::HandleSocketJobResultQueue(wxSocketBase* connected_socket, ArrayofJobResults* received_queue) {
     // pass it on and delete..
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketJobResultQueue from %p count=%lu (gui_socket=%p connected=%d)", (void*)connected_socket, received_queue == NULL ? 0UL : (unsigned long)received_queue->GetCount( ), (void*)gui_socket, gui_socket == NULL ? -1 : (int)gui_socket->IsConnected( ));
 
     SendJobResultQueue(*received_queue);
+    MyDebugPrintWithDetails("LEADERTRACE AFTER SendJobResultQueue");
     number_of_received_jobs += received_queue->GetCount( );
 
     delete received_queue;
+    MyDebugPrintWithDetails("LEADERTRACE AFTER delete received_queue (received_jobs=%d)", number_of_received_jobs);
 }
 
 void JobControlApp::HandleSocketJobFinished(wxSocketBase* connected_socket, int finished_job_number) {
     // pass on to the gui..
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketJobFinished job=%d", finished_job_number);
 
     SendJobFinished(finished_job_number);
+    MyDebugPrintWithDetails("LEADERTRACE AFTER SendJobFinished job=%d", finished_job_number);
 }
 
 void JobControlApp::HandleSocketAllJobsFinished(wxSocketBase* connected_socket, long received_timing_in_milliseconds) {
     // pass on to the gui..
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketAllJobsFinished timing=%li", received_timing_in_milliseconds);
 
     SendAllJobsFinished(received_timing_in_milliseconds);
+    MyDebugPrintWithDetails("LEADERTRACE AFTER SendAllJobsFinished");
     all_jobs_are_finished = true;
 
     // don't die, wait for GUI to kill me..
@@ -1061,11 +1249,14 @@ void JobControlApp::HandleSocketTemplateMatchResultReady(wxSocketBase* connected
 
 void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
     MyDebugPrintGA1("HandleSocketDisconnect ENTRY socket=%p gui_socket=%p master_socket=%p", (void*)connected_socket, (void*)gui_socket, (void*)master_socket);
+    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketDisconnect socket=%p (%s) received_jobs=%d all_finished=%d", (void*)connected_socket,
+                            connected_socket == gui_socket ? "GUI" : (connected_socket == master_socket ? "MASTER" : "worker/probe"), number_of_received_jobs, (int)all_jobs_are_finished);
     // what disconnected..
 
     if ( connected_socket == gui_socket ) {
         MyDebugPrintGA1("HandleSocketDisconnect GUI DISCONNECT, aborting");
         MyDebugPrint("Got a disconnect from the GUI - aborting");
+        MyDebugPrintWithDetails("LEADERTRACE job_control: GUI socket dropped - telling master to die and exiting");
 
         if ( have_assigned_master == true ) {
             WriteToSocket(master_socket, socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
@@ -1095,6 +1286,7 @@ void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         if ( all_jobs_are_finished == false ) // something went wrong
         {
             MyDebugPrint("Controller got disconnect from master...");
+            MyDebugPrintWithDetails("LEADERTRACE job_control: MASTER socket dropped before all_jobs_finished - exiting");
             SendError("Controller received a disconnect from the master before the job was finished..");
 
             KillAllTunnels( );
@@ -1117,6 +1309,8 @@ void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
     }
     else // Must be a worker dropping us to connect to the master
     {
+        MyDebugPrintWithDetails("LEADERTRACE job_control: worker/probe socket %p dropped - destroying", (void*)connected_socket);
         StopMonitoringAndDestroySocket(connected_socket);
+        MyDebugPrintWithDetails("LEADERTRACE job_control: worker/probe socket destroyed");
     }
 }

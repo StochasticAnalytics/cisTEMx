@@ -225,7 +225,9 @@ void MatchTemplatePanel::Reset( ) {
     ResultsPanel->Clear( );
 
     if ( running_job == true ) {
+        MyDebugPrintWithDetails("LEADERTRACE BEFORE KillJob(Reset)");
         main_frame->job_controller.KillJob(my_job_id);
+        MyDebugPrintWithDetails("LEADERTRACE AFTER KillJob(Reset)");
         cached_results.Clear( );
 
         running_job = false;
@@ -1121,8 +1123,19 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     }
 
     // CPU match_template can probably be DEPRECATED
-    if ( use_gpu )
-        current_job_package.Reset(active_refinement_run_profile, "match_template_gpu", number_of_jobs);
+    if ( use_gpu ) {
+        // CISTEM_EXPERIMENTAL_MT_EXECUTABLE: override the worker binary name, e.g.
+        // match_template_gpu_tex3d (the FastFFT 3d-texture build, which ships as a
+        // separate binary because the texture gates are compile-time and incompatible
+        // with every non-match_template caller - see GpuImage.h).
+        wxString    mt_executable     = "match_template_gpu";
+        const char* mt_executable_env = getenv("CISTEM_EXPERIMENTAL_MT_EXECUTABLE");
+        if ( mt_executable_env != NULL && mt_executable_env[0] != '\0' ) {
+            mt_executable = wxString::FromUTF8(mt_executable_env);
+            WriteInfoText(wxString::Format("CISTEM_EXPERIMENTAL_MT_EXECUTABLE: using '%s'", mt_executable));
+        }
+        current_job_package.Reset(active_refinement_run_profile, mt_executable, number_of_jobs);
+    }
     else
         current_job_package.Reset(active_refinement_run_profile, "match_template", number_of_jobs);
 
@@ -1271,7 +1284,23 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
             int best_parameters_to_keep = 1;
             //			float defocus_search_range = 0.0f;
             //			float defocus_step = 0.0f;
-            float padding            = 1;
+            float padding = 1;
+            // CISTEM_EXPERIMENTAL_MT_PADDING: the GUI is built gate-off while the container's
+            // match_template_gpu may be the FastFFT texture build, which reads this value as the
+            // absolute output box edge (512/1024/1728/2048, >= volume size) - so the box has to
+            // be supplied explicitly here; the hardcoded 1 is only right for the stock binary.
+            {
+                const char* mt_padding_env = getenv("CISTEM_EXPERIMENTAL_MT_PADDING");
+                if ( mt_padding_env != NULL && mt_padding_env[0] != '\0' ) {
+                    double requested_padding;
+                    if ( wxString::FromUTF8(mt_padding_env).ToDouble(&requested_padding) && requested_padding >= 0.0 ) {
+                        padding = float(requested_padding);
+                        WriteInfoText(wxString::Format("CISTEM_EXPERIMENTAL_MT_PADDING: padding / output box = %.0f", padding));
+                    }
+                    else
+                        WriteErrorText(wxString::Format("CISTEM_EXPERIMENTAL_MT_PADDING='%s' is not a number; using %.0f", mt_padding_env, padding));
+                }
+            }
             bool  ctf_refinement     = false;
             float mask_radius_search = 0.0f; //current_volume->x_size; // this is actually not really used...
 
@@ -1385,30 +1414,41 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER HandleSocketTemplateMatchResultReady");
+    MyDebugPrintWithDetails("LEADERTRACE image_number=%d cached_results_count=%lu", image_number, (unsigned long)cached_results.GetCount( ));
     MyDebugPrintGA1("MatchTemplatePanel::HandleSocketTemplateMatchResultReady image_number=%d high_res=%f threshold=%f peaks=%lu", image_number, high_res_limit_used, threshold_used, (unsigned long)peak_infos.GetCount( ));
     // result is available for an image..
 
+    MyDebugPrintWithDetails("LEADERTRACE BEFORE cached_results[image_number-1] index");
     cached_results[image_number - 1].found_peaks.Clear( );
+    MyDebugPrintWithDetails("LEADERTRACE AFTER cached_results[image_number-1] index");
     cached_results[image_number - 1].found_peaks    = peak_infos;
     cached_results[image_number - 1].used_threshold = threshold_used;
     cached_results[image_number - 1].high_res_limit = high_res_limit_used;
 
+    MyDebugPrintWithDetails("LEADERTRACE BEFORE ResultsPanel->SetActiveResult");
     ResultsPanel->SetActiveResult(cached_results[image_number - 1]);
+    MyDebugPrintWithDetails("LEADERTRACE AFTER ResultsPanel->SetActiveResult");
 
     // write to database..
 
+    MyDebugPrintWithDetails("LEADERTRACE BEFORE database.Begin(result)");
     main_frame->current_project.database.Begin( );
+    MyDebugPrintWithDetails("LEADERTRACE AFTER database.Begin(result)");
 
     cached_results[image_number - 1].job_id = template_match_job_id;
     main_frame->current_project.database.AddTemplateMatchingResult(template_match_id, cached_results[image_number - 1]);
     template_match_id++;
 
     main_frame->current_project.database.SetActiveTemplateMatchJobForGivenImageAssetID(cached_results[image_number - 1].image_asset_id, template_match_job_id);
+    MyDebugPrintWithDetails("LEADERTRACE BEFORE database.Commit(result)");
     main_frame->current_project.database.Commit( );
+    MyDebugPrintWithDetails("LEADERTRACE AFTER database.Commit(result)");
     match_template_results_panel->is_dirty = true;
 }
 
 void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER FinishButtonClick");
     MyDebugPrintGA1("MatchTemplatePanel::FinishButtonClick");
     ProgressBar->SetValue(0);
     TimeRemainingText->SetLabel("Time Remaining : ???h:??m:??s");
@@ -1431,11 +1471,14 @@ void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER TerminateButtonClick");
     MyDebugPrintGA1("MatchTemplatePanel::TerminateButtonClick");
     // kill the job, this will kill the socket to terminate downstream processes
     // - this will have to be improved when clever network failure is incorporated
 
+    MyDebugPrintWithDetails("LEADERTRACE BEFORE KillJob(TerminateButtonClick)");
     main_frame->job_controller.KillJob(my_job_id);
+    MyDebugPrintWithDetails("LEADERTRACE AFTER KillJob(TerminateButtonClick)");
 
     WriteInfoText("Terminated Job");
     TimeRemainingText->SetLabel("Time Remaining : Terminated");
@@ -1472,6 +1515,7 @@ void MatchTemplatePanel::WriteErrorText(wxString text_to_write) {
 }
 
 void MatchTemplatePanel::OnSocketJobResultMsg(JobResult& received_result) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER OnSocketJobResultMsg");
     MyDebugPrintGA1("MatchTemplatePanel::OnSocketJobResultMsg job_number=%i", received_result.job_number);
     if ( received_result.result_size > 0 ) {
         ProcessResult(&received_result);
@@ -1479,6 +1523,7 @@ void MatchTemplatePanel::OnSocketJobResultMsg(JobResult& received_result) {
 }
 
 void MatchTemplatePanel::OnSocketJobResultQueueMsg(ArrayofJobResults& received_queue) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER OnSocketJobResultQueueMsg");
     MyDebugPrintGA1("MatchTemplatePanel::OnSocketJobResultQueueMsg queue_count=%lu", (unsigned long)received_queue.GetCount( ));
     for ( int counter = 0; counter < received_queue.GetCount( ); counter++ ) {
         ProcessResult(&received_queue.Item(counter));
@@ -1496,8 +1541,11 @@ void MatchTemplatePanel::SetTimeRemainingText(wxString wanted_text) {
 }
 
 void MatchTemplatePanel::OnSocketAllJobsFinished( ) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER OnSocketAllJobsFinished");
     MyDebugPrintGA1("MatchTemplatePanel::OnSocketAllJobsFinished");
+    MyDebugPrintWithDetails("LEADERTRACE BEFORE ProcessAllJobsFinished() call");
     ProcessAllJobsFinished( );
+    MyDebugPrintWithDetails("LEADERTRACE AFTER ProcessAllJobsFinished() call");
 }
 
 void MatchTemplatePanel::ProcessResult(JobResult* result_to_process) // this will have to be overidden in the parent clas when i make it.
@@ -1564,6 +1612,7 @@ void MatchTemplatePanel::ProcessResult(JobResult* result_to_process) // this wil
 }
 
 void MatchTemplatePanel::ProcessAllJobsFinished( ) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER ProcessAllJobsFinished");
     MyDebugPrintGA1("MatchTemplatePanel::ProcessAllJobsFinished finished=%i total=%i", my_job_tracker.total_number_of_finished_jobs, my_job_tracker.total_number_of_jobs);
 
     MyDebugAssertTrue(my_job_tracker.total_number_of_finished_jobs == my_job_tracker.total_number_of_jobs, "In ProcessAllJobsFinished, but total_number_of_finished_jobs != total_number_of_jobs. Oops.");
@@ -1583,7 +1632,9 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     cached_results.Clear( );
 
     // Kill the job (in case it isn't already dead)
+    MyDebugPrintWithDetails("LEADERTRACE BEFORE KillJob(ProcessAllJobsFinished)");
     main_frame->job_controller.KillJob(my_job_id);
+    MyDebugPrintWithDetails("LEADERTRACE AFTER KillJob(ProcessAllJobsFinished)");
 
     // Key section to advance to the next experiment in the batch
     if ( s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::high_res_sweep ) {
@@ -1663,6 +1714,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 }
 
 void MatchTemplatePanel::WriteResultToDataBase( ) {
+    MyDebugPrintWithDetails("LEADERTRACE ENTER WriteResultToDataBase");
     MyDebugPrintGA1("MatchTemplatePanel::WriteResultToDataBase");
     // I have moved this to HandleSocketTemplateMatchResultReady so that things are done one result at at time.
     /*

@@ -9,8 +9,6 @@
 
 #include "../../core/core_headers.h"
 #include "../../core/socket_communication_utils/socket_codes.h"
-#include <execinfo.h>
-#include <csignal>
 #include <cstdlib>
 #include <dirent.h>
 #include <fcntl.h>
@@ -55,40 +53,6 @@ static FILE* PopenNoInherit(const char* command, const char* mode) {
     MarkAllFdsCloseOnExec( );
     return popen(command, mode);
 }
-
-// LEADERTRACE: job_control has been seen dying with NO output at all (the leader then logs
-// "disconnect from controller", the fleet loses its master and aborts). Every way this process
-// can end must name itself: a fatal-signal backtrace (async-signal-safe, fd 2) and an atexit
-// hook so that even a clean exit()/ExitMainLoop path leaves a trail with a backtrace.
-// Always on - job_control is cheap and never touches CUDA, so there is no libcuda/handler
-// interaction to worry about.
-namespace {
-void JobControlFatalSignal(int signal_number) {
-    void*      backtrace_addresses[64];
-    const int  depth  = backtrace(backtrace_addresses, 64);
-    const char msg1[] = "\nJOB_CONTROL FATAL SIGNAL ";
-    const char msg2[] = " - backtrace (addr2line against cisTEM_job_control for lines):\n";
-    char       signal_digits[4];
-    int        n = 0, s = signal_number;
-    if ( s >= 10 )
-        signal_digits[n++] = '0' + (s / 10);
-    signal_digits[n++] = '0' + (s % 10);
-    write(2, msg1, sizeof(msg1) - 1);
-    write(2, signal_digits, n);
-    write(2, msg2, sizeof(msg2) - 1);
-    backtrace_symbols_fd(backtrace_addresses, depth, 2);
-    signal(signal_number, SIG_DFL);
-    raise(signal_number);
-}
-
-void JobControlAtExit( ) {
-    void*      backtrace_addresses[64];
-    const int  depth = backtrace(backtrace_addresses, 64);
-    const char msg[] = "\nJOB_CONTROL: exit() reached - backtrace of the exit path:\n";
-    write(2, msg, sizeof(msg) - 1);
-    backtrace_symbols_fd(backtrace_addresses, depth, 2);
-}
-} // namespace
 
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_LAUNCHJOB, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_SENDINFO, wxThreadEvent);
@@ -239,11 +203,7 @@ class LaunchJobThread : public wxThread {
 };
 
 wxThread::ExitCode LaunchJobThread::Entry( ) {
-    MyDebugPrintGA1("LaunchJobThread::Entry begin pid=%d", (int)getpid( ));
-    MyDebugPrintGA1("LaunchJobThread::Entry ip_address=%s port_number=%s actual_number_of_jobs=%ld", ip_address, port_number, actual_number_of_jobs);
-    MyDebugPrintGA1("LaunchJobThread::Entry calling LaunchRemoteJob()");
     LaunchRemoteJob( );
-    MyDebugPrintGA1("LaunchJobThread::Entry LaunchRemoteJob() returned");
     return (wxThread::ExitCode)0; // success
 }
 
@@ -288,30 +248,12 @@ bool JobControlApp::OnInit( ) {
         }
     }
 
-    MyDebugPrintGA1("JobControlApp::OnInit begin pid=%d", (int)getpid( ));
-    {
-        // Pre-warm backtrace() (lazy unwinder load mallocs) so the handlers are allocation-free.
-        void* warm[8];
-        backtrace(warm, 8);
-        signal(SIGSEGV, JobControlFatalSignal);
-        signal(SIGBUS, JobControlFatalSignal);
-        signal(SIGABRT, JobControlFatalSignal);
-        signal(SIGFPE, JobControlFatalSignal);
-        signal(SIGILL, JobControlFatalSignal);
-        signal(SIGTERM, JobControlFatalSignal);
-        signal(SIGHUP, JobControlFatalSignal);
-        signal(SIGINT, JobControlFatalSignal);
-        signal(SIGPIPE, JobControlFatalSignal);
-        atexit(JobControlAtExit);
-        MyDebugPrintWithDetails("LEADERTRACE job_control pid %d: fatal-signal + atexit tracing armed", (int)getpid( ));
-    }
     number_of_received_jobs    = 0;
     all_jobs_are_finished      = false;
     master_tunnels_established = false;
     master_tunnel_remote_port  = "";
     have_launched_tunnels      = false;
     remote_tunnel_targets.Empty( );
-    MyDebugPrintGA1("JobControlApp::OnInit counters reset");
 
     // Claim the leader flag for this process and scrub it from our environment BEFORE any
     // child is launched: local run commands (and anything else spawned via system/wxExecute)
@@ -336,7 +278,6 @@ bool JobControlApp::OnInit( ) {
     }
 
     MyDebugPrint("Job Controller: Running...\n");
-    MyDebugPrintGA1("JobControlApp::OnInit returning true");
 
     // initialise sockets
     wxSocketBase::Initialize( );
@@ -509,16 +450,11 @@ void JobControlApp::KillAllTunnels( ) {
 }
 
 int JobControlApp::OnExit( ) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::OnExit (received_jobs=%d all_finished=%d)", number_of_received_jobs, (int)all_jobs_are_finished);
     KillAllTunnels( );
     return 0;
 }
 
 void LaunchJobThread::LaunchRemoteJob( ) {
-    MyDebugPrintGA1("LaunchRemoteJob ENTRY pid=%d tid=%ld", (int)getpid( ), (long)wxThread::GetCurrentId( ));
-    MyDebugPrintGA1("LaunchRemoteJob ip_address='%s' port_number='%s' actual_jobs=%ld", ip_address, port_number, actual_number_of_jobs);
-    MyDebugPrintGA1("LaunchRemoteJob run_profile.number_of_run_commands=%ld controller_address='%s'", current_run_profile.number_of_run_commands, current_run_profile.controller_address);
-    MyDebugPrintGA1("LaunchRemoteJob run_profile.executable_name='%s'", current_run_profile.executable_name);
     long counter;
     long command_counter;
     long process_counter;
@@ -572,41 +508,31 @@ void LaunchJobThread::LaunchRemoteJob( ) {
     int next_tunnel_port = 43210;
 
     if ( USE_SSH_TUNNEL ) {
-        MyDebugPrintGA1("LaunchRemoteJob beginning tunnel scan loop, num_run_commands=%ld", current_run_profile.number_of_run_commands);
         // Scan all commands for SSH targets that need tunnels
         for ( long cc = 0; cc < current_run_profile.number_of_run_commands; cc++ ) {
-            wxString cmd = current_run_profile.run_commands[cc].command_to_run;
-            MyDebugPrintGA1("tunnel scan cc=%ld cmd='%s'", cc, cmd);
+            wxString cmd    = current_run_profile.run_commands[cc].command_to_run;
             wxString target = ExtractSSHTarget(cmd);
-            MyDebugPrintGA1("tunnel scan cc=%ld extracted target='%s' empty=%d", cc, target, (int)target.IsEmpty( ));
             if ( target.IsEmpty( ) )
                 continue;
             if ( ! NeedsTunnel(target) ) {
-                MyDebugPrintGA1("tunnel scan cc=%ld target='%s' is LOCAL, skipping", cc, target);
                 wxPrintf("SSH_TUNNEL: %s is local, no tunnel needed\n", target);
                 continue;
             }
             if ( tunnel_map.find(target) != tunnel_map.end( ) ) {
-                MyDebugPrintGA1("tunnel scan cc=%ld target='%s' already has tunnel, skipping", cc, target);
                 continue; // Already have a tunnel for this target
             }
 
-            MyDebugPrintGA1("tunnel scan cc=%ld target='%s' NEW REMOTE TARGET, setting up", cc, target);
             wxPrintf("SSH_TUNNEL: Setting up tunnel for %s\n", target);
 
             // 1. Verify connectivity
-            MyDebugPrintGA1("tunnel target='%s' running ssh connectivity test", target);
             wxString ssh_test = RunAndCapture(wxString::Format(
                     "ssh -o ConnectTimeout=10 %s \"echo ok\" 2>/dev/null", target));
-            MyDebugPrintGA1("tunnel target='%s' ssh_test result='%s'", target, ssh_test);
             if ( ssh_test != "ok" ) {
-                MyDebugPrintGA1("tunnel target='%s' SSH TEST FAILED, aborting LaunchRemoteJob", target);
                 QueueInfo(wxString::Format("SSH_TUNNEL_ERROR: Cannot SSH to %s _ aborting", target));
                 main_thread_pointer->KillAllTunnels( );
                 return;
             }
             wxPrintf("SSH_TUNNEL: Connectivity to %s confirmed\n", target);
-            MyDebugPrintGA1("tunnel target='%s' connectivity confirmed, beginning port try loop next_tunnel_port=%d", target, next_tunnel_port);
 
             // 2. Establish reverse tunnel
             // Pre-check: ssh -R with ExitOnForwardFailure still returns 0 when
@@ -620,23 +546,19 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 wxString probe = RunAndCapture(wxString::Format(
                         "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%d 2>/dev/null && echo in_use || echo free'\" 2>/dev/null",
                         target, try_port));
-                MyDebugPrintGA1("tunnel target='%s' precheck port %d result='%s'", target, try_port, probe);
                 if ( ! probe.Contains("free") ) {
                     // in_use or ambiguous -- skip to next port
                     continue;
                 }
-                MyDebugPrintGA1("tunnel target='%s' trying port %d (forwarding to localhost:%s)", target, try_port, port_number);
                 wxString tunnel_cmd = wxString::Format(
                         "ssh -f -N -o SendEnv=%s -o ExitOnForwardFailure=yes -R %d:localhost:%s %s 2>/dev/null",
                         main_thread_pointer->tunnel_kill_marker, try_port, port_number, target);
                 int ret = SystemNoInherit(tunnel_cmd.ToUTF8( ).data( ));
-                MyDebugPrintGA1("tunnel target='%s' port %d ssh -f -N returned %d", target, try_port, ret);
                 if ( ret == 0 ) {
                     main_thread_pointer->have_launched_tunnels = true;
                     remote_port                                = wxString::Format("%d", try_port);
                     next_tunnel_port                           = try_port + 1;
                     tunnel_ok                                  = true;
-                    MyDebugPrintGA1("tunnel target='%s' SUCCESS on port %d", target, try_port);
                     break;
                 }
             }
@@ -654,11 +576,9 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         // 3. Verify all tunnels are working before releasing to command loop.
         //    SSH to each remote and confirm the tunnel port is listening.
         //    This replaces manual launch ordering and delay hacks.
-        MyDebugPrintGA1("tunnel verification phase: %zu tunnel(s) to verify", tunnel_map.size( ));
         for ( auto& kv : tunnel_map ) {
             wxString target = kv.first;
             wxString tport  = kv.second.port;
-            MyDebugPrintGA1("verify target='%s' port=%s", target, tport);
             wxPrintf("SSH_TUNNEL: Verifying tunnel to %s (port %s)...\n", target, tport);
 
             bool verified = false;
@@ -667,10 +587,8 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 wxString check = RunAndCapture(wxString::Format(
                         "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%s && echo tunnel_ok || echo tunnel_fail' 2>/dev/null\" 2>/dev/null",
                         target, tport));
-                MyDebugPrintGA1("verify target='%s' attempt=%d check_output='%s'", target, attempt + 1, check);
                 if ( check.Contains("tunnel_ok") ) {
                     wxPrintf("SSH_TUNNEL: Tunnel to %s verified OK\n", target);
-                    MyDebugPrintGA1("verify target='%s' OK on attempt=%d", target, attempt + 1);
                     verified = true;
                     break;
                 }
@@ -681,17 +599,14 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 // Tunnel established but can't reach the port -- warn but continue
                 // (the tunnel SSH process may just need a moment)
                 wxPrintf("SSH_TUNNEL: WARNING: Could not verify tunnel to %s -- proceeding anyway\n", target);
-                MyDebugPrintGA1("verify target='%s' UNVERIFIED, proceeding anyway", target);
             }
         }
 
         if ( tunnel_map.empty( ) ) {
             wxPrintf("SSH_TUNNEL: No remote SSH targets, using original ip/port\n");
-            MyDebugPrintGA1("tunnel_map empty, no remote targets");
         }
         else {
             wxPrintf("SSH_TUNNEL: All %zu tunnel(s) ready\n", tunnel_map.size( ));
-            MyDebugPrintGA1("tunnel_map ready, count=%zu", tunnel_map.size( ));
         }
     }
     else {
@@ -731,7 +646,6 @@ void LaunchJobThread::LaunchRemoteJob( ) {
     }
     main_thread_pointer->master_tunnels_established = false;
     main_thread_pointer->master_tunnel_remote_port  = "";
-    MyDebugPrintGA1("published remote_tunnel_targets count=%d", (int)main_thread_pointer->remote_tunnel_targets.GetCount( ));
 
     // Revert-debug-ga1: reserve ONE high port that is free on every remote
     // target. This port is used on BOTH sides of the master-port reverse
@@ -748,7 +662,6 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 wxString probe  = RunAndCapture(wxString::Format(
                         "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%d 2>/dev/null && echo in_use || echo free'\" 2>/dev/null",
                         target, try_port));
-                MyDebugPrintGA1("master-port reserve probe target='%s' port=%d result='%s'", target, try_port, probe);
                 if ( ! probe.Contains("free") ) {
                     free_on_all = false;
                     break;
@@ -758,14 +671,12 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 main_thread_pointer->master_tunnel_remote_port = wxString::Format("%d", try_port);
                 next_tunnel_port                               = try_port + 1;
                 reserved                                       = true;
-                MyDebugPrintGA1("master-port reserve SUCCESS port=%d", try_port);
                 wxPrintf("SSH_TUNNEL: reserved master-tunnel port %d (uniform across %zu target(s))\n", try_port, tunnel_map.size( ));
                 break;
             }
         }
         if ( ! reserved ) {
             QueueInfo("SSH_TUNNEL_ERROR: could not reserve a master-tunnel port free on all remotes _ aborting");
-            MyDebugPrintGA1("master-port reserve FAILED, aborting");
             main_thread_pointer->KillAllTunnels( );
             return;
         }
@@ -799,8 +710,6 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         // Line buffering caps the loss at one line.
         wxString leader_command = "env CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE=1 stdbuf -oL -eL " + leader_invocation + " 1 &";
         QueueInfo(wxString::Format("Job Control : Launching dedicated non-compute leader: '%s'", leader_command));
-        MyDebugPrintWithDetails("LEADER-PATH: launching leader '%s'\n", leader_command);
-        MyDebugPrintGA1("launching non-compute leader: '%s'", leader_command);
         int leader_ret = SystemNoInherit(leader_command.ToUTF8( ).data( ));
         if ( leader_ret != 0 ) {
             QueueInfo(wxString::Format("LEADER_NON_COMPUTE ERROR: leader launch returned %i - aborting launch", leader_ret));
@@ -822,12 +731,9 @@ void LaunchJobThread::LaunchRemoteJob( ) {
 
         if ( main_thread_pointer->have_assigned_master == false ) {
             QueueInfo("LEADER_NON_COMPUTE ERROR: leader did not connect within 120s - aborting launch");
-            MyDebugPrintGA1("non-compute leader election timeout");
             main_thread_pointer->KillAllTunnels( );
             return;
         }
-
-        MyDebugPrintGA1("non-compute leader elected master after %d ms, launching fleet", waited_ms);
     }
 
     if ( actual_number_of_jobs < current_run_profile.ReturnTotalJobs( ) )
@@ -835,9 +741,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
     else
         number_of_commands_to_run = current_run_profile.ReturnTotalJobs( );
 
-    MyDebugPrintGA1("LaunchRemoteJob entering command launch loop num_commands=%ld total_to_run=%ld", current_run_profile.number_of_run_commands, number_of_commands_to_run);
     for ( command_counter = 0; command_counter < current_run_profile.number_of_run_commands; command_counter++ ) {
-        MyDebugPrintGA1("cmd_loop iter=%ld num_copies=%i delay_ms=%i", command_counter, current_run_profile.run_commands[command_counter].number_of_copies, current_run_profile.run_commands[command_counter].delay_time_in_ms);
         if ( number_of_commands_to_run - number_of_commands_run < current_run_profile.run_commands[command_counter].number_of_copies )
             number_to_run_for_this_command = number_of_commands_to_run - number_of_commands_run;
         else
@@ -848,11 +752,9 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         // Otherwise use the default ip/port (local workers).
         wxString cmd_template   = current_run_profile.run_commands[command_counter].command_to_run;
         wxString cmd_ssh_target = ExtractSSHTarget(cmd_template);
-        MyDebugPrintGA1("cmd_loop iter=%ld template='%s' ssh_target='%s'", command_counter, cmd_template, cmd_ssh_target);
 
         if ( ! cmd_ssh_target.IsEmpty( ) && tunnel_map.find(cmd_ssh_target) != tunnel_map.end( ) ) {
             TunnelInfo& ti = tunnel_map[cmd_ssh_target];
-            MyDebugPrintGA1("cmd_loop iter=%ld picking TUNNEL executable target=%s tunnel_ip=%s tunnel_port=%s", command_counter, cmd_ssh_target, ti.ip, ti.port);
             if ( current_run_profile.controller_address == "" ) {
                 executable = current_run_profile.executable_name + " " + ti.ip + " " + ti.port + " ";
             }
@@ -867,7 +769,6 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         }
         else {
             executable = executable_default;
-            MyDebugPrintGA1("cmd_loop iter=%ld picking DEFAULT executable (target empty or not in tunnel_map)", command_counter);
             wxPrintf("SSH_TUNNEL: Command %ld -> default\n", command_counter);
         }
 
@@ -878,7 +779,6 @@ void LaunchJobThread::LaunchRemoteJob( ) {
 
         execution_command += "&";
 
-        MyDebugPrintGA1("cmd_loop iter=%ld final execution_command='%s' copies=%ld", command_counter, execution_command, number_to_run_for_this_command);
         for ( process_counter = 0; process_counter < number_to_run_for_this_command; process_counter++ ) {
 
             wxMilliSleep(current_run_profile.run_commands[command_counter].delay_time_in_ms);
@@ -891,14 +791,11 @@ void LaunchJobThread::LaunchRemoteJob( ) {
 
             //wxQueueEvent(main_thread_pointer, test_event);
             //wxExecute(execution_command);
-            MyDebugPrintGA1("about to system() iter=%ld copy=%ld", command_counter, process_counter);
             int sysret = SystemNoInherit(execution_command.ToUTF8( ).data( ));
-            MyDebugPrintGA1("system() returned %d for iter=%ld copy=%ld", sysret, command_counter, process_counter);
             number_of_commands_run++;
         }
     }
 
-    MyDebugPrintGA1("LaunchRemoteJob END num_commands_run=%ld waiting on socket events", number_of_commands_run);
     // now we wait for the connections - this is taken care of as server events..
 }
 
@@ -968,7 +865,6 @@ void JobControlApp::SendNumberofConnections(bool check_shutdown_gate) {
     // inside that window the count can pass the gate without ever equalling it. Once the count
     // reaches the gate all expected processes have phoned home, so shutting down is correct.
     if ( number_of_workers_already_connected >= number_of_commands_to_run ) {
-        MyDebugPrintWithDetails("LEADER-PATH: shutdown gate fired (%d >= %d)\n", (int)number_of_workers_already_connected, number_of_commands_to_run);
         ShutDownServer( );
         MyDebugPrint("Socket Server is now shutdown\n");
     }
@@ -979,24 +875,19 @@ void JobControlApp::SendNumberofConnections(bool check_shutdown_gate) {
 //////////////////////////////////////////////////////////////////////////////////////
 
 void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned char* identification_code) {
-    MyDebugPrintGA1("HandleNewSocketConnection ENTRY socket=%p", (void*)new_connection);
 
     if ( new_connection == NULL ) {
-        MyDebugPrintGA1("HandleNewSocketConnection NULL socket, returning");
         return;
     }
 
     wxString peer_ip = ReturnPeerIPAddressFromSocket(new_connection);
-    MyDebugPrintGA1("HandleNewSocketConnection peer_ip='%s'", peer_ip);
 
     if ( (memcmp(identification_code, current_job_code, SOCKET_CODE_SIZE) != 0) ) {
-        MyDebugPrintGA1("HandleNewSocketConnection BAD JOB ID from peer=%s", peer_ip);
         SendError("Unknown Job ID (Job Control), leftover from a previous job? - Closing Connection");
         new_connection->Destroy( ); // should not be monitoring so can just destroy it
         new_connection = NULL;
     }
     else {
-        MyDebugPrintGA1("HandleNewSocketConnection valid job id, peer=%s have_assigned_master=%d", peer_ip, (int)have_assigned_master);
         // one of the workers has connected to us.  If it is the first one then
         // we need to make it the master, tell it to start a socket server
         // and send us the address so we can pass it on to all future workers.
@@ -1005,22 +896,17 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
 
         if ( have_assigned_master == false ) // we don't have a master, so assign it
         {
-            MyDebugPrintGA1("HandleNewSocketConnection ASSIGNING MASTER peer=%s", peer_ip);
 
             master_socket        = new_connection;
             have_assigned_master = true;
-            MyDebugPrintWithDetails("LEADER-PATH: master elected, socket %p peer %s\n", (void*)new_connection, peer_ip);
 
             WriteToSocket(new_connection, socket_you_are_the_master, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
-            MyDebugPrintGA1("HandleNewSocketConnection sent socket_you_are_the_master, sending job package");
             // See JobPackage::SendJobPackage() Doxygen for encoding order specification
             current_job_package.SendJobPackage(new_connection);
-            MyDebugPrintGA1("HandleNewSocketConnection job package sent, waiting for master to report ip/port");
 
             bool no_error;
             master_ip_address = ReceivewxStringFromSocket(new_connection, no_error);
             master_port       = ReceivewxStringFromSocket(new_connection, no_error);
-            MyDebugPrintGA1("HandleNewSocketConnection MASTER REPORTED ip='%s' port='%s' no_error=%d", master_ip_address, master_port, (int)no_error);
 
             // Revert-debug-ga1: set up reverse tunnel for master port to each
             // remote target, so tunneled workers can reach the master via
@@ -1036,18 +922,14 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
             if ( ! master_tunnels_established && ! remote_tunnel_targets.IsEmpty( ) ) {
                 if ( master_tunnel_remote_port.IsEmpty( ) ) {
                     wxPrintf("SSH_TUNNEL: ERROR: no master_tunnel_remote_port reserved, tunneled workers will fail\n");
-                    MyDebugPrintGA1("master-port reverse tunnel skip: no reserved port");
                 }
                 else {
-                    MyDebugPrintGA1("setting up master-port reverse tunnels count=%d remote_port=%s -> salina master_port=%s", (int)remote_tunnel_targets.GetCount( ), master_tunnel_remote_port, master_port);
                     for ( size_t ii = 0; ii < remote_tunnel_targets.GetCount( ); ii++ ) {
                         wxString target     = remote_tunnel_targets[ii];
                         wxString tunnel_cmd = wxString::Format(
                                 "ssh -f -N -o SendEnv=%s -o ExitOnForwardFailure=yes -R %s:127.0.0.1:%s %s 2>/dev/null",
                                 tunnel_kill_marker, master_tunnel_remote_port, master_port, target);
-                        MyDebugPrintGA1("master tunnel target='%s' cmd='%s'", target, tunnel_cmd);
                         int ret = SystemNoInherit(tunnel_cmd.ToUTF8( ).data( ));
-                        MyDebugPrintGA1("master tunnel target='%s' ssh returned %d", target, ret);
                         if ( ret != 0 ) {
                             wxPrintf("SSH_TUNNEL: WARNING: master tunnel to %s failed (ret=%d)\n", target, ret);
                         }
@@ -1057,7 +939,6 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
                         }
                     }
                     master_tunnels_established = true;
-                    MyDebugPrintGA1("master-port reverse tunnels done");
                 }
             }
 
@@ -1074,11 +955,9 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
             // totals the gate could otherwise fire before any real worker has connected.
             if ( launch_non_compute_leader == false ) {
                 number_of_workers_already_connected++;
-                MyDebugPrintGA1("HandleNewSocketConnection master count now %d", (int)number_of_workers_already_connected);
                 SendNumberofConnections(false);
             }
             else {
-                MyDebugPrintGA1("HandleNewSocketConnection our own non-compute leader connected, not counted");
             }
         }
         else // we have a master, tell this worker who it's master is.
@@ -1096,14 +975,10 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
                 if ( ! master_tunnel_remote_port.IsEmpty( ) ) {
                     effective_master_port = master_tunnel_remote_port;
                 }
-                MyDebugPrintGA1("tunneled worker detected, rewriting master '%s':'%s' -> '%s':'%s'", master_ip_address, master_port, effective_master_ip, effective_master_port);
             }
-            MyDebugPrintGA1("HandleNewSocketConnection ASSIGNING WORKER peer=%s, telling it master='%s':'%s'", peer_ip, effective_master_ip, effective_master_port);
             WriteToSocket(new_connection, socket_you_are_a_worker, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
             SendwxStringToSocket(&effective_master_ip, new_connection);
             SendwxStringToSocket(&effective_master_port, new_connection);
-            MyDebugPrintWithDetails("LEADER-PATH: worker %s redirected to master %s:%s\n", peer_ip, effective_master_ip, effective_master_port);
-            MyDebugPrintGA1("HandleNewSocketConnection worker peer=%s told master, monitoring socket", peer_ip);
 
             // that should be the end of our interactions with the worker
             // it should disconnect itself. We have to monitor it however so that
@@ -1112,7 +987,6 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
             MonitorSocket(new_connection);
 
             number_of_workers_already_connected++;
-            MyDebugPrintGA1("HandleNewSocketConnection worker count now %d", (int)number_of_workers_already_connected);
             SendNumberofConnections( );
         }
     }
@@ -1131,17 +1005,14 @@ void JobControlApp::HandleSocketYouAreConnected(wxSocketBase* connected_socket) 
 }
 
 void JobControlApp::HandleSocketJobPackage(wxSocketBase* connected_socket, JobPackage* received_package) {
-    MyDebugPrintGA1("HandleSocketJobPackage ENTRY received package from gui");
     // we have a job package from the gui, copy it.. start a server and launch the jobs..
 
     current_job_package = *received_package;
     delete received_package;
-    MyDebugPrintGA1("HandleSocketJobPackage copied package, profile.num_run_commands=%ld total_jobs=%i", current_job_package.my_profile.number_of_run_commands, current_job_package.number_of_jobs);
 
     SetupServer( );
     my_port        = ReturnServerPort( );
     my_port_string = ReturnServerPortString( );
-    MyDebugPrintGA1("HandleSocketJobPackage SetupServer done my_port=%ld my_port_string='%s'", my_port, my_port_string);
 
     wxString      current_address_according_to_gui;
     wxString      ip_address_string;
@@ -1169,9 +1040,7 @@ void JobControlApp::HandleSocketJobPackage(wxSocketBase* connected_socket, JobPa
         ip_address_string += my_possible_ip_addresses.Item(counter);
     }
 
-    MyDebugPrintGA1("HandleSocketJobPackage final ip_address_string='%s' creating LaunchJobThread", ip_address_string);
     LaunchJobThread* launch_thread = new LaunchJobThread(this, current_job_package.my_profile, ip_address_string, my_port_string, current_job_code, current_job_package.number_of_jobs);
-    MyDebugPrintGA1("HandleSocketJobPackage LaunchJobThread created, calling Run()");
 
     if ( launch_thread->Run( ) != wxTHREAD_NO_ERROR ) {
         MyPrintWithDetails("Can't create the launch thread!");
@@ -1182,7 +1051,6 @@ void JobControlApp::HandleSocketJobPackage(wxSocketBase* connected_socket, JobPa
 }
 
 void JobControlApp::HandleSocketTimeToDie(wxSocketBase* connected_socket) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketTimeToDie socket=%p (gui=%p master=%p) received_jobs=%d all_finished=%d - GUI told us to die, exiting", (void*)connected_socket, (void*)gui_socket, (void*)master_socket, number_of_received_jobs, (int)all_jobs_are_finished);
     if ( have_assigned_master == true ) {
         WriteToSocket(master_socket, socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
         StopMonitoringAndDestroySocket(master_socket);
@@ -1226,70 +1094,55 @@ void JobControlApp::HandleSocketIAmADedicatedMaster(wxSocketBase* connected_sock
 
     // Only correct the count for an externally-launched leader: a leader we launched
     // ourselves was never counted at connect (see HandleNewSocketConnection).
-    MyDebugPrintWithDetails("LEADER-PATH: dedicated-master announce received, count=%d launched_leader=%d\n", (int)number_of_workers_already_connected, (int)launch_non_compute_leader);
     if ( launch_non_compute_leader == false ) {
         number_of_workers_already_connected--;
-        MyDebugPrintGA1("dedicated master announced itself, connected count corrected to %d", (int)number_of_workers_already_connected);
     }
     else {
-        MyDebugPrintGA1("our own non-compute leader announced itself, count unchanged at %d", (int)number_of_workers_already_connected);
     }
     SendNumberofConnections( );
 }
 
 void JobControlApp::HandleSocketIHaveAnError(wxSocketBase* connected_socket, wxString error_message) {
     // pass the error message up to the GUI..
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketIHaveAnError from %p: '%s'", (void*)connected_socket, error_message);
 
     SendError(error_message);
 }
 
 void JobControlApp::HandleSocketIHaveInfo(wxSocketBase* connected_socket, wxString info_message) {
     // pass the error message up to the GUI..
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketIHaveInfo from %p: '%s'", (void*)connected_socket, info_message);
 
     SendInfo(info_message);
 }
 
 void JobControlApp::HandleSocketJobResult(wxSocketBase* connected_socket, JobResult* received_result) {
     // pass the result onto the GUI...
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketJobResult from %p job=%d size=%d", (void*)connected_socket, received_result == NULL ? -1 : received_result->job_number, received_result == NULL ? -1 : received_result->result_size);
 
     SendJobResult(received_result);
-    MyDebugPrintWithDetails("LEADERTRACE AFTER SendJobResult");
 
     // delete it..
 
     delete received_result;
-    MyDebugPrintWithDetails("LEADERTRACE AFTER delete received_result");
 }
 
 void JobControlApp::HandleSocketJobResultQueue(wxSocketBase* connected_socket, ArrayofJobResults* received_queue) {
     // pass it on and delete..
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketJobResultQueue from %p count=%lu (gui_socket=%p connected=%d)", (void*)connected_socket, received_queue == NULL ? 0UL : (unsigned long)received_queue->GetCount( ), (void*)gui_socket, gui_socket == NULL ? -1 : (int)gui_socket->IsConnected( ));
 
     SendJobResultQueue(*received_queue);
-    MyDebugPrintWithDetails("LEADERTRACE AFTER SendJobResultQueue");
     number_of_received_jobs += received_queue->GetCount( );
 
     delete received_queue;
-    MyDebugPrintWithDetails("LEADERTRACE AFTER delete received_queue (received_jobs=%d)", number_of_received_jobs);
 }
 
 void JobControlApp::HandleSocketJobFinished(wxSocketBase* connected_socket, int finished_job_number) {
     // pass on to the gui..
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketJobFinished job=%d", finished_job_number);
 
     SendJobFinished(finished_job_number);
-    MyDebugPrintWithDetails("LEADERTRACE AFTER SendJobFinished job=%d", finished_job_number);
 }
 
 void JobControlApp::HandleSocketAllJobsFinished(wxSocketBase* connected_socket, long received_timing_in_milliseconds) {
     // pass on to the gui..
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketAllJobsFinished timing=%li", received_timing_in_milliseconds);
 
     SendAllJobsFinished(received_timing_in_milliseconds);
-    MyDebugPrintWithDetails("LEADERTRACE AFTER SendAllJobsFinished");
     all_jobs_are_finished = true;
 
     // don't die, wait for GUI to kill me..
@@ -1302,15 +1155,10 @@ void JobControlApp::HandleSocketTemplateMatchResultReady(wxSocketBase* connected
 }
 
 void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
-    MyDebugPrintGA1("HandleSocketDisconnect ENTRY socket=%p gui_socket=%p master_socket=%p", (void*)connected_socket, (void*)gui_socket, (void*)master_socket);
-    MyDebugPrintWithDetails("LEADERTRACE ENTER JobControlApp::HandleSocketDisconnect socket=%p (%s) received_jobs=%d all_finished=%d", (void*)connected_socket,
-                            connected_socket == gui_socket ? "GUI" : (connected_socket == master_socket ? "MASTER" : "worker/probe"), number_of_received_jobs, (int)all_jobs_are_finished);
     // what disconnected..
 
     if ( connected_socket == gui_socket ) {
-        MyDebugPrintGA1("HandleSocketDisconnect GUI DISCONNECT, aborting");
         MyDebugPrint("Got a disconnect from the GUI - aborting");
-        MyDebugPrintWithDetails("LEADERTRACE job_control: GUI socket dropped - telling master to die and exiting");
 
         if ( have_assigned_master == true ) {
             WriteToSocket(master_socket, socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
@@ -1340,7 +1188,6 @@ void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         if ( all_jobs_are_finished == false ) // something went wrong
         {
             MyDebugPrint("Controller got disconnect from master...");
-            MyDebugPrintWithDetails("LEADERTRACE job_control: MASTER socket dropped before all_jobs_finished - exiting");
             SendError("Controller received a disconnect from the master before the job was finished..");
 
             KillAllTunnels( );
@@ -1363,8 +1210,6 @@ void JobControlApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
     }
     else // Must be a worker dropping us to connect to the master
     {
-        MyDebugPrintWithDetails("LEADERTRACE job_control: worker/probe socket %p dropped - destroying", (void*)connected_socket);
         StopMonitoringAndDestroySocket(connected_socket);
-        MyDebugPrintWithDetails("LEADERTRACE job_control: worker/probe socket destroyed");
     }
 }

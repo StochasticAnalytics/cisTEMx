@@ -1,31 +1,5 @@
 #include "core_headers.h"
 #include <wx/evtloop.h>
-#include <execinfo.h>
-#include <csignal>
-
-// CISTEM_SEGV_BACKTRACE: raw backtrace on fatal signals, written straight to fd 2
-// (async-signal-safe: backtrace_symbols_fd allocates nothing). A silent SIGSEGV in a
-// remote-launched process otherwise leaves no evidence at all - stdout buffers die with
-// the process and yama ptrace_scope=2 plus root-only core stores block post-mortems.
-namespace {
-void FatalSignalBacktrace(int signal_number) {
-    void*      backtrace_addresses[64];
-    const int  depth  = backtrace(backtrace_addresses, 64);
-    const char msg1[] = "\nFATAL SIGNAL ";
-    const char msg2[] = " - backtrace (addr2line against this binary for lines):\n";
-    char       signal_digits[4];
-    int        n = 0, s = signal_number;
-    if ( s >= 10 )
-        signal_digits[n++] = '0' + (s / 10);
-    signal_digits[n++] = '0' + (s % 10);
-    write(2, msg1, sizeof(msg1) - 1);
-    write(2, signal_digits, n);
-    write(2, msg2, sizeof(msg2) - 1);
-    backtrace_symbols_fd(backtrace_addresses, depth, 2);
-    signal(signal_number, SIG_DFL);
-    raise(signal_number);
-}
-} // namespace
 
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_COMPLETED, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_ENDING, wxThreadEvent);
@@ -42,22 +16,6 @@ wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_SEND_PROGRAM_DEFINED_RESULT, ReturnProgram
 bool MyApp::OnInit( ) {
     long counter;
     thread_next_action = THREAD_SLEEP;
-
-    {
-        const char* segv_backtrace_env = getenv("CISTEM_SEGV_BACKTRACE");
-        if ( segv_backtrace_env != NULL && segv_backtrace_env[0] != '\0' ) {
-            // Pre-warm: backtrace()'s first call lazily loads libgcc's unwinder via malloc.
-            // Inside a SIGABRT raised by malloc itself (MALLOC_CHECK_ / corrupted-chunk aborts)
-            // that malloc deadlocks on the lock the dying thread already holds - the handler
-            // hung a leader for good instead of reporting. Warming it here makes the handler
-            // allocation-free.
-            void* warm[8];
-            backtrace(warm, 8);
-            signal(SIGSEGV, FatalSignalBacktrace);
-            signal(SIGBUS, FatalSignalBacktrace);
-            signal(SIGABRT, FatalSignalBacktrace);
-        }
-    }
 
     number_of_dispatched_jobs         = 0;
     number_of_finished_jobs           = 0;
@@ -277,7 +235,6 @@ void MyApp::AddCommandLineOptions( ) {
 }
 
 void MyApp::SendNextJobTo(wxSocketBase* socket) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::SendNextJobTo");
     // if we haven't dispatched all jobs yet, then send it, otherwise tell the worker to die..
 
     if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
@@ -286,11 +243,9 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
         socket_to_worker_job_pointer_hash[socket] = &current_job_package.jobs[number_of_dispatched_jobs];
         number_of_dispatched_jobs++;
         wxPrintf("MASTER: dispatched job %li/%li to socket %p\n", (long)number_of_dispatched_jobs, (long)current_job_package.number_of_jobs, (void*)socket);
-        MyDebugPrintWithDetails("LEADER-PATH: dispatched job %i to %p\n", number_of_dispatched_jobs, (void*)socket);
     }
     else {
         wxPrintf("MASTER: no jobs left, telling socket %p to die\n", (void*)socket);
-        MyDebugPrintWithDetails("LEADER-PATH: time_to_die sent to %p (finished %i/%i timings %i/%i)\n", (void*)socket, number_of_finished_jobs, current_job_package.number_of_jobs, number_of_timing_results_received, max_number_of_connected_workers);
         WriteToSocket(socket, socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
         // stop monitoring the socket..
         //StopMonitoringSocket(socket); stopped doing this for timings
@@ -325,15 +280,12 @@ void MyApp::SendJobResultQueue(ArrayofJobResults& queue_to_send) {
 }
 
 void MyApp::MasterSendIntenalQueue( ) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::MasterSendIntenalQueue");
     SendJobResultQueue(master_job_queue);
     master_job_queue.Clear( );
     time_of_last_master_queue_send = time(NULL);
 }
 
 void MyApp::SendAllJobsFinished( ) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::SendAllJobsFinished");
-    MyDebugPrintWithDetails("LEADER-PATH: SendAllJobsFinished entry, queue=%li\n", (long)master_job_queue.GetCount( ));
     //MyDebugAssertTrue(i_am_the_master == true, "SendAllJobsFinished called by a worker!");
 
     // we will send all jobs finished - but first we need to ensure we have sent any results in the result queue
@@ -406,8 +358,9 @@ void MyApp::OnZombieTimer(wxTimerEvent& event) {
 }
 
 void MyApp::OnMasterHeartbeatTimer(wxTimerEvent& event) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::OnMasterHeartbeatTimer");
-    MyDebugPrintWithDetails("LEADER-PATH: heartbeat tick\n");
+    if ( controller_socket == NULL ) // tearing down
+        return;
+
     int number_of_commands_to_run;
     if ( current_job_package.number_of_jobs + 1 < current_job_package.my_profile.ReturnTotalJobs( ) )
         number_of_commands_to_run = current_job_package.number_of_jobs + 1;
@@ -426,7 +379,6 @@ void MyApp::OnMasterHeartbeatTimer(wxTimerEvent& event) {
 }
 
 void MyApp::OnMasterQueueTimer(wxTimerEvent& event) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::OnMasterQueueTimer");
     if ( master_job_queue.GetCount( ) > 0 ) {
         MasterSendIntenalQueue( );
     }
@@ -809,7 +761,6 @@ CalculateThread::~CalculateThread( ) {
 //}
 
 void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPackage* received_package) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleSocketYouAreTheMaster");
 
     current_job_package = *received_package;
     delete received_package;
@@ -822,10 +773,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
         zombie_timer = NULL;
     }
 
-    MyDebugPrintWithDetails("LEADERTRACE BEFORE i_am_the_master=true");
     i_am_the_master = true;
-    MyDebugPrintWithDetails("LEADERTRACE AFTER i_am_the_master=true");
-    MyDebugPrintWithDetails("LEADER-PATH: HandleSocketYouAreTheMaster entry, controller socket %p, jobs in package %i\n", (void*)connected_socket, current_job_package.number_of_jobs);
 
     // CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE: when set (and non-empty) this process only serves,
     // aggregates and reports - it does not connect itself as a worker or run a CalculateThread -
@@ -863,7 +811,6 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
         }
 
         wxPrintf("LEADER_NON_COMPUTE: master server bound port %s (window %i-%i)\n", ReturnServerPortString( ), base_port, base_port + 3);
-        MyDebugPrintWithDetails("LEADER-PATH: server bound on port %s (window %i-%i)\n", ReturnServerPortString( ), base_port, base_port + 3);
     }
     else {
         SetupServer( );
@@ -927,7 +874,6 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
     }
     else {
         wxPrintf("LEADER_NON_COMPUTE: not connecting myself as a worker, serving/aggregating only\n");
-        MyDebugPrintWithDetails("LEADER-PATH: skipped self-connect, work_thread=%p master_socket=%p\n", (void*)work_thread, (void*)master_socket);
     }
 
     // I have to send my ip address to the controller..
@@ -945,10 +891,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
         // server down one real worker early (see SendNumberofConnections).
         // Sent after the ip/port strings above, so it sits in the socket
         // buffer until the controller starts monitoring this socket.
-        MyDebugPrintWithDetails("LEADERTRACE BEFORE WriteToSocket(dedicated_master)");
         WriteToSocket(connected_socket, socket_i_am_a_dedicated_master, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
-        MyDebugPrintWithDetails("LEADERTRACE AFTER WriteToSocket(dedicated_master)");
-        MyDebugPrintWithDetails("LEADER-PATH: announced dedicated-master to controller (ip %s port %s)\n", my_ip_address, my_port_string);
     }
 
     // ok, now get the job details from the conduit controller
@@ -1046,7 +989,6 @@ void MyApp::HandleSocketYouAreAWorker(wxSocketBase* connected_socket, wxString m
 void MyApp::HandleSocketTimeToDie(wxSocketBase* connected_socket) // This can be sent to a worker or the master, need to check which it is.
 {
     if ( i_am_the_master == true && connected_socket == controller_socket ) {
-        MyDebugPrintWithDetails("LEADER-PATH: TIME_TO_DIE from controller, workers=%i\n", (int)worker_socket_pointers.GetCount( ));
         // tell any connected workers to die. then exit..
 
         for ( int counter = 0; counter < worker_socket_pointers.GetCount( ); counter++ ) {
@@ -1101,7 +1043,6 @@ void MyApp::HandleSocketTimeToDie(wxSocketBase* connected_socket) // This can be
 ///////////////////////////////////////////////////////////////////////////////////
 
 void MyApp::HandleSocketSendNextJob(wxSocketBase* connected_socket, JobResult* received_result) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleSocketSendNextJob");
     SendNextJobTo(connected_socket);
 
     // Send info that the job has finished, and if necessary the result..
@@ -1121,7 +1062,6 @@ void MyApp::HandleSocketSendNextJob(wxSocketBase* connected_socket, JobResult* r
         // check if we have all timings, and all results (this is chctedecked in two places - socket send timing and receive results as it is not certain will happen last)
 
         if ( number_of_finished_jobs == current_job_package.number_of_jobs && number_of_timing_results_received == max_number_of_connected_workers ) {
-            MyDebugPrintWithDetails("LEADER-PATH: finish via job-result path, work_thread=%p controller=%p\n", (void*)work_thread, (void*)controller_socket);
 
             SendAllJobsFinished( );
 
@@ -1131,6 +1071,11 @@ void MyApp::HandleSocketSendNextJob(wxSocketBase* connected_socket, JobResult* r
 
             // time to die!
 
+            if ( master_heartbeat_timer != NULL ) {
+                master_heartbeat_timer->Stop( );
+                delete master_heartbeat_timer;
+                master_heartbeat_timer = NULL;
+            }
             StopMonitoringAndDestroySocket(connected_socket);
             ShutDownSocketMonitor( );
             delete received_result;
@@ -1155,13 +1100,11 @@ void MyApp::HandleSocketIHaveInfo(wxSocketBase* connected_socket, wxString info_
 }
 
 void MyApp::HandleSocketJobResult(wxSocketBase* connected_socket, JobResult* received_result) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleSocketJobResult");
     SendJobResult(received_result);
     delete received_result;
 }
 
 void MyApp::HandleSocketJobResultQueue(wxSocketBase* connected_socket, ArrayofJobResults* received_queue) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleSocketJobResultQueue");
     // copy these results to our own result queue
 
     for ( int counter = 0; counter < received_queue->GetCount( ); counter++ ) {
@@ -1213,13 +1156,11 @@ void MyApp::HandleSocketResultWithImageToWrite(wxSocketBase* connected_socket, w
 }
 
 void MyApp::HandleSocketProgramDefinedResult(wxSocketBase* connected_socket, float* data_array, int size_of_data_array, int result_number, int number_of_expected_results) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleSocketProgramDefinedResult");
     MasterHandleProgramDefinedResult(data_array, size_of_data_array, result_number, number_of_expected_results);
     delete[] data_array;
 }
 
 void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long received_timing_in_milliseconds) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleSocketSendThreadTiming");
     total_milliseconds_spent_on_threads += received_timing_in_milliseconds;
     StopMonitoringAndDestroySocket(connected_socket);
     //connected_socket->Destroy();
@@ -1233,15 +1174,11 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
 
     number_of_timing_results_received++;
     wxPrintf("MASTER: timing result %li/%li received (finished %li/%li)\n", (long)number_of_timing_results_received, (long)max_number_of_connected_workers, (long)number_of_finished_jobs, (long)current_job_package.number_of_jobs);
-    MyDebugPrintWithDetails("LEADER-PATH: timing from %p, %li ms\n", (void*)connected_socket, received_timing_in_milliseconds);
 
     // check if we have all timings, and all results (this is checked in two places - socket send timing and receive results as it is not certain will happen last)
 
     if ( number_of_finished_jobs == current_job_package.number_of_jobs && number_of_timing_results_received == max_number_of_connected_workers ) {
-        MyDebugPrintWithDetails("LEADERTRACE BEFORE all-jobs-finished");
         wxPrintf("MASTER: all jobs finished and all timings in, sending all-jobs-finished\n");
-        MyDebugPrintWithDetails("LEADERTRACE AFTER all-jobs-finished");
-        MyDebugPrintWithDetails("LEADER-PATH: finish via timing path, work_thread=%p controller=%p\n", (void*)work_thread, (void*)controller_socket);
         SendAllJobsFinished( );
 
         if ( current_job_package.ReturnNumberOfJobsRemaining( ) != 0 ) {
@@ -1251,6 +1188,12 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
         // time to die!
 
         wxSleep(5);
+
+        if ( master_heartbeat_timer != NULL ) {
+            master_heartbeat_timer->Stop( );
+            delete master_heartbeat_timer;
+            master_heartbeat_timer = NULL;
+        }
 
         controller_socket->Destroy( );
         controller_socket = NULL;
@@ -1267,7 +1210,6 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
 ///////////////////////////////////////////////////////////////////////////////////
 
 void MyApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned char* identification_code) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleNewSocketConnection");
     if ( new_connection == NULL )
         return;
 
@@ -1297,7 +1239,6 @@ void MyApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned cha
         // expected connection is a real worker.
         int expected_worker_connections = i_am_a_non_compute_leader ? number_of_commands_to_run : number_of_commands_to_run - 1;
         wxPrintf("MASTER: worker socket %p connected (%i of %i expected)\n", (void*)new_connection, (int)worker_socket_pointers.GetCount( ), expected_worker_connections);
-        MyDebugPrintWithDetails("LEADER-PATH: worker connected %p (%i of %i), max_connected=%i dispatched=%i\n", (void*)new_connection, (int)worker_socket_pointers.GetCount( ), expected_worker_connections, (int)max_number_of_connected_workers, (int)number_of_dispatched_jobs);
         if ( worker_socket_pointers.GetCount( ) == expected_worker_connections ) {
             SocketSendInfo("All workers have re-connected to the master.");
         }
@@ -1352,13 +1293,9 @@ void MyApp::HandleSocketReadyToSendSingleJob(wxSocketBase* connected_socket, Run
 }
 
 void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
-    MyDebugPrintWithDetails("LEADERTRACE ENTER MyApp::HandleSocketDisconnect");
     if ( connected_socket == controller_socket && i_am_the_master == true ) // kill everything..
     {
-        MyDebugPrintWithDetails("LEADERTRACE BEFORE MyDebugPrint(disconnect)");
         MyDebugPrint("Master received disconnect from controller");
-        MyDebugPrintWithDetails("LEADERTRACE AFTER MyDebugPrint(disconnect)");
-        MyDebugPrintWithDetails("LEADER-PATH: CONTROLLER DISCONNECT seen by master, workers=%i work_thread=%p\n", (int)worker_socket_pointers.GetCount( ), (void*)work_thread);
 
         for ( int counter = 0; counter < worker_socket_pointers.GetCount( ); counter++ ) {
             WriteToSocket(worker_socket_pointers[counter], socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
@@ -1367,6 +1304,12 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         }
 
         worker_socket_pointers.Clear( );
+
+        if ( master_heartbeat_timer != NULL ) {
+            master_heartbeat_timer->Stop( );
+            delete master_heartbeat_timer;
+            master_heartbeat_timer = NULL;
+        }
 
         StopMonitoringAndDestroySocket(controller_socket);
         controller_socket = NULL;
@@ -1387,7 +1330,6 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         // master ports every few seconds by connecting and closing). Destroy it quietly:
         // reporting it as a dead worker spams the GUI with a false error per probe.
         if ( worker_socket_pointers.Index(connected_socket) == wxNOT_FOUND ) {
-            MyDebugPrintWithDetails("LEADER-PATH: unidentified socket %p disconnected (probe), destroying quietly\n", (void*)connected_socket);
             StopMonitoringAndDestroySocket(connected_socket);
             return;
         }

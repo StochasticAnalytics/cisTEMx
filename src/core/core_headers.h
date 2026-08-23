@@ -115,6 +115,16 @@ class StackDump : public wxStackWalker // so we can give backtraces..
     }
 
     virtual void MyWalk(size_t skip = 1) {
+        // wxStackWalker (unix) keeps the backtrace_symbols() block and depth in
+        // statics (ms_symbols, ms_addresses, m_depth) and frees the block at the
+        // end of Walk(). Two threads walking at once (e.g. the socket monitor
+        // thread's ReadFromSocket MyDebugPrintWithDetails racing a main-thread
+        // dump) free/reuse each other's block: NULL syminfo -> strlen SEGV in
+        // wxStackFrame::OnGetName, or a double free reported as "corrupted size
+        // vs. prev_size" / "free(): invalid pointer". Serialize the walks.
+        static wxMutex walk_mutex;
+        wxMutexLocker  walk_lock(walk_mutex);
+
         wxPrintf("Stack dump:\n\n");
 
         wxStackWalker::Walk(skip);

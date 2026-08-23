@@ -1224,6 +1224,13 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
     StopMonitoringAndDestroySocket(connected_socket);
     //connected_socket->Destroy();
 
+    // This worker is done and its socket is going away: forget it, so the controller-disconnect /
+    // time-to-die loops do not write to a destroyed socket, and the disconnect the monitor thread
+    // may still deliver for it (the worker closes right after sending its timing) is not treated
+    // as a worker dying mid-run.
+    socket_to_worker_job_pointer_hash.erase(connected_socket);
+    worker_socket_pointers.Remove(connected_socket);
+
     number_of_timing_results_received++;
     wxPrintf("MASTER: timing result %li/%li received (finished %li/%li)\n", (long)number_of_timing_results_received, (long)max_number_of_connected_workers, (long)number_of_finished_jobs, (long)current_job_package.number_of_jobs);
     MyDebugPrintWithDetails("LEADER-PATH: timing from %p, %li ms\n", (void*)connected_socket, received_timing_in_milliseconds);

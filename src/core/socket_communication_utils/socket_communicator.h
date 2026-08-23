@@ -144,6 +144,10 @@ class SocketClientMonitorThread : public wxThread {
     ArrayOfSocketPointers sockets_to_add_next_cycle;
     ArrayOfSocketPointers sockets_to_remove_next_cycle;
     ArrayOfSocketPointers sockets_to_remove_and_destroy_next_cycle;
+    // Sockets this thread dropped from monitored_sockets after dispatching a disconnect to the
+    // main thread. Ownership still rests with the main thread's handler, which will ask for them
+    // to be destroyed; keeping them here lets that request be honoured exactly once (see Entry()).
+    ArrayOfSocketPointers detached_sockets;
 
     MRCFile buffered_output_file; // for writing directly in the HandleSocketResultWithImageToWrite sequence.
 

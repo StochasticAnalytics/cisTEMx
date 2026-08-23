@@ -473,26 +473,25 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
 
                 MyDebugPrint("There are %li sockets being monitored on close\n", monitored_sockets.GetCount( ));
 
-                // destroy all connected sockets..
+                // destroy all connected sockets, and the detached ones: once monitor_is_running is
+                // false the handlers' destroy requests are dropped, so these would otherwise leak.
+                // Destroy() on the main thread via CallAfter (see the remove-and-destroy block).
 
                 for ( socket_counter = 0; socket_counter < monitored_sockets.GetCount( ); socket_counter++ ) {
                     if ( monitored_sockets[socket_counter] != NULL ) {
-                        // delete, NOT Destroy(): Destroy() appends to the global wxPendingDelete
-                        // list, which the main thread's event loop concurrently iterates and is
-                        // not thread-safe - the source of intermittent heap corruption
-                        // ("corrupted size vs. prev_size") during socket teardown. These sockets
-                        // have Notify(false), so no events can reference them after delete.
-                        // Defer to the main thread: an immediate delete here frees a socket
-                        // that queued CallAfter handlers still reference (seen as SIGSEGV in
-                        // HandleSocketTimeToDie -> wxSocketBase::Write). CallAfter is FIFO, so
-                        // the delete runs after every handler already queued for this socket.
-                        {
-                            wxSocketBase* socket_to_delete = monitored_sockets[socket_counter];
-                            parent_pointer->brother_event_handler->CallAfter([socket_to_delete]( ) { delete socket_to_delete; });
-                        }
+                        wxSocketBase* socket_to_destroy = monitored_sockets[socket_counter];
+                        parent_pointer->brother_event_handler->CallAfter([socket_to_destroy]( ) { socket_to_destroy->Destroy( ); });
                         monitored_sockets[socket_counter] = NULL;
                     }
                 }
+
+                for ( socket_counter = 0; socket_counter < detached_sockets.GetCount( ); socket_counter++ ) {
+                    if ( detached_sockets[socket_counter] != NULL ) {
+                        wxSocketBase* socket_to_destroy = detached_sockets[socket_counter];
+                        parent_pointer->brother_event_handler->CallAfter([socket_to_destroy]( ) { socket_to_destroy->Destroy( ); });
+                    }
+                }
+                detached_sockets.Clear( );
 
             } // end mutex
 
@@ -524,6 +523,9 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                             socket_counter--;
                         }
                     }
+                    // the caller keeps ownership, so just forget it here too
+                    if ( detached_sockets.Index(sockets_to_remove_next_cycle[change_counter]) != wxNOT_FOUND )
+                        detached_sockets.Remove(sockets_to_remove_next_cycle[change_counter]);
                 }
 
                 sockets_to_remove_next_cycle.Clear( );
@@ -536,23 +538,35 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
             wxMutexLocker socket_monitor_lock(parent_pointer->remove_sockets_and_destroy_mutex);
             if ( socket_monitor_lock.IsOk( ) == true ) {
                 for ( change_counter = 0; change_counter < sockets_to_remove_and_destroy_next_cycle.GetCount( ); change_counter++ ) {
+                    wxSocketBase* socket_to_destroy = sockets_to_remove_and_destroy_next_cycle[change_counter];
+                    bool          we_still_own_it   = false;
+
                     for ( socket_counter = 0; socket_counter < monitored_sockets.GetCount( ); socket_counter++ ) {
-                        if ( sockets_to_remove_and_destroy_next_cycle[change_counter] == monitored_sockets[socket_counter] ) {
+                        if ( socket_to_destroy == monitored_sockets[socket_counter] ) {
                             monitored_sockets.RemoveAt(socket_counter);
                             socket_counter--;
+                            we_still_own_it = true;
                         }
                     }
-                    // delete, NOT Destroy(): Destroy() appends to the global wxPendingDelete list,
-                    // which the main thread's event loop concurrently iterates and is not
-                    // thread-safe (intermittent heap corruption). Deleted unconditionally, not
-                    // only when found above: a socket whose disconnect was already dispatched has
-                    // left monitored_sockets, but ownership was still passed here for destruction
-                    // (previously these leaked - one per tunnel-watchdog probe).
-                    {
-                        // Deferred delete (see the teardown loop above): queued CallAfter
-                        // handlers may still hold this pointer.
-                        wxSocketBase* socket_to_delete = sockets_to_remove_and_destroy_next_cycle[change_counter];
-                        parent_pointer->brother_event_handler->CallAfter([socket_to_delete]( ) { delete socket_to_delete; });
+
+                    // Dropped by this thread after a disconnect was dispatched: the handler's
+                    // destroy request is the one we honour.
+                    if ( detached_sockets.Index(socket_to_destroy) != wxNOT_FOUND ) {
+                        detached_sockets.Remove(socket_to_destroy);
+                        we_still_own_it = true;
+                    }
+
+                    // Exactly once. The handlers legitimately ask twice for the same socket (a
+                    // worker's timing handler and its later disconnect handler, the controller
+                    // teardown loop and the per-worker paths...): a second request for a socket
+                    // we no longer hold must be a no-op, or it is a double free.
+                    //
+                    // Destroy(), NOT delete, and on the MAIN thread via CallAfter: Destroy()
+                    // queues on wxPendingDelete, which only the main thread may touch, and it
+                    // is idempotent against the handlers' own direct Destroy() calls. CallAfter
+                    // is FIFO, so it runs after every handler already queued for this socket.
+                    if ( we_still_own_it ) {
+                        parent_pointer->brother_event_handler->CallAfter([socket_to_destroy]( ) { socket_to_destroy->Destroy( ); });
                     }
                 }
 
@@ -601,12 +615,14 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     if ( WriteToSocket(monitored_sockets[socket_counter], socket_sending_identification, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING) == false ) {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
                                     else if ( WriteToSocket(monitored_sockets[socket_counter], parent_pointer->current_job_code, SOCKET_CODE_SIZE, true, "SendJobCodeIdentifier", FUNCTION_DETAILS_AS_WXSTRING) == false ) {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -624,6 +640,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -644,6 +661,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
 
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -658,6 +676,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
 
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -680,6 +699,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -693,6 +713,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         delete temp_job;
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -712,6 +733,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         delete received_job;
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -731,6 +753,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -749,6 +772,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -763,6 +787,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -775,6 +800,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -787,6 +813,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -799,6 +826,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -813,6 +841,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         delete temp_array;
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -858,6 +887,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                                 delete image_to_write;
                                                 // socket is not ok.. pass on a message to the handler and remove it..
                                                 parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                                detached_sockets.Add(monitored_sockets[socket_counter]);
                                                 monitored_sockets.RemoveAt(socket_counter);
                                                 socket_counter--;
                                             }
@@ -866,6 +896,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                             delete image_to_write;
                                             // socket is not ok.. pass on a message to the handler and remove it..
                                             parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                            detached_sockets.Add(monitored_sockets[socket_counter]);
                                             monitored_sockets.RemoveAt(socket_counter);
                                             socket_counter--;
                                         }
@@ -874,6 +905,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         delete image_to_write;
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -899,6 +931,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                             wxPrintf("MONITOR: BOGUS program-defined-result size %i (result %i of %i) from socket %p - dropping socket\n",
                                                      size_of_data_array, result_number, number_of_expected_results, (void*)monitored_sockets[socket_counter]);
                                             parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                            detached_sockets.Add(monitored_sockets[socket_counter]);
                                             monitored_sockets.RemoveAt(socket_counter);
                                             socket_counter--;
                                             continue;
@@ -930,6 +963,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                             delete[] data_array;
                                             // socket is not ok.. pass on a message to the handler and remove it..
                                             parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                            detached_sockets.Add(monitored_sockets[socket_counter]);
                                             monitored_sockets.RemoveAt(socket_counter);
                                             socket_counter--;
                                         }
@@ -937,6 +971,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -951,6 +986,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -968,6 +1004,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     else {
                                         // socket is not ok.. pass on a message to the handler and remove it..
                                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
@@ -985,6 +1022,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                              socket_input_buffer[8], socket_input_buffer[9], socket_input_buffer[10], socket_input_buffer[11],
                                              socket_input_buffer[12], socket_input_buffer[13], socket_input_buffer[14], socket_input_buffer[15]);
                                     parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                    detached_sockets.Add(monitored_sockets[socket_counter]);
                                     monitored_sockets.RemoveAt(socket_counter);
                                     socket_counter--;
                                 }
@@ -992,6 +1030,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                             else // socket is likely dead
                             {
                                 parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                detached_sockets.Add(monitored_sockets[socket_counter]);
                                 monitored_sockets.RemoveAt(socket_counter);
                                 socket_counter--;
                             }
@@ -1001,6 +1040,7 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                         // socket is not ok.. pass on a message to the handler and remove it..
 
                         parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                        detached_sockets.Add(monitored_sockets[socket_counter]);
                         monitored_sockets.RemoveAt(socket_counter);
                         socket_counter--;
                     }

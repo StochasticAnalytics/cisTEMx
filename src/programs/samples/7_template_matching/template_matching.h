@@ -8,6 +8,5 @@ void TemplateMatchingPipelineRunner(const wxString& temp_directory);
 
 bool DoApoferritinSearchRegressionTest(const wxString& cistem_ref_dir, const wxString& temp_directory);
 bool DoBatchSizeInvarianceTest(const wxString& cistem_ref_dir, const wxString& temp_directory);
-bool DoK3RotatedGeometryConsistencyTest(const wxString& cistem_ref_dir, const wxString& temp_directory);
 
 #endif

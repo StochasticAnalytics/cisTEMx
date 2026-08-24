@@ -445,7 +445,7 @@ void JobControlApp::KillAllTunnels( ) {
     if ( have_launched_tunnels == false )
         return;
 
-    wxPrintf("SSH_TUNNEL: killing all tunnels tagged %s\n", tunnel_kill_marker);
+    MyDebugPrint("SSH_TUNNEL: killing all tunnels tagged %s", tunnel_kill_marker);
     SystemNoInherit(wxString::Format("pkill -f %s", tunnel_kill_marker).ToUTF8( ).data( ));
     have_launched_tunnels = false;
 }
@@ -516,14 +516,14 @@ void LaunchJobThread::LaunchRemoteJob( ) {
             if ( target.IsEmpty( ) )
                 continue;
             if ( ! NeedsTunnel(target) ) {
-                wxPrintf("SSH_TUNNEL: %s is local, no tunnel needed\n", target);
+                MyDebugPrint("SSH_TUNNEL: %s is local, no tunnel needed", target);
                 continue;
             }
             if ( tunnel_map.find(target) != tunnel_map.end( ) ) {
                 continue; // Already have a tunnel for this target
             }
 
-            wxPrintf("SSH_TUNNEL: Setting up tunnel for %s\n", target);
+            MyDebugPrint("SSH_TUNNEL: Setting up tunnel for %s", target);
 
             // 1. Verify connectivity
             wxString ssh_test = RunAndCapture(wxString::Format(
@@ -533,7 +533,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 main_thread_pointer->KillAllTunnels( );
                 return;
             }
-            wxPrintf("SSH_TUNNEL: Connectivity to %s confirmed\n", target);
+            MyDebugPrint("SSH_TUNNEL: Connectivity to %s confirmed", target);
 
             // 2. Establish reverse tunnel
             // Pre-check: ssh -R with ExitOnForwardFailure still returns 0 when
@@ -580,7 +580,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         for ( auto& kv : tunnel_map ) {
             wxString target = kv.first;
             wxString tport  = kv.second.port;
-            wxPrintf("SSH_TUNNEL: Verifying tunnel to %s (port %s)...\n", target, tport);
+            MyDebugPrint("SSH_TUNNEL: Verifying tunnel to %s (port %s)...", target, tport);
 
             bool verified = false;
             for ( int attempt = 0; attempt < 5; attempt++ ) {
@@ -589,11 +589,11 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                         "ssh -o ConnectTimeout=5 %s \"bash -c 'exec 3<>/dev/tcp/127.0.0.1/%s && echo tunnel_ok || echo tunnel_fail' 2>/dev/null\" 2>/dev/null",
                         target, tport));
                 if ( check.Contains("tunnel_ok") ) {
-                    wxPrintf("SSH_TUNNEL: Tunnel to %s verified OK\n", target);
+                    MyDebugPrint("SSH_TUNNEL: Tunnel to %s verified OK", target);
                     verified = true;
                     break;
                 }
-                wxPrintf("SSH_TUNNEL: Tunnel to %s not ready, retrying (%d/5)...\n", target, attempt + 1);
+                MyDebugPrint("SSH_TUNNEL: Tunnel to %s not ready, retrying (%d/5)...", target, attempt + 1);
                 wxMilliSleep(1000);
             }
             if ( ! verified ) {
@@ -604,14 +604,14 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         }
 
         if ( tunnel_map.empty( ) ) {
-            wxPrintf("SSH_TUNNEL: No remote SSH targets, using original ip/port\n");
+            MyDebugPrint("SSH_TUNNEL: No remote SSH targets, using original ip/port");
         }
         else {
-            wxPrintf("SSH_TUNNEL: All %zu tunnel(s) ready\n", tunnel_map.size( ));
+            MyDebugPrint("SSH_TUNNEL: All %zu tunnel(s) ready", tunnel_map.size( ));
         }
     }
     else {
-        wxPrintf("SSH_TUNNEL: Disabled (USE_SSH_TUNNEL=false)\n");
+        MyDebugPrint("SSH_TUNNEL: Disabled (USE_SSH_TUNNEL=false)");
     }
     // END SSH_TUNNEL
 
@@ -631,9 +631,9 @@ void LaunchJobThread::LaunchRemoteJob( ) {
         executable_default += job_code[counter];
     }
 
-    wxPrintf("SSH_TUNNEL: executable_default: %s\n", executable_default);
+    MyDebugPrint("SSH_TUNNEL: executable_default: %s", executable_default);
     for ( auto& kv : tunnel_map ) {
-        wxPrintf("SSH_TUNNEL: tunnel[%s]: 127.0.0.1:%s\n", kv.first, kv.second.port);
+        MyDebugPrint("SSH_TUNNEL: tunnel[%s]: 127.0.0.1:%s", kv.first, kv.second.port);
     }
 
     // Revert-debug-ga1: publish tunnel target list to JobControlApp so
@@ -672,7 +672,7 @@ void LaunchJobThread::LaunchRemoteJob( ) {
                 main_thread_pointer->master_tunnel_remote_port = wxString::Format("%d", try_port);
                 next_tunnel_port                               = try_port + 1;
                 reserved                                       = true;
-                wxPrintf("SSH_TUNNEL: reserved master-tunnel port %d (uniform across %zu target(s))\n", try_port, tunnel_map.size( ));
+                MyDebugPrint("SSH_TUNNEL: reserved master-tunnel port %d (uniform across %zu target(s))", try_port, tunnel_map.size( ));
                 break;
             }
         }
@@ -765,12 +765,12 @@ void LaunchJobThread::LaunchRemoteJob( ) {
             for ( long jc = 0; jc < SOCKET_CODE_SIZE; jc++ ) {
                 executable += job_code[jc];
             }
-            wxPrintf("SSH_TUNNEL: Command %ld -> tunnel (%s via 127.0.0.1:%s)\n",
-                     command_counter, cmd_ssh_target, ti.port);
+            MyDebugPrint("SSH_TUNNEL: Command %ld -> tunnel (%s via 127.0.0.1:%s)",
+                         command_counter, cmd_ssh_target, ti.port);
         }
         else {
             executable = executable_default;
-            wxPrintf("SSH_TUNNEL: Command %ld -> default\n", command_counter);
+            MyDebugPrint("SSH_TUNNEL: Command %ld -> default", command_counter);
         }
 
         execution_command       = current_run_profile.run_commands[command_counter].command_to_run;
@@ -928,7 +928,7 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
                         }
                         else {
                             have_launched_tunnels = true;
-                            wxPrintf("SSH_TUNNEL: master tunnel to %s established (remote %s -> salina 127.0.0.1:%s)\n", target, master_tunnel_remote_port, master_port);
+                            MyDebugPrint("SSH_TUNNEL: master tunnel to %s established (remote %s -> salina 127.0.0.1:%s)", target, master_tunnel_remote_port, master_port);
                         }
                     }
                     master_tunnels_established = true;

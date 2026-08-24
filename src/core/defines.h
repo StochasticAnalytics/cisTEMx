@@ -61,6 +61,11 @@ namespace cistem {
 #define MyPrintfCyan(...)  {wxPrintf(ANSI_COLOR_CYAN); wxPrintf(__VA_ARGS__); wxPrintf(ANSI_COLOR_RESET);}
 #define MyPrintfRed(...)  {wxPrintf(ANSI_COLOR_RED); wxPrintf(__VA_ARGS__); wxPrintf(ANSI_COLOR_RESET);}
 
+// TODO: the debug prints below are all-or-nothing (DEBUG builds print everything,
+// release builds print nothing). The project would benefit from a runtime verbosity
+// flag with levels (quiet/normal/verbose/trace) so operational chatter like the
+// SSH_TUNNEL status prints can ship compiled-in but silent by default, instead of
+// being wrapped in MyDebugPrint and vanishing from release builds entirely.
 #ifdef DEBUG
 #define MyDebugWarnThreadSafety(cond, ...) {if (cond) { wxLogWarning("Potential thread safety issue detected, this object should be declared private or explicitly constructed in thread parallel region %s:%i\n%s\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); }}
 #define MyDebugPrintWithDetails(...)	{wxPrintf(__VA_ARGS__); wxPrintf("From %s:%i\n%s\n\n", __FILE__,__LINE__,__PRETTY_FUNCTION__); StackDump dump(NULL); dump.MyWalk(2);}

@@ -14,11 +14,14 @@
 // CopyHostToDeviceTextureComplex); GpuImage::ExtractSliceShiftAndCtf selects
 // the matching fetch at runtime from the volume itself (fastfft_plan_resources),
 // so enabling it project-wide no longer breaks the other callers (2274540d).
-// ON in debug builds (--enable-debugmode defines DEBUG): every debug binary
-// exercises the FastFFT texture path by default; release builds keep the
-// classic preparation.
+// ON in all FastFFT builds (debug and release take the same projection path):
+// match_template prepares its reference volume through the FastFFT texture
+// path everywhere. Builds without FastFFT remain legal - the gate follows
+// cisTEM_USING_FastFFT, and the classic CopyHostToDeviceTextureComplex
+// preparation stays compiled and is selected at runtime for volumes without
+// FastFFT plan resources, so both paths remain exercised.
 // To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
-#ifdef DEBUG
+#ifdef cisTEM_USING_FastFFT
 #define cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
 #endif
 

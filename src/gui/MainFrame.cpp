@@ -1069,6 +1069,8 @@ bool MyMainFrame::MigrateProject(wxString old_project_directory, wxString new_pr
     current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PIXEL_SIZE_OUTPUT_FILE = REPLACE(PIXEL_SIZE_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
     current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET HISTOGRAM_OUTPUT_FILE = REPLACE(HISTOGRAM_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
     current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PROJECTION_RESULT_OUTPUT_FILE = REPLACE(PROJECTION_RESULT_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET AVG_OUTPUT_FILE = REPLACE(AVG_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET STD_OUTPUT_FILE = REPLACE(STD_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
 
     current_project.database.Commit( );
 

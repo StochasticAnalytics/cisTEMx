@@ -663,11 +663,13 @@ bool MatchTemplatePanel::CheckForOverFocus(bool& append_allow_over_focus) {
 
     // Calling AddGroup increments all_groups_list->number_of_groups
     image_asset_panel->all_groups_list->AddGroup(new_group_name);
-    // This is used in dynamic table naming in the DB so is indexed from 1 not 0
-    long new_group_id = image_asset_panel->all_groups_list->ReturnNumberOfGroups( );
 
-    // current_group_number in the image_asset_panel SEEMs to server the same function as number_of_groups (whereas a second var selected_group would map to current_group in my (BAH) mind)
-    image_asset_panel->current_group_number = new_group_id;
+    // Group ids come from the panel's monotonic counter, exactly as MyAssetPanelParent::NewGroupClick
+    // does. Deriving the id from the group COUNT (as this used to) collides with a surviving id
+    // after any group deletion: AddGroupToDatabase would then INSERT OR REPLACE that group's
+    // IMAGE_GROUP_LIST row and pour the new members over the existing member table.
+    image_asset_panel->current_group_number++;
+    long new_group_id = image_asset_panel->current_group_number;
 
     image_asset_panel->AddGroupToDatabase(new_group_id, new_group_name.ToUTF8( ).data( ), new_group_id);
 

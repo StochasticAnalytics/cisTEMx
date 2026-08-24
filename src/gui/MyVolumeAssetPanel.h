@@ -1,7 +1,7 @@
 class MyVolumeAssetPanel : public MyAssetPanelParent {
 
   protected:
-    void DirtyGroups( ) { main_frame->DirtyParticlePositionGroups( ); };
+    void DirtyGroups( ) { main_frame->DirtyVolumeGroups( ); };
 
   public:
     MyVolumeAssetPanel(wxWindow* parent);

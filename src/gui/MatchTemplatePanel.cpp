@@ -5,7 +5,12 @@
 //                                            limit from the GUI value up to _END in _STEP
 //                                            Angstrom increments (values land on the step grid)
 //   CISTEM_EXPERIMENTAL_BATCH=all-templates  clicking StartEstimation runs every template in
-//                                            the reference dropdown, starting from the selection
+//                                            the selected Reference Volume Group ("All Volumes"
+//                                            = the whole dropdown), one TM job per template,
+//                                            starting from the selected reference when it is a
+//                                            member of the group. Members are tracked by asset
+//                                            id, so volumes deleted mid-sweep are skipped with a
+//                                            message rather than shifting the remaining legs.
 // Optional overrides for the high-res sweep:
 //   CISTEM_EXPERIMENTAL_BATCH_HIGH_RES_END   stop after this value (default 8.0)
 //   CISTEM_EXPERIMENTAL_BATCH_HIGH_RES_STEP  step size in Angstroms (default 0.5)
@@ -20,6 +25,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <vector>
 
 namespace {
 
@@ -66,9 +72,17 @@ const BatchExperimentConfig& GetBatchExperimentConfig( ) {
 }
 
 // Batch experiment state (confined to this translation unit)
-bool s_batch_experiment_active    = false;
-int  s_number_of_volume_asset_idx = 0; // snapshot of the reference count, taken at batch activation
-int  s_current_volume_asset_idx   = 0;
+bool             s_batch_experiment_active = false;
+bool             s_batch_allow_over_focus  = false; // over-focus decision, resolved once at activation
+std::vector<int> s_batch_volume_asset_ids; // all-templates: member asset ids of the chosen group, in group order
+size_t           s_batch_position = 0; // all-templates: index into s_batch_volume_asset_ids of the running leg
+
+void ClearBatchExperimentState( ) {
+    s_batch_experiment_active = false;
+    s_batch_allow_over_focus  = false;
+    s_batch_volume_asset_ids.clear( );
+    s_batch_position = 0;
+}
 
 } // namespace
 
@@ -88,9 +102,18 @@ MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     my_job_id   = -1;
     running_job = false;
 
-    group_combo_is_dirty   = false;
-    run_profiles_are_dirty = false;
-    set_up_to_resume_job   = false;
+    group_combo_is_dirty        = false;
+    run_profiles_are_dirty      = false;
+    volumes_are_dirty           = false;
+    volume_group_combo_is_dirty = true; // fill on the first UpdateUI with an open project
+    set_up_to_resume_job        = false;
+
+    // The reference volume group only drives the all-templates batch sweep; keep the
+    // production layout unchanged unless that mode was requested at launch.
+    if ( GetBatchExperimentConfig( ).mode != BatchExperimentMode::all_templates ) {
+        ReferenceGroupStaticText->Show(false);
+        ReferenceGroupSelectPanel->Show(false);
+    }
 
 #ifndef SHOW_CISTEM_GPU_OPTIONS
     UseGPURadioYes->Enable(false);
@@ -219,6 +242,11 @@ void MatchTemplatePanel::Reset( ) {
     InfoPanel->Show(true);
 
     ResultsPanel->Clear( );
+
+    // The batch state is file-static: without this a project close/switch mid-sweep would leave
+    // the next project's first Start click running as a continuation leg with stale indices.
+    if ( s_batch_experiment_active )
+        CancelBatchExperiment("cancelled: panel reset (project closed or switched)");
 
     if ( running_job == true ) {
         main_frame->job_controller.KillJob(my_job_id);
@@ -679,6 +707,31 @@ bool MatchTemplatePanel::CheckForOverFocus(bool& append_allow_over_focus) {
 void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
     // Note: this fires very frequently. Keeping the print but commented for noise. Uncomment if needed.
 
+    // Refill dirty combos before the resume early-return below: while a resume is set up the
+    // asset panels are still live, and a volume deleted in that window would otherwise leave the
+    // reference dropdown ordered differently from the asset list it indexes.
+    if ( main_frame->current_project.is_open ) {
+        if ( group_combo_is_dirty == true ) {
+            FillGroupComboBox( );
+            group_combo_is_dirty = false;
+        }
+
+        if ( run_profiles_are_dirty == true ) {
+            FillRunProfileComboBox( );
+            run_profiles_are_dirty = false;
+        }
+
+        if ( volumes_are_dirty == true ) {
+            ReferenceSelectPanel->FillComboBox( );
+            volumes_are_dirty = false;
+        }
+
+        if ( volume_group_combo_is_dirty == true ) {
+            ReferenceGroupSelectPanel->FillComboBox(true);
+            volume_group_combo_is_dirty = false;
+        }
+    }
+
     // We want things to be greyed out if the user is re-running the job.
     if ( set_up_to_resume_job ) {
         return;
@@ -690,6 +743,7 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
         GroupComboBox->Enable(false);
         StartEstimationButton->Enable(false);
         ReferenceSelectPanel->Enable(false);
+        ReferenceGroupSelectPanel->Enable(false);
         ResumeRunCheckBox->Enable(false);
     }
     else {
@@ -704,6 +758,7 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
             RunProfileComboBox->Enable(true);
             GroupComboBox->Enable(true);
             ReferenceSelectPanel->Enable(true);
+            ReferenceGroupSelectPanel->Enable(true);
 
             if ( RunProfileComboBox->GetCount( ) > 0 ) {
                 if ( image_asset_panel->ReturnGroupSize(GroupComboBox->GetSelection( )) > 0 && run_profiles_panel->run_profile_manager.ReturnTotalJobs(RunProfileComboBox->GetSelection( )) > 0 && all_images_have_defocus_values == true ) {
@@ -745,22 +800,8 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
         else {
             GroupComboBox->Enable(false);
             ReferenceSelectPanel->Enable(false);
+            ReferenceGroupSelectPanel->Enable(false);
             RunProfileComboBox->Enable(false);
-        }
-
-        if ( group_combo_is_dirty == true ) {
-            FillGroupComboBox( );
-            group_combo_is_dirty = false;
-        }
-
-        if ( run_profiles_are_dirty == true ) {
-            FillRunProfileComboBox( );
-            run_profiles_are_dirty = false;
-        }
-
-        if ( volumes_are_dirty == true ) {
-            ReferenceSelectPanel->FillComboBox( );
-            volumes_are_dirty = false;
         }
     }
 }
@@ -816,6 +857,7 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 
     //SetAndRememberEnableState(GroupComboBox, was_enabled_GroupComboBox, enable_value);
     SetAndRememberEnableState(ReferenceSelectPanel, was_enabled_ReferenceSelectPanel, enable_value);
+    SetAndRememberEnableState(ReferenceGroupSelectPanel, was_enabled_ReferenceGroupSelectPanel, enable_value);
 
     SetAndRememberEnableState(OutofPlaneStepNumericCtrl, was_enabled_OutofPlaneStepNumericCtrl, enable_value);
     SetAndRememberEnableState(InPlaneStepNumericCtrl, was_enabled_InPlaneStepNumericCtrl, enable_value);
@@ -857,6 +899,81 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
         ReferenceSelectPanel->FillComboBox( );
         volumes_are_dirty = false;
     }
+
+    if ( volume_group_combo_is_dirty == true ) {
+        ReferenceGroupSelectPanel->FillComboBox(true);
+        volume_group_combo_is_dirty = false;
+    }
+}
+
+void MatchTemplatePanel::CancelBatchExperiment(const wxString& reason) {
+    WriteInfoText("BATCH EXPERIMENT: " + reason);
+    ClearBatchExperimentState( );
+
+    // A continuation leg that could not start has no live job but the panel is still in its
+    // progress view (running_job stays true between legs); give the user the Finish button.
+    if ( running_job ) {
+        TimeRemainingText->SetLabel("Time Remaining : Batch cancelled");
+        CancelAlignmentButton->Show(false);
+        FinishButton->Show(true);
+        ProgressPanel->Layout( );
+    }
+}
+
+bool MatchTemplatePanel::ActivateAllTemplatesBatch(bool starting_from_resume) {
+    // FillWithVolumeGroups(true) lists group 0 ("All Volumes") first, so the combo position is
+    // the group array position - the same convention GroupComboBox uses for image groups.
+    const int group_index = ReferenceGroupSelectPanel->GetSelection( );
+    if ( group_index == wxNOT_FOUND || group_index >= int(volume_asset_panel->ReturnNumberOfGroups( )) ) {
+        WriteErrorText("BATCH EXPERIMENT: no reference volume group selected; batch mode not activated.");
+        return false;
+    }
+
+    const wxString group_name        = volume_asset_panel->ReturnGroupName(group_index);
+    const long     number_of_members = volume_asset_panel->ReturnGroupSize(group_index);
+    if ( number_of_members <= 0 ) {
+        WriteErrorText(wxString::Format("BATCH EXPERIMENT: reference volume group '%s' is empty; batch mode not activated.", group_name));
+        return false;
+    }
+
+    // Snapshot the members by asset id: array positions shift whenever a volume is removed.
+    const int        selected_asset_id = volume_asset_panel->ReturnAssetID(ReferenceSelectPanel->GetSelection( ));
+    std::vector<int> member_asset_ids;
+    int              start_position = -1;
+    member_asset_ids.reserve(number_of_members);
+    for ( long member = 0; member < number_of_members; member++ ) {
+        const int asset_id = volume_asset_panel->ReturnGroupMemberID(group_index, member);
+        if ( asset_id == selected_asset_id )
+            start_position = int(member_asset_ids.size( ));
+        member_asset_ids.push_back(asset_id);
+    }
+
+    // The dropdown selection sets where the sweep starts (this keeps the long-standing
+    // "from the selection to the end" behaviour for All Volumes). A selection outside the
+    // group starts at the group's first member.
+    if ( start_position < 0 ) {
+        if ( starting_from_resume ) {
+            WriteErrorText("BATCH EXPERIMENT: the resumed job's reference is not a member of the selected volume group; batch mode not activated.");
+            return false;
+        }
+        WriteInfoText("BATCH EXPERIMENT: the selected reference is not in the group; starting from the group's first member.");
+        start_position = 0;
+        ReferenceSelectPanel->SetSelection(volume_asset_panel->ReturnArrayPositionFromAssetID(member_asset_ids[0]));
+    }
+
+    s_batch_volume_asset_ids  = member_asset_ids;
+    s_batch_position          = size_t(start_position);
+    s_batch_experiment_active = true;
+
+    WriteInfoText(wxString::Format("BATCH EXPERIMENT (CISTEM_EXPERIMENTAL_BATCH=all-templates): Starting. "
+                                   "Group '%s' has %zu templates; running %zu of them, beginning at template %zu (asset id %d: %s)",
+                                   group_name,
+                                   s_batch_volume_asset_ids.size( ),
+                                   s_batch_volume_asset_ids.size( ) - s_batch_position,
+                                   s_batch_position + 1,
+                                   s_batch_volume_asset_ids[s_batch_position],
+                                   volume_asset_panel->ReturnAssetShortFilename(ReferenceSelectPanel->GetSelection( ))));
+    return true;
 }
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
@@ -871,52 +988,53 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         }
     }
 
-    if ( batch_config.mode != BatchExperimentMode::none ) {
-        if ( s_batch_experiment_active ) {
-            // Log what we're running (value/selection was already advanced in ProcessAllJobsFinished)
-            if ( batch_config.mode == BatchExperimentMode::all_templates ) {
-                WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running ref index %d/%d: %s\n",
-                                               s_current_volume_asset_idx,
-                                               s_number_of_volume_asset_idx,
-                                               volume_asset_panel->ReturnAssetShortFilename(s_current_volume_asset_idx).ToUTF8( ).data( )));
+    // Never build a job without a reference: with zero volumes, or a resumed job whose reference
+    // was deleted, the dropdown has no selection and ReturnAssetPointer(wxNOT_FOUND) below would
+    // read off the end of the asset array. Applies to batch and normal runs alike.
+    if ( ReferenceSelectPanel->GetSelection( ) == wxNOT_FOUND ) {
+        WriteErrorText("No reference volume selected; nothing to run.");
+        if ( s_batch_experiment_active )
+            CancelBatchExperiment("cancelled: no reference volume selected");
+        return;
+    }
+
+    // Continuation leg of a batch (re-entered from ProcessAllJobsFinished via CallAfter).
+    const bool is_continuation_leg = s_batch_experiment_active;
+
+    if ( is_continuation_leg ) {
+        if ( batch_config.mode == BatchExperimentMode::all_templates ) {
+            // The reference is authoritative by asset id, not by dropdown position: the dropdown
+            // may have been refilled (volume imported/removed) since the previous leg.
+            const int asset_id       = s_batch_volume_asset_ids[s_batch_position];
+            const int array_position = volume_asset_panel->ReturnArrayPositionFromAssetID(asset_id);
+            if ( array_position < 0 ) {
+                CancelBatchExperiment(wxString::Format("cancelled: template asset id %d no longer exists", asset_id));
+                return;
             }
-            else {
-                WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
-                                               HighResolutionLimitNumericCtrl->ReturnValue( )));
-            }
-        }
-        else if ( ReferenceSelectPanel->GetSelection( ) == wxNOT_FOUND ) {
-            WriteErrorText("BATCH EXPERIMENT: no reference selected; batch mode not activated.");
+            ReferenceSelectPanel->SetSelection(array_position);
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running template %zu/%zu (asset id %d): %s\n",
+                                           s_batch_position + 1,
+                                           s_batch_volume_asset_ids.size( ),
+                                           asset_id,
+                                           volume_asset_panel->ReturnAssetShortFilename(array_position)));
         }
         else {
-            // First click - activate batch mode, snapshot the state it iterates over, and
-            // print the configured values once per activation.
-            s_batch_experiment_active  = true;
-            s_current_volume_asset_idx = ReferenceSelectPanel->GetSelection( );
-            if ( batch_config.mode == BatchExperimentMode::all_templates ) {
-                s_number_of_volume_asset_idx = volume_asset_panel->all_assets_list->number_of_assets;
-                VolumeAsset* temp_volume     = volume_asset_panel->ReturnAssetPointer(s_current_volume_asset_idx);
-                WriteInfoText(wxString::Format("BATCH EXPERIMENT (CISTEM_EXPERIMENTAL_BATCH=all-templates): "
-                                               "Starting. Will run all %d templates in dropdown starting from index %d (%s)",
-                                               s_number_of_volume_asset_idx,
-                                               s_current_volume_asset_idx,
-                                               temp_volume->filename.GetName( )));
-            }
-            else {
-                WriteInfoText(wxString::Format("BATCH EXPERIMENT (CISTEM_EXPERIMENTAL_BATCH=high-res): "
-                                               "Starting. Will run from %.2f to %.2f A (HIGH_RES_END) in %.2f A steps (HIGH_RES_STEP)",
-                                               HighResolutionLimitNumericCtrl->ReturnValue( ),
-                                               batch_config.high_res_end_value,
-                                               batch_config.high_res_step));
-            }
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: Running high-res limit = %.2f A",
+                                           HighResolutionLimitNumericCtrl->ReturnValue( )));
         }
     }
 
     // Over-focus check MUST be called before active_group.CopyFrom() below.
     // If the user creates a new filtered group, CheckForOverFocus changes the
     // GroupComboBox selection, so the subsequent CopyFrom picks up the new group.
+    // On a continuation leg the decision made at activation is reused: asking again would park
+    // the sweep on a modal dialog with the worker fleet already torn down, and a different
+    // answer would silently switch the image group mid-sweep.
     bool append_allow_over_focus = false;
-    if ( ! CheckForOverFocus(append_allow_over_focus) ) {
+    if ( is_continuation_leg ) {
+        append_allow_over_focus = s_batch_allow_over_focus;
+    }
+    else if ( ! CheckForOverFocus(append_allow_over_focus) ) {
         return;
     }
 
@@ -936,6 +1054,8 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
         // clear the resume state) a 0-image group would submit a 0/0-job run.
         if ( images_to_resume.GetCount( ) == 0 ) {
             WriteErrorText("Resume is checked but the active job has no unfinished images - nothing to run. Uncheck Resume to start a new job.");
+            if ( is_continuation_leg )
+                CancelBatchExperiment("cancelled: continuation leg found a resume with nothing to run");
             return;
         }
 
@@ -946,6 +1066,25 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
             long image_index = image_asset_panel->ReturnArrayPositionFromAssetID(images_to_resume[counter]);
             active_group.AddMember(image_index);
         }
+    }
+
+    // Batch activation happens only now, after every early return above, so an aborted click
+    // (over-focus CANCEL, nothing to resume) can never leave the batch armed with stale state
+    // for the next click to pick up as a continuation.
+    if ( batch_config.mode != BatchExperimentMode::none && ! is_continuation_leg ) {
+        if ( batch_config.mode == BatchExperimentMode::all_templates ) {
+            if ( ! ActivateAllTemplatesBatch(resume) )
+                return;
+        }
+        else {
+            s_batch_experiment_active = true;
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT (CISTEM_EXPERIMENTAL_BATCH=high-res): "
+                                           "Starting. Will run from %.2f to %.2f A (HIGH_RES_END) in %.2f A steps (HIGH_RES_STEP)",
+                                           HighResolutionLimitNumericCtrl->ReturnValue( ),
+                                           batch_config.high_res_end_value,
+                                           batch_config.high_res_step));
+        }
+        s_batch_allow_over_focus = append_allow_over_focus;
     }
 
     float resolution_limit;
@@ -1459,10 +1598,8 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
     cached_results.Clear( );
 
     // Cancel batch experiment on user termination
-    if ( s_batch_experiment_active ) {
-        s_batch_experiment_active = false;
-        WriteInfoText("BATCH EXPERIMENT: Cancelled by user");
-    }
+    if ( s_batch_experiment_active )
+        CancelBatchExperiment("cancelled by user");
 
     //running_job = false;
 }
@@ -1623,11 +1760,12 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             HighResolutionLimitNumericCtrl->ChangeValueFloat(next_value);
 
             // A continuation leg is a fresh job. If the leg that just finished was started
-            // from a resume, the resume state is still set and StartEstimationClick would
-            // re-enter the resume path, find zero unfinished images for the now-complete
-            // job, and submit an empty 0/0 package. Clear it before re-clicking.
+            // from a resume, restore the controls the resume disabled and untick Resume;
+            // otherwise StartEstimationClick would re-enter the resume path, find zero
+            // unfinished images for the now-complete job, and refuse to run.
+            if ( set_up_to_resume_job )
+                SetInputsForPossibleReRun(false);
             ResumeRunCheckBox->SetValue(false);
-            set_up_to_resume_job = false;
 
             // Use CallAfter for safe event loop handling
             CallAfter([this]( ) {
@@ -1640,32 +1778,48 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         }
         else {
             // Done with all values
-            s_batch_experiment_active = false;
+            ClearBatchExperimentState( );
             WriteInfoText(wxString::Format("BATCH EXPERIMENT: All values completed (ended at %.2f)!",
                                            current_value));
         }
     }
 
     if ( leg_is_complete && s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::all_templates ) {
-        // Re-read the live asset count: if assets were removed mid-batch, the activation-time
-        // snapshot would run SetSelection/ReturnAssetPointer off the end of the shrunk list.
-        const int live_count = int(volume_asset_panel->all_assets_list->number_of_assets);
-        const int last_idx   = std::min(s_number_of_volume_asset_idx, live_count);
+        const size_t total               = s_batch_volume_asset_ids.size( );
+        const size_t completed           = s_batch_position + 1;
+        int          next_array_position = -1;
 
-        if ( s_current_volume_asset_idx + 1 < last_idx ) {
-            WriteInfoText(wxString::Format("BATCH EXPERIMENT: Completed template idx %d, next = %d/%d",
-                                           s_current_volume_asset_idx,
-                                           s_current_volume_asset_idx + 1,
-                                           s_number_of_volume_asset_idx));
+        // Advance by asset id: a template deleted mid-batch is skipped with a message instead of
+        // silently shifting every later dropdown index by one.
+        for ( size_t candidate = s_batch_position + 1; candidate < total; candidate++ ) {
+            const int asset_id       = s_batch_volume_asset_ids[candidate];
+            const int array_position = volume_asset_panel->ReturnArrayPositionFromAssetID(asset_id);
+            if ( array_position < 0 ) {
+                WriteErrorText(wxString::Format("BATCH EXPERIMENT: template %zu/%zu (asset id %d) no longer exists; skipping",
+                                                candidate + 1, total, asset_id));
+                continue;
+            }
+            next_array_position = array_position;
+            s_batch_position    = candidate;
+            break;
+        }
 
-            // Update the GUI so the Call after has the updated state
-            s_current_volume_asset_idx++;
-            ReferenceSelectPanel->SetSelection(s_current_volume_asset_idx);
+        if ( next_array_position >= 0 ) {
+            WriteInfoText(wxString::Format("\nBATCH EXPERIMENT: Completed template %zu/%zu, next = %zu/%zu (%s)",
+                                           completed, total, s_batch_position + 1, total,
+                                           volume_asset_panel->ReturnAssetShortFilename(next_array_position)));
 
-            // A continuation leg is a fresh job - clear any leftover resume state (see the
-            // matching comment in the high-res block above).
+            // A continuation leg is a fresh job. If the leg that just finished was started from a
+            // resume, restore the controls the resume disabled and untick Resume; otherwise
+            // StartEstimationClick would re-enter the resume path, find zero unfinished images
+            // for the now-complete job, and refuse to run.
+            if ( set_up_to_resume_job )
+                SetInputsForPossibleReRun(false);
             ResumeRunCheckBox->SetValue(false);
-            set_up_to_resume_job = false;
+
+            // Update the GUI so the CallAfter has the updated state (StartEstimationClick
+            // re-resolves the reference by asset id anyway).
+            ReferenceSelectPanel->SetSelection(next_array_position);
 
             // Use CallAfter for safe event loop handling
             CallAfter([this]( ) {
@@ -1677,9 +1831,9 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
             return; // Don't show Finish button yet
         }
         else {
-            // Done with all values
-            s_batch_experiment_active = false;
-            WriteInfoText(wxString::Format("BATCH EXPERIMENT: All templates are completed!"));
+            // Done with all templates
+            WriteInfoText(wxString::Format("BATCH EXPERIMENT: All templates are completed (%zu/%zu)!", completed, total));
+            ClearBatchExperimentState( );
         }
     }
 

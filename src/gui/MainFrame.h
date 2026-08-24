@@ -71,6 +71,7 @@ class MyMainFrame : public MainFrame, public SocketCommunicator, public UpdatePr
     void DirtyMovieGroups( );
     void DirtyImageGroups( );
     void DirtyVolumes( );
+    void DirtyVolumeGroups( );
     void DirtyAtomicCoordinates( );
     void DirtyParticlePositionGroups( );
     void DirtyRunProfiles( );

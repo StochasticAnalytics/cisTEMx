@@ -302,6 +302,7 @@ void MyMainFrame::DirtyEverything( ) {
     DirtyClassificationSelections( );
     DirtyClassifications( );
     DirtyVolumes( );
+    DirtyVolumeGroups( );
     DirtyAtomicCoordinates( );
 }
 
@@ -352,6 +353,16 @@ void MyMainFrame::DirtyVolumes( ) {
         if ( refine_template_panel )
             refine_template_panel->volumes_are_dirty = true;
 #endif
+    }
+}
+
+void MyMainFrame::DirtyVolumeGroups( ) {
+    if ( volume_asset_panel )
+        volume_asset_panel->is_dirty = true;
+
+    if ( current_workflow == "Template Matching" ) {
+        if ( match_template_panel )
+            match_template_panel->volume_group_combo_is_dirty = true;
     }
 }
 

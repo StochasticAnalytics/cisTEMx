@@ -850,24 +850,16 @@ void JobControlApp::SendNumberofConnections(bool check_shutdown_gate) {
     WriteToSocket(gui_socket, socket_number_of_connections, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
     WriteToSocket(gui_socket, &number_of_workers_already_connected, 4, true, "SendNumberOfConnections", FUNCTION_DETAILS_AS_WXSTRING);
 
-    if ( check_shutdown_gate == false )
-        return;
-
-    int number_of_commands_to_run;
-
-    if ( current_job_package.number_of_jobs + 1 < current_job_package.my_profile.ReturnTotalJobs( ) )
-        number_of_commands_to_run = current_job_package.number_of_jobs + 1;
-    else
-        number_of_commands_to_run = current_job_package.my_profile.ReturnTotalJobs( );
-
-    // >= not ==: while a dedicated (non-compute) leader is connected but its announcement has
-    // not yet been processed, the count transiently includes it; if every real worker connects
-    // inside that window the count can pass the gate without ever equalling it. Once the count
-    // reaches the gate all expected processes have phoned home, so shutting down is correct.
-    if ( number_of_workers_already_connected >= number_of_commands_to_run ) {
-        ShutDownServer( );
-        MyDebugPrint("Socket Server is now shutdown\n");
-    }
+    // The count-based shutdown gate is gone. It closed the worker server once the counter
+    // reached the launched-command total, but the counter measures processed identifications,
+    // not distinct live workers: a worker whose ack never arrived reconnects on its 20 s
+    // zombie cycle and is counted again, so a fast-filling fleet inflated the count past the
+    // gate within a minute and the shutdown locked out every not-yet-served worker
+    // (2026-08-23: 9 of 58 served, then "Socket Server is now shutdown"). Keeping the server
+    // up costs nothing and is now useful: late or re-connecting workers are exactly the pool
+    // that picks up re-dispatched orphaned jobs (see myapp SendNextJobTo). The server still
+    // closes on the normal end-of-job path (HandleSocketTimeToDie).
+    (void)check_shutdown_gate;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -976,18 +968,34 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
                     effective_master_port = master_tunnel_remote_port;
                 }
             }
-            WriteToSocket(new_connection, socket_you_are_a_worker, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
-            SendwxStringToSocket(&effective_master_ip, new_connection);
-            SendwxStringToSocket(&effective_master_port, new_connection);
+            // Count a worker ONLY when all three sends succeed. The returns were ignored,
+            // so a connection whose peer was already gone (a worker that hit its 20 s
+            // zombie timeout and reconnected - each retry re-identifies with the valid
+            // job code) still incremented the counter: under a fast fleet fill the meter
+            // raced to 58/58 in under a minute off 2-3 attempts per stalled worker, and
+            // the count-based shutdown gate then closed the server on the whole fleet
+            // (2026-08-23 evening run: 9 of 58 workers served, 49 counted-but-dead).
+            bool served = WriteToSocket(new_connection, socket_you_are_a_worker, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+            served      = served && SendwxStringToSocket(&effective_master_ip, new_connection);
+            served      = served && SendwxStringToSocket(&effective_master_port, new_connection);
 
-            // that should be the end of our interactions with the worker
-            // it should disconnect itself. We have to monitor it however so that
-            // we can destroy it once it disconnects..
+            if ( served == false ) {
+                // The peer is gone (typically a zombie-retry's abandoned earlier attempt).
+                // Do not count it and do not monitor it - its live retry will identify
+                // again on a fresh socket and be served then.
+                new_connection->Destroy( );
+                new_connection = NULL;
+            }
+            else {
+                // that should be the end of our interactions with the worker
+                // it should disconnect itself. We have to monitor it however so that
+                // we can destroy it once it disconnects..
 
-            MonitorSocket(new_connection);
+                MonitorSocket(new_connection);
 
-            number_of_workers_already_connected++;
-            SendNumberofConnections( );
+                number_of_workers_already_connected++;
+                SendNumberofConnections( );
+            }
         }
     }
 

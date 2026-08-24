@@ -74,6 +74,14 @@ bool SamplesTestingApp::DoCalculation( ) {
     SamplesPrintTestStartMessage("\n\nSamples testing done!", true);
     ProgramSpecificCleanUp( );
 
+    // The interactive path in MyApp::OnEventLoopEnter discards DoCalculation's return value
+    // and hardcodes exit(0), so returning false would still exit 0 and a scripted gate
+    // ("PASS if exit == 0") reports success over failed sample tests - which is exactly
+    // what happened for the container gate. Exit non-zero explicitly, matching the
+    // console_test convention.
+    if ( ! samples_tests_have_all_passed )
+        std::exit(1);
+
     return true;
 }
 

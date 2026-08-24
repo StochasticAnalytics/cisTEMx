@@ -16,10 +16,12 @@
  *  2. GPU batch-size invariance: the same search with --gpu-batch-size-multiplier 1
  *     must reproduce the multiplier-4 (default) scaled MIP to floating-point noise.
  *  3. K3 rotated-geometry consistency (Yeast 60S, native 5760x4092 vs the pre-rotated
- *     4092x5760 twin): both orientations must find the same result. This is primarily
- *     a regression for the rotated-coordinate out-of-bounds writes (K3 fix) - the
- *     always-on asserts in the search ride along - so a coarse angular grid is used
- *     to keep it fast; consistency, not sensitivity, is under test.
+ *     4092x5760 twin, with the TEMPLATE co-rotated so both searches sample identical
+ *     specimen-frame orientations): two self-paired legs, FastFFT and classic, each
+ *     compared on scaled-MIP field statistics and the top-10 matched peaks. Guards the
+ *     rotated-coordinate/padding bookkeeping and the layout-dependent kernels; the
+ *     always-on asserts in the search ride along. Coarse grid - consistency, not
+ *     sensitivity, is under test (co-rotation makes that valid).
  *
  * Baseline contract:
  *  - Baselines live at $PLASMONLABS_REF_IMAGES/TM_tests/Baselines/<name>.txt as
@@ -84,6 +86,7 @@ struct TmSearchSettings {
     wxString symmetry          = "C1";
     int      max_threads       = 1;
     int      batch_multiplier  = 0; // 0 = do not pass the option (binary default)
+    bool     use_fast_fft      = true;
 };
 
 wxString OutName(const TmSearchSettings& s, const char* what) {
@@ -141,7 +144,7 @@ bool RunMatchTemplateSearch(const TmSearchSettings& s, const wxString& temp_dire
        << s.symmetry << "\n"
        << "Yes" << "\n" // use GPU
 #ifdef cisTEM_USING_FastFFT
-       << "Yes" << "\n" // use FastFFT
+       << (s.use_fast_fft ? "Yes" : "No") << "\n" // use FastFFT
 #endif
        << s.max_threads << "\n"
        << "Yes" << "\n"; // peak sampling correction
@@ -201,6 +204,149 @@ int CountPeakInfoRows(const wxString& filename) {
         n++;
     }
     return n;
+}
+
+// -------------------------- rotation helpers (K3 pair) ---------------------------
+
+// The two 90-degree in-plane mappings between the native (W x H) frame and the
+// rotated (H x W) frame, 0-based physical coordinates. Which one produced the
+// _rotate90 file on disk is determined empirically (DetermineRotationDirection).
+inline void MapRotatedToNative(const int direction, const int rot_x, const int rot_y,
+                               const int rot_nx, const int rot_ny, int& native_x, int& native_y) {
+    if ( direction == 0 ) {
+        native_x = rot_y;
+        native_y = (rot_nx - 1) - rot_x;
+    }
+    else {
+        native_x = (rot_ny - 1) - rot_y;
+        native_y = rot_x;
+    }
+}
+
+// Sample pixels of the rotated file against the native file under both mappings and
+// return the one that reproduces it exactly (rot90 on disk is a lossless permutation).
+// Returns -1 if neither matches (unexpected pair).
+int DetermineRotationDirection(Image& native, Image& rotated) {
+    const int             trials = 2048;
+    int                   hits[2]{0, 0};
+    RandomNumberGenerator sampler(pi_v<float>);
+    for ( int direction = 0; direction < 2; direction++ ) {
+        for ( int t = 0; t < trials; t++ ) {
+            int rx = myroundint(sampler.GetUniformRandomSTD(0.f, float(rotated.logical_x_dimension - 1)));
+            int ry = myroundint(sampler.GetUniformRandomSTD(0.f, float(rotated.logical_y_dimension - 1)));
+            int nx, ny;
+            MapRotatedToNative(direction, rx, ry, rotated.logical_x_dimension, rotated.logical_y_dimension, nx, ny);
+            if ( rotated.real_values[rotated.ReturnReal1DAddressFromPhysicalCoord(rx, ry, 0)] ==
+                 native.real_values[native.ReturnReal1DAddressFromPhysicalCoord(nx, ny, 0)] )
+                hits[direction]++;
+        }
+    }
+    if ( hits[0] == trials && hits[1] < trials )
+        return 0;
+    if ( hits[1] == trials && hits[0] < trials )
+        return 1;
+    wxPrintf("  rotation direction ambiguous/unmatched (hits %i / %i of %i)\n", hits[0], hits[1], trials);
+    return -1;
+}
+
+// Write a copy of a cubic volume rotated 90 degrees about z with the SAME in-plane
+// mapping as the image pair - a pure index permutation, no interpolation - so the
+// rotated-image leg samples identical specimen-frame orientations on the same grid.
+bool WriteCoRotatedTemplate(const wxString& in_path, const wxString& out_path, const int direction) {
+    ImageFile volume_file;
+    if ( ! volume_file.OpenFile(in_path.ToStdString( ), false) )
+        return false;
+    Image volume;
+    volume.ReadSlices(&volume_file, 1, volume_file.ReturnNumberOfSlices( ));
+    MyAssertTrue(volume.logical_x_dimension == volume.logical_y_dimension, "template must be square in x/y");
+
+    Image rotated;
+    rotated.Allocate(volume.logical_x_dimension, volume.logical_y_dimension, volume.logical_z_dimension, true);
+    for ( int k = 0; k < volume.logical_z_dimension; k++ ) {
+        for ( int j = 0; j < volume.logical_y_dimension; j++ ) {
+            for ( int i = 0; i < volume.logical_x_dimension; i++ ) {
+                int src_x, src_y;
+                MapRotatedToNative(direction, i, j, rotated.logical_x_dimension, rotated.logical_y_dimension, src_x, src_y);
+                rotated.real_values[rotated.ReturnReal1DAddressFromPhysicalCoord(i, j, k)] =
+                        volume.real_values[volume.ReturnReal1DAddressFromPhysicalCoord(src_x, src_y, k)];
+            }
+        }
+    }
+    rotated.WriteSlicesAndFillHeader(out_path.ToStdString( ), volume_file.ReturnPixelSize( ));
+    return true;
+}
+
+// -------------------------- peak table comparison --------------------------------
+
+struct PeakRow {
+    double x, y, height;
+};
+
+// peak_info columns: x_pos y_pos defocus corrected_peak_height original_score above_threshold sub_pixel_x sub_pixel_y
+std::vector<PeakRow> ReadTopPeaks(const wxString& filename, size_t wanted_number) {
+    std::vector<PeakRow> rows;
+    std::ifstream        f(filename.ToStdString( ));
+    std::string          line;
+    while ( std::getline(f, line) ) {
+        if ( line.empty( ) || line[0] == '#' || line[0] == 'C' || line[0] == 'c' )
+            continue;
+        std::istringstream ss(line);
+        PeakRow            r;
+        double             defocus;
+        if ( ss >> r.x >> r.y >> defocus >> r.height )
+            rows.push_back(r);
+    }
+    std::sort(rows.begin( ), rows.end( ), [](const PeakRow& a, const PeakRow& b) { return a.height > b.height; });
+    if ( rows.size( ) > wanted_number )
+        rows.resize(wanted_number);
+    return rows;
+}
+
+// Match the rotated run's top peaks to the native run's by position (mapped through the
+// known rotation), then compare heights. Positions may be in pixels or Angstroms
+// depending on the writer; units are inferred from the image extent.
+bool CompareTopPeaks(const std::vector<PeakRow>& native_peaks, std::vector<PeakRow> rotated_peaks,
+                     const int direction, const int native_nx, const int native_ny, const float pixel_size,
+                     const double match_radius_px, const double height_rel_tol, const char* label) {
+    if ( native_peaks.empty( ) || rotated_peaks.empty( ) ) {
+        wxPrintf("  %s: no peaks to compare (native %zu, rotated %zu)\n", label, native_peaks.size( ), rotated_peaks.size( ));
+        return false;
+    }
+
+    // Infer units: coordinates exceeding the pixel extent must be Angstroms.
+    double max_coordinate = 0.0;
+    for ( auto& p : native_peaks )
+        max_coordinate = std::max(max_coordinate, std::max(p.x, p.y));
+    const double to_px  = (max_coordinate > double(std::max(native_nx, native_ny))) ? 1.0 / pixel_size : 1.0;
+    const int    rot_nx = native_ny, rot_ny = native_nx;
+
+    int    matched          = 0;
+    double worst_height_rel = 0.0;
+    for ( auto& rp : rotated_peaks ) {
+        int mapped_x, mapped_y;
+        MapRotatedToNative(direction, myroundint(float(rp.x * to_px)), myroundint(float(rp.y * to_px)), rot_nx, rot_ny, mapped_x, mapped_y);
+        double         best_d2 = 1e30;
+        const PeakRow* best    = nullptr;
+        for ( auto& np : native_peaks ) {
+            const double dx = np.x * to_px - mapped_x, dy = np.y * to_px - mapped_y;
+            const double d2 = dx * dx + dy * dy;
+            if ( d2 < best_d2 ) {
+                best_d2 = d2;
+                best    = &np;
+            }
+        }
+        if ( best != nullptr && best_d2 <= match_radius_px * match_radius_px ) {
+            matched++;
+            worst_height_rel = std::max(worst_height_rel, std::abs(best->height - rp.height) / std::max(std::abs(best->height), 1e-30));
+        }
+    }
+
+    const size_t expected       = std::min(native_peaks.size( ), rotated_peaks.size( ));
+    const bool   enough_matched = (size_t(matched) * 10 >= expected * 8); // >= 80%
+    const bool   heights_agree  = (worst_height_rel <= height_rel_tol);
+    wxPrintf("  %s: matched %i of %zu peaks within %.0f px; worst height rel diff %.4f (tol %.4f)\n",
+             label, matched, expected, match_radius_px, worst_height_rel, height_rel_tol);
+    return enough_matched && heights_agree;
 }
 
 // -------------------------- baseline read/write ----------------------------------
@@ -421,56 +567,105 @@ bool DoK3RotatedGeometryConsistencyTest(const wxString& cistem_ref_dir, const wx
     bool passed     = true;
     bool all_passed = true;
 
-    SamplesBeginTest("K3 native vs rotated90 search consistency", passed);
+    // DESIGN NOTE (2026-08-24). The first version of this test rotated ONLY the image and
+    // compared results - flawed at a coarse grid: an image-only rotation shifts every
+    // particle's in-plane angle by 90 degrees, so the two searches sample DIFFERENT
+    // specimen-frame orientations (and traverse near-ties in a different order), which
+    // produced a deterministic ~3% max difference on the v1.2.26 A100 gate that was an
+    // artifact of the test, not necessarily of the code. Now the TEMPLATE is co-rotated by
+    // the same 90 degrees (lossless index permutation, direction determined empirically
+    // from the image pair), so both searches sample identical specimen-frame orientations
+    // on the same grid and must agree to floating point. Residual disagreement isolates
+    // the layout-dependent paths: RotateForSpeed, padding bookkeeping, and (FastFFT leg
+    // only) the decomposed-6144 kernels. The classic (non-FastFFT) leg pairs with itself
+    // at its own prime-factored search size - never compared across paths, since the
+    // sizes differ (5842-class vs 6144).
+    SamplesBeginTest("K3 pair: rotation direction + co-rotated template", passed);
 
-    // Metadata from TM_tests/Yeast/MetaData/Yeast.toml. C1 on a 24 Mpx K3 frame is
-    // expensive, and this test guards coordinate handling (the rotated-geometry
-    // out-of-bounds class), not detection sensitivity - hence the coarse grid.
-    TmSearchSettings native;
-    native.image_path        = cistem_ref_dir + "/TM_tests/Yeast/Images/147_Mar12_12.21.27_159_0.mrc";
-    native.template_path     = cistem_ref_dir + "/TM_tests/Yeast/Templates/6Q8Y_mature_60S.mrc";
-    native.output_prefix     = temp_directory + "/tm_k3_native";
-    native.pixel_size        = 1.06f;
-    native.defocus_1         = 4147.0f;
-    native.defocus_2         = 4147.0f;
-    native.defocus_angle     = 49.2f;
-    native.high_res_limit    = 4.0f;
-    native.out_of_plane_step = 20.0f;
-    native.in_plane_step     = 15.0f;
+    const wxString native_image_path  = cistem_ref_dir + "/TM_tests/Yeast/Images/147_Mar12_12.21.27_159_0.mrc";
+    const wxString rotated_image_path = cistem_ref_dir + "/TM_tests/Yeast/Images/147_Mar12_12.21.27_159_0_rotate90.mrc";
+    const wxString template_path      = cistem_ref_dir + "/TM_tests/Yeast/Templates/6Q8Y_mature_60S.mrc";
 
-    if ( ! DoesFileExist(native.image_path) ) {
-        SamplesTestResultSkipped("yeast K3 reference data not present under PLASMONLABS_REF_IMAGES");
+    if ( ! DoesFileExist(native_image_path) || ! DoesFileExist(rotated_image_path) ) {
+        SamplesTestResultSkipped("yeast K3 reference pair not present under PLASMONLABS_REF_IMAGES");
         return true;
     }
 
-    TmSearchSettings rotated = native;
-    rotated.image_path       = cistem_ref_dir + "/TM_tests/Yeast/Images/147_Mar12_12.21.27_159_0_rotate90.mrc";
-    rotated.output_prefix    = temp_directory + "/tm_k3_rotated";
+    Image native_image, rotated_image;
+    native_image.QuickAndDirtyReadSlice(native_image_path.ToStdString( ), 1);
+    rotated_image.QuickAndDirtyReadSlice(rotated_image_path.ToStdString( ), 1);
+    const int native_nx = native_image.logical_x_dimension;
+    const int native_ny = native_image.logical_y_dimension;
 
-    passed = RunMatchTemplateSearch(native, temp_directory) && RunMatchTemplateSearch(rotated, temp_directory);
+    const int direction = DetermineRotationDirection(native_image, rotated_image);
+    native_image.Deallocate( );
+    rotated_image.Deallocate( );
+
+    const wxString rotated_template_path = temp_directory + "/tm_k3_template_rot90.mrc";
+    passed                               = (direction >= 0) && WriteCoRotatedTemplate(template_path, rotated_template_path, direction);
     all_passed &= passed;
     SamplesTestResult(passed);
     if ( ! passed )
         return false;
 
-    SamplesBeginTest("K3 native vs rotated90 result agreement", passed);
+    // Base settings: metadata from TM_tests/Yeast/MetaData/Yeast.toml. C1 on a 24 Mpx K3
+    // frame is expensive and this guards coordinate handling, not sensitivity - coarse grid.
+    TmSearchSettings base;
+    base.image_path        = native_image_path;
+    base.template_path     = template_path;
+    base.pixel_size        = 1.06f;
+    base.defocus_1         = 4147.0f;
+    base.defocus_2         = 4147.0f;
+    base.defocus_angle     = 49.2f;
+    base.high_res_limit    = 4.0f;
+    base.out_of_plane_step = 20.0f;
+    base.in_plane_step     = 15.0f;
 
-    // The same physical content searched in two memory layouts must yield the same
-    // detection statistics. Position mapping across the rotation is checked loosely
-    // (the two runs pad/rotate internally); the values are the strong invariant.
-    MipStats native_stats  = MeasureMip(OutName(native, "scaled_mip"));
-    MipStats rotated_stats = MeasureMip(OutName(rotated, "scaled_mip"));
-    int      native_peaks  = CountPeakInfoRows(native.output_prefix + "_peak_info_1.txt");
-    int      rotated_peaks = CountPeakInfoRows(rotated.output_prefix + "_peak_info_1.txt");
+    struct Leg {
+        const char* name;
+        bool        fast_fft;
+    };
 
-    passed = true;
-    passed &= CompareWithTolerance("scaled_mip_max (native vs rotated)", native_stats.max_value, rotated_stats.max_value, 0.02);
-    passed &= CompareWithTolerance("scaled_mip_std (native vs rotated)", native_stats.std, rotated_stats.std, 0.02);
-    if ( native_peaks >= 0 && rotated_peaks >= 0 )
-        passed &= CompareWithTolerance("peak_info_rows (native vs rotated)", double(native_peaks), double(rotated_peaks), 0.10);
+    const Leg legs[] = {{"fastfft", true}, {"classic", false}};
 
-    all_passed &= passed;
-    SamplesTestResult(passed);
+    for ( auto& leg : legs ) {
+        std::string search_name = std::string("K3 pair search (") + leg.name + ")";
+        SamplesBeginTest(search_name.c_str( ), passed);
+
+        TmSearchSettings native_leg = base;
+        native_leg.use_fast_fft     = leg.fast_fft;
+        native_leg.output_prefix    = temp_directory + "/tm_k3_native_" + leg.name;
+
+        TmSearchSettings rotated_leg = native_leg;
+        rotated_leg.image_path       = rotated_image_path;
+        rotated_leg.template_path    = rotated_template_path;
+        rotated_leg.output_prefix    = temp_directory + "/tm_k3_rotated_" + leg.name;
+
+        passed = RunMatchTemplateSearch(native_leg, temp_directory) && RunMatchTemplateSearch(rotated_leg, temp_directory);
+        all_passed &= passed;
+        SamplesTestResult(passed);
+        if ( ! passed )
+            continue;
+
+        std::string agree_name = std::string("K3 pair agreement (") + leg.name + ")";
+        SamplesBeginTest(agree_name.c_str( ), passed);
+
+        // Field check (std of the scaled MIP) plus the top-10 matched-peak comparison:
+        // positions mapped through the known rotation, heights compared per matched pair.
+        MipStats native_stats  = MeasureMip(OutName(native_leg, "scaled_mip"));
+        MipStats rotated_stats = MeasureMip(OutName(rotated_leg, "scaled_mip"));
+
+        std::vector<PeakRow> native_peaks  = ReadTopPeaks(native_leg.output_prefix + "_peak_info_1.txt", 10);
+        std::vector<PeakRow> rotated_peaks = ReadTopPeaks(rotated_leg.output_prefix + "_peak_info_1.txt", 10);
+
+        passed = true;
+        passed &= CompareWithTolerance((agree_name + ": scaled_mip_std").c_str( ), native_stats.std, rotated_stats.std, 0.02);
+        passed &= CompareTopPeaks(native_peaks, rotated_peaks, direction, native_nx, native_ny, base.pixel_size,
+                                  /* match_radius_px = */ 10.0, /* height_rel_tol = */ 0.01, agree_name.c_str( ));
+
+        all_passed &= passed;
+        SamplesTestResult(passed);
+    }
 
     return all_passed;
 }

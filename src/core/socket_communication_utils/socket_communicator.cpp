@@ -1,5 +1,44 @@
 #include "../core_headers.h"
 
+#ifdef __linux__
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#endif
+
+// wxSocketServer hardcodes listen(fd, 5). When a batch advance releases a whole fleet
+// of workers at once, dozens of near-simultaneous connects overflow that 5-deep accept
+// queue; the kernel drops the excess SYNs and the workers spin in reconnect storms
+// through the controller (each cycle re-identifying, inflating the GUI's connection
+// counter) until the calculation-thread idle timeout kills them. POSIX allows listen()
+// to be re-issued on an already-listening socket to deepen its queue in place, so find
+// the freshly bound listener by port and deepen it. (wx exposes no accessor for the
+// raw fd, hence the fd scan.)
+static void DeepenListenBacklog(unsigned short port_in_host_order) {
+#ifdef __linux__
+    for ( int fd = 3; fd < 1024; fd++ ) {
+        int       is_listening = 0;
+        socklen_t opt_length   = sizeof(is_listening);
+        if ( getsockopt(fd, SOL_SOCKET, SO_ACCEPTCONN, &is_listening, &opt_length) != 0 || is_listening == 0 )
+            continue;
+
+        sockaddr_storage bound_address;
+        socklen_t        address_length = sizeof(bound_address);
+        if ( getsockname(fd, (sockaddr*)&bound_address, &address_length) != 0 )
+            continue;
+
+        unsigned short bound_port = 0;
+        if ( bound_address.ss_family == AF_INET )
+            bound_port = ntohs(((sockaddr_in*)&bound_address)->sin_port);
+        else if ( bound_address.ss_family == AF_INET6 )
+            bound_port = ntohs(((sockaddr_in6*)&bound_address)->sin6_port);
+
+        if ( bound_port == port_in_host_order )
+            listen(fd, 512); // deepen in place; on error the queue just stays at 5
+    }
+#endif
+}
+
 wxThread::ExitCode SocketServerThread::Entry( ) {
 
     wxIPV4address my_address;
@@ -82,6 +121,8 @@ wxThread::ExitCode SocketServerThread::Entry( ) {
                 }
 
                 local_copy_server_is_running = true;
+
+                DeepenListenBacklog((unsigned short)current_port);
 
                 //xPrintf("\n\nServer is running on thread, port: %s\n", my_port_string);
 

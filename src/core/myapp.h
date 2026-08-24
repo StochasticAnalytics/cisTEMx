@@ -238,6 +238,12 @@ class
     void SocketSendError(wxString error_message);
     void SocketSendInfo(wxString info_message);
 
+    // Master only: report the number of workers currently connected to this master up to
+    // the controller, which relays it to the GUI meter. The controller's own counter is a
+    // cumulative identification tally (a churn odometer under reconnect storms), so the
+    // live count here is the only honest source for "M of N connected".
+    void SendLiveWorkerCountToController( );
+
     void SendNextJobTo(wxSocketBase* socket);
 
     void OnThreadComplete(wxThreadEvent& my_event);

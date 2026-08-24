@@ -925,8 +925,19 @@ void MyApp::HandleSocketYouAreAWorker(wxSocketBase* connected_socket, wxString m
     active_controller_address.Hostname(master_ip_address);
     active_controller_address.Service(master_port);
 
-    master_socket->Connect(active_controller_address, false);
-    master_socket->WaitOnConnect(30);
+    // Under a fleet-wide reconnect (a batch advance releases every seat at once) the
+    // master's accept queue can be momentarily full; a single failed attempt here
+    // otherwise costs a full zombie cycle through the controller - another
+    // identification (inflating the GUI's connection counter) and another 20 s.
+    // Retry with pid-staggered backoff so the fleet de-synchronizes.
+    for ( int connect_attempt = 0;; connect_attempt++ ) {
+        master_socket->Connect(active_controller_address, false);
+        master_socket->WaitOnConnect(30);
+        if ( master_socket->IsConnected( ) == true || connect_attempt >= 9 )
+            break;
+        master_socket->Close( );
+        wxMilliSleep(1000 + (wxGetProcessId( ) % 7) * 500);
+    }
 
     master_socket->SetFlags(SOCKET_FLAGS);
 
@@ -941,15 +952,19 @@ void MyApp::HandleSocketYouAreAWorker(wxSocketBase* connected_socket, wxString m
     if ( i_am_the_master == false )
         controller_socket = master_socket;
 
-    // Start the worker thread..
-    stopwatch.Start( );
-    work_thread = new CalculateThread(this, GetMaxJobWaitTimeInSeconds( ));
+    // Start the worker thread.. (only once: this handler re-runs on every zombie
+    // reconnect cycle, and each pass used to leak another detached CalculateThread,
+    // all counting down the same idle timeout and printing their own exit spam)
+    if ( work_thread == NULL ) {
+        stopwatch.Start( );
+        work_thread = new CalculateThread(this, GetMaxJobWaitTimeInSeconds( ));
 
-    if ( work_thread->Run( ) != wxTHREAD_NO_ERROR ) {
-        MyPrintWithDetails("Can't create the thread!");
-        delete work_thread;
-        work_thread = NULL;
-        ExitMainLoop( );
+        if ( work_thread->Run( ) != wxTHREAD_NO_ERROR ) {
+            MyPrintWithDetails("Can't create the thread!");
+            delete work_thread;
+            work_thread = NULL;
+            ExitMainLoop( );
+        }
     }
 
     // we are apparently connected again, but this can be a lie = a certain number of connections appear to just be accepted by the operating
@@ -1144,6 +1159,8 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
 
     number_of_timing_results_received++;
 
+    SendLiveWorkerCountToController( );
+
     // check if we have all timings, and all results (this is checked in two places - socket send timing and receive results as it is not certain will happen last)
 
     if ( number_of_finished_jobs == current_job_package.number_of_jobs && number_of_timing_results_received == max_number_of_connected_workers ) {
@@ -1165,6 +1182,24 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
         ExitMainLoop( );
         return;
     }
+}
+
+void MyApp::SendLiveWorkerCountToController( ) {
+    if ( i_am_the_master == false || controller_socket == NULL )
+        return;
+
+    // worker_socket_pointers entries can be NULLed in place (IfSocketIsAKeySocketSetItToNull),
+    // so count the live ones rather than trusting GetCount().
+    int live_worker_count = 0;
+    for ( int counter = 0; counter < worker_socket_pointers.GetCount( ); counter++ ) {
+        if ( worker_socket_pointers[counter] != NULL )
+            live_worker_count++;
+    }
+
+    // Same wire format the controller uses toward the GUI (4-byte count after the code);
+    // the controller relays it verbatim in HandleSocketNumberOfConnections.
+    WriteToSocket(controller_socket, socket_number_of_connections, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+    WriteToSocket(controller_socket, &live_worker_count, 4, true, "SendLiveWorkerCount", FUNCTION_DETAILS_AS_WXSTRING);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1203,6 +1238,8 @@ void MyApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned cha
         if ( worker_socket_pointers.GetCount( ) == expected_worker_connections ) {
             SocketSendInfo("All workers have re-connected to the master.");
         }
+
+        SendLiveWorkerCountToController( );
     }
 
     delete[] identification_code;
@@ -1315,6 +1352,8 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         // then masquerade as this dead worker, one false disconnect per probe).
         worker_socket_pointers.Remove(connected_socket);
         StopMonitoringAndDestroySocket(connected_socket);
+
+        SendLiveWorkerCountToController( );
 
         // This worker is gone and will never send its thread timing, so it must not stay
         // counted by the all-done gate (number_of_timing_results_received ==

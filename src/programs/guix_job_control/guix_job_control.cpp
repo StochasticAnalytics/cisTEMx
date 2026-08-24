@@ -149,6 +149,7 @@ class
     //void HandleSocketSendJobDetails(wxSocketBase *connected_socket);
     void HandleSocketJobFinished(wxSocketBase* connected_socket, int finished_job_number);
     void HandleSocketAllJobsFinished(wxSocketBase* connected_socket, long received_timing_in_milliseconds);
+    void HandleSocketNumberOfConnections(wxSocketBase* connected_socket, int received_number_of_connections);
     void HandleSocketDisconnect(wxSocketBase* connected_socket);
     void HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes);
 
@@ -993,8 +994,12 @@ void JobControlApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsi
 
                 MonitorSocket(new_connection);
 
+                // Log-only tally of served identifications (a churn odometer: zombie-cycling
+                // workers re-identify every lap). NOT sent to the GUI meter any more - the
+                // meter is fed by the master's live worker count relayed through
+                // HandleSocketNumberOfConnections, which stays truthful under reconnect storms.
                 number_of_workers_already_connected++;
-                SendNumberofConnections( );
+                wxPrintf("Served worker identification #%li\n", number_of_workers_already_connected);
             }
         }
     }
@@ -1154,6 +1159,21 @@ void JobControlApp::HandleSocketAllJobsFinished(wxSocketBase* connected_socket, 
     all_jobs_are_finished = true;
 
     // don't die, wait for GUI to kill me..
+}
+
+void JobControlApp::HandleSocketNumberOfConnections(wxSocketBase* connected_socket, int received_number_of_connections) {
+    // The master periodically reports how many workers are LIVE on its server (connect,
+    // finished-and-left, died). Relay that to the GUI meter verbatim: it is the only
+    // honest "M of N connected" source. Our own number_of_workers_already_connected is a
+    // cumulative identification tally - zombie-cycling workers re-identify every lap, so
+    // under a reconnect storm it races far past the fleet size (2026-08-24: 1524/58).
+    if ( connected_socket != master_socket )
+        return;
+
+    number_of_workers_already_connected = received_number_of_connections;
+
+    WriteToSocket(gui_socket, socket_number_of_connections, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+    WriteToSocket(gui_socket, &received_number_of_connections, 4, true, "SendNumberOfConnections", FUNCTION_DETAILS_AS_WXSTRING);
 }
 
 void JobControlApp::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {

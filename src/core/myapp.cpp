@@ -1038,6 +1038,18 @@ void MyApp::HandleSocketSendNextJob(wxSocketBase* connected_socket, JobResult* r
     // Send info that the job has finished, and if necessary the result..
 
     if ( received_result->job_number != -1 ) {
+        // Count each job ONCE. A worker falsely declared dead (stale-pointer disconnect,
+        // dropped tunnel that recovers) gets its in-flight job re-dispatched; if the
+        // original worker was in fact alive, BOTH completions arrive. Without this guard
+        // each one increments number_of_finished_jobs, so the all-done gate could pass
+        // while other jobs had never run and the run would be declared complete with
+        // holes in it. Latent hole found by inspection of the re-dispatch path; the
+        // first completion was already forwarded, so duplicates are simply dropped.
+        if ( current_job_package.jobs[received_result->job_number].has_been_run == true ) {
+            delete received_result;
+            return;
+        }
+
         if ( received_result->result_size > 0 ) {
             SendJobResult(received_result);
         }
@@ -1155,7 +1167,12 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
     // may still deliver for it (the worker closes right after sending its timing) is not treated
     // as a worker dying mid-run.
     socket_to_worker_job_pointer_hash.erase(connected_socket);
-    worker_socket_pointers.Remove(connected_socket);
+    // Guard the Remove: during a mass teardown (GUI kill mid-run) or a stale-pointer
+    // disconnect, this handler can fire for a socket the disconnect path already removed
+    // (or that IfSocketIsAKeySocketSetItToNull NULLed in place); an unguarded Remove then
+    // asserts "removing inexistent element" (41 of them in one killed-run teardown log).
+    if ( worker_socket_pointers.Index(connected_socket) != wxNOT_FOUND )
+        worker_socket_pointers.Remove(connected_socket);
 
     number_of_timing_results_received++;
 

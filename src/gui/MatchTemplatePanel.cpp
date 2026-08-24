@@ -1591,8 +1591,19 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
     // Kill the job (in case it isn't already dead)
     main_frame->job_controller.KillJob(my_job_id);
 
+    // A leg that ends without its full result set must never advance the sweep - the next
+    // leg would silently build on top of the hole (the master-side duplicate-completion
+    // guard closes the known path to an early all-jobs-finished, but this invariant is
+    // cheap to hold here regardless of cause). Resuming the same leg fills the gap, so
+    // stop and say so instead of advancing.
+    const bool leg_is_complete = (number_of_received_results >= expected_number_of_results);
+    if ( s_batch_experiment_active && ! leg_is_complete ) {
+        WriteErrorText(wxString::Format("BATCH EXPERIMENT: leg ended with only %i of %i results - NOT advancing. Resume this leg (same settings, Resume checked) to fill the gap, then the sweep can continue.",
+                                        number_of_received_results, expected_number_of_results));
+    }
+
     // Key section to advance to the next experiment in the batch
-    if ( s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::high_res_sweep ) {
+    if ( leg_is_complete && s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::high_res_sweep ) {
         const float step          = GetBatchExperimentConfig( ).high_res_step;
         float       current_value = HighResolutionLimitNumericCtrl->ReturnValue( );
 
@@ -1635,7 +1646,7 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
         }
     }
 
-    if ( s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::all_templates ) {
+    if ( leg_is_complete && s_batch_experiment_active && GetBatchExperimentConfig( ).mode == BatchExperimentMode::all_templates ) {
         // Re-read the live asset count: if assets were removed mid-batch, the activation-time
         // snapshot would run SetSelection/ReturnAssetPointer off the end of the shrunk list.
         const int live_count = int(volume_asset_panel->all_assets_list->number_of_assets);

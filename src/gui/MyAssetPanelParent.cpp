@@ -530,6 +530,22 @@ int MyAssetPanelParent::ReturnGroupMemberID(long wanted_group, long wanted_membe
     return all_assets_list->ReturnAssetPointer(all_groups_list->groups[wanted_group].members[wanted_member])->asset_id;
 }
 
+int MyAssetPanelParent::ReturnNextGroupMemberNumber(const wxString& group_table_name) {
+    // MEMBER_NUMBER used to be assigned from the in-memory group size, which is reused after a
+    // removal. On tables where MEMBER_NUMBER is the primary key (IMAGE_GROUP_n) the INSERT OR
+    // REPLACE then overwrote an existing member, silently dropping it from the persisted group.
+    // MAX+1 is unique whether or not the table has a key; MAX() of an empty table reads as 0.
+    //
+    // Member tables of every type except image groups made by "New Group" have no key on
+    // MEMBER_NUMBER, so MAX() would scan the table on every single add: ~47 ms per add at 2M
+    // rows (particle groups reach that), i.e. minutes for a multi-select. With an index it is a
+    // single seek. IF NOT EXISTS makes this idempotent (sub-microsecond once present), builds
+    // the index once and lazily on legacy tables (~0.3 s at 2M rows), and DROP TABLE takes the
+    // index with it, so the drop-and-recreate reset paths need no change.
+    main_frame->current_project.database.ExecuteSQL(wxString::Format("CREATE INDEX IF NOT EXISTS %s_MEMBER_NUMBER_INDEX ON %s(MEMBER_NUMBER)", group_table_name, group_table_name).ToUTF8( ).data( ));
+    return main_frame->current_project.database.ReturnSingleIntFromSelectCommand(wxString::Format("SELECT MAX(MEMBER_NUMBER) FROM %s", group_table_name).ToUTF8( ).data( )) + 1;
+}
+
 long MyAssetPanelParent::ReturnGroupSize(long wanted_group) {
     return all_groups_list->groups[wanted_group].number_of_members;
 }

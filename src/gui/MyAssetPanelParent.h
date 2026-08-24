@@ -104,6 +104,7 @@ class MyAssetPanelParent : public AssetPanelParent {
     wxString ReturnAssetLongFilename(long wanted_asset);
 
     long ReturnGroupSize(long wanted_group);
+    int  ReturnNextGroupMemberNumber(const wxString& group_table_name);
     int  ReturnGroupMemberID(long wanted_group, long wanted_member);
     void RemoveAssetFromGroups(long wanted_asset, bool dirty_groups = true);
     void FillGroupList( );

@@ -1427,9 +1427,11 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
                     double requested_padding;
                     if ( wxString::FromUTF8(mt_padding_env).ToDouble(&requested_padding) && requested_padding >= 0.0 ) {
                         padding = float(requested_padding);
-                        WriteInfoText(wxString::Format("CISTEM_EXPERIMENTAL_MT_PADDING: padding / output box = %.0f", padding));
+                        // This block runs once per image in the packaging loop - report once per launch.
+                        if ( image_number_for_gui == 1 )
+                            WriteInfoText(wxString::Format("CISTEM_EXPERIMENTAL_MT_PADDING: padding / output box = %.0f", padding));
                     }
-                    else
+                    else if ( image_number_for_gui == 1 )
                         WriteErrorText(wxString::Format("CISTEM_EXPERIMENTAL_MT_PADDING='%s' is not a number; using %.0f", mt_padding_env, padding));
                 }
             }

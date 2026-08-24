@@ -196,13 +196,13 @@ void MyImageAssetPanel::InsertGroupMemberToDatabase(int wanted_group, int wanted
     MyDebugAssertTrue(wanted_group > 0 && wanted_group < all_groups_list->number_of_groups, "Requesting a group (%i) that doesn't exist!", wanted_group);
     MyDebugAssertTrue(wanted_asset >= 0 && wanted_asset < all_assets_list->number_of_assets, "Requesting an image (%i) that doesn't exist!", wanted_asset);
 
-    main_frame->current_project.database.InsertOrReplace(wxString::Format("IMAGE_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "IMAGE_ASSET_ID", ReturnGroupSize(wanted_group), ReturnGroupMemberID(wanted_group, wanted_asset));
+    main_frame->current_project.database.InsertOrReplace(wxString::Format("IMAGE_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "IMAGE_ASSET_ID", ReturnNextGroupMemberNumber(wxString::Format("IMAGE_GROUP_%i", ReturnGroupID(wanted_group))), ReturnGroupMemberID(wanted_group, wanted_asset));
 }
 
 void MyImageAssetPanel::InsertArrayofGroupMembersToDatabase(long wanted_group, wxArrayLong* wanted_array, OneSecondProgressDialog* progress_dialog) {
     MyDebugAssertTrue(wanted_group > 0 && wanted_group < all_groups_list->number_of_groups, "Requesting a group (%i) that doesn't exist!", wanted_group);
 
-    int current_member_number = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(wxString::Format("SELECT MAX(MEMBER_NUMBER) FROM IMAGE_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ));
+    int current_member_number = ReturnNextGroupMemberNumber(wxString::Format("IMAGE_GROUP_%i", ReturnGroupID(wanted_group)));
     main_frame->current_project.database.BeginBatchInsert(wxString::Format("IMAGE_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ), 2, "MEMBER_NUMBER", "IMAGE_ASSET_ID");
 
     for ( long counter = 0; counter < wanted_array->GetCount( ); counter++ ) {

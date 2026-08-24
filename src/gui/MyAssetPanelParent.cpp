@@ -19,6 +19,17 @@ MyAssetPanelParent::MyAssetPanelParent(wxWindow* parent)
 
     GroupListBox->SetDropTarget(new GroupDropTarget(GroupListBox, this));
 
+    // Selection help. Mouse modifier keys (ctrl/shift + click) are unreliable over remote
+    // desktops, so advertise the keyboard idioms the generic wxListCtrl supports natively.
+    const wxString selection_help =
+            "Selecting multiple assets with the keyboard:\n"
+            "  Shift + Up/Down\t select a range\n"
+            "  Ctrl + Up/Down\t move without changing the selection\n"
+            "  Space\t\t toggle the highlighted row in or out\n"
+            "Drag any selected row onto a group to add the whole selection.";
+    AddSelectedAssetButton->SetToolTip("Add the selected assets to a group.\n\n" + selection_help);
+    RemoveSelectedAssetButton->SetToolTip("Remove the selected assets.\n\n" + selection_help);
+
     bool should_veto_motion = true;
     name_is_being_edited    = false;
     is_dirty                = false;
@@ -714,7 +725,18 @@ void MyAssetPanelParent::OnBeginContentsDrag(wxListEvent& event) {
 }
 
 void MyAssetPanelParent::MouseVeto(wxMouseEvent& event) {
-    //Do nothing
+    // The generic wxListCtrl (what wxGTK uses in report mode) forwards every mouse event to this
+    // handler first and drops it unless we Skip (wx 3.0.5 src/generic/listctrl.cpp:2354-2358).
+    // Left-button releases that land on an item must reach the list: collapsing a
+    // multi-selection to the clicked row is deferred to left-up inside wx (m_lineSelectSingleOnUp,
+    // listctrl.cpp:2496-2502) and was silently disabled by swallowing the release here.
+    // Off-item releases and all middle/right clicks stay swallowed, which is this veto's original
+    // purpose: keep the selection from changing on empty-space clicks.
+    if ( event.GetEventType( ) == wxEVT_LEFT_UP ) {
+        wxListCtrl* source_list = wxDynamicCast(event.GetEventObject( ), wxListCtrl);
+        if ( source_list != NULL )
+            VetoInvalidMouse(source_list, event);
+    }
 }
 
 void MyAssetPanelParent::MouseCheckContentsVeto(wxMouseEvent& event) {

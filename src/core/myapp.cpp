@@ -657,8 +657,8 @@ wxThread::ExitCode CalculateThread::Entry( ) {
 
             if ( millis_sleeping > job_wait_time * 1000 ) {
                 // we have been waiting for 10 seconds, something probably went wrong - so die.
-                wxPrintf("Calculation thread has been waiting for something to do for %f.2 seconds - going to finish\n", job_wait_time);
-                QueueError(wxString::Format("Calculation thread has been waiting for something to do for %f.2 seconds - going to finish", job_wait_time));
+                wxPrintf("Calculation thread has been waiting for something to do for %.2f seconds - going to finish\n", job_wait_time);
+                QueueError(wxString::Format("Calculation thread has been waiting for something to do for %.2f seconds - going to finish", job_wait_time));
                 break;
             }
         }

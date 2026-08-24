@@ -188,6 +188,59 @@ class
                                                              long*       histogram,
                                                              const float n_angles_in_search,
                                                              const bool  disable_flat_fielding);
+
+    /**
+     * @brief Finalizes the CCC histogram, writes the histogram text file and returns the expected threshold.
+     *
+     * ONE implementation for both result paths - the local single-process run (DoCalculation) and the
+     * master's aggregation of worker results (MasterHandleProgramDefinedResult) - so the file layout, the
+     * random-survival model and the threshold cannot diverge between a standalone run and a GUI run.
+     * File columns: SNR, histogram, survival histogram, expected (random) survival histogram.
+     *
+     * @param histogram_filename Output text file. The _peak_info_ file written by ExtractPeaksAndWritePeakInfo
+     *        derives its name from this one.
+     * @param histogram_counts histogram_number_of_points bins of CCC counts, already rescaled onto SNR bins.
+     * @param number_of_valid_search_pixels Search pixels that contributed to the histogram (ROI, no padding).
+     * @param number_of_independent_search_positions Orientations searched times the independent fraction.
+     * @param n_expected_false_positives The false-positive budget the threshold is set for.
+     * @param rescale_survival_to_expected The GPU search does not histogram the padding region; scale the
+     *        measured survival counts so their total matches the expected total (the master path has always
+     *        done this for GPU results, the local path now does the same).
+     * @return The expected threshold (Rickgauer, Grigorieff & Denk 2017) in SNR units.
+     */
+    float WriteHistogramAndReturnExpectedThreshold(const wxString& histogram_filename,
+                                                   const long*     histogram_counts,
+                                                   const double    number_of_valid_search_pixels,
+                                                   const double    number_of_independent_search_positions,
+                                                   const double    n_expected_false_positives,
+                                                   const bool      rescale_survival_to_expected);
+
+    /**
+     * @brief Extracts the peaks above threshold from the scaled MIP and writes the _peak_info_ text file.
+     *
+     * Shared by both result paths (see WriteHistogramAndReturnExpectedThreshold). The peak-info file is the
+     * histogram file with _histogram_ replaced by _peak_info_. The extracted lists are returned so the master
+     * can additionally build the GUI result image and send the peaks over the socket.
+     *
+     * @param search_pixel_size Pixel size of the MIP / best-parameter images.
+     * @param input_binning_factor Binning applied to the search relative to the input image; the minimum peak
+     *        radius is given in input pixels and is scaled by it.
+     */
+    void ExtractPeaksAndWritePeakInfo(const wxString&                     histogram_filename,
+                                      Image&                              scaled_mip,
+                                      Image&                              phi_image,
+                                      Image&                              theta_image,
+                                      Image&                              psi_image,
+                                      Image&                              defocus_image,
+                                      Image&                              pixel_size_image,
+                                      const float                         search_pixel_size,
+                                      const float                         input_binning_factor,
+                                      const float                         min_peak_radius,
+                                      const bool                          use_peak_sampling_correction,
+                                      const float                         expected_threshold,
+                                      std::vector<Peak>&                  peak_list,
+                                      std::vector<Peak>&                  upsampled_peak_list,
+                                      ArrayOfTemplateMatchFoundPeakInfos& all_peak_infos);
 };
 
 IMPLEMENT_APP(MatchTemplateApp)
@@ -638,9 +691,8 @@ bool MatchTemplateApp::DoCalculation( ) {
 
     int current_bin;
 
-    float  temp_float;
-    float  variance;
-    double temp_double_array[5];
+    float temp_float;
+    float variance;
 
     int   number_of_rotations;
     float fraction_of_search_positions_that_are_independent{1.f};
@@ -1533,17 +1585,6 @@ bool MatchTemplateApp::DoCalculation( ) {
                                                             histogram_data,
                                                             actual_number_of_angles_searched,
                                                             disable_flat_fielding);
-        // calculate the expected threshold (from peter's paper)
-        const float CCG_NOISE_STDDEV = 1.0f;
-        double      temp_threshold;
-        double      erf_input = (n_expected_false_positives * 2.0) / (1.0 * double(data_sizer.GetNumberOfValidSearchPixels( )) * double(actual_number_of_angles_searched) * double(fraction_of_search_positions_that_are_independent));
-#ifdef MKL
-        vdErfcInv(1, &erf_input, &temp_threshold);
-#else
-        cisTEM_erfcinv(erf_input); // Note: This seems to be a custom function, ensure it's correctly defined and linked.
-#endif
-        expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
-
         // Write output MRC files for MIP, scaled MIP, best angles, defocus, pixel size, and statistical maps
         temp_image.CopyFrom(&max_intensity_projection);
         MRCFile mip_out(mip_output_file.ToStdString( ), true);
@@ -1609,43 +1650,34 @@ bool MatchTemplateApp::DoCalculation( ) {
         best_pixel_size.WriteSlice(&best_pixel_size_output_mrcfile, 1);
         best_pixel_size_output_mrcfile.SetPixelSizeAndWriteHeader(output_pixel_size);
 
-        // Write out histogram text file
-        NumericTextFile histogram_file(output_histogram_file, OPEN_TO_WRITE, 4);
+        // Histogram, expected threshold and the peak list: the same two methods the master's
+        // aggregation path calls, so a standalone run writes the same files as a GUI run. The
+        // metadata passed here is what a worker would report to the master for this search.
+        expected_threshold = WriteHistogramAndReturnExpectedThreshold(output_histogram_file,
+                                                                      histogram_data,
+                                                                      double(data_sizer.GetNumberOfValidSearchPixels( )),
+                                                                      double(actual_number_of_angles_searched) * double(fraction_of_search_positions_that_are_independent),
+                                                                      n_expected_false_positives,
+                                                                      use_gpu);
 
-        double* expected_survival_histogram = new double[histogram_number_of_points];
-        double* survival_histogram          = new double[histogram_number_of_points];
-        ZeroDoubleArray(survival_histogram, histogram_number_of_points);
-
-        // < not <=: expected_survival_histogram holds histogram_number_of_points doubles and every
-        // consumer reads indices < N; <= wrote one double past the block - an 8-byte heap overrun
-        // surfacing later/intermittently as "corrupted size vs. prev_size" (glibc) or
-        // "free(): invalid pointer" (MALLOC_CHECK_).
-        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
-            expected_survival_histogram[line_counter] = (erfc((histogram_first_bin_midpoint + histogram_step * float(line_counter)) / sqrtf(2.0f)) / 2.0f) * float(actual_number_of_angles_searched) * float(fraction_of_search_positions_that_are_independent) / n_expected_false_positives;
-        }
-
-        survival_histogram[histogram_number_of_points - 1] = histogram_data[histogram_number_of_points - 1];
-
-        for ( int line_counter = histogram_number_of_points - 2; line_counter >= 0; line_counter-- ) {
-            survival_histogram[line_counter] = survival_histogram[line_counter + 1] + histogram_data[line_counter];
-        }
-
-        histogram_file.WriteCommentLine("Expected threshold = %.2f\n", expected_threshold);
-        histogram_file.WriteCommentLine("SNR, histogram, survival histogram, random survival histogram");
-
-        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
-            temp_double_array[0] = histogram_first_bin_midpoint + histogram_step * float(line_counter);
-            temp_double_array[1] = histogram_data[line_counter];
-            temp_double_array[2] = survival_histogram[line_counter];
-            temp_double_array[3] = expected_survival_histogram[line_counter];
-            histogram_file.WriteLine(temp_double_array);
-        }
-
-        histogram_file.Close( );
-
-        // memory cleanup
-        delete[] survival_histogram;
-        delete[] expected_survival_histogram;
+        std::vector<Peak>                  peak_list;
+        std::vector<Peak>                  upsampled_peak_list;
+        ArrayOfTemplateMatchFoundPeakInfos all_peak_infos;
+        ExtractPeaksAndWritePeakInfo(output_histogram_file,
+                                     scaled_mip,
+                                     best_phi,
+                                     best_theta,
+                                     best_psi,
+                                     best_defocus,
+                                     best_pixel_size,
+                                     output_pixel_size,
+                                     apply_result_rescaling ? 1.0f : data_sizer.GetFullBinningFactor( ),
+                                     min_peak_radius,
+                                     use_peak_sampling_correction,
+                                     expected_threshold,
+                                     peak_list,
+                                     upsampled_peak_list,
+                                     all_peak_infos);
     }
     else {
         // send back the final images to master (who should merge them, and send to the gui)
@@ -1875,8 +1907,6 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         double number_of_search_positions = double(aggregated_results[array_location].total_number_of_angles_searched * fraction_of_search_positions_that_are_independent);
 
-        bool using_binned_ref = input_binning_factor > 1.0f ? true : false;
-
         timer.lap("Initialize objects");
         timer.start("Initialize volume and mip");
         ImageFile input_reconstruction_file;
@@ -2019,85 +2049,17 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         timer.lap("Write output images");
         timer.start("Set and write histogram");
-        float expected_threshold;
-
-        // Write histogram text file
-        //NumericTextFile histogram_file(wxString::Format("%s/histogram_%i.txt", directory_for_writing_results, aggregated_results[array_location].image_number), OPEN_TO_WRITE, 4);
-        NumericTextFile histogram_file(current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( ), OPEN_TO_WRITE, 4);
-
-        double* expected_survival_histogram = new double[histogram_number_of_points];
-        double* survival_histogram          = new double[histogram_number_of_points];
-
-        double temp_double_array[5];
-
-        ZeroDoubleArray(survival_histogram, histogram_number_of_points);
-        survival_histogram[histogram_number_of_points - 1] = aggregated_results[array_location].collated_histogram_data[histogram_number_of_points - 1];
-
-        for ( int line_counter = histogram_number_of_points - 2; line_counter >= 0; line_counter-- ) {
-            survival_histogram[line_counter] = survival_histogram[line_counter + 1] + aggregated_results[array_location].collated_histogram_data[line_counter];
-        }
-
-        // < not <=: expected_survival_histogram holds histogram_number_of_points doubles and every
-        // consumer reads indices < N; <= wrote one double past the block - an 8-byte heap overrun
-        // surfacing later/intermittently as "corrupted size vs. prev_size" (glibc) or
-        // "free(): invalid pointer" (MALLOC_CHECK_).
-        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
-            expected_survival_histogram[line_counter] = (erfc((histogram_first_bin_midpoint + histogram_step * float(line_counter)) / sqrtf(2.0f)) / 2.0f) * (number_of_valid_search_pixels * number_of_search_positions / n_expected_false_positives);
-        }
-
-        // calculate the expected threshold (from peter's paper)
-        const float CCG_NOISE_STDDEV = 1.0;
-        double      temp_threshold   = 0.0;
-        double      erf_input        = (n_expected_false_positives * 2.0) / (1.0 * (double(number_of_valid_search_pixels) * double(number_of_search_positions)));
-        //        wxPrintf("ox oy total %3.3e %3.3e %3.3e\n", (double)result_array[5] , (double)result_array[6] , (double)aggregated_results[array_location].total_number_of_angles_searched, erf_input);
-
-#ifdef MKL
-        vdErfcInv(1, &erf_input, &temp_threshold);
-#else
-        temp_threshold = cisTEM_erfcinv(erf_input);
-#endif
-        expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
-
-        histogram_file.WriteCommentLine("Expected threshold = %.2f\n", expected_threshold);
-        histogram_file.WriteCommentLine("histogram, expected histogram, survival histogram, expected survival histogram");
-
-        if ( use_gpu ) {
-            // In the GPU code, I am not histogramming the padding regions which are not valid. Adjust the counts here. Maybe not the best approach. FIXME also the cpu counts.
-            // FIXME: since I'm using number_of_valid_search_pixels this should not be needed.
-#ifdef ENABLEGPU
-            double sum_expected = 0.0;
-            double sum_counted  = 0.0;
-
-            for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
-                sum_counted += survival_histogram[line_counter];
-                sum_expected += expected_survival_histogram[line_counter];
-            }
-            for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
-                if ( sum_counted > 0.0 )
-                    survival_histogram[line_counter] *= (float)(sum_expected / sum_counted);
-            }
-#endif
-        }
-
-        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
-            temp_double_array[0] = histogram_first_bin_midpoint + histogram_step * float(line_counter);
-            temp_double_array[1] = aggregated_results[array_location].collated_histogram_data[line_counter];
-            temp_double_array[2] = survival_histogram[line_counter];
-            temp_double_array[3] = expected_survival_histogram[line_counter];
-            histogram_file.WriteLine(temp_double_array);
-        }
-
-        histogram_file.Close( );
+        const wxString histogram_filename = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( );
+        // Not const: SendTemplateMatchingResultToSocket below takes the threshold by non-const reference.
+        float expected_threshold = WriteHistogramAndReturnExpectedThreshold(histogram_filename,
+                                                                            aggregated_results[array_location].collated_histogram_data,
+                                                                            double(number_of_valid_search_pixels),
+                                                                            number_of_search_positions,
+                                                                            n_expected_false_positives,
+                                                                            use_gpu);
         timer.lap("Set and write histogram");
         timer.start("Initialize results image");
         // Calculate the result image, and keep the peak info to send back...
-
-        int   min_peak_radius         = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[39].ReturnFloatArgument( );
-        float min_peak_radius_squared = powf(float(min_peak_radius), 2);
-
-        if ( using_binned_ref )
-            min_peak_radius_squared /= (input_binning_factor * input_binning_factor);
-
         result_image.Allocate(scaled_mip.logical_x_dimension, scaled_mip.logical_y_dimension, 1);
         result_image.SetToConstant(0.0f);
 
@@ -2107,44 +2069,34 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
         current_projection.Allocate(input_reconstruction.logical_x_dimension, input_reconstruction.logical_x_dimension, false);
         timer.lap("Initialize results image");
 
-        const float resample_search_ratio = aggregated_results[array_location].use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f;
+        const float min_peak_radius = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[39].ReturnFloatArgument( );
 
         std::vector<Peak> peak_list;
         std::vector<Peak> upsampled_peak_list;
         timer.start("Extract peaks");
-        scaled_mip.FindPeakWithIntegerCoordinatesForManyPeaks(peak_list, upsampled_peak_list, expected_threshold, resample_search_ratio, sqrtf(min_peak_radius_squared), 4);
+        ExtractPeaksAndWritePeakInfo(histogram_filename,
+                                     scaled_mip,
+                                     phi_image,
+                                     theta_image,
+                                     psi_image,
+                                     defocus_image,
+                                     pixel_size_image,
+                                     search_pixel_size,
+                                     input_binning_factor,
+                                     min_peak_radius,
+                                     aggregated_results[array_location].use_peak_sampling_correction,
+                                     expected_threshold,
+                                     peak_list,
+                                     upsampled_peak_list,
+                                     all_peak_infos);
         timer.lap("Extract peaks");
 
+        // The result image is a GUI asset and stays master-only; the extractor holds no state from
+        // the peak transfer, so a fresh instance here is equivalent.
         TemplateMatchingPeakExtractor extractor(
                 scaled_mip, phi_image, theta_image, psi_image,
                 defocus_image, &pixel_size_image,
                 search_pixel_size / input_binning_factor, search_pixel_size);
-
-        extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list,
-                                          aggregated_results[array_location].use_peak_sampling_correction,
-                                          all_peak_infos);
-
-        // Write peak info to file - derive filename from histogram path by replacing _histogram_ with _peak_info_
-        wxString histogram_path = current_job_package.jobs[(aggregated_results[array_location].image_number - 1) * number_of_expected_results].arguments[31].ReturnStringArgument( );
-        wxString peak_info_path = histogram_path;
-        peak_info_path.Replace("_histogram_", "_peak_info_");
-
-        NumericTextFile peak_info_file(peak_info_path, OPEN_TO_WRITE, 8);
-        peak_info_file.WriteCommentLine("x_pos y_pos defocus corrected_peak_height original_score above_threshold sub_pixel_x sub_pixel_y");
-
-        double peak_data[8];
-        for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
-            peak_data[0] = all_peak_infos[i].x_pos;
-            peak_data[1] = all_peak_infos[i].y_pos;
-            peak_data[2] = all_peak_infos[i].defocus;
-            peak_data[3] = upsampled_peak_list[i].value; // Corrected peak height
-            peak_data[4] = peak_list[i].value; // Original peak height
-            peak_data[5] = (peak_list[i].value >= expected_threshold) ? 1.0 : 0.0;
-            peak_data[6] = upsampled_peak_list[i].x; // Sub-pixel offset X
-            peak_data[7] = upsampled_peak_list[i].y; // Sub-pixel offset Y
-            peak_info_file.WriteLine(peak_data);
-        }
-        peak_info_file.Close( );
 
         timer.start("Create result images");
         extractor.CreateResultImages(
@@ -2173,11 +2125,129 @@ void MatchTemplateApp::MasterHandleProgramDefinedResult(float* result_array, lon
 
         timer.start("Cleanup");
         aggregated_results.RemoveAt(array_location);
-        delete[] expected_survival_histogram;
-        delete[] survival_histogram;
         timer.lap("Cleanup");
         timer.print_times( );
     }
+}
+
+float MatchTemplateApp::WriteHistogramAndReturnExpectedThreshold(const wxString& histogram_filename,
+                                                                 const long*     histogram_counts,
+                                                                 const double    number_of_valid_search_pixels,
+                                                                 const double    number_of_independent_search_positions,
+                                                                 const double    n_expected_false_positives,
+                                                                 const bool      rescale_survival_to_expected) {
+    using namespace cistem::match_template;
+
+    // Every CCC value is one draw from the noise distribution; this is how many draws the search made.
+    const double number_of_samples = number_of_valid_search_pixels * number_of_independent_search_positions;
+
+    // Expected threshold (from Peter's paper): the SNR above which n_expected_false_positives noise draws survive.
+    const float CCG_NOISE_STDDEV = 1.0f;
+    double      temp_threshold   = 0.0;
+    double      erf_input        = (n_expected_false_positives * 2.0) / number_of_samples;
+#ifdef MKL
+    vdErfcInv(1, &erf_input, &temp_threshold);
+#else
+    temp_threshold = cisTEM_erfcinv(erf_input);
+#endif
+    const float expected_threshold = sqrtf(2.0f) * (float)temp_threshold * CCG_NOISE_STDDEV;
+
+    std::vector<double> survival_histogram(histogram_number_of_points, 0.0);
+    std::vector<double> expected_survival_histogram(histogram_number_of_points, 0.0);
+
+    survival_histogram[histogram_number_of_points - 1] = double(histogram_counts[histogram_number_of_points - 1]);
+    for ( int line_counter = histogram_number_of_points - 2; line_counter >= 0; line_counter-- ) {
+        survival_histogram[line_counter] = survival_histogram[line_counter + 1] + double(histogram_counts[line_counter]);
+    }
+
+    for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
+        expected_survival_histogram[line_counter] = (erfc((histogram_first_bin_midpoint + histogram_step * float(line_counter)) / sqrtf(2.0f)) / 2.0f) * (number_of_samples / n_expected_false_positives);
+    }
+
+    if ( rescale_survival_to_expected ) {
+        // The GPU code does not histogram the padding regions, which are not valid. Adjust the counts here.
+        // FIXME: since number_of_valid_search_pixels is used above this should not be needed.
+        double sum_expected = 0.0;
+        double sum_counted  = 0.0;
+        for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
+            sum_counted += survival_histogram[line_counter];
+            sum_expected += expected_survival_histogram[line_counter];
+        }
+        if ( sum_counted > 0.0 ) {
+            for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
+                survival_histogram[line_counter] *= (sum_expected / sum_counted);
+            }
+        }
+    }
+
+    NumericTextFile histogram_file(histogram_filename, OPEN_TO_WRITE, 4);
+    histogram_file.WriteCommentLine("Expected threshold = %.2f\n", expected_threshold);
+    histogram_file.WriteCommentLine("SNR, histogram, survival histogram, expected survival histogram");
+
+    double temp_double_array[4];
+    for ( int line_counter = 0; line_counter < histogram_number_of_points; line_counter++ ) {
+        temp_double_array[0] = histogram_first_bin_midpoint + histogram_step * float(line_counter);
+        temp_double_array[1] = double(histogram_counts[line_counter]);
+        temp_double_array[2] = survival_histogram[line_counter];
+        temp_double_array[3] = expected_survival_histogram[line_counter];
+        histogram_file.WriteLine(temp_double_array);
+    }
+    histogram_file.Close( );
+
+    return expected_threshold;
+}
+
+void MatchTemplateApp::ExtractPeaksAndWritePeakInfo(const wxString&                     histogram_filename,
+                                                    Image&                              scaled_mip,
+                                                    Image&                              phi_image,
+                                                    Image&                              theta_image,
+                                                    Image&                              psi_image,
+                                                    Image&                              defocus_image,
+                                                    Image&                              pixel_size_image,
+                                                    const float                         search_pixel_size,
+                                                    const float                         input_binning_factor,
+                                                    const float                         min_peak_radius,
+                                                    const bool                          use_peak_sampling_correction,
+                                                    const float                         expected_threshold,
+                                                    std::vector<Peak>&                  peak_list,
+                                                    std::vector<Peak>&                  upsampled_peak_list,
+                                                    ArrayOfTemplateMatchFoundPeakInfos& all_peak_infos) {
+    // The minimum peak radius is given in input pixels; the MIP is on the (possibly binned) search grid.
+    float min_peak_radius_squared = powf(min_peak_radius, 2);
+    if ( input_binning_factor > 1.0f )
+        min_peak_radius_squared /= (input_binning_factor * input_binning_factor);
+
+    const float resample_search_ratio = use_peak_sampling_correction ? cistem::match_template::PEAK_THRESHOLD_SCALE : 1.0f;
+
+    scaled_mip.FindPeakWithIntegerCoordinatesForManyPeaks(peak_list, upsampled_peak_list, expected_threshold, resample_search_ratio, sqrtf(min_peak_radius_squared), 4);
+
+    TemplateMatchingPeakExtractor extractor(
+            scaled_mip, phi_image, theta_image, psi_image,
+            defocus_image, &pixel_size_image,
+            search_pixel_size / input_binning_factor, search_pixel_size);
+
+    extractor.TransferAndSortPeakInfo(peak_list, upsampled_peak_list, use_peak_sampling_correction, all_peak_infos);
+
+    // The peak-info file lives next to the histogram: _histogram_ -> _peak_info_ in the histogram path.
+    wxString peak_info_path = histogram_filename;
+    peak_info_path.Replace("_histogram_", "_peak_info_");
+
+    NumericTextFile peak_info_file(peak_info_path, OPEN_TO_WRITE, 8);
+    peak_info_file.WriteCommentLine("x_pos y_pos defocus corrected_peak_height original_score above_threshold sub_pixel_x sub_pixel_y");
+
+    double peak_data[8];
+    for ( int i = 0; i < all_peak_infos.GetCount( ); i++ ) {
+        peak_data[0] = all_peak_infos[i].x_pos;
+        peak_data[1] = all_peak_infos[i].y_pos;
+        peak_data[2] = all_peak_infos[i].defocus;
+        peak_data[3] = upsampled_peak_list[i].value; // Corrected peak height
+        peak_data[4] = peak_list[i].value; // Original peak height
+        peak_data[5] = (peak_list[i].value >= expected_threshold) ? 1.0 : 0.0;
+        peak_data[6] = upsampled_peak_list[i].x; // Sub-pixel offset X
+        peak_data[7] = upsampled_peak_list[i].y; // Sub-pixel offset Y
+        peak_info_file.WriteLine(peak_data);
+    }
+    peak_info_file.Close( );
 }
 
 /**

@@ -1289,6 +1289,7 @@ if WANT_CISTEM_GPU_AM
         # samples_functional_testing_SOURCES += programs/samples/3_tensor_ops/gpu_image_tensor_ops.cpp
         samples_functional_testing_SOURCES += programs/samples/4_ffts/simple_cufft.cpp
         samples_functional_testing_SOURCES += programs/samples/5_batched_ops/batched_correlation.cpp
+        samples_functional_testing_SOURCES += programs/samples/7_template_matching/template_matching.cpp
 endif
 
 if WANT_CISTEM_GPU_AM 

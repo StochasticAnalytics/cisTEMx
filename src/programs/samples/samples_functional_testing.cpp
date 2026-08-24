@@ -23,6 +23,7 @@ extern bool samples_tests_have_all_passed{true};
 #include "4_ffts/simple_cufft.h"
 #include "5_batched_ops/batched_correlation.h"
 #include "6_simulation/simple_3d.h"
+#include "7_template_matching/template_matching.h"
 
 // Test data
 #include "../console_test/hiv_image_80x80x1.cpp"
@@ -54,6 +55,11 @@ bool SamplesTestingApp::DoCalculation( ) {
     CPUvsGPUProjectionRunner(temp_directory);
 
     CPUvsGPUStatisticalOpsRunner(hiv_image_80x80x1_filename, temp_directory);
+
+    // End-to-end pipeline tests driving the real match_template_gpu binary on the
+    // reference data; compares against stored baselines (or writes them, see
+    // PLASMONLABS_WRITE_BASELINES in 7_template_matching/template_matching.cpp).
+    TemplateMatchingPipelineRunner(temp_directory);
 
 #else
     wxPrintf("GPU support disabled. skipping GPU tests.\n");

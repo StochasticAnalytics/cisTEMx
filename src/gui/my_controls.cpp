@@ -30,7 +30,7 @@ void MemoryComboBox::OnComboBox(wxCommandEvent& event) {
 }
 
 void MemoryComboBox::SetSelection(int n) {
-    if ( n >= 0 && n < GetCount( ) - 1 ) {
+    if ( n >= 0 && n < GetCount( ) ) {
         currently_selected_id = associated_ids.Item(n);
     }
 
@@ -38,7 +38,7 @@ void MemoryComboBox::SetSelection(int n) {
 }
 
 void MemoryComboBox::SetSelectionWithEvent(int n) {
-    if ( n >= 0 && n < GetCount( ) - 1 ) {
+    if ( n >= 0 && n < GetCount( ) ) {
         currently_selected_id = associated_ids.Item(n);
     }
 
@@ -210,6 +210,50 @@ bool MemoryComboBox::FillWithImageGroups(bool include_all_images_group) {
         AddMemoryItem(image_asset_panel->ReturnGroupName(counter) + " (" + wxString::Format(wxT("%li"), image_asset_panel->ReturnGroupSize(counter)) + ")", image_asset_panel->ReturnGroupID(counter));
         if ( image_asset_panel->ReturnGroupID(counter) == selected_id_on_last_clear ) {
             if ( include_all_images_group == true )
+                new_selection = counter;
+            else
+                new_selection = counter - 1;
+
+            new_id = selected_id_on_last_clear;
+        }
+    }
+
+    if ( GetCount( ) > 0 ) {
+        SetSelectionWithEvent(new_selection);
+    }
+
+    currently_selected_id = new_id;
+    Thaw( );
+
+    if ( new_id == selected_id_on_last_clear && new_id != -1 )
+        return true;
+    else
+        return false;
+}
+
+bool MemoryComboBox::FillWithVolumeGroups(bool include_all_volumes_group) {
+    // Mirrors FillWithImageGroups: combo position == group array position when the
+    // "All Volumes" group (group 0, id -1) is included, which is what consumers that
+    // index volume_asset_panel->all_groups_list->groups[] by combo selection rely on.
+    extern MyVolumeAssetPanel* volume_asset_panel;
+
+    Freeze( );
+    Clear( );
+    ChangeValue("");
+
+    long new_selection = 0;
+    long new_id        = -1;
+    long start_position;
+
+    if ( include_all_volumes_group == true )
+        start_position = 0;
+    else
+        start_position = 1;
+
+    for ( long counter = start_position; counter < volume_asset_panel->ReturnNumberOfGroups( ); counter++ ) {
+        AddMemoryItem(volume_asset_panel->ReturnGroupName(counter) + " (" + wxString::Format(wxT("%li"), volume_asset_panel->ReturnGroupSize(counter)) + ")", volume_asset_panel->ReturnGroupID(counter));
+        if ( volume_asset_panel->ReturnGroupID(counter) == selected_id_on_last_clear ) {
+            if ( include_all_volumes_group == true )
                 new_selection = counter;
             else
                 new_selection = counter - 1;

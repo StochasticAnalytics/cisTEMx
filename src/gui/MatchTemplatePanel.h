@@ -28,6 +28,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     bool was_enabled_GroupComboBox;
     bool was_enabled_StartEstimationButton;
     bool was_enabled_ReferenceSelectPanel;
+    bool was_enabled_ReferenceGroupSelectPanel;
     bool was_enabled_OutofPlaneStepNumericCtrl;
     bool was_enabled_InPlaneStepNumericCtrl;
     bool was_enabled_MinPeakRadiusNumericCtrl;
@@ -46,6 +47,7 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
     bool group_combo_is_dirty;
     bool run_profiles_are_dirty;
     bool volumes_are_dirty;
+    bool volume_group_combo_is_dirty;
     bool set_up_to_resume_job;
     bool no_unfinished_jobs = true; // jJust for testing,, will be set locally by DB functions
 
@@ -94,6 +96,10 @@ class MatchTemplatePanel : public MatchTemplatePanelParent {
 
     void Reset( );
     void ResetDefaults( );
+
+    // CISTEM_EXPERIMENTAL_BATCH support (see the file header of MatchTemplatePanel.cpp)
+    bool ActivateAllTemplatesBatch(bool starting_from_resume);
+    void CancelBatchExperiment(const wxString& reason);
 
     // Functions for interacting with the results panel and possibly resuming a job
     void SetInputsForPossibleReRun(bool set_up_to_resume_job, TemplateMatchJobResults* results_to_resume = nullptr);

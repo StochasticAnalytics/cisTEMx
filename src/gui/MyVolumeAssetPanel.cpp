@@ -23,7 +23,9 @@ MyVolumeAssetPanel::MyVolumeAssetPanel(wxWindow* parent)
 
     UpdateInfo( );
 
-    SplitterWindow->Unsplit(LeftPanel);
+    // The group pane (LeftPanel) used to be hidden here with SplitterWindow->Unsplit(LeftPanel).
+    // Volume groups are now exposed so that a subset of references can be selected, e.g. for
+    // the CISTEM_EXPERIMENTAL_BATCH=all-templates sweep in MatchTemplatePanel.
 
     AssetTypeText->SetLabel("Volumes");
 
@@ -153,6 +155,20 @@ void MyVolumeAssetPanel::InsertGroupMemberToDatabase(int wanted_group, int wante
 }
 
 void MyVolumeAssetPanel::InsertArrayofGroupMembersToDatabase(long wanted_group, wxArrayLong* wanted_array, OneSecondProgressDialog* progress_dialog) {
+    MyDebugAssertTrue(wanted_group > 0 && wanted_group < all_groups_list->number_of_groups, "Requesting a group (%li) that doesn't exist!", wanted_group);
+
+    int current_member_number = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(wxString::Format("SELECT MAX(MEMBER_NUMBER) FROM VOLUME_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ));
+    main_frame->current_project.database.BeginBatchInsert(wxString::Format("VOLUME_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ), 2, "MEMBER_NUMBER", "VOLUME_ASSET_ID");
+
+    for ( long counter = 0; counter < wanted_array->GetCount( ); counter++ ) {
+        MyDebugAssertTrue(wanted_array->Item(counter) >= 0 && wanted_array->Item(counter) < all_assets_list->number_of_assets, "Requesting an asset(%li) that doesn't exist!", wanted_array->Item(counter));
+        main_frame->current_project.database.AddToBatchInsert("ii", current_member_number, ReturnGroupMemberID(0, int(wanted_array->Item(counter))));
+        current_member_number++;
+        if ( progress_dialog != NULL )
+            progress_dialog->Update(counter);
+    }
+
+    main_frame->current_project.database.EndBatchInsert( );
 }
 
 void MyVolumeAssetPanel::RemoveAllFromDatabase( ) {
@@ -176,12 +192,12 @@ void MyVolumeAssetPanel::RemoveAllFromDatabase( ) {
 
 void MyVolumeAssetPanel::RemoveAllGroupMembersFromDatabase(int wanted_group_id) {
     main_frame->current_project.database.ExecuteSQL(wxString::Format("DROP TABLE VOLUME_GROUP_%i", wanted_group_id).ToUTF8( ).data( ));
-    main_frame->current_project.database.CreateTable(wxString::Format("VOLUME_GROUP_%i", wanted_group_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "VOLUME_POSITION_ASSET_ID");
+    main_frame->current_project.database.CreateTable(wxString::Format("VOLUME_GROUP_%i", wanted_group_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "VOLUME_ASSET_ID");
 }
 
 void MyVolumeAssetPanel::AddGroupToDatabase(int wanted_group_id, const char* wanted_group_name, int wanted_list_id) {
     main_frame->current_project.database.InsertOrReplace("VOLUME_GROUP_LIST", "iti", "GROUP_ID", "GROUP_NAME", "LIST_ID", wanted_group_id, wanted_group_name, wanted_list_id);
-    main_frame->current_project.database.CreateTable(wxString::Format("VOLUME_GROUP_%i", wanted_list_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "VOLUME_POSITION_ASSET_ID");
+    main_frame->current_project.database.CreateTable(wxString::Format("VOLUME_GROUP_%i", wanted_list_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "VOLUME_ASSET_ID");
 }
 
 void MyVolumeAssetPanel::RemoveGroupFromDatabase(int wanted_group_id) {
@@ -246,6 +262,7 @@ void MyVolumeAssetPanel::ImportAllFromDatabase( ) {
     main_frame->current_project.database.EndAllVolumeGroupsSelect( );
 
     main_frame->DirtyVolumes( );
+    main_frame->DirtyVolumeGroups( );
 }
 
 void MyVolumeAssetPanel::FillAssetSpecificContentsList( ) {

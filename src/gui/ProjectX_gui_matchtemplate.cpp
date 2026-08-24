@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version 3.10.0-4761b0c)
+// C++ code generated with wxFormBuilder (version 4.2.1-0-g80c4cb6)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO *NOT* EDIT THIS FILE!
@@ -627,6 +627,16 @@ MatchTemplatePanelParent::MatchTemplatePanelParent( wxWindow* parent, wxWindowID
 	ReferenceSelectPanel->SetMaxSize( wxSize( 350,-1 ) );
 
 	fgSizer15->Add( ReferenceSelectPanel, 100, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+
+	ReferenceGroupStaticText = new wxStaticText( InputPanel, wxID_ANY, wxT("Reference Volume Group :"), wxDefaultPosition, wxDefaultSize, 0 );
+	ReferenceGroupStaticText->Wrap( -1 );
+	fgSizer15->Add( ReferenceGroupStaticText, 0, wxALIGN_CENTER_VERTICAL|wxALIGN_RIGHT|wxALL, 5 );
+
+	ReferenceGroupSelectPanel = new VolumeGroupPickerComboPanel( InputPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	ReferenceGroupSelectPanel->SetMinSize( wxSize( 350,-1 ) );
+	ReferenceGroupSelectPanel->SetMaxSize( wxSize( 350,-1 ) );
+
+	fgSizer15->Add( ReferenceGroupSelectPanel, 100, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
 
 	bSizer557->Add( fgSizer15, 0, wxEXPAND, 5 );

@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version 3.10.0-4761b0c)
+// C++ code generated with wxFormBuilder (version 4.2.1-0-g80c4cb6)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO *NOT* EDIT THIS FILE!
@@ -18,6 +18,7 @@ class PlotCurvePanel;
 class ResultsDataViewListCtrl;
 class ShowTemplateMatchResultsPanel;
 class VolumeAssetPickerComboPanel;
+class VolumeGroupPickerComboPanel;
 
 #include "job_panel.h"
 #include <wx/string.h>
@@ -219,6 +220,7 @@ class MatchTemplatePanelParent : public JobPanel
 		wxStaticText* m_staticText262;
 		wxStaticText* m_staticText478;
 		VolumeAssetPickerComboPanel* ReferenceSelectPanel;
+		wxStaticText* ReferenceGroupStaticText;
 		wxStaticText* PleaseEstimateCTFStaticText;
 		wxStaticLine* m_staticline151;
 		wxScrolledWindow* ExpertPanel;
@@ -290,6 +292,7 @@ class MatchTemplatePanelParent : public JobPanel
 
 	public:
 		ImageGroupPickerComboPanel* GroupComboBox;
+		VolumeGroupPickerComboPanel* ReferenceGroupSelectPanel;
 		wxComboBox* SearchSizeComboBox;
 		wxComboBox* SymmetryComboBox;
 		ShowTemplateMatchResultsPanel* ResultsPanel;

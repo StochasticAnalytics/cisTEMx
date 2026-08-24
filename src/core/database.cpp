@@ -1410,6 +1410,10 @@ void Database::BeginAllVolumeGroupsSelect( ) {
     BeginBatchSelect("SELECT * FROM VOLUME_GROUP_LIST;");
 }
 
+void Database::BeginAllAtomicCoordinatesGroupsSelect( ) {
+    BeginBatchSelect("SELECT * FROM ATOMIC_COORDINATES_GROUP_LIST;");
+}
+
 void Database::BeginAllRefinementPackagesSelect( ) {
     BeginBatchSelect("SELECT * FROM REFINEMENT_PACKAGE_ASSETS;");
 }
@@ -1681,6 +1685,33 @@ AssetGroup Database::GetNextVolumeGroup( ) {
     // now we fill from the specific group table.
 
     group_sql_select_command = wxString::Format("SELECT * FROM VOLUME_GROUP_%i", group_table_number);
+
+    Prepare(group_sql_select_command, &list_statement);
+    return_code = Step(list_statement);
+
+    while ( return_code == SQLITE_ROW ) {
+        temp_group.AddMember(sqlite3_column_int(list_statement, 1));
+        return_code = Step(list_statement);
+    }
+
+    MyDebugAssertTrue(return_code == SQLITE_DONE, "SQL error, return code : %i\n", return_code);
+
+    Finalize(list_statement);
+    return temp_group;
+}
+
+AssetGroup Database::GetNextAtomicCoordinatesGroup( ) {
+    AssetGroup    temp_group;
+    int           group_table_number;
+    int           return_code;
+    wxString      group_sql_select_command;
+    sqlite3_stmt* list_statement = NULL;
+
+    GetFromBatchSelect("iti", &temp_group.id, &temp_group.name, &group_table_number);
+
+    // now we fill from the specific group table.
+
+    group_sql_select_command = wxString::Format("SELECT * FROM ATOMIC_COORDINATES_GROUP_%i", group_table_number);
 
     Prepare(group_sql_select_command, &list_statement);
     return_code = Step(list_statement);

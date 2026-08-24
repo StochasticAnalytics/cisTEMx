@@ -186,8 +186,8 @@ void AtomicCoordinatesImportDialog::ImportClick(wxCommandEvent& event) {
         atomic_coordinates_asset_panel->FillGroupList( );
         atomic_coordinates_asset_panel->FillContentsList( );
         //main_frame->RecalculateAssetBrowser();
-        //main_frame->Dirtyatomic_coordinatesGroups();
-        // main_frame->DirtyAtomicCoordinates(); FIXME
+        main_frame->DirtyAtomicCoordinates( );
+        main_frame->DirtyAtomicCoordinatesGroups( );
     }
 
     if ( have_errors == true ) {

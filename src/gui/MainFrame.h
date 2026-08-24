@@ -73,6 +73,7 @@ class MyMainFrame : public MainFrame, public SocketCommunicator, public UpdatePr
     void DirtyVolumes( );
     void DirtyVolumeGroups( );
     void DirtyAtomicCoordinates( );
+    void DirtyAtomicCoordinatesGroups( );
     void DirtyParticlePositionGroups( );
     void DirtyRunProfiles( );
     void DirtyRefinementPackages( );

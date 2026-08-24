@@ -52,7 +52,7 @@ std::vector<TableData> static_tables{
 
 std::vector<TableData> dynamic_tables{
         {"MOVIE_ALIGNMENT_PARAMETERS_", "prr", {"FRAME_NUMBER", "X_SHIFT", "Y_SHIFT"}},
-        {"ATOMIC_COORDINATES_GROUP_", "ii", {"MEMBER_NUMBER", "ATOMIC_COORDINATES_POSITION_ASSET_ID"}},
+        {"ATOMIC_COORDINATES_GROUP_", "ii", {"MEMBER_NUMBER", "ATOMIC_COORDINATES_ASSET_ID"}},
         {"IMAGE_GROUP_", "ii", {"MEMBER_NUMBER", "IMAGE_ASSET_ID"}},
         {"MOVIE_GROUP_", "ii", {"MEMBER_NUMBER", "MOVIE_ASSET_ID"}},
         {"PARTICLE_POSITION_GROUP_", "ii", {"MEMBER_NUMBER", "PARTICLE_POSITION_ASSET_ID"}},

@@ -88,7 +88,9 @@ wxThread::ExitCode SocketServerThread::Entry( ) {
                 break;
             }
             else {
-                socket_server->Destroy( );
+                // delete, NOT Destroy(): see the monitor-thread teardown comment - Destroy()
+                // touches the main thread's pending-delete list, which is not thread-safe.
+                delete socket_server;
                 socket_server = NULL;
             }
         }
@@ -109,7 +111,8 @@ wxThread::ExitCode SocketServerThread::Entry( ) {
 
             if ( server_lock.IsOk( ) == true ) {
                 socket_server->Close( );
-                socket_server->Destroy( );
+                // delete, NOT Destroy(): see the monitor-thread teardown comment.
+                delete socket_server;
                 socket_server = NULL;
 
                 { // mutex
@@ -474,7 +477,19 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
 
                 for ( socket_counter = 0; socket_counter < monitored_sockets.GetCount( ); socket_counter++ ) {
                     if ( monitored_sockets[socket_counter] != NULL ) {
-                        monitored_sockets[socket_counter]->Destroy( );
+                        // delete, NOT Destroy(): Destroy() appends to the global wxPendingDelete
+                        // list, which the main thread's event loop concurrently iterates and is
+                        // not thread-safe - the source of intermittent heap corruption
+                        // ("corrupted size vs. prev_size") during socket teardown. These sockets
+                        // have Notify(false), so no events can reference them after delete.
+                        // Defer to the main thread: an immediate delete here frees a socket
+                        // that queued CallAfter handlers still reference (seen as SIGSEGV in
+                        // HandleSocketTimeToDie -> wxSocketBase::Write). CallAfter is FIFO, so
+                        // the delete runs after every handler already queued for this socket.
+                        {
+                            wxSocketBase* socket_to_delete = monitored_sockets[socket_counter];
+                            parent_pointer->brother_event_handler->CallAfter([socket_to_delete]( ) { delete socket_to_delete; });
+                        }
                         monitored_sockets[socket_counter] = NULL;
                     }
                 }
@@ -524,9 +539,20 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                     for ( socket_counter = 0; socket_counter < monitored_sockets.GetCount( ); socket_counter++ ) {
                         if ( sockets_to_remove_and_destroy_next_cycle[change_counter] == monitored_sockets[socket_counter] ) {
                             monitored_sockets.RemoveAt(socket_counter);
-                            sockets_to_remove_and_destroy_next_cycle[change_counter]->Destroy( );
                             socket_counter--;
                         }
+                    }
+                    // delete, NOT Destroy(): Destroy() appends to the global wxPendingDelete list,
+                    // which the main thread's event loop concurrently iterates and is not
+                    // thread-safe (intermittent heap corruption). Deleted unconditionally, not
+                    // only when found above: a socket whose disconnect was already dispatched has
+                    // left monitored_sockets, but ownership was still passed here for destruction
+                    // (previously these leaked - one per tunnel-watchdog probe).
+                    {
+                        // Deferred delete (see the teardown loop above): queued CallAfter
+                        // handlers may still hold this pointer.
+                        wxSocketBase* socket_to_delete = sockets_to_remove_and_destroy_next_cycle[change_counter];
+                        parent_pointer->brother_event_handler->CallAfter([socket_to_delete]( ) { delete socket_to_delete; });
                     }
                 }
 
@@ -866,6 +892,18 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         result_number              = details[1];
                                         number_of_expected_results = details[2];
 
+                                        // A nonsensical size means the stream has lost framing (see the
+                                        // unknown-code branch below) - allocating from it would smash the
+                                        // heap. 2^30 floats = 4GB, far above any real result.
+                                        if ( size_of_data_array < 0 || size_of_data_array > 1073741824 ) {
+                                            wxPrintf("MONITOR: BOGUS program-defined-result size %i (result %i of %i) from socket %p - dropping socket\n",
+                                                     size_of_data_array, result_number, number_of_expected_results, (void*)monitored_sockets[socket_counter]);
+                                            parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                            monitored_sockets.RemoveAt(socket_counter);
+                                            socket_counter--;
+                                            continue;
+                                        }
+
                                         // Data flow at this site (two stages):
                                         //
                                         //   Worker process ──TCP──> [kernel buf] ──ReadFromSocket──> data_array (monitor thread)
@@ -933,6 +971,22 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         monitored_sockets.RemoveAt(socket_counter);
                                         socket_counter--;
                                     }
+                                }
+                                else {
+                                    // An unrecognized code means this socket's byte stream has lost framing:
+                                    // we are reading payload bytes as a message code. Continuing to read
+                                    // would interpret random bytes as lengths and sizes - the observed
+                                    // "corrupted size vs. prev_size" heap smash. Report loudly and drop
+                                    // the socket instead of silently trying the next 16 bytes.
+                                    wxPrintf("MONITOR: UNKNOWN socket code from socket %p: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x - dropping socket\n",
+                                             (void*)monitored_sockets[socket_counter],
+                                             socket_input_buffer[0], socket_input_buffer[1], socket_input_buffer[2], socket_input_buffer[3],
+                                             socket_input_buffer[4], socket_input_buffer[5], socket_input_buffer[6], socket_input_buffer[7],
+                                             socket_input_buffer[8], socket_input_buffer[9], socket_input_buffer[10], socket_input_buffer[11],
+                                             socket_input_buffer[12], socket_input_buffer[13], socket_input_buffer[14], socket_input_buffer[15]);
+                                    parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                    monitored_sockets.RemoveAt(socket_counter);
+                                    socket_counter--;
                                 }
                             }
                             else // socket is likely dead

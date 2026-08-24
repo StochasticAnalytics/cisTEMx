@@ -13,9 +13,14 @@
 // binaries built with it select the interleaved FastFFT texture fetch in
 // ExtractSliceShiftAndCtf, which is incompatible with volumes prepared by
 // CopyHostToDeviceTextureComplex (every non-match_template caller).
-// Uncomment to enable the experimental path project-wide.
+// ON in debug builds (--enable-debugmode defines DEBUG): every debug binary
+// carries the FastFFT texture path so it is exercised by default; release
+// builds keep the classic path (see 2274540d for what the project-wide enable
+// breaks in non-match_template callers).
 // To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
-// #define cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+#ifdef DEBUG
+#define cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+#endif
 
 // cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE — Selects which 3d texture the volume
 // carries and how it is fetched: 0 (the pre-existing tex_real/tex_imag pair
@@ -25,7 +30,9 @@
 // value at a time.
 // To find all gated code: grep -rn cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE
 // 16 (fp16 texels) is required by the FastFFT extent menu for the 1728/2048 padding tranche.
-// #define cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE 16
+#ifdef cisTEM_EXPERIMENTAL_3d_TEXTURE_ENABLE
+#define cisTEM_EXPERIMENTAL_3d_TEXTURE_TYPE 16
+#endif
 
 // cisTEM_EXPERIMENTAL_EWALD_PROJECTION — Feature gate for sampling template
 // projections on the curved Ewald sphere in GpuImage::ExtractSliceShiftAndCtf,

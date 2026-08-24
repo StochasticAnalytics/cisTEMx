@@ -388,6 +388,15 @@ wxString ReceivewxStringFromSocket(wxSocketBase* socket, bool& receive_worked) {
         return "";
     }
 
+    // A nonsensical length means the stream has lost framing: a negative value here would
+    // allocate a tiny buffer and then read ~4GB into it (heap smash). No legitimate string
+    // in the protocol approaches 1MB.
+    if ( length_of_string < 0 || length_of_string > 1048576 ) {
+        wxPrintf("SOCKET: BOGUS string length %i from socket %p - refusing to read\n", length_of_string, (void*)socket);
+        receive_worked = false;
+        return "";
+    }
+
     // setup a temp array to receive the string into.
 
     unsigned char* transfer_buffer = new unsigned char[length_of_string + 1]; // + 1 for the terminating null character;

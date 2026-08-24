@@ -42,8 +42,12 @@ void JobPanel::HandleSocketJobResultQueue(wxSocketBase* connected_socket, Arrayo
 }
 
 void JobPanel::HandleSocketNumberOfConnections(wxSocketBase* connected_socket, int received_number_of_connections) {
-    my_job_tracker.AddConnection( );
-    int total_processes = current_job_package.my_profile.ReturnTotalJobs( );
+    // Track the controller's reported count rather than counting messages: the controller
+    // re-sends the count when a dedicated (non-compute) leader announces itself and is
+    // subtracted from the total, so per-message increments would drift high and skew the
+    // ETA math in JobTracker.
+    my_job_tracker.total_running_processes = received_number_of_connections;
+    int total_processes                    = current_job_package.my_profile.ReturnTotalJobs( );
     if ( current_job_package.number_of_jobs < current_job_package.my_profile.ReturnTotalJobs( ) )
         total_processes = current_job_package.number_of_jobs;
     else

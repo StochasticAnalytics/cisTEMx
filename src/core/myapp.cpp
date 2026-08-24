@@ -23,7 +23,12 @@ bool MyApp::OnInit( ) {
 
     max_number_of_connected_workers = 0;
 
-    zombie_timer           = NULL;
+    zombie_timer = NULL;
+    // Never assigned on the non-compute leader (it starts no CalculateThread), and every
+    // teardown path calls work_thread->Kill() behind a != NULL guard - uninitialized stack
+    // garbage here made that a wild pthread kill (the leader-only teardown segfault, and a
+    // likely source of the historical intermittent heap corruption).
+    work_thread            = NULL;
     queue_timer            = NULL;
     queue_timer_set        = false;
     master_queue_timer_set = false;
@@ -31,8 +36,9 @@ bool MyApp::OnInit( ) {
     controller_socket = NULL;
     master_socket     = NULL;
 
-    connected_to_the_master = false;
-    currently_running_a_job = false;
+    connected_to_the_master   = false;
+    currently_running_a_job   = false;
+    i_am_a_non_compute_leader = false;
 
     time_of_last_queue_send        = 0;
     time_of_last_master_queue_send = 0;
@@ -741,17 +747,17 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
 
     i_am_the_master = true;
 
-    // CISTEM_MASTER_ONLY: when set (and non-empty) this process only serves, aggregates and
-    // reports - it does not connect itself as a worker or run a CalculateThread - and its
-    // server must bind the first free port of a 4-port window derived from the job code, so
-    // that pre-established tunnels can forward to a known port.
+    // CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE: when set (and non-empty) this process only serves,
+    // aggregates and reports - it does not connect itself as a worker or run a CalculateThread -
+    // and its server must bind the first free port of a 4-port window derived from the job code,
+    // so that pre-established tunnels can forward to a known port.
 
-    const char* master_only_env    = getenv("CISTEM_MASTER_ONLY");
-    const bool  i_am_a_master_only = (master_only_env != NULL && master_only_env[0] != '\0');
+    const char* leader_non_compute_env = getenv("CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE");
+    i_am_a_non_compute_leader          = (leader_non_compute_env != NULL && leader_non_compute_env[0] != '\0' && strcmp(leader_non_compute_env, "0") != 0); // "0" means off
 
     // we need to start a server so that the workers can connect..
 
-    if ( i_am_a_master_only == true ) {
+    if ( i_am_a_non_compute_leader == true ) {
         // derive the port window from the job code with 32-bit FNV-1a:
         // base = 41000 + (hash mod 7996), window = base .. base + 3
 
@@ -769,14 +775,14 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
         }
 
         if ( SetupServer(derived_ports, 4) == false ) {
-            wxPrintf("SSH_TUNNEL_ERROR: CISTEM_MASTER_ONLY master could not bind any port of the derived window %i-%i - aborting\n", base_port, base_port + 3);
-            SocketSendError(wxString::Format("SSH_TUNNEL_ERROR: CISTEM_MASTER_ONLY master could not bind any port of the derived window %i-%i - aborting", base_port, base_port + 3));
+            wxPrintf("SSH_TUNNEL_ERROR: LEADER_NON_COMPUTE master could not bind any port of the derived window %i-%i - aborting\n", base_port, base_port + 3);
+            SocketSendError(wxString::Format("SSH_TUNNEL_ERROR: LEADER_NON_COMPUTE master could not bind any port of the derived window %i-%i - aborting", base_port, base_port + 3));
             ExitMainLoop( );
             exit(-1);
             return;
         }
 
-        wxPrintf("CISTEM_MASTER_ONLY: master server bound port %s (window %i-%i)\n", ReturnServerPortString( ), base_port, base_port + 3);
+        wxPrintf("LEADER_NON_COMPUTE: master server bound port %s (window %i-%i)\n", ReturnServerPortString( ), base_port, base_port + 3);
     }
     else {
         SetupServer( );
@@ -795,7 +801,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
     master_port_string = my_port_string;
     master_port        = my_port;
 
-    if ( i_am_a_master_only == false ) {
+    if ( i_am_a_non_compute_leader == false ) {
         // connect myself as a worker..
 
         master_socket = new wxSocketClient( );
@@ -830,7 +836,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
         }
     }
     else {
-        wxPrintf("CISTEM_MASTER_ONLY: not connecting myself as a worker, serving/aggregating only\n");
+        wxPrintf("LEADER_NON_COMPUTE: not connecting myself as a worker, serving/aggregating only\n");
     }
 
     // I have to send my ip address to the controller..
@@ -841,7 +847,7 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
     SendwxStringToSocket(&my_ip_address, connected_socket);
     SendwxStringToSocket(&my_port_string, connected_socket);
 
-    if ( i_am_a_master_only == true ) {
+    if ( i_am_a_non_compute_leader == true ) {
         // Tell the controller not to count this process as a connected worker:
         // it serves and aggregates only, and counting it would both misreport
         // the connected total to the GUI and make the controller shut its
@@ -870,6 +876,27 @@ void MyApp::HandleSocketYouAreAWorker(wxSocketBase* connected_socket, wxString m
     //i_am_the_master = false;
 
     master_port_string.ToLong(&received_port);
+
+    // CISTEM_WORKER_PORT_REMAP ("<remote_base>:<local_base>:<count>"): the launch wrapper
+    // holds PRIVATE local tunnel forwards instead of sharing the wire-advertised ports with
+    // sibling jobs on the same node (shared forwards die with whichever sibling exits
+    // first). The master port arrives over the wire in the remote window; map it into this
+    // worker's private local window before connecting.
+    const char* port_remap_env = getenv("CISTEM_WORKER_PORT_REMAP");
+    if ( port_remap_env != NULL && port_remap_env[0] != '\0' ) {
+        long              remap_remote_base, remap_local_base, remap_count;
+        wxStringTokenizer remap_tokens(wxString::FromUTF8(port_remap_env), ":");
+        if ( remap_tokens.CountTokens( ) == 3 &&
+             remap_tokens.GetNextToken( ).ToLong(&remap_remote_base) &&
+             remap_tokens.GetNextToken( ).ToLong(&remap_local_base) &&
+             remap_tokens.GetNextToken( ).ToLong(&remap_count) &&
+             received_port >= remap_remote_base && received_port < remap_remote_base + remap_count ) {
+            const long remapped_port = remap_local_base + (received_port - remap_remote_base);
+            wxPrintf("WORKER: master port %li remapped to private local forward %li (CISTEM_WORKER_PORT_REMAP=%s)\n", received_port, remapped_port, port_remap_env);
+            received_port = remapped_port;
+        }
+    }
+
     master_port = (short int)received_port;
 
     // remove this socket from monitoring and destroy it..
@@ -893,7 +920,7 @@ void MyApp::HandleSocketYouAreAWorker(wxSocketBase* connected_socket, wxString m
 
     if ( master_socket->IsConnected( ) == false ) {
         master_socket->Close( );
-        MyDebugPrint("JOB : Failed ! Unable to connect\n");
+        wxPrintf("WORKER: cannot connect to master at %s:%i\n", master_ip_address, (int)master_port);
     }
 
     // otherwise we should be connected.. so start monitoring..
@@ -1096,6 +1123,13 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
     StopMonitoringAndDestroySocket(connected_socket);
     //connected_socket->Destroy();
 
+    // This worker is done and its socket is going away: forget it, so the controller-disconnect /
+    // time-to-die loops do not write to a destroyed socket, and the disconnect the monitor thread
+    // may still deliver for it (the worker closes right after sending its timing) is not treated
+    // as a worker dying mid-run.
+    socket_to_worker_job_pointer_hash.erase(connected_socket);
+    worker_socket_pointers.Remove(connected_socket);
+
     number_of_timing_results_received++;
 
     // check if we have all timings, and all results (this is checked in two places - socket send timing and receive results as it is not certain will happen last)
@@ -1149,7 +1183,12 @@ void MyApp::HandleNewSocketConnection(wxSocketBase* new_connection, unsigned cha
         else
             number_of_commands_to_run = current_job_package.my_profile.ReturnTotalJobs( );
 
-        if ( worker_socket_pointers.GetCount( ) == number_of_commands_to_run - 1 ) {
+        // A computing master occupies one of the launched seats and also connects to its own
+        // server, so it expects number_of_commands_to_run - 1 remote workers. A non-compute
+        // leader is launched outside the run-profile seats and does not self-connect, so every
+        // expected connection is a real worker.
+        int expected_worker_connections = i_am_a_non_compute_leader ? number_of_commands_to_run : number_of_commands_to_run - 1;
+        if ( worker_socket_pointers.GetCount( ) == expected_worker_connections ) {
             SocketSendInfo("All workers have re-connected to the master.");
         }
     }
@@ -1229,11 +1268,33 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
     }
     else if ( i_am_the_master == true && connected_socket != master_socket ) // a worker died..
     {
-        if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
-            SocketSendError("Error: A worker has disconnected before all jobs are finished.");
-            SocketSendInfo("The disconnected worker was running a job with the following arguments:\n" + socket_to_worker_job_pointer_hash[connected_socket]->PrintAllArgumentsTowxString( ));
+        // A socket that never identified itself with the job code was never a worker - it is
+        // a port-liveness probe (the condor shim's tunnel watchdog re-verifies the forwarded
+        // master ports every few seconds by connecting and closing). Destroy it quietly:
+        // reporting it as a dead worker spams the GUI with a false error per probe.
+        if ( worker_socket_pointers.Index(connected_socket) == wxNOT_FOUND ) {
+            StopMonitoringAndDestroySocket(connected_socket);
+            return;
         }
 
+        // The hash only holds sockets with a job currently assigned: operator[] on a socket
+        // that never requested a job (or whose entry was erased when it was told to die)
+        // would insert a NULL and the print below would crash the master.
+        const bool disconnected_worker_had_a_job = (socket_to_worker_job_pointer_hash.count(connected_socket) != 0 && socket_to_worker_job_pointer_hash[connected_socket] != NULL);
+
+        if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
+            SocketSendError("Error: A worker has disconnected before all jobs are finished.");
+            if ( disconnected_worker_had_a_job )
+                SocketSendInfo("The disconnected worker was running a job with the following arguments:\n" + socket_to_worker_job_pointer_hash[connected_socket]->PrintAllArgumentsTowxString( ));
+            else
+                SocketSendInfo("The disconnected worker had no job assigned.");
+        }
+
+        socket_to_worker_job_pointer_hash.erase(connected_socket);
+        // Remove the entry as well as destroying the socket: a stale pointer left in the
+        // array aliases future sockets malloc'd at the recycled address (watchdog probes
+        // then masquerade as this dead worker, one false disconnect per probe).
+        worker_socket_pointers.Remove(connected_socket);
         StopMonitoringAndDestroySocket(connected_socket);
     }
     else // i am a worker and the master died.. time to die

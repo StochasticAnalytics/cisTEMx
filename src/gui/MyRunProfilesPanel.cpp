@@ -431,8 +431,6 @@ bool MyRunProfilesPanel::ImportRunProfilesFromDisk(wxString filename) {
         if ( success == false )
             return false;
 
-        wxPrintf("Got here\n");
-
         for ( command_counter = 0; command_counter < buffer_number_of_run_commands; command_counter++ ) {
             line_buffer = input_file.GetNextLine( );
             if ( line_buffer.Replace(wxString::Format("profile_%i_command_%i_command_to_run=\"", profile_counter, command_counter), "") != 1 )

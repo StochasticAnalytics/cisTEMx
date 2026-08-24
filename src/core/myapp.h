@@ -110,9 +110,9 @@ class
   public:
     bool         OnInit( );
     int          OnExit( );
-    virtual void ProgramSpecificInit( ){ };
-    virtual void ProgramSpecificCleanUp( ){ };
-    virtual void MyInteractiveProgramCleanup( ){ };
+    virtual void ProgramSpecificInit( ) {};
+    virtual void ProgramSpecificCleanUp( ) {};
+    virtual void MyInteractiveProgramCleanup( ) {};
     void         OnEventLoopEnter(wxEventLoopBase* loop);
 
     // Socket overides
@@ -170,6 +170,7 @@ class
 
     bool i_am_the_master;
     bool i_am_a_worker;
+    bool i_am_a_non_compute_leader; // CISTEM_EXPERIMENTAL_LEADER_NON_COMPUTE: master that serves/aggregates only, never computes
 
     int number_of_results_sent;
     int number_of_timing_results_received;

@@ -83,12 +83,10 @@ constexpr std::array<int, 7> kAllowedSearchSizes = {4096, 2048, 1024, 512, 256, 
 
 MatchTemplatePanel::MatchTemplatePanel(wxWindow* parent)
     : MatchTemplatePanelParent(parent) {
-    MyDebugPrintGA1("MatchTemplatePanel ctor begin parent=%p", (void*)parent);
     // Set variables
 
     my_job_id   = -1;
     running_job = false;
-    MyDebugPrintGA1("MatchTemplatePanel ctor my_job_id=-1 running_job=false");
 
     group_combo_is_dirty   = false;
     run_profiles_are_dirty = false;
@@ -184,7 +182,6 @@ void MatchTemplatePanel::EnableMovieProcessingIfAppropriate()
 */
 
 void MatchTemplatePanel::ResetAllDefaultsClick(wxCommandEvent& event) {
-    MyDebugPrintGA1("MatchTemplatePanel::ResetAllDefaultsClick");
     ResetDefaults( );
 }
 
@@ -207,7 +204,6 @@ void MatchTemplatePanel::OnInfoURL(wxTextUrlEvent& event) {
 }
 
 void MatchTemplatePanel::Reset( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::Reset");
     ProgressBar->SetValue(0);
     TimeRemainingText->SetLabel("Time Remaining : ???h:??m:??s");
     CancelAlignmentButton->Show(true);
@@ -236,7 +232,6 @@ void MatchTemplatePanel::Reset( ) {
 }
 
 void MatchTemplatePanel::ResetDefaults( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::ResetDefaults");
     OutofPlaneStepNumericCtrl->ChangeValueFloat(2.5);
     InPlaneStepNumericCtrl->ChangeValueFloat(1.5);
     MinPeakRadiusNumericCtrl->ChangeValueFloat(10.0f);
@@ -285,7 +280,6 @@ void MatchTemplatePanel::ResetDefaults( ) {
 }
 
 void MatchTemplatePanel::OnGroupComboBox(wxCommandEvent& event) {
-    MyDebugPrintGA1("MatchTemplatePanel::OnGroupComboBox");
     //	ResetDefaults();
     //	AssetGroup active_group;
 
@@ -526,7 +520,6 @@ void MatchTemplatePanel::SetInfo( ) {
 }
 
 void MatchTemplatePanel::FillGroupComboBox( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::FillGroupComboBox");
     // Called from constructor (when panel is created) or OnUpdateUI (when groups change)
     // Return early if no project is open (can happen during workflow switching)
     if ( ! main_frame->current_project.is_open ) {
@@ -549,7 +542,6 @@ void MatchTemplatePanel::FillGroupComboBox( ) {
 }
 
 void MatchTemplatePanel::FillRunProfileComboBox( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::FillRunProfileComboBox");
     RunProfileComboBox->FillWithRunProfiles( );
 }
 
@@ -686,7 +678,6 @@ bool MatchTemplatePanel::CheckForOverFocus(bool& append_allow_over_focus) {
 
 void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
     // Note: this fires very frequently. Keeping the print but commented for noise. Uncomment if needed.
-    // MyDebugPrintGA1("MatchTemplatePanel::OnUpdateUI tick");
 
     // We want things to be greyed out if the user is re-running the job.
     if ( set_up_to_resume_job ) {
@@ -781,7 +772,6 @@ void MatchTemplatePanel::OnUpdateUI(wxUpdateUIEvent& event) {
 */
 
 void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, TemplateMatchJobResults* job_to_resume) {
-    MyDebugPrintGA1("MatchTemplatePanel::SetInputsForPossibleReRun resume=%d", (int)set_up_to_resume_job);
 
     this->set_up_to_resume_job = set_up_to_resume_job;
     bool enable_value;
@@ -870,7 +860,6 @@ void MatchTemplatePanel::SetInputsForPossibleReRun(bool set_up_to_resume_job, Te
 }
 
 void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
-    MyDebugPrintGA1("MatchTemplatePanel::StartEstimationClick ENTRY");
 
     const BatchExperimentConfig& batch_config = GetBatchExperimentConfig( );
 
@@ -927,20 +916,15 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     // If the user creates a new filtered group, CheckForOverFocus changes the
     // GroupComboBox selection, so the subsequent CopyFrom picks up the new group.
     bool append_allow_over_focus = false;
-    MyDebugPrintGA1("StartEstimationClick about to CheckForOverFocus");
     if ( ! CheckForOverFocus(append_allow_over_focus) ) {
-        MyDebugPrintGA1("StartEstimationClick CheckForOverFocus returned false, aborting");
         return;
     }
-    MyDebugPrintGA1("StartEstimationClick CheckForOverFocus ok append_allow_over_focus=%d", (int)append_allow_over_focus);
 
     active_group.CopyFrom(&image_asset_panel->all_groups_list->groups[GroupComboBox->GetSelection( )]);
-    MyDebugPrintGA1("StartEstimationClick active_group.number_of_members=%i", active_group.number_of_members);
 
     // Check if this is a resume job. If yes, get the job id and set the active
     // group to the remaining images
-    bool resume = ResumeRunCheckBox->GetValue( );
-    MyDebugPrintGA1("StartEstimationClick resume=%d", (int)resume);
+    bool        resume = ResumeRunCheckBox->GetValue( );
     int         job_id_to_resume;
     wxArrayLong images_to_resume;
     if ( resume ) {
@@ -1121,8 +1105,19 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     }
 
     // CPU match_template can probably be DEPRECATED
-    if ( use_gpu )
-        current_job_package.Reset(active_refinement_run_profile, "match_template_gpu", number_of_jobs);
+    if ( use_gpu ) {
+        // CISTEM_EXPERIMENTAL_MT_EXECUTABLE: override the worker binary name, e.g.
+        // match_template_gpu_tex3d (the FastFFT 3d-texture build, which ships as a
+        // separate binary because the texture gates are compile-time and incompatible
+        // with every non-match_template caller - see GpuImage.h).
+        wxString    mt_executable     = "match_template_gpu";
+        const char* mt_executable_env = getenv("CISTEM_EXPERIMENTAL_MT_EXECUTABLE");
+        if ( mt_executable_env != NULL && mt_executable_env[0] != '\0' ) {
+            mt_executable = wxString::FromUTF8(mt_executable_env);
+            WriteInfoText(wxString::Format("CISTEM_EXPERIMENTAL_MT_EXECUTABLE: using '%s'", mt_executable));
+        }
+        current_job_package.Reset(active_refinement_run_profile, mt_executable, number_of_jobs);
+    }
     else
         current_job_package.Reset(active_refinement_run_profile, "match_template", number_of_jobs);
 
@@ -1271,7 +1266,23 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
             int best_parameters_to_keep = 1;
             //			float defocus_search_range = 0.0f;
             //			float defocus_step = 0.0f;
-            float padding            = 1;
+            float padding = 1;
+            // CISTEM_EXPERIMENTAL_MT_PADDING: the GUI is built gate-off while the container's
+            // match_template_gpu may be the FastFFT texture build, which reads this value as the
+            // absolute output box edge (512/1024/1728/2048, >= volume size) - so the box has to
+            // be supplied explicitly here; the hardcoded 1 is only right for the stock binary.
+            {
+                const char* mt_padding_env = getenv("CISTEM_EXPERIMENTAL_MT_PADDING");
+                if ( mt_padding_env != NULL && mt_padding_env[0] != '\0' ) {
+                    double requested_padding;
+                    if ( wxString::FromUTF8(mt_padding_env).ToDouble(&requested_padding) && requested_padding >= 0.0 ) {
+                        padding = float(requested_padding);
+                        WriteInfoText(wxString::Format("CISTEM_EXPERIMENTAL_MT_PADDING: padding / output box = %.0f", padding));
+                    }
+                    else
+                        WriteErrorText(wxString::Format("CISTEM_EXPERIMENTAL_MT_PADDING='%s' is not a number; using %.0f", mt_padding_env, padding));
+                }
+            }
             bool  ctf_refinement     = false;
             float mask_radius_search = 0.0f; //current_volume->x_size; // this is actually not really used...
 
@@ -1360,12 +1371,9 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
     }
     // launch a controller
 
-    MyDebugPrintGA1("StartEstimationClick about to AddJob via job_controller selection=%d", RunProfileComboBox->GetSelection( ));
     my_job_id = main_frame->job_controller.AddJob(this, run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection( )].manager_command, run_profiles_panel->run_profile_manager.run_profiles[RunProfileComboBox->GetSelection( )].gui_address);
-    MyDebugPrintGA1("StartEstimationClick AddJob returned my_job_id=%i", my_job_id);
 
     if ( my_job_id != -1 ) {
-        MyDebugPrintGA1("StartEstimationClick job accepted, switching UI to running state");
         SetNumberConnectedTextToZeroAndStartTracking( );
 
         StartPanel->Show(false);
@@ -1385,7 +1393,6 @@ void MatchTemplatePanel::StartEstimationClick(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) {
-    MyDebugPrintGA1("MatchTemplatePanel::HandleSocketTemplateMatchResultReady image_number=%d high_res=%f threshold=%f peaks=%lu", image_number, high_res_limit_used, threshold_used, (unsigned long)peak_infos.GetCount( ));
     // result is available for an image..
 
     cached_results[image_number - 1].found_peaks.Clear( );
@@ -1409,7 +1416,6 @@ void MatchTemplatePanel::HandleSocketTemplateMatchResultReady(wxSocketBase* conn
 }
 
 void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {
-    MyDebugPrintGA1("MatchTemplatePanel::FinishButtonClick");
     ProgressBar->SetValue(0);
     TimeRemainingText->SetLabel("Time Remaining : ???h:??m:??s");
     CancelAlignmentButton->Show(true);
@@ -1431,7 +1437,6 @@ void MatchTemplatePanel::FinishButtonClick(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
-    MyDebugPrintGA1("MatchTemplatePanel::TerminateButtonClick");
     // kill the job, this will kill the socket to terminate downstream processes
     // - this will have to be improved when clever network failure is incorporated
 
@@ -1454,7 +1459,6 @@ void MatchTemplatePanel::TerminateButtonClick(wxCommandEvent& event) {
 }
 
 void MatchTemplatePanel::WriteInfoText(wxString text_to_write) {
-    MyDebugPrintGA1("MatchTemplatePanel::WriteInfoText '%s'", text_to_write);
     output_textctrl->SetDefaultStyle(wxTextAttr(*wxBLACK));
     output_textctrl->AppendText(text_to_write);
 
@@ -1463,7 +1467,6 @@ void MatchTemplatePanel::WriteInfoText(wxString text_to_write) {
 }
 
 void MatchTemplatePanel::WriteErrorText(wxString text_to_write) {
-    MyDebugPrintGA1("MatchTemplatePanel::WriteErrorText '%s'", text_to_write);
     output_textctrl->SetDefaultStyle(wxTextAttr(*wxRED));
     output_textctrl->AppendText(text_to_write);
 
@@ -1472,31 +1475,26 @@ void MatchTemplatePanel::WriteErrorText(wxString text_to_write) {
 }
 
 void MatchTemplatePanel::OnSocketJobResultMsg(JobResult& received_result) {
-    MyDebugPrintGA1("MatchTemplatePanel::OnSocketJobResultMsg job_number=%i", received_result.job_number);
     if ( received_result.result_size > 0 ) {
         ProcessResult(&received_result);
     }
 }
 
 void MatchTemplatePanel::OnSocketJobResultQueueMsg(ArrayofJobResults& received_queue) {
-    MyDebugPrintGA1("MatchTemplatePanel::OnSocketJobResultQueueMsg queue_count=%lu", (unsigned long)received_queue.GetCount( ));
     for ( int counter = 0; counter < received_queue.GetCount( ); counter++ ) {
         ProcessResult(&received_queue.Item(counter));
     }
 }
 
 void MatchTemplatePanel::SetNumberConnectedText(wxString wanted_text) {
-    MyDebugPrintGA1("MatchTemplatePanel::SetNumberConnectedText '%s'", wanted_text);
     NumberConnectedText->SetLabel(wanted_text);
 }
 
 void MatchTemplatePanel::SetTimeRemainingText(wxString wanted_text) {
-    MyDebugPrintGA1("MatchTemplatePanel::SetTimeRemainingText '%s'", wanted_text);
     TimeRemainingText->SetLabel(wanted_text);
 }
 
 void MatchTemplatePanel::OnSocketAllJobsFinished( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::OnSocketAllJobsFinished");
     ProcessAllJobsFinished( );
 }
 
@@ -1564,7 +1562,6 @@ void MatchTemplatePanel::ProcessResult(JobResult* result_to_process) // this wil
 }
 
 void MatchTemplatePanel::ProcessAllJobsFinished( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::ProcessAllJobsFinished finished=%i total=%i", my_job_tracker.total_number_of_finished_jobs, my_job_tracker.total_number_of_jobs);
 
     MyDebugAssertTrue(my_job_tracker.total_number_of_finished_jobs == my_job_tracker.total_number_of_jobs, "In ProcessAllJobsFinished, but total_number_of_finished_jobs != total_number_of_jobs. Oops.");
 
@@ -1663,7 +1660,6 @@ void MatchTemplatePanel::ProcessAllJobsFinished( ) {
 }
 
 void MatchTemplatePanel::WriteResultToDataBase( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::WriteResultToDataBase");
     // I have moved this to HandleSocketTemplateMatchResultReady so that things are done one result at at time.
     /*
 	// find the current highest template match numbers in the database, then increment by one
@@ -1692,13 +1688,11 @@ void MatchTemplatePanel::WriteResultToDataBase( ) {
 }
 
 void MatchTemplatePanel::UpdateProgressBar( ) {
-    MyDebugPrintGA1("MatchTemplatePanel::UpdateProgressBar");
     ProgressBar->SetValue(my_job_tracker.ReturnPercentCompleted( ));
     TimeRemainingText->SetLabel(my_job_tracker.ReturnRemainingTime( ).Format("Time Remaining : %Hh:%Mm:%Ss"));
 }
 
 void MatchTemplatePanel::ResumeRunCheckBoxOnCheckBox(wxCommandEvent& event) {
-    MyDebugPrintGA1("MatchTemplatePanel::ResumeRunCheckBoxOnCheckBox");
     if ( event.IsChecked( ) ) {
         CheckForUnfinishedWork(true, true);
     }

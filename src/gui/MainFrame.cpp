@@ -738,7 +738,7 @@ void MyMainFrame::OpenProject(wxString project_filename) {
         if ( current_project.database.database_file.GetPath( ) != current_project.project_directory.GetFullPath( ) ) {
             // database has moved?
 
-            wxMessageDialog* my_dialog = new wxMessageDialog(this, wxString::Format("It looks like this project has been moved :-\n\nCurrent Dir. \t: %s\nStored Dir. \t: %s\n\ncisTEM can attempt to migrate the project, updating all paths to point to the current directory. It is wise to make a backup of the database before trying this.\n\nNote : This will only affect paths contained within the project folder, paths to files outside the project folder will remain unchanged.\n\nAttempt to migrate the project?", current_project.database.database_file.GetPath( ), current_project.project_directory.GetFullPath( )), "Database has moved?", wxICON_ERROR | wxYES_NO | wxNO_DEFAULT);
+            wxMessageDialog* my_dialog = new wxMessageDialog(this, wxString::Format("It looks like this project has been moved :-\n\nCurrent Dir. \t: %s\nStored Dir. \t: %s\n\ncisTEM can attempt to migrate the project, updating all paths to point to the current directory. It is wise to make a backup of the database before trying this.\n\nNote : Paths inside the project folder are updated directly. Paths to files outside the project folder are kept when the files still exist; otherwise cisTEM attempts to relocate them by their position relative to the project directory and reports any that cannot be found.\n\nAttempt to migrate the project?", current_project.database.database_file.GetPath( ), current_project.project_directory.GetFullPath( )), "Database has moved?", wxICON_ERROR | wxYES_NO | wxNO_DEFAULT);
             my_dialog->SetYesNoLabels("Migrate", "No");
 
             if ( my_dialog->ShowModal( ) != wxID_YES ) {
@@ -1019,62 +1019,134 @@ wxString MyMainFrame::ReturnRefineCTFScratchDirectory( ) {
     return current_project.scratch_directory.GetFullPath( ) + "/RefineCTF/";
 }
 
+namespace {
+
+// Every (table, column) pair in the project database that stores an absolute file path and is
+// rewritten by MigrateProject. Both migration passes iterate this list, so a new path column
+// only needs to be added here.
+struct MigratedPathColumn {
+    const char* table;
+    const char* column;
+};
+
+constexpr MigratedPathColumn migrated_path_columns[] = {
+        {"MOVIE_ASSETS", "FILENAME"},
+        {"IMAGE_ASSETS", "FILENAME"},
+        {"VOLUME_ASSETS", "FILENAME"},
+        {"REFINEMENT_PACKAGE_ASSETS", "STACK_FILENAME"},
+        {"MOVIE_ALIGNMENT_LIST", "OUTPUT_FILE"},
+        {"ESTIMATED_CTF_PARAMETERS", "OUTPUT_DIAGNOSTIC_FILE"},
+        {"CLASSIFICATION_LIST", "CLASS_AVERAGE_FILE"},
+        {"TEMPLATE_MATCH_LIST", "MIP_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "SCALED_MIP_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "PSI_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "THETA_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "PHI_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "DEFOCUS_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "PIXEL_SIZE_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "HISTOGRAM_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "PROJECTION_RESULT_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "AVG_OUTPUT_FILE"},
+        {"TEMPLATE_MATCH_LIST", "STD_OUTPUT_FILE"},
+};
+
+wxString EscapeSQLiteString(wxString value) {
+    value.Replace("'", "''");
+    return value;
+}
+
+} // namespace
+
 bool MyMainFrame::MigrateProject(wxString old_project_directory, wxString new_project_directory) {
-    // this is very boring.. go through and update all the links in the database..
-    // start transaction
+    // Update all absolute paths stored in the database. Two passes:
+    //   1. Paths under the old project directory: prefix rewrite (they move with the project).
+    //   2. Anything still not found on disk (assets imported from outside the project folder,
+    //      e.g. reference volumes kept next to the project directory): reconstruct the path by
+    //      its position RELATIVE to the old project directory, re-anchor it on the new one, and
+    //      rewrite only when the reconstructed file actually exists. Everything else is left
+    //      unchanged and reported, so a stale path surfaces now instead of mid-run on a worker.
 
     current_project.database.Begin( );
 
     // Master settings..
     current_project.database.ExecuteSQL(wxString::Format("UPDATE MASTER_SETTINGS SET PROJECT_DIRECTORY = '%s';", new_project_directory).ToUTF8( ).data( ));
 
-    // Movie Assets
+    // Pass 1: prefix rewrite for paths that lived inside the project folder.
+    for ( const MigratedPathColumn& path_column : migrated_path_columns ) {
+        current_project.database.ExecuteSQL(wxString::Format("UPDATE %s SET %s = REPLACE(%s, '%s', '%s');",
+                                                             path_column.table, path_column.column, path_column.column,
+                                                             old_project_directory, new_project_directory)
+                                                    .ToUTF8( )
+                                                    .data( ));
+    }
 
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE MOVIE_ASSETS SET FILENAME = REPLACE(FILENAME, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+    // Pass 2: relative-position recovery for paths that still do not resolve.
+    long     number_of_recovered_paths = 0;
+    long     number_of_missing_paths   = 0;
+    wxString per_column_report;
 
-    // Image Assets
+    for ( const MigratedPathColumn& path_column : migrated_path_columns ) {
+        wxArrayString distinct_paths = current_project.database.ReturnStringArrayFromSelectCommand(
+                wxString::Format("SELECT DISTINCT %s FROM %s WHERE %s IS NOT NULL AND %s != '';",
+                                 path_column.column, path_column.table, path_column.column, path_column.column));
 
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE IMAGE_ASSETS SET FILENAME = REPLACE(FILENAME, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+        long     column_recovered = 0;
+        long     column_missing   = 0;
+        wxString column_missing_example;
 
-    // Volume Assets
+        for ( size_t counter = 0; counter < distinct_paths.GetCount( ); counter++ ) {
+            const wxString& stored_path = distinct_paths.Item(counter);
 
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE VOLUME_ASSETS SET FILENAME = REPLACE(FILENAME, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+            // Fast path: rewritten by pass 1, or an outside-project file that is still where it was.
+            if ( stored_path.StartsWith(new_project_directory) )
+                continue;
+            if ( wxFileName::FileExists(stored_path) )
+                continue;
 
-    // Refinement Package Assets
+            wxFileName recovered_path(stored_path);
+            recovered_path.MakeRelativeTo(old_project_directory);
+            recovered_path.MakeAbsolute(new_project_directory);
 
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE REFINEMENT_PACKAGE_ASSETS SET STACK_FILENAME = REPLACE(STACK_FILENAME, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+            if ( recovered_path.FileExists( ) ) {
+                current_project.database.ExecuteSQL(wxString::Format("UPDATE %s SET %s = '%s' WHERE %s = '%s';",
+                                                                     path_column.table, path_column.column,
+                                                                     EscapeSQLiteString(recovered_path.GetFullPath( )),
+                                                                     path_column.column, EscapeSQLiteString(stored_path))
+                                                            .ToUTF8( )
+                                                            .data( ));
+                column_recovered++;
+            }
+            else {
+                column_missing++;
+                if ( column_missing_example.IsEmpty( ) )
+                    column_missing_example = stored_path;
+            }
+        }
 
-    // Movie alignment list
+        if ( column_recovered > 0 || column_missing > 0 ) {
+            per_column_report << wxString::Format("%s.%s : %li relocated, %li not found", path_column.table, path_column.column, column_recovered, column_missing);
+            if ( column_missing > 0 )
+                per_column_report << "\n    e.g. " << column_missing_example;
+            per_column_report << "\n";
+        }
 
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE MOVIE_ALIGNMENT_LIST SET OUTPUT_FILE = REPLACE(OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-
-    // Estimated CTF Parameters
-
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE ESTIMATED_CTF_PARAMETERS SET OUTPUT_DIAGNOSTIC_FILE = REPLACE(OUTPUT_DIAGNOSTIC_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-
-    // Classification List
-
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE CLASSIFICATION_LIST SET CLASS_AVERAGE_FILE = REPLACE(CLASS_AVERAGE_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-
-    // Commit
-
-    // Template Matching...
-
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET MIP_OUTPUT_FILE = REPLACE(MIP_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET SCALED_MIP_OUTPUT_FILE = REPLACE(SCALED_MIP_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PSI_OUTPUT_FILE = REPLACE(PSI_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET THETA_OUTPUT_FILE = REPLACE(THETA_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PHI_OUTPUT_FILE = REPLACE(PHI_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET DEFOCUS_OUTPUT_FILE = REPLACE(DEFOCUS_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PIXEL_SIZE_OUTPUT_FILE = REPLACE(PIXEL_SIZE_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET HISTOGRAM_OUTPUT_FILE = REPLACE(HISTOGRAM_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET PROJECTION_RESULT_OUTPUT_FILE = REPLACE(PROJECTION_RESULT_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET AVG_OUTPUT_FILE = REPLACE(AVG_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
-    current_project.database.ExecuteSQL(wxString::Format("UPDATE TEMPLATE_MATCH_LIST SET STD_OUTPUT_FILE = REPLACE(STD_OUTPUT_FILE, '%s', '%s');", old_project_directory, new_project_directory).ToUTF8( ).data( ));
+        number_of_recovered_paths += column_recovered;
+        number_of_missing_paths += column_missing;
+    }
 
     current_project.database.Commit( );
 
-    // everything should be ok?
+    if ( number_of_recovered_paths > 0 || number_of_missing_paths > 0 ) {
+        wxString report;
+        report << wxString::Format("Paths outside the project folder :- %li relocated by their position relative to the project directory, %li not found.\n\n", number_of_recovered_paths, number_of_missing_paths);
+        report << per_column_report;
+        if ( number_of_missing_paths > 0 ) {
+            report << "\nPaths not found were left unchanged and will fail when first used. "
+                      "'Not found' means not visible from this cisTEM process: a file on a drive that is not mounted "
+                      "(or not bound into the container running cisTEM) looks the same as a deleted one.";
+        }
+        wxMessageBox(report, "Project migration report", wxOK | (number_of_missing_paths > 0 ? wxICON_WARNING : wxICON_INFORMATION), this);
+    }
 
     return true;
 }

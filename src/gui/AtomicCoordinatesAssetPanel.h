@@ -1,7 +1,7 @@
 class AtomicCoordinatesAssetPanel : public MyAssetPanelParent {
 
   protected:
-    void DirtyGroups( ) { main_frame->DirtyParticlePositionGroups( ); };
+    void DirtyGroups( ) { main_frame->DirtyAtomicCoordinatesGroups( ); };
 
   public:
     AtomicCoordinatesAssetPanel(wxWindow* parent);

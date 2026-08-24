@@ -304,6 +304,7 @@ void MyMainFrame::DirtyEverything( ) {
     DirtyVolumes( );
     DirtyVolumeGroups( );
     DirtyAtomicCoordinates( );
+    DirtyAtomicCoordinatesGroups( );
 }
 
 // DIRTY METHODS SAFETY: All Dirty*() methods below include null pointer checks to prevent segfaults.
@@ -367,6 +368,13 @@ void MyMainFrame::DirtyVolumeGroups( ) {
 }
 
 void MyMainFrame::DirtyAtomicCoordinates( ) {
+    if ( atomic_coordinates_asset_panel )
+        atomic_coordinates_asset_panel->is_dirty = true;
+}
+
+void MyMainFrame::DirtyAtomicCoordinatesGroups( ) {
+    // No group-combo consumers exist yet; the planned simulation panels will hook in here the
+    // way DirtyVolumeGroups feeds the TM panel's reference volume group combo.
     if ( atomic_coordinates_asset_panel )
         atomic_coordinates_asset_panel->is_dirty = true;
 }

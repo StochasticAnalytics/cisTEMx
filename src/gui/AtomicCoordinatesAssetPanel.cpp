@@ -21,7 +21,9 @@ AtomicCoordinatesAssetPanel::AtomicCoordinatesAssetPanel(wxWindow* parent)
 
     UpdateInfo( );
 
-    SplitterWindow->Unsplit(LeftPanel);
+    // The group pane (LeftPanel) used to be hidden here with SplitterWindow->Unsplit(LeftPanel).
+    // Atomic-coordinates groups are now exposed, matching the volume asset panel, ahead of the
+    // simulation panels that will consume them.
 
     AssetTypeText->SetLabel("Atomic Coordinates (PDBx/mmCIF)");
 
@@ -150,7 +152,20 @@ void AtomicCoordinatesAssetPanel::InsertGroupMemberToDatabase(int wanted_group, 
 }
 
 void AtomicCoordinatesAssetPanel::InsertArrayofGroupMembersToDatabase(long wanted_group, wxArrayLong* wanted_array, OneSecondProgressDialog* progress_dialog) {
-    // TODO, this is empty in VolumeAssets but not others, review and determine why.
+    MyDebugAssertTrue(wanted_group > 0 && wanted_group < all_groups_list->number_of_groups, "Requesting a group (%li) that doesn't exist!", wanted_group);
+
+    int current_member_number = main_frame->current_project.database.ReturnSingleIntFromSelectCommand(wxString::Format("SELECT MAX(MEMBER_NUMBER) FROM ATOMIC_COORDINATES_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ));
+    main_frame->current_project.database.BeginBatchInsert(wxString::Format("ATOMIC_COORDINATES_GROUP_%i", ReturnGroupID(wanted_group)).ToUTF8( ).data( ), 2, "MEMBER_NUMBER", "ATOMIC_COORDINATES_ASSET_ID");
+
+    for ( long counter = 0; counter < wanted_array->GetCount( ); counter++ ) {
+        MyDebugAssertTrue(wanted_array->Item(counter) >= 0 && wanted_array->Item(counter) < all_assets_list->number_of_assets, "Requesting an asset(%li) that doesn't exist!", wanted_array->Item(counter));
+        main_frame->current_project.database.AddToBatchInsert("ii", current_member_number, ReturnGroupMemberID(0, int(wanted_array->Item(counter))));
+        current_member_number++;
+        if ( progress_dialog != NULL )
+            progress_dialog->Update(counter);
+    }
+
+    main_frame->current_project.database.EndBatchInsert( );
 }
 
 void AtomicCoordinatesAssetPanel::RemoveAllFromDatabase( ) {
@@ -174,12 +189,12 @@ void AtomicCoordinatesAssetPanel::RemoveAllFromDatabase( ) {
 
 void AtomicCoordinatesAssetPanel::RemoveAllGroupMembersFromDatabase(int wanted_group_id) {
     main_frame->current_project.database.ExecuteSQL(wxString::Format("DROP TABLE ATOMIC_COORDINATES_GROUP_%i", wanted_group_id).ToUTF8( ).data( ));
-    main_frame->current_project.database.CreateTable(wxString::Format("ATOMIC_COORDINATES_GROUP_%i", wanted_group_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "ATOMIC_COORDINATES_POSITION_ASSET_ID");
+    main_frame->current_project.database.CreateTable(wxString::Format("ATOMIC_COORDINATES_GROUP_%i", wanted_group_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "ATOMIC_COORDINATES_ASSET_ID");
 }
 
 void AtomicCoordinatesAssetPanel::AddGroupToDatabase(int wanted_group_id, const char* wanted_group_name, int wanted_list_id) {
     main_frame->current_project.database.InsertOrReplace("ATOMIC_COORDINATES_GROUP_LIST", "iti", "GROUP_ID", "GROUP_NAME", "LIST_ID", wanted_group_id, wanted_group_name, wanted_list_id);
-    main_frame->current_project.database.CreateTable(wxString::Format("ATOMIC_COORDINATES_GROUP_%i", wanted_list_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "ATOMIC_COORDINATES_POSITION_ASSET_ID");
+    main_frame->current_project.database.CreateTable(wxString::Format("ATOMIC_COORDINATES_GROUP_%i", wanted_list_id).ToUTF8( ).data( ), "ii", "MEMBER_NUMBER", "ATOMIC_COORDINATES_ASSET_ID");
 }
 
 void AtomicCoordinatesAssetPanel::RemoveGroupFromDatabase(int wanted_group_id) {
@@ -225,10 +240,10 @@ void AtomicCoordinatesAssetPanel::ImportAllFromDatabase( ) {
 
     // Now the groups..
 
-    main_frame->current_project.database.BeginAllVolumeGroupsSelect( );
+    main_frame->current_project.database.BeginAllAtomicCoordinatesGroupsSelect( );
 
     while ( main_frame->current_project.database.last_return_code == SQLITE_ROW ) {
-        temp_group = main_frame->current_project.database.GetNextVolumeGroup( );
+        temp_group = main_frame->current_project.database.GetNextAtomicCoordinatesGroup( );
 
         // the members of this group are referenced by asset id's, we need to translate this to array position..
 
@@ -241,9 +256,10 @@ void AtomicCoordinatesAssetPanel::ImportAllFromDatabase( ) {
             current_group_number = temp_group.id;
     }
 
-    main_frame->current_project.database.EndAllVolumeGroupsSelect( );
+    main_frame->current_project.database.EndAllAtomicCoordinatesGroupsSelect( );
 
-    main_frame->DirtyVolumes( );
+    main_frame->DirtyAtomicCoordinates( );
+    main_frame->DirtyAtomicCoordinatesGroups( );
 }
 
 void AtomicCoordinatesAssetPanel::FillAssetSpecificContentsList( ) {

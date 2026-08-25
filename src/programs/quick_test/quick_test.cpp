@@ -35,8 +35,8 @@ struct PeakSamplingGeneratorParams {
     // unit-std clean post-CTF projection box (post-CTF). No defensible default exists yet: the pair is
     // picked from 2-3 candidate runs at hrl 2.0 (design section 2), so both are REQUIRED on the command
     // line. Constraint from the design: the hrl 2.0 scaled-MIP peaks should sit around real apoferritin
-    // values (~12-15) and the raw CC must stay below 22.5, because the GPU MIP kernel drops raw values
-    // outside [-12.5, 22.5) from sum, sum^2 and the MIP max. Too little noise pushes raw CC over the cap.
+    // values. Measured 2026-08-25 at hrl 2.0, single defocus plane: (2.5, 25) gives raw peaks ~14
+    // (matching real jobs) and scaled ~9 against an expected threshold of ~7.
     float    sigma_pre          = -1.0f;
     float    sigma_post         = -1.0f;
     float    defocus            = 6000.0f; // A, defocus1 = defocus2, astigmatism 0

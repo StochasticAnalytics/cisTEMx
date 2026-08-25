@@ -80,7 +80,10 @@ void ScatteringPotential::InitPdbEnsemble(bool              shift_by_center_of_m
                                           bool              is_alpha_fold_prediction,
                                           bool              use_hetatms,
                                           cisTEMParameters& wanted_star_file,
-                                          bool              use_star_file) {
+                                          bool              use_star_file,
+                                          bool              wanted_use_micrograph_positions,
+                                          float             wanted_star_origin_offset_x,
+                                          float             wanted_star_origin_offset_y) {
 
     // backwards compatible with tigress where everything is double (ints would make more sense here.)
     long access_type_read = 0;
@@ -107,7 +110,10 @@ void ScatteringPotential::InitPdbEnsemble(bool              shift_by_center_of_m
                                   is_alpha_fold_prediction,
                                   use_hetatms,
                                   wanted_star_file,
-                                  use_star_file);
+                                  use_star_file,
+                                  wanted_use_micrograph_positions,
+                                  wanted_star_origin_offset_x,
+                                  wanted_star_origin_offset_y);
     }
 }
 
@@ -224,10 +230,10 @@ void ScatteringPotential::calc_scattering_potential(const PDB* current_specimen,
     float bPlusB_hydrogen[5];
     // TODO experiment with the scheduling. Until the specimen is consistently full, many consecutive slabs may have very little work for the assigned threads to handle.
 
-#pragma omp parallel for num_threads(number_of_threads) private(                                                       \
-        atom_id, bFactor, bPlusB, bPlusB_hydrogen, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,             \
-        indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
-        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, bfX, bfY, bfZ)
+#pragma omp parallel for num_threads(number_of_threads) private(                                                                       \
+                atom_id, bFactor, bPlusB, bPlusB_hydrogen, radius, ix, iy, iz, x1, x2, y1, y2, z1, z2, indX, indY,                     \
+                        indZ, sx, sy, sz, dx, dy, dz, xDistSq, yDistSq, zDistSq, iLim, jLim, kLim, iGaussian, element_inelastic_ratio, \
+                        water_offset, atoms_values_tmp, atoms_added_idx, atoms_distances_tmp, n_atoms_added, bfX, bfY, bfZ)
 
     for ( long current_atom = 0; current_atom < ReturnTotalNumberOfNonSolventAtoms( ); current_atom++ ) {
         n_atoms_added          = 0;

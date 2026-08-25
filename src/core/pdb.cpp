@@ -147,26 +147,29 @@ PDB& PDB::operator=(const PDB* other_pdb) {
             this->number_of_each_atom[iAtom] = other_pdb->number_of_each_atom[iAtom];
         }
 
-        this->atomic_volume        = other_pdb->atomic_volume;
-        this->vol_angX             = other_pdb->vol_angX;
-        this->vol_angY             = other_pdb->vol_angY;
-        this->vol_angZ             = other_pdb->vol_angZ;
-        this->vol_nX               = other_pdb->vol_nX;
-        this->vol_nY               = other_pdb->vol_nY;
-        this->vol_nZ               = other_pdb->vol_nZ;
-        this->vol_oX               = other_pdb->vol_oX;
-        this->vol_oY               = other_pdb->vol_oY;
-        this->vol_oZ               = other_pdb->vol_oZ;
-        this->cubic_size           = other_pdb->cubic_size;
-        this->offset_z             = other_pdb->offset_z;
-        this->min_z                = other_pdb->min_z;
-        this->max_z                = other_pdb->max_z;
-        this->max_radius           = other_pdb->max_radius;
-        this->MIN_PADDING_XY       = other_pdb->MIN_PADDING_XY;
-        this->MIN_THICKNESS        = other_pdb->MIN_THICKNESS;
-        this->star_file_parameters = other_pdb->star_file_parameters;
-        this->use_star_file        = other_pdb->use_star_file;
-        this->use_hetatm           = other_pdb->use_hetatm;
+        this->atomic_volume            = other_pdb->atomic_volume;
+        this->vol_angX                 = other_pdb->vol_angX;
+        this->vol_angY                 = other_pdb->vol_angY;
+        this->vol_angZ                 = other_pdb->vol_angZ;
+        this->vol_nX                   = other_pdb->vol_nX;
+        this->vol_nY                   = other_pdb->vol_nY;
+        this->vol_nZ                   = other_pdb->vol_nZ;
+        this->vol_oX                   = other_pdb->vol_oX;
+        this->vol_oY                   = other_pdb->vol_oY;
+        this->vol_oZ                   = other_pdb->vol_oZ;
+        this->cubic_size               = other_pdb->cubic_size;
+        this->offset_z                 = other_pdb->offset_z;
+        this->min_z                    = other_pdb->min_z;
+        this->max_z                    = other_pdb->max_z;
+        this->max_radius               = other_pdb->max_radius;
+        this->MIN_PADDING_XY           = other_pdb->MIN_PADDING_XY;
+        this->MIN_THICKNESS            = other_pdb->MIN_THICKNESS;
+        this->star_file_parameters     = other_pdb->star_file_parameters;
+        this->use_star_file            = other_pdb->use_star_file;
+        this->use_micrograph_positions = other_pdb->use_micrograph_positions;
+        this->star_origin_offset_x     = other_pdb->star_origin_offset_x;
+        this->star_origin_offset_y     = other_pdb->star_origin_offset_y;
+        this->use_hetatm               = other_pdb->use_hetatm;
 
         this->atoms.reserve(other_pdb->atoms.size( ));
         for ( long current_atom = 0; current_atom < other_pdb->atoms.size( ); current_atom++ ) {
@@ -252,10 +255,16 @@ PDB::PDB(wxString          Filename,
          bool              is_alpha_fold_prediction,
          bool              allow_hetatms,
          cisTEMParameters& wanted_star_file,
-         bool              use_star_file) {
+         bool              use_star_file,
+         bool              wanted_use_micrograph_positions,
+         float             wanted_star_origin_offset_x,
+         float             wanted_star_origin_offset_y) {
 
-    star_file_parameters = wanted_star_file;
-    this->use_star_file  = use_star_file;
+    star_file_parameters           = wanted_star_file;
+    this->use_star_file            = use_star_file;
+    this->use_micrograph_positions = wanted_use_micrograph_positions;
+    this->star_origin_offset_x     = wanted_star_origin_offset_x;
+    this->star_origin_offset_y     = wanted_star_origin_offset_y;
 
     input_file_stream  = NULL;
     input_text_stream  = NULL;
@@ -635,8 +644,17 @@ void PDB::Init( ) {
             }
             for ( int iFrame = 0; iFrame < particle_lines.size( ); iFrame++ ) {
                 const long line = particle_lines[iFrame];
-                TransformBaseCoordinates(star_file_parameters.ReturnXShift(line),
-                                         star_file_parameters.ReturnYShift(line),
+                // For a micrograph the position is _cisTEMOriginalX/YPosition (constant over a particle's frames)
+                // plus the per-frame displacement _cisTEMXShift/_cisTEMYShift, in the specimen frame (origin on the
+                // image centre pixel). For a particle stack it is the shift alone, as before.
+                float position_x = star_file_parameters.ReturnXShift(line);
+                float position_y = star_file_parameters.ReturnYShift(line);
+                if ( use_micrograph_positions ) {
+                    position_x += star_file_parameters.ReturnOriginalXPosition(line) - star_origin_offset_x;
+                    position_y += star_file_parameters.ReturnOriginalYPosition(line) - star_origin_offset_y;
+                }
+                TransformBaseCoordinates(position_x,
+                                         position_y,
                                          (0.5f * (star_file_parameters.ReturnDefocus1(line) + star_file_parameters.ReturnDefocus2(line))) - star_file_parameters.average_defocus,
                                          -star_file_parameters.ReturnPsi(line),
                                          -star_file_parameters.ReturnTheta(line),

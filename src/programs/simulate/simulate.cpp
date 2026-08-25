@@ -663,6 +663,13 @@ void SimulateApp::DoInteractiveUserInput( ) {
             require_column(input_star_file.parameters_that_were_read.microscope_voltage_kv, "_cisTEMMicroscopeVoltagekV");
             require_column(input_star_file.parameters_that_were_read.beam_tilt_x, "_cisTEMBeamTiltX");
             require_column(input_star_file.parameters_that_were_read.beam_tilt_y, "_cisTEMBeamTiltY");
+            if ( make_particle_stack == 0 ) {
+                // A micrograph is simulated at absolute positions: _cisTEMOriginalX/YPosition (Angstrom from the
+                // image's first pixel) is the particle's position and _cisTEMXShift/_cisTEMYShift its per-frame
+                // displacement. Without a micrograph position there is no micrograph simulation.
+                require_column(input_star_file.parameters_that_were_read.original_x_position, "_cisTEMOriginalXPosition");
+                require_column(input_star_file.parameters_that_were_read.original_y_position, "_cisTEMOriginalYPosition");
+            }
             if ( ! missing_columns.IsEmpty( ) ) {
                 SendErrorAndCrash(wxString::Format("the input star file %s is missing required column(s):%s\n", preexisting_particle_file_name, missing_columns));
             }
@@ -717,6 +724,13 @@ void SimulateApp::DoInteractiveUserInput( ) {
                             SendErrorAndCrash(wxString::Format("line %ld of the input star file (particle group %d, frame %ld) has pre/total exposure %.3f/%.3f; frames must be contiguous with a constant dose per frame (%.3f from frame 1)\n",
                                                                line + 1, particle_group, long(iFrame + 1), wanted_pre, wanted_total, dose_per_frame));
                         }
+                    }
+                    if ( make_particle_stack == 0 &&
+                         (fabsf(input_star_file.ReturnOriginalXPosition(line) - input_star_file.ReturnOriginalXPosition(particle_lines[0])) > 0.005f ||
+                          fabsf(input_star_file.ReturnOriginalYPosition(line) - input_star_file.ReturnOriginalYPosition(particle_lines[0])) > 0.005f) ) {
+                        SendErrorAndCrash(wxString::Format("line %ld of the input star file (particle group %d) has position %.2f,%.2f but line %ld of the same particle has %.2f,%.2f; _cisTEMOriginalX/YPosition is the particle's position and must not change between its frames (motion goes in _cisTEMXShift/_cisTEMYShift)\n",
+                                                           line + 1, particle_group, input_star_file.ReturnOriginalXPosition(line), input_star_file.ReturnOriginalYPosition(line),
+                                                           particle_lines[0] + 1, input_star_file.ReturnOriginalXPosition(particle_lines[0]), input_star_file.ReturnOriginalYPosition(particle_lines[0])));
                     }
                     if ( input_star_file.parameters_that_were_read.reference_3d_filename && input_star_file.ReturnReference3DFilename(line) != input_star_file.ReturnReference3DFilename(particle_lines[0]) ) {
                         SendErrorAndCrash(wxString::Format("line %ld of the input star file names model '%s' but line %ld of the same particle group %d names '%s'; the frames of a particle must name one model\n",
@@ -866,6 +880,13 @@ bool SimulateApp::DoCalculation( ) {
 
     sp.SetImagingParameters(wanted_pixel_size, kV);
 
+    // Micrograph-from-star placement: _cisTEMOriginalX/YPosition is measured in Angstrom from the image's first
+    // pixel; the specimen frame has its origin on the image centre pixel, (N/2)*pixel_size from the corner (integer
+    // N/2, matching Image::UpdateLoopingAndAddressing).
+    const bool  use_micrograph_positions = use_existing_params && make_particle_stack == 0;
+    const float star_origin_offset_x     = float(wanted_output_size / 2) * this->wanted_pixel_size;
+    const float star_origin_offset_y     = float(wanted_output_size / 2) * this->wanted_pixel_size;
+
     if ( make_particle_stack > 0 ) {
 
         sp.InitPdbEnsemble(SHIFT_BY_CENTER_OF_MASS, minimum_padding_x_and_y, minimum_thickness_z,
@@ -873,7 +894,8 @@ bool SimulateApp::DoCalculation( ) {
                            noise_particle_radius_as_mutliple_of_particle_radius,
                            noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
                            noise_particle_radius_randomizer_upper_bound_as_praction_of_particle_radius,
-                           emulate_tilt_angle, is_alpha_fold_prediction, use_hetatm, input_star_file, use_existing_params);
+                           emulate_tilt_angle, is_alpha_fold_prediction, use_hetatm, input_star_file, use_existing_params,
+                           use_micrograph_positions, star_origin_offset_x, star_origin_offset_y);
     }
     else {
         // Over-ride the max number of noise particles
@@ -883,7 +905,8 @@ bool SimulateApp::DoCalculation( ) {
                            noise_particle_radius_as_mutliple_of_particle_radius,
                            noise_particle_radius_randomizer_lower_bound_as_praction_of_particle_radius,
                            noise_particle_radius_randomizer_upper_bound_as_praction_of_particle_radius,
-                           emulate_tilt_angle, is_alpha_fold_prediction, use_hetatm, input_star_file, use_existing_params);
+                           emulate_tilt_angle, is_alpha_fold_prediction, use_hetatm, input_star_file, use_existing_params,
+                           use_micrograph_positions, star_origin_offset_x, star_origin_offset_y);
     }
 
     if ( DO_PRINT ) {
@@ -1004,6 +1027,8 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     output_star_file.parameters_to_write.image_is_active         = false;
     output_star_file.parameters_to_write.original_image_filename = false;
     output_star_file.parameters_to_write.reference_3d_filename   = input_star_file.parameters_that_were_read.reference_3d_filename; // per-particle model, only when the input named one
+    output_star_file.parameters_to_write.original_x_position     = input_star_file.parameters_that_were_read.original_x_position;
+    output_star_file.parameters_to_write.original_y_position     = input_star_file.parameters_that_were_read.original_y_position;
     output_star_file.parameters_to_write.stack_filename          = false;
 
     // TODO add a method to set defaults and manage this paramter line
@@ -2160,6 +2185,8 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
             // todo it still isn't immediately clear which approach is correct. I would think the center of mass is what will be measured by ctffind
             //        defocus_offset = defocus_offset/2.0f + propagator_distance[0];
+            // The CTF reference plane is the scattering-mass centre (not the mean particle plane): it approximates the
+            // plane ctffind would fit on this micrograph, since the fit is dominated by the strongest scattering regions.
             defocus_offset = scattering_center_of_mass - propagator_distance[0] / 2.0f;
 
             if ( DO_PRINT ) {
@@ -2385,6 +2412,8 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                         particle_line.phi                   = input_star_file.ReturnPhi(iParticle);
                         particle_line.x_shift               = input_star_file.ReturnXShift(iParticle);
                         particle_line.y_shift               = input_star_file.ReturnYShift(iParticle);
+                        particle_line.original_x_position   = input_star_file.ReturnOriginalXPosition(iParticle);
+                        particle_line.original_y_position   = input_star_file.ReturnOriginalYPosition(iParticle);
                         particle_line.defocus_1             = input_star_file.ReturnDefocus1(iParticle);
                         particle_line.defocus_2             = input_star_file.ReturnDefocus2(iParticle);
                         particle_line.defocus_angle         = input_star_file.ReturnDefocusAngle(iParticle);

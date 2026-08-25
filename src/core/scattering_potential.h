@@ -47,7 +47,10 @@ class ScatteringPotential {
                          bool              is_alpha_fold_prediction,
                          bool              allow_hetatms,
                          cisTEMParameters& wanted_star_file,
-                         bool              use_star_file);
+                         bool              use_star_file,
+                         bool              wanted_use_micrograph_positions = false,
+                         float             wanted_star_origin_offset_x     = 0.f,
+                         float             wanted_star_origin_offset_y     = 0.f);
 
     long ReturnTotalNumberOfNonSolventAtoms( );
 

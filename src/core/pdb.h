@@ -148,7 +148,10 @@ class PDB {
         bool              is_alpha_fold_prediction,
         bool              allow_hetatms,
         cisTEMParameters& wanted_star_file,
-        bool              use_star_file);
+        bool              use_star_file,
+        bool              wanted_use_micrograph_positions = false,
+        float             wanted_star_origin_offset_x     = 0.f,
+        float             wanted_star_origin_offset_y     = 0.f);
 
     PDB(wxString Filename,
         long     wanted_access_type,
@@ -193,6 +196,13 @@ class PDB {
 
     cisTEMParameters star_file_parameters;
     bool             use_star_file;
+    // Micrograph-from-star placement: position = _cisTEMOriginalX/YPosition (Angstrom from the image's first pixel)
+    // + _cisTEMXShift/_cisTEMYShift (the per-frame displacement), moved into the specimen frame whose origin is the
+    // image centre pixel (the offset below, (N/2)*pixel_size). When false (particle stacks), XShift/YShift alone are
+    // used, as before.
+    bool  use_micrograph_positions = false;
+    float star_origin_offset_x     = 0.f;
+    float star_origin_offset_y     = 0.f;
 
     // H(0),C(1),N(2),O(3),F(4),Na(5),Mg(6),P(7),S(8),Cl(9),K(10),Ca(11),Mn(12),Fe(13),Zn(14),H20(15),0-(16)
 

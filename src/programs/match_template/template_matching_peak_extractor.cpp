@@ -71,11 +71,20 @@ bool TemplateMatchingPeakExtractor::NeedsDownsampling( ) const {
  * stats images) could produce NaN peak values that would propagate through downstream code.
  * Invalid peaks are skipped with a warning rather than aborting, since losing one peak is
  * preferable to losing the entire result set.
+ *
+ * On return, `peak_list` and `upsampled_peak_list` hold only the peaks that were added to
+ * `output`, in the same (sorted) order, so that `peak_list[i]` / `upsampled_peak_list[i]`
+ * correspond to `output[i]`. Callers (the _peak_info_ writer in match_template,
+ * CreateResultImages, CreateParticleStack) rely on this.
  */
 void TemplateMatchingPeakExtractor::TransferAndSortPeakInfo(std::vector<Peak>&                  peak_list,
                                                             std::vector<Peak>&                  upsampled_peak_list,
                                                             bool                                use_corrected_peak,
                                                             ArrayOfTemplateMatchFoundPeakInfos& output) const {
+
+    // The parallelism contract documented above is relative to output index 0, so it holds
+    // only when the caller passes an empty output array (all current call sites do).
+    MyDebugAssertTrue(output.GetCount( ) == 0, "TransferAndSortPeakInfo expects an empty output array (got %i entries)", int(output.GetCount( )));
 
     // Sort both lists in descending order by the appropriate peak value
     std::vector<size_t> indices(peak_list.size( ));
@@ -93,21 +102,20 @@ void TemplateMatchingPeakExtractor::TransferAndSortPeakInfo(std::vector<Peak>&  
                   });
     }
 
+    // The sorted copies are filled in the loop below, only from entries that pass the
+    // bounds/NaN checks, so that the two vectors stay parallel to `output` (same order,
+    // same length). Filling them for every index up front and then skipping entries in
+    // the transfer loop would leave a skipped peak in the vectors but not in `output`,
+    // shifting every following row when a caller indexes the vectors by the output index.
     std::vector<Peak> sorted_peak_list, sorted_upsampled_peak_list;
     sorted_peak_list.reserve(peak_list.size( ));
     sorted_upsampled_peak_list.reserve(upsampled_peak_list.size( ));
-    for ( size_t idx : indices ) {
-        sorted_peak_list.push_back(peak_list[idx]);
-        sorted_upsampled_peak_list.push_back(upsampled_peak_list[idx]);
-    }
-    peak_list           = std::move(sorted_peak_list);
-    upsampled_peak_list = std::move(sorted_upsampled_peak_list);
 
     TemplateMatchFoundPeakInfo peak_info;
 
-    for ( size_t i = 0; i < peak_list.size( ); i++ ) {
-        const Peak& peak      = peak_list[i];
-        const Peak& upsampled = upsampled_peak_list[i];
+    for ( size_t idx : indices ) {
+        const Peak& peak      = peak_list[idx];
+        const Peak& upsampled = upsampled_peak_list[idx];
         int         px        = myroundint(peak.x);
         int         py        = myroundint(peak.y);
         if ( px < 0 || px >= mip_image_.logical_x_dimension || py < 0 || py >= mip_image_.logical_y_dimension ) {
@@ -136,7 +144,12 @@ void TemplateMatchingPeakExtractor::TransferAndSortPeakInfo(std::vector<Peak>&  
         peak_info.peak_height = use_corrected_peak ? upsampled.value : peak.value;
 
         output.Add(peak_info);
+        sorted_peak_list.push_back(peak);
+        sorted_upsampled_peak_list.push_back(upsampled);
     }
+
+    peak_list           = std::move(sorted_peak_list);
+    upsampled_peak_list = std::move(sorted_upsampled_peak_list);
 }
 
 /**

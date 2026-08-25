@@ -851,6 +851,10 @@ bool Reconstruct3DApp::DoCalculation( ) {
                 }
                 else if ( use_input_reconstruction ) {
                     temp_image_local.ForwardFFT( );
+                    // FIXME: potential bug: dividing by -original_pixel_size makes this a +x_shift/+y_shift shift, the opposite sign to
+                    // every other site that centres a particle (reconstruct_3d.cpp InsertSlice, the normalize_particles branch above,
+                    // particle.cpp PhaseShiftInverse), which apply PhaseShift(-shift / pixel_size). Only reached with
+                    // crop_images && ! normalize_particles && use_input_reconstruction.
                     temp_image_local.PhaseShift(-input_parameters.x_shift / -original_pixel_size, -input_parameters.y_shift / -original_pixel_size);
                     temp_image_local.PhaseFlipPixelWise(current_ctf_image);
                     temp_image_local.MultiplyPixelWise(current_beamtilt_image);
@@ -999,6 +1003,10 @@ bool Reconstruct3DApp::DoCalculation( ) {
                     }
                     else if ( use_input_reconstruction ) {
                         temp_image_local.ForwardFFT( );
+                        // FIXME: potential bug: dividing by -original_pixel_size makes this a +x_shift/+y_shift shift, the opposite sign to
+                        // every other site that centres a particle (reconstruct_3d.cpp InsertSlice, the normalize_particles branch above,
+                        // particle.cpp PhaseShiftInverse), which apply PhaseShift(-shift / pixel_size). Only reached with
+                        // crop_images && ! normalize_particles && use_input_reconstruction.
                         temp_image_local.PhaseShift(-input_parameters.x_shift / -original_pixel_size, -input_parameters.y_shift / -original_pixel_size);
                         temp_image_local.PhaseFlipPixelWise(current_ctf_image);
                         temp_image_local.MultiplyPixelWise(current_beamtilt_image);

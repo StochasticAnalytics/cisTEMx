@@ -597,12 +597,28 @@ void SimulateApp::DoInteractiveUserInput( ) {
             else {
                 SendErrorAndCrash(wxString::Format("Error: Input star file %s not found\n", preexisting_particle_file_name));
             }
-            // Each PDB in the ensemble reads the star file and is instanced at every line, and PDB::TransformLocalAndCombine
-            // addresses the star-file instances by (atom + number_of_atoms * particle) with no per-PDB offset, so with more
-            // than one PDB the particle types would be superimposed at every position and overwrite each other.
-            // Mixing particle types in one star-file-driven simulation needs the PDB to be specified per line in the star file.
-            if ( sp.pdb_file_names.size( ) > 1 ) {
-                SendErrorAndCrash(wxString::Format("an input star file is only supported with a single PDB, but %ld were given\n", (long)sp.pdb_file_names.size( )));
+            if ( input_star_file.parameters_that_were_read.reference_3d_filename ) {
+                // The star file names the atomic model of each particle: the ensemble is the set of distinct models it names, each
+                // instanced only at the lines naming it (see PDB::Init). The model(s) entered interactively are not used.
+                sp.pdb_file_names.clear( );
+                for ( long iParticle = 0; iParticle < number_preexisting_particles; iParticle++ ) {
+                    wxString model_filename = input_star_file.ReturnReference3DFilename(iParticle);
+                    if ( std::find(sp.pdb_file_names.begin( ), sp.pdb_file_names.end( ), model_filename) != sp.pdb_file_names.end( ) ) {
+                        continue;
+                    }
+                    if ( model_filename.IsEmpty( ) || ! DoesFileExist(model_filename) ) {
+                        SendErrorAndCrash(wxString::Format("the atomic model '%s' named on line %ld of the input star file (_cisTEMReference3DFilename) does not exist\n", model_filename, iParticle + 1));
+                    }
+                    sp.pdb_file_names.push_back(model_filename);
+                }
+                wxPrintf("\nTaking %ld atomic model(s) from the _cisTEMReference3DFilename column of the input star file; the model(s) entered interactively are not used:\n", (long)sp.pdb_file_names.size( ));
+                for ( auto& model_filename : sp.pdb_file_names ) {
+                    wxPrintf("  %s\n", model_filename);
+                }
+            }
+            else if ( sp.pdb_file_names.size( ) > 1 ) {
+                // Without a per-line model column every model would be instanced at every line and superimposed.
+                SendErrorAndCrash(wxString::Format("an input star file without a _cisTEMReference3DFilename column is only supported with a single PDB, but %ld were given\n", (long)sp.pdb_file_names.size( )));
             }
             // The following doesn't work if there is a .dff file
             // std::string wanted_default = std::to_string(default_number_parameters);
@@ -743,6 +759,10 @@ void SimulateApp::DoInteractiveUserInput( ) {
     wavelength = ReturnWavelenthInAngstroms(kV);
 
     output_star_file_name = output_filename + ".star";
+    // The output star is the output base plus ".star"; an input star file with that name would be silently overwritten.
+    if ( use_existing_params && wxFileName(wxString(output_star_file_name)).SameAs(wxFileName(preexisting_particle_file_name)) ) {
+        SendErrorAndCrash(wxString::Format("the output star file %s would overwrite the input star file; choose a different output base\n", wxString(output_star_file_name)));
+    }
 
     if ( DO_PHASE_PLATE ) {
         if ( SURFACE_PHASE_ERROR < 0 ) {
@@ -936,7 +956,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     output_star_file.parameters_to_write.SetAllToTrue( );
     output_star_file.parameters_to_write.image_is_active         = false;
     output_star_file.parameters_to_write.original_image_filename = false;
-    output_star_file.parameters_to_write.reference_3d_filename   = false;
+    output_star_file.parameters_to_write.reference_3d_filename   = input_star_file.parameters_that_were_read.reference_3d_filename; // per-particle model, only when the input named one
     output_star_file.parameters_to_write.stack_filename          = false;
 
     // TODO add a method to set defaults and manage this paramter line
@@ -2310,18 +2330,19 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                     // the mean, see PDB::Init) are the input values; the imaging parameters are those applied to the micrograph.
                     // Lines are numbered by particle, and every particle of a frame carries that frame's exposure.
                     for ( long iParticle = 0; iParticle < number_preexisting_particles; iParticle++ ) {
-                        cisTEMParameterLine particle_line = parameters;
-                        particle_line.position_in_stack   = iParticle + 1;
-                        particle_line.psi                 = input_star_file.ReturnPsi(iParticle);
-                        particle_line.theta               = input_star_file.ReturnTheta(iParticle);
-                        particle_line.phi                 = input_star_file.ReturnPhi(iParticle);
-                        particle_line.x_shift             = input_star_file.ReturnXShift(iParticle);
-                        particle_line.y_shift             = input_star_file.ReturnYShift(iParticle);
-                        particle_line.defocus_1           = input_star_file.ReturnDefocus1(iParticle);
-                        particle_line.defocus_2           = input_star_file.ReturnDefocus2(iParticle);
-                        particle_line.defocus_angle       = input_star_file.ReturnDefocusAngle(iParticle);
-                        particle_line.phase_shift         = input_star_file.ReturnPhaseShift(iParticle);
-                        particle_line.particle_group      = input_star_file.ReturnParticleGroup(iParticle);
+                        cisTEMParameterLine particle_line   = parameters;
+                        particle_line.position_in_stack     = iParticle + 1;
+                        particle_line.psi                   = input_star_file.ReturnPsi(iParticle);
+                        particle_line.theta                 = input_star_file.ReturnTheta(iParticle);
+                        particle_line.phi                   = input_star_file.ReturnPhi(iParticle);
+                        particle_line.x_shift               = input_star_file.ReturnXShift(iParticle);
+                        particle_line.y_shift               = input_star_file.ReturnYShift(iParticle);
+                        particle_line.defocus_1             = input_star_file.ReturnDefocus1(iParticle);
+                        particle_line.defocus_2             = input_star_file.ReturnDefocus2(iParticle);
+                        particle_line.defocus_angle         = input_star_file.ReturnDefocusAngle(iParticle);
+                        particle_line.phase_shift           = input_star_file.ReturnPhaseShift(iParticle);
+                        particle_line.particle_group        = input_star_file.ReturnParticleGroup(iParticle);
+                        particle_line.reference_3d_filename = input_star_file.ReturnReference3DFilename(iParticle);
                         output_star_file.all_parameters.Add(particle_line);
                     }
                 }

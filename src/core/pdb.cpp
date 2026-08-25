@@ -620,6 +620,11 @@ void PDB::Init( ) {
         // (for underfocus, the focal plane is above the specimen in the scope and the undefocus magnitude increases as we move away (down) the column.)
         star_file_parameters.CalculateDefocusDependence( );
         int current_frame_number = 1;
+        int number_of_instances  = 0;
+
+        // When the star file names the atomic model per line (_cisTEMReference3DFilename), only the lines naming this
+        // model are instances of it; otherwise every line is.
+        const bool select_lines_by_filename = star_file_parameters.parameters_that_were_read.reference_3d_filename;
 
         // FIXME: there are multiple frames, calling this iParticle doesn't make sense.
         for ( int iParticle = 0; iParticle < star_file_parameters.ReturnNumberofLines( ); iParticle++ ) {
@@ -632,14 +637,18 @@ void PDB::Init( ) {
                 else
                     current_frame_number = 1;
             }
+            if ( select_lines_by_filename && star_file_parameters.ReturnReference3DFilename(iParticle) != text_filename ) {
+                continue;
+            }
             TransformBaseCoordinates(star_file_parameters.ReturnXShift(iParticle),
                                      star_file_parameters.ReturnYShift(iParticle),
                                      (0.5f * (star_file_parameters.ReturnDefocus1(iParticle) + star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,
                                      -star_file_parameters.ReturnPsi(iParticle),
                                      -star_file_parameters.ReturnTheta(iParticle),
                                      -star_file_parameters.ReturnPhi(iParticle),
-                                     iParticle,
+                                     number_of_instances,
                                      current_frame_number - 1);
+            number_of_instances++;
             // wxPrintf("x,y,z (%f,%f,%f) psi/theta/phi (%f,%f,%f), ipart/frame %d %d\n", star_file_parameters.ReturnXShift(iParticle),
             //                              star_file_parameters.ReturnYShift(iParticle),
             //                              (0.5f * (star_file_parameters.ReturnDefocus1(iParticle)+star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,
@@ -933,12 +942,13 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
             if ( pdb_ensemble[current_pdb].use_star_file ) {
                 // Fetch a clean copy of the atomic coordinates for this molecule. The atoms are addressed by index, so the
                 // specimen container must have been pre-sized (see the PDB(long number_of_non_water_atoms, ...) constructor).
-                MyDebugAssertTrue(this->atoms.size( ) >= pdb_ensemble[current_pdb].number_of_atoms * (current_particle + 1),
-                                  "The specimen atom container (%ld) is too small for particle %d with %ld atoms",
-                                  long(this->atoms.size( )), current_particle, pdb_ensemble[current_pdb].number_of_atoms);
+                // Instances of every model in the ensemble are laid out back to back, so the index runs across models.
+                MyDebugAssertTrue(this->atoms.size( ) >= current_total_atom + pdb_ensemble[current_pdb].number_of_atoms,
+                                  "The specimen atom container (%ld) is too small for particle %d of model %d with %ld atoms starting at %ld",
+                                  long(this->atoms.size( )), current_particle, current_pdb, pdb_ensemble[current_pdb].number_of_atoms, current_total_atom);
                 long current_atom = 0;
                 for ( long intra_mol_current_atom = 0; intra_mol_current_atom < pdb_ensemble[current_pdb].number_of_atoms; intra_mol_current_atom++ ) {
-                    current_atom              = intra_mol_current_atom + pdb_ensemble[current_pdb].number_of_atoms * current_particle;
+                    current_atom              = current_total_atom;
                     this->atoms[current_atom] = pdb_ensemble[current_pdb].atoms[intra_mol_current_atom];
 
                     ix = atoms[current_atom].x_coordinate;

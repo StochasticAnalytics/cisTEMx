@@ -2403,13 +2403,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
     std::string fileNameREF = "ref_" + this->output_filename;
 
-    std::string fileNameTiltSum = "tiltSum_" + this->output_filename;
-    MRCFile     mrc_tlt_final;
-
-    if ( this->make_particle_stack <= 0 ) {
-        mrc_tlt_final.OpenFile(fileNameTiltSum, over_write);
-    }
-
     if ( DO_PRINT ) {
         wxPrintf("\n\nnumber_of_images %d N_FRAMES %d\n\n", number_of_images, myroundint(this->number_of_frames));
     }
@@ -2548,9 +2541,6 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     // TODO what about different pixel sizes?
     mrc_out_final.SetPixelSize(this->wanted_pixel_size);
     mrc_out_final.CloseFile( );
-
-    mrc_tlt_final.SetPixelSize(this->wanted_pixel_size);
-    mrc_tlt_final.CloseFile( );
 
     //    this->parameter_file.Close();
 
@@ -2733,8 +2723,8 @@ void SimulateApp::fill_water_potential(const PDB* current_specimen, Image* scatt
     long n_waters_ignored = 0;
 #pragma omp parallel for num_threads(this->number_of_threads)                                                                                                        \
         schedule(static, water_box->number_of_waters / number_of_threads) private(radius, ix, iy, iz, dx, dy, dz, x1, y1, z1, indX, indY, indZ, int_x, int_y, int_z, \
-                                                                                  sx, sy, iSubPixX, iSubPixY, iSubPixZ, iSubPixLinearIndex,                          \
-                                                                                  n_waters_ignored, current_weight, current_distance, current_potential)
+                                                                                          sx, sy, iSubPixX, iSubPixY, iSubPixZ, iSubPixLinearIndex,                  \
+                                                                                          n_waters_ignored, current_weight, current_distance, current_potential)
 
     for ( int current_atom = 0; current_atom < water_box->number_of_waters; current_atom++ ) {
 

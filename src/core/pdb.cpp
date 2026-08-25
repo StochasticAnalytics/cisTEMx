@@ -205,8 +205,11 @@ PDB::PDB(long   number_of_non_water_atoms,
     input_text_stream  = NULL;
     output_file_stream = NULL;
     output_text_stream = NULL;
-    // Create a total PDB object to hold all the atoms in a specimen at a given time in the trajectory
-    atoms.reserve(number_of_non_water_atoms);
+    // Create a total PDB object to hold all the atoms in a specimen at a given time in the trajectory.
+    // The container must be pre-sized (not just reserved): TransformLocalAndCombine fills it by index
+    // (atom_idx + number_of_atoms * particle_idx) when the particle positions come from a star file, and the
+    // consumers iterate over ScatteringPotential::ReturnTotalNumberOfNonSolventAtoms( ) entries.
+    atoms.resize(number_of_non_water_atoms);
 
     this->cubic_size = cubic_size;
 
@@ -702,12 +705,18 @@ void PDB::Init( ) {
         }
         wxPrintf("Max particles is %d in spot 2\n", max_number_of_noise_particles);
 
+        // Only the real atoms have been appended so far; append the noise copies so that the noise atom for
+        // (real atom i, noise particle iPart) lives at index i + number_of_real_atoms * (1 + iPart), which is
+        // how TransformLocalAndCombine addresses them.
+        MyDebugAssertTrue(atoms.size( ) == number_of_real_atoms, "Expected only the real atoms to be present before adding noise atoms");
         for ( int iPart = 0; iPart < this->max_number_of_noise_particles; iPart++ ) {
             for ( current_atom_number = 0; current_atom_number < number_of_real_atoms; current_atom_number++ ) {
-                atoms[current_atom_number + number_of_real_atoms * (1 + iPart)]                  = atoms[current_atom_number];
-                atoms[current_atom_number + number_of_real_atoms * (1 + iPart)].is_real_particle = false;
+                Atom noise_atom             = atoms[current_atom_number];
+                noise_atom.is_real_particle = false;
+                atoms.push_back(noise_atom);
             }
         }
+        MyDebugAssertTrue(atoms.size( ) == number_of_real_and_noise_atoms, "Noise atoms were not added as expected");
     }
 }
 
@@ -922,7 +931,11 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
             // at the minimum be highly correlated based on empirical observation.
 
             if ( pdb_ensemble[current_pdb].use_star_file ) {
-                // Fetch a clean copy of the atomic coordinates for this molecule
+                // Fetch a clean copy of the atomic coordinates for this molecule. The atoms are addressed by index, so the
+                // specimen container must have been pre-sized (see the PDB(long number_of_non_water_atoms, ...) constructor).
+                MyDebugAssertTrue(this->atoms.size( ) >= pdb_ensemble[current_pdb].number_of_atoms * (current_particle + 1),
+                                  "The specimen atom container (%ld) is too small for particle %d with %ld atoms",
+                                  long(this->atoms.size( )), current_particle, pdb_ensemble[current_pdb].number_of_atoms);
                 long current_atom = 0;
                 for ( long intra_mol_current_atom = 0; intra_mol_current_atom < pdb_ensemble[current_pdb].number_of_atoms; intra_mol_current_atom++ ) {
                     current_atom              = intra_mol_current_atom + pdb_ensemble[current_pdb].number_of_atoms * current_particle;

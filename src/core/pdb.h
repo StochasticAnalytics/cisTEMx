@@ -79,8 +79,10 @@ class InitialOrientations {
     float ox;
     float oy;
     float oz;
+    int   particle_idx; // instance of the particle this pose belongs to
+    int   frame_number; // frame (time step) of that instance
 
-    InitialOrientations(float phi, float theta, float psi, float x, float y, float z) : euler1(phi), euler2(theta), euler3(psi), ox(x), oy(y), oz(z) {}
+    InitialOrientations(float phi, float theta, float psi, float x, float y, float z, int wanted_particle_idx, int wanted_frame_number) : euler1(phi), euler2(theta), euler3(psi), ox(x), oy(y), oz(z), particle_idx(wanted_particle_idx), frame_number(wanted_frame_number) {}
 };
 
 class PDB {
@@ -172,6 +174,7 @@ class PDB {
     bool   is_alpha_fold_prediction;
 
     int   number_of_particles_initialized;
+    int   number_of_frames_initialized = 0; // frames (time steps) with a pose set on every instance, see TransformBaseCoordinates
     long  number_of_each_atom[cistem::number_of_atom_types];
     float atomic_volume;
     float average_bFactor;
@@ -224,8 +227,12 @@ class PDB {
     void WriteLine(double* data_array);
     void WriteCommentLine(const char* format, ...);
     void TransformBaseCoordinates(float wanted_origin_x, float wanted_origin_y, float wanted_origin_z, float euler1, float euler2, float euler3, int particle_idx, int frame_number);
-    void TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int frame_number, RotationMatrix particle_rot, float shift_z, bool is_single_particle = false);
-    void TransformGlobalAndSortOnZ(long number_of_non_water_atoms, float shift_x, float shift_y, float shift_z, RotationMatrix rotate_waters);
+    // Groups the lines of a star file by particle: all lines sharing a non-zero _cisTEMParticleGroup are the frames of one
+    // particle, ordered by _cisTEMTotalExposure; a line with group 0 is a single-frame particle of its own. Groups are returned
+    // in order of first appearance, each as the list of line indices.
+    static std::vector<std::vector<long>> GroupStarLinesByParticle(cisTEMParameters& star_file_parameters);
+    void                                  TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int frame_number, RotationMatrix particle_rot, float shift_z, bool is_single_particle = false);
+    void                                  TransformGlobalAndSortOnZ(long number_of_non_water_atoms, float shift_x, float shift_y, float shift_z, RotationMatrix rotate_waters);
 
     void TransformLocalAndCombine(PDB& clean_copy, int number_of_pdbs, int frame_number, RotationMatrix particle_rot, float shift_z, bool is_single_particle = false);
 

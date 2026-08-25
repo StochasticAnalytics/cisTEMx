@@ -141,14 +141,17 @@ class SimulateApp : public MyApp {
     float              astigmatism_scaling = 0.0f;
     std::vector<float> image_mean;
     std::vector<float> inelastic_mean;
-    float              current_total_exposure  = 0;
-    float              pre_exposure            = 0;
-    int                size_neighborhood       = 0;
-    int                size_neighborhood_water = 0;
-    long               make_particle_stack     = 0;
-    int                number_of_threads       = 1;
-    bool               do3d                    = true;
-    int                bin3d                   = 0; // in addition to binning for 3d (set on input) if wanted_output_size > 0, and it is 2d, this keeps the PDB constructor from thinking it is a 3d,
+    float              current_total_exposure = 0;
+    float              pre_exposure           = 0;
+    // Star-file micrographs: lines of the input star grouped by particle (_cisTEMParticleGroup), each group's lines in
+    // frame order (by _cisTEMTotalExposure). See PDB::GroupStarLinesByParticle.
+    std::vector<std::vector<long>> star_particle_groups;
+    int                            size_neighborhood       = 0;
+    int                            size_neighborhood_water = 0;
+    long                           make_particle_stack     = 0;
+    int                            number_of_threads       = 1;
+    bool                           do3d                    = true;
+    int                            bin3d                   = 0; // in addition to binning for 3d (set on input) if wanted_output_size > 0, and it is 2d, this keeps the PDB constructor from thinking it is a 3d,
 
     float  dose_per_frame            = 1;
     float  dose_rate                 = 8.0; // e/physical pixel/s this should be set by the user. Changes the illumination aperature and DQE curve
@@ -672,16 +675,60 @@ void SimulateApp::DoInteractiveUserInput( ) {
             float max_exposure, mean_phase_shift, mean_beam_tilt_x(0.f), mean_beam_tilt_y(0.f);
             mean_defocus     = 0.f;
             mean_phase_shift = 0.f;
-            number_of_frames = 1;
-            // Assuming this is constant for all particles and frames FIXME
-            dose_per_frame = input_star_file.ReturnTotalExposure(0) - input_star_file.ReturnPreExposure(0);
-            // tmp override for testing FIXME
-            dose_per_frame         = 1;
-            current_total_exposure = 1;
-            pre_exposure           = 1;
+
+            // _cisTEMParticleGroup identifies the particle: the lines sharing a (non-zero) group are the frames of one
+            // particle, in order of _cisTEMTotalExposure (a line with group 0 is a single-frame particle). The movie has
+            // one exposure schedule, so every particle must have the same number of frames with the same pre/total
+            // exposure per frame, and as the simulator applies one dose per frame the schedule must be a constant
+            // increment. The schedule is taken from the first particle and every line is checked against it.
+            star_particle_groups = PDB::GroupStarLinesByParticle(input_star_file);
+            number_of_frames     = float(star_particle_groups[0].size( ));
+            if ( star_particle_groups[0].size( ) > MAX_NUMBER_OF_TIMESTEPS ) {
+                SendErrorAndCrash(wxString::Format("the input star file has %ld frames per particle, more than the %d a trajectory can hold\n", long(star_particle_groups[0].size( )), MAX_NUMBER_OF_TIMESTEPS));
+            }
+            pre_exposure   = input_star_file.ReturnPreExposure(star_particle_groups[0][0]);
+            dose_per_frame = input_star_file.ReturnTotalExposure(star_particle_groups[0][0]) - pre_exposure;
+            if ( dose_per_frame <= 0.f ) {
+                SendErrorAndCrash(wxString::Format("line %ld of the input star file has a total exposure (%.3f) that does not exceed its pre-exposure (%.3f)\n",
+                                                   star_particle_groups[0][0] + 1, input_star_file.ReturnTotalExposure(star_particle_groups[0][0]), pre_exposure));
+            }
+            // Exposures are written with two decimals, so allow for that rounding (or 2 % of the dose, whichever is larger).
+            const float exposure_tolerance = std::max(0.011f, 0.02f * dose_per_frame);
+            for ( size_t iGroup = 0; iGroup < star_particle_groups.size( ); iGroup++ ) {
+                const std::vector<long>& particle_lines = star_particle_groups[iGroup];
+                const int                particle_group = input_star_file.ReturnParticleGroup(particle_lines[0]);
+                if ( particle_lines.size( ) != star_particle_groups[0].size( ) ) {
+                    SendErrorAndCrash(wxString::Format("particle group %d of the input star file has %ld frames (lines) but particle group %d has %ld; every particle needs the same number of frames\n",
+                                                       particle_group, long(particle_lines.size( )), input_star_file.ReturnParticleGroup(star_particle_groups[0][0]), long(star_particle_groups[0].size( ))));
+                }
+                for ( size_t iFrame = 0; iFrame < particle_lines.size( ); iFrame++ ) {
+                    const long  line           = particle_lines[iFrame];
+                    const long  reference_line = star_particle_groups[0][iFrame];
+                    const float wanted_pre     = input_star_file.ReturnPreExposure(reference_line);
+                    const float wanted_total   = input_star_file.ReturnTotalExposure(reference_line);
+                    if ( fabsf(input_star_file.ReturnPreExposure(line) - wanted_pre) > exposure_tolerance || fabsf(input_star_file.ReturnTotalExposure(line) - wanted_total) > exposure_tolerance ) {
+                        SendErrorAndCrash(wxString::Format("line %ld of the input star file (particle group %d, frame %ld) has pre/total exposure %.3f/%.3f but frame %ld of particle group %d (line %ld) has %.3f/%.3f; all particles must share one exposure schedule\n",
+                                                           line + 1, particle_group, long(iFrame + 1), input_star_file.ReturnPreExposure(line), input_star_file.ReturnTotalExposure(line),
+                                                           long(iFrame + 1), input_star_file.ReturnParticleGroup(reference_line), reference_line + 1, wanted_pre, wanted_total));
+                    }
+                    if ( iGroup == 0 ) {
+                        const float expected_pre = (iFrame == 0) ? pre_exposure : input_star_file.ReturnTotalExposure(star_particle_groups[0][iFrame - 1]);
+                        if ( fabsf(wanted_pre - expected_pre) > exposure_tolerance || fabsf(wanted_total - wanted_pre - dose_per_frame) > exposure_tolerance ) {
+                            SendErrorAndCrash(wxString::Format("line %ld of the input star file (particle group %d, frame %ld) has pre/total exposure %.3f/%.3f; frames must be contiguous with a constant dose per frame (%.3f from frame 1)\n",
+                                                               line + 1, particle_group, long(iFrame + 1), wanted_pre, wanted_total, dose_per_frame));
+                        }
+                    }
+                    if ( input_star_file.parameters_that_were_read.reference_3d_filename && input_star_file.ReturnReference3DFilename(line) != input_star_file.ReturnReference3DFilename(particle_lines[0]) ) {
+                        SendErrorAndCrash(wxString::Format("line %ld of the input star file names model '%s' but line %ld of the same particle group %d names '%s'; the frames of a particle must name one model\n",
+                                                           line + 1, input_star_file.ReturnReference3DFilename(line), particle_lines[0] + 1, particle_group, input_star_file.ReturnReference3DFilename(particle_lines[0])));
+                    }
+                }
+            }
+            wxPrintf("\nThe input star file describes %ld particle(s) with %ld frame(s) each: pre-exposure %.3f, %.3f e/A^2 per frame\n",
+                     long(star_particle_groups.size( )), long(star_particle_groups[0].size( )), pre_exposure, dose_per_frame);
+
             for ( int counter = 0; counter < number_preexisting_particles; counter++ ) {
                 mean_defocus += 0.5f * (input_star_file.ReturnDefocus1(counter) + input_star_file.ReturnDefocus2(counter));
-                number_of_frames = std::max(number_of_frames, float(input_star_file.ReturnParticleGroup(counter))); // FIXME, why is number of frames a float, prob a bad idea
                 mean_beam_tilt_x += input_star_file.ReturnBeamTiltX(counter);
                 mean_beam_tilt_y += input_star_file.ReturnBeamTiltY(counter);
             }
@@ -919,7 +966,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     }
     if ( use_existing_params && make_particle_stack == 0 ) {
         // We are making a micrograph with multiple particles, so scale by that number.
-        frame_lines *= number_preexisting_particles;
+        frame_lines *= star_particle_groups.size( );
     }
 
     parameter_vect[0]  = 1; // idx
@@ -2325,13 +2372,14 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
             if ( (ONLY_SAVE_SUMS && iFrame < 1) || (! ONLY_SAVE_SUMS) ) {
                 if ( use_existing_params && make_particle_stack == 0 ) {
-                    // A micrograph holding a field of particles placed from the input star file: write one line per particle.
-                    // Orientation, in-plane position and the defocus values (which set the particle's z in the specimen relative to
-                    // the mean, see PDB::Init) are the input values; the imaging parameters are those applied to the micrograph.
-                    // Lines are numbered by particle, and every particle of a frame carries that frame's exposure.
-                    for ( long iParticle = 0; iParticle < number_preexisting_particles; iParticle++ ) {
+                    // A micrograph holding a field of particles placed from the input star file: for this frame, write one line
+                    // per particle with the pose the particle has in this frame (its input line for the frame). Orientation,
+                    // in-plane position and the defocus values (which set the particle's z in the specimen relative to the mean,
+                    // see PDB::Init) are the input values; the imaging parameters and exposure are those applied to the frame.
+                    // PositionInStack is the frame's image in the output stack; ParticleGroup identifies the particle.
+                    for ( const std::vector<long>& particle_lines : star_particle_groups ) {
+                        const long          iParticle       = particle_lines[std::min(size_t(iFrame), particle_lines.size( ) - 1)];
                         cisTEMParameterLine particle_line   = parameters;
-                        particle_line.position_in_stack     = iParticle + 1;
                         particle_line.psi                   = input_star_file.ReturnPsi(iParticle);
                         particle_line.theta                 = input_star_file.ReturnTheta(iParticle);
                         particle_line.phi                   = input_star_file.ReturnPhi(iParticle);

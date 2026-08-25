@@ -178,7 +178,8 @@ PDB& PDB::operator=(const PDB* other_pdb) {
 
         for ( int i = 0; i < other_pdb->initial_values.size( ); i++ ) {
             this->TransformBaseCoordinates(other_pdb->initial_values[i].ox, other_pdb->initial_values[i].oy, other_pdb->initial_values[i].oz,
-                                           other_pdb->initial_values[i].euler1, other_pdb->initial_values[i].euler2, other_pdb->initial_values[i].euler3, i, 0);
+                                           other_pdb->initial_values[i].euler1, other_pdb->initial_values[i].euler2, other_pdb->initial_values[i].euler3,
+                                           other_pdb->initial_values[i].particle_idx, other_pdb->initial_values[i].frame_number);
         }
     }
     return *this;
@@ -619,44 +620,31 @@ void PDB::Init( ) {
         // First we need the average defocus to determine offsets in Z
         // (for underfocus, the focal plane is above the specimen in the scope and the undefocus magnitude increases as we move away (down) the column.)
         star_file_parameters.CalculateDefocusDependence( );
-        int current_frame_number = 1;
-        int number_of_instances  = 0;
 
-        // When the star file names the atomic model per line (_cisTEMReference3DFilename), only the lines naming this
-        // model are instances of it; otherwise every line is.
+        // A particle is a group of lines (_cisTEMParticleGroup), one line per frame in order of exposure: see
+        // GroupStarLinesByParticle. Every group gives one instance of the model, with a pose per frame.
+        // When the star file names the atomic model per line (_cisTEMReference3DFilename), only the particles naming
+        // this model are instances of it; otherwise every particle is. The caller has checked that the frames of a
+        // particle all name the same model.
         const bool select_lines_by_filename = star_file_parameters.parameters_that_were_read.reference_3d_filename;
+        int        number_of_instances      = 0;
 
-        // FIXME: there are multiple frames, calling this iParticle doesn't make sense.
-        for ( int iParticle = 0; iParticle < star_file_parameters.ReturnNumberofLines( ); iParticle++ ) {
-            // If particle group is 0 it is written improperly, but safe to assume there is only one frame per particle.
-            // Otherwise, we increment the frame numbers until the number reduces again.
-            if ( iParticle > 0 ) {
-                if ( star_file_parameters.ReturnParticleGroup(iParticle - 1) != 0 && star_file_parameters.ReturnParticleGroup(iParticle - 1) < current_frame_number ) {
-                    current_frame_number++;
-                }
-                else
-                    current_frame_number = 1;
-            }
-            if ( select_lines_by_filename && star_file_parameters.ReturnReference3DFilename(iParticle) != text_filename ) {
+        for ( const std::vector<long>& particle_lines : GroupStarLinesByParticle(star_file_parameters) ) {
+            if ( select_lines_by_filename && star_file_parameters.ReturnReference3DFilename(particle_lines[0]) != text_filename ) {
                 continue;
             }
-            TransformBaseCoordinates(star_file_parameters.ReturnXShift(iParticle),
-                                     star_file_parameters.ReturnYShift(iParticle),
-                                     (0.5f * (star_file_parameters.ReturnDefocus1(iParticle) + star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,
-                                     -star_file_parameters.ReturnPsi(iParticle),
-                                     -star_file_parameters.ReturnTheta(iParticle),
-                                     -star_file_parameters.ReturnPhi(iParticle),
-                                     number_of_instances,
-                                     current_frame_number - 1);
+            for ( int iFrame = 0; iFrame < particle_lines.size( ); iFrame++ ) {
+                const long line = particle_lines[iFrame];
+                TransformBaseCoordinates(star_file_parameters.ReturnXShift(line),
+                                         star_file_parameters.ReturnYShift(line),
+                                         (0.5f * (star_file_parameters.ReturnDefocus1(line) + star_file_parameters.ReturnDefocus2(line))) - star_file_parameters.average_defocus,
+                                         -star_file_parameters.ReturnPsi(line),
+                                         -star_file_parameters.ReturnTheta(line),
+                                         -star_file_parameters.ReturnPhi(line),
+                                         number_of_instances,
+                                         iFrame);
+            }
             number_of_instances++;
-            // wxPrintf("x,y,z (%f,%f,%f) psi/theta/phi (%f,%f,%f), ipart/frame %d %d\n", star_file_parameters.ReturnXShift(iParticle),
-            //                              star_file_parameters.ReturnYShift(iParticle),
-            //                              (0.5f * (star_file_parameters.ReturnDefocus1(iParticle)+star_file_parameters.ReturnDefocus2(iParticle))) - star_file_parameters.average_defocus,
-            //                              star_file_parameters.ReturnPsi(iParticle),
-            //                              star_file_parameters.ReturnTheta(iParticle),
-            //                              star_file_parameters.ReturnPhi(iParticle),
-            //                              iParticle,
-            //                              current_frame_number);
         }
     }
     else {
@@ -840,13 +828,26 @@ wxString PDB::ReturnFilename( ) {
 }
 
 void PDB::TransformBaseCoordinates(float wanted_origin_x, float wanted_origin_y, float wanted_origin_z, float euler1, float euler2, float euler3, int particle_idx, int frame_number) {
-    // Sets the initial position and orientation of the particle (my_ensemble.my_trajectories.Item(0)...) {
+    // Sets the position and orientation of one instance of the particle at one frame. Instances are added in order:
+    // particle_idx is either an existing instance or the next one, and the frames of an instance are set from 0 upwards.
 
-    // Initialize a new trajectory which represents an individual instance of a particle
-    ParticleTrajectory dummy_trajectory;
-    my_trajectory.Add(dummy_trajectory, 1);
+    MyDebugAssertTrue(particle_idx >= 0 && particle_idx <= my_trajectory.GetCount( ), "Particle instances must be added in order (got %d, have %d)", particle_idx, int(my_trajectory.GetCount( )));
+    MyDebugAssertTrue(frame_number >= 0 && frame_number < MAX_NUMBER_OF_TIMESTEPS, "Frame %d is outside the %d time steps a trajectory can hold", frame_number, MAX_NUMBER_OF_TIMESTEPS);
 
-    initial_values.emplace_back(euler1, euler2, euler3, wanted_origin_x, wanted_origin_y, wanted_origin_z);
+    if ( particle_idx == my_trajectory.GetCount( ) ) {
+        // A new trajectory which represents an individual instance of a particle
+        MyDebugAssertTrue(frame_number == 0, "The first pose of an instance must be frame 0, got frame %d", frame_number);
+        ParticleTrajectory dummy_trajectory;
+        my_trajectory.Add(dummy_trajectory, 1);
+        this->number_of_particles_initialized++;
+        this->number_of_frames_initialized = 1;
+    }
+    else {
+        MyDebugAssertTrue(frame_number <= this->number_of_frames_initialized, "Frames must be set in order, got frame %d with %d set", frame_number, this->number_of_frames_initialized);
+        this->number_of_frames_initialized = std::max(this->number_of_frames_initialized, frame_number + 1);
+    }
+
+    initial_values.emplace_back(euler1, euler2, euler3, wanted_origin_x, wanted_origin_y, wanted_origin_z, particle_idx, frame_number);
 
     RotationMatrix rotmat;
 
@@ -873,10 +874,34 @@ void PDB::TransformBaseCoordinates(float wanted_origin_x, float wanted_origin_y,
     my_trajectory.Item(particle_idx).current_update[frame_number][3] = euler1;
     my_trajectory.Item(particle_idx).current_update[frame_number][4] = euler2;
     my_trajectory.Item(particle_idx).current_update[frame_number][5] = euler3;
+}
 
-    // Now that a new member is added to the ensemble, increment the counter
-    this->number_of_particles_initialized++;
-    // wxPrintf("\n\nNumber of particles initialized %d\n", this->number_of_particles_initialized);
+std::vector<std::vector<long>> PDB::GroupStarLinesByParticle(cisTEMParameters& star_file_parameters) {
+    std::vector<std::vector<long>>  particles;
+    std::unordered_map<int, size_t> particle_index_of_group;
+
+    for ( long line = 0; line < star_file_parameters.ReturnNumberofLines( ); line++ ) {
+        const int group = star_file_parameters.ReturnParticleGroup(line);
+        if ( group == 0 ) {
+            particles.push_back({line});
+            continue;
+        }
+        auto known = particle_index_of_group.find(group);
+        if ( known == particle_index_of_group.end( ) ) {
+            particle_index_of_group[group] = particles.size( );
+            particles.push_back({line});
+        }
+        else {
+            particles[known->second].push_back(line);
+        }
+    }
+
+    for ( std::vector<long>& particle_lines : particles ) {
+        std::stable_sort(particle_lines.begin( ), particle_lines.end( ), [&star_file_parameters](long a, long b) {
+            return star_file_parameters.ReturnTotalExposure(a) < star_file_parameters.ReturnTotalExposure(b);
+        });
+    }
+    return particles;
 }
 
 void PDB::TransformLocalAndCombine(PDB& clean_copy, int number_of_pdbs, int frame_number, RotationMatrix particle_rot, float shift_z, bool is_single_particle) {
@@ -946,6 +971,14 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                 MyDebugAssertTrue(this->atoms.size( ) >= current_total_atom + pdb_ensemble[current_pdb].number_of_atoms,
                                   "The specimen atom container (%ld) is too small for particle %d of model %d with %ld atoms starting at %ld",
                                   long(this->atoms.size( )), current_particle, current_pdb, pdb_ensemble[current_pdb].number_of_atoms, current_total_atom);
+                // Pose (x, y, z, euler1..3 as set by TransformBaseCoordinates) of this instance at this frame; an instance
+                // keeps its last pose if fewer frames were set for it.
+                const int pose_frame = std::min(frame_number, pdb_ensemble[current_pdb].number_of_frames_initialized - 1);
+                MyDebugAssertTrue(pose_frame >= 0, "No pose set for pdb %d instance %d", current_pdb, current_particle);
+                const float* pose = pdb_ensemble[current_pdb].my_trajectory.Item(current_particle).current_update[pose_frame];
+                // Transform the coordinates, but FIXME hard coding zero is shifty
+                AnglesAndShifts my_angles(pose[3], pose[4], pose[5], 0.f, 0.f);
+
                 long current_atom = 0;
                 for ( long intra_mol_current_atom = 0; intra_mol_current_atom < pdb_ensemble[current_pdb].number_of_atoms; intra_mol_current_atom++ ) {
                     current_atom              = current_total_atom;
@@ -955,15 +988,11 @@ void PDB::TransformLocalAndCombine(PDB* pdb_ensemble, int number_of_pdbs, int fr
                     iy = atoms[current_atom].y_coordinate;
                     iz = atoms[current_atom].z_coordinate;
 
-                    // Transform the coordinates, but FIXME hard coding zero is shifty
-                    AnglesAndShifts my_angles(pdb_ensemble[current_pdb].initial_values[current_particle].euler1,
-                                              pdb_ensemble[current_pdb].initial_values[current_particle].euler2,
-                                              pdb_ensemble[current_pdb].initial_values[current_particle].euler3, 0.f, 0.f);
                     my_angles.euler_matrix.RotateCoords(ix, iy, iz, tx, ty, tz);
 
-                    this->atoms[current_atom].x_coordinate = tx + pdb_ensemble[current_pdb].initial_values[current_particle].ox;
-                    this->atoms[current_atom].y_coordinate = ty + pdb_ensemble[current_pdb].initial_values[current_particle].oy;
-                    this->atoms[current_atom].z_coordinate = tz + pdb_ensemble[current_pdb].initial_values[current_particle].oz;
+                    this->atoms[current_atom].x_coordinate = tx + pose[0];
+                    this->atoms[current_atom].y_coordinate = ty + pose[1];
+                    this->atoms[current_atom].z_coordinate = tz + pose[2];
 
                     // minMax X
                     if ( this->atoms[current_atom].x_coordinate < min_x ) {

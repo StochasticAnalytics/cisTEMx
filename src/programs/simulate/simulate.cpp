@@ -117,6 +117,14 @@ class SimulateApp : public MyApp {
     void        DoInteractiveUserInput( );
     std::string output_filename;
 
+    // Diagnostic and reference images are named by prefixing the output base name. The prefix goes on the file name,
+    // not on the front of the whole string, so an output base that carries a directory still lands in that directory.
+    std::string PrefixedOutputFilename(const std::string& prefix) const {
+        wxFileName prefixed(output_filename);
+        prefixed.SetName(prefix + prefixed.GetName( ));
+        return prefixed.GetFullPath( ).ToStdString( );
+    }
+
     float mean_defocus          = 0.0f;
     float defocus_1             = 0.0f;
     float defocus_2             = 0.0f;
@@ -589,6 +597,13 @@ void SimulateApp::DoInteractiveUserInput( ) {
             else {
                 SendErrorAndCrash(wxString::Format("Error: Input star file %s not found\n", preexisting_particle_file_name));
             }
+            // Each PDB in the ensemble reads the star file and is instanced at every line, and PDB::TransformLocalAndCombine
+            // addresses the star-file instances by (atom + number_of_atoms * particle) with no per-PDB offset, so with more
+            // than one PDB the particle types would be superimposed at every position and overwrite each other.
+            // Mixing particle types in one star-file-driven simulation needs the PDB to be specified per line in the star file.
+            if ( sp.pdb_file_names.size( ) > 1 ) {
+                SendErrorAndCrash(wxString::Format("an input star file is only supported with a single PDB, but %ld were given\n", (long)sp.pdb_file_names.size( )));
+            }
             // The following doesn't work if there is a .dff file
             // std::string wanted_default = std::to_string(default_number_parameters);
             // number_preexisting_particles = my_input->GetIntFromUser("Limit the number of particles used from the star file.", "0: use all", wanted_default.c_str());
@@ -609,49 +624,56 @@ void SimulateApp::DoInteractiveUserInput( ) {
 
         bool wanted_parameters_are_present = false;
         if ( use_existing_params ) {
-            // If we are using existing parameters, we enforce the following are specified.
-            if ( input_star_file.parameters_that_were_read.defocus_1 &&
-                 input_star_file.parameters_that_were_read.defocus_2 &&
-                 input_star_file.parameters_that_were_read.defocus_angle &&
-                 input_star_file.parameters_that_were_read.phase_shift &&
-                 input_star_file.parameters_that_were_read.pixel_size &&
-                 input_star_file.parameters_that_were_read.pre_exposure &&
-                 input_star_file.parameters_that_were_read.total_exposure &&
-                 input_star_file.parameters_that_were_read.microscope_spherical_aberration_mm &&
-                 input_star_file.parameters_that_were_read.microscope_voltage_kv &&
-                 input_star_file.parameters_that_were_read.beam_tilt_x &&
-                 input_star_file.parameters_that_were_read.beam_tilt_y ) {
-
-                wanted_parameters_are_present = true;
-
-                kV                   = input_star_file.ReturnMicroscopekV(0);
-                spherical_aberration = input_star_file.ReturnMicroscopeCs(0);
-
-                float max_exposure, mean_phase_shift, mean_beam_tilt_x(0.f), mean_beam_tilt_y(0.f);
-                mean_defocus     = 0.f;
-                mean_phase_shift = 0.f;
-                number_of_frames = 1;
-                // Assuming this is constant for all particles and frames FIXME
-                dose_per_frame = input_star_file.ReturnTotalExposure(0) - input_star_file.ReturnPreExposure(0);
-                // tmp override for testing FIXME
-                dose_per_frame         = 1;
-                current_total_exposure = 1;
-                pre_exposure           = 1;
-                for ( int counter = 0; counter < number_preexisting_particles; counter++ ) {
-                    mean_defocus += 0.5f * (input_star_file.ReturnDefocus1(counter) + input_star_file.ReturnDefocus2(counter));
-                    number_of_frames = std::max(number_of_frames, float(input_star_file.ReturnParticleGroup(counter))); // FIXME, why is number of frames a float, prob a bad idea
-                    mean_beam_tilt_x += input_star_file.ReturnBeamTiltX(counter);
-                    mean_beam_tilt_y += input_star_file.ReturnBeamTiltY(counter);
+            // If we are using existing parameters, the following must all be present in the star file. A star file that
+            // lacks any of them is an error: silently falling back to the interactive questions would desynchronise
+            // scripted input and simulate something other than what the star file describes.
+            wxString missing_columns;
+            auto     require_column = [&missing_columns](bool was_read, const char* column_name) {
+                if ( ! was_read ) {
+                    missing_columns += wxString::Format(" %s", column_name);
                 }
-                mean_defocus /= number_preexisting_particles;
-                beam_tilt_x      = mean_beam_tilt_x / number_preexisting_particles;
-                beam_tilt_y      = mean_beam_tilt_y / number_preexisting_particles;
-                dose_rate        = 3.0f; // FIXME this is not currently in the parameter file
-                output_star_file = input_star_file; // we may change some of the parameters or save frames
+            };
+            require_column(input_star_file.parameters_that_were_read.defocus_1, "_cisTEMDefocus1");
+            require_column(input_star_file.parameters_that_were_read.defocus_2, "_cisTEMDefocus2");
+            require_column(input_star_file.parameters_that_were_read.defocus_angle, "_cisTEMDefocusAngle");
+            require_column(input_star_file.parameters_that_were_read.phase_shift, "_cisTEMPhaseShift");
+            require_column(input_star_file.parameters_that_were_read.pixel_size, "_cisTEMPixelSize");
+            require_column(input_star_file.parameters_that_were_read.pre_exposure, "_cisTEMPreExposure");
+            require_column(input_star_file.parameters_that_were_read.total_exposure, "_cisTEMTotalExposure");
+            require_column(input_star_file.parameters_that_were_read.microscope_spherical_aberration_mm, "_cisTEMMicroscopeCsMM");
+            require_column(input_star_file.parameters_that_were_read.microscope_voltage_kv, "_cisTEMMicroscopeVoltagekV");
+            require_column(input_star_file.parameters_that_were_read.beam_tilt_x, "_cisTEMBeamTiltX");
+            require_column(input_star_file.parameters_that_were_read.beam_tilt_y, "_cisTEMBeamTiltY");
+            if ( ! missing_columns.IsEmpty( ) ) {
+                SendErrorAndCrash(wxString::Format("the input star file %s is missing required column(s):%s\n", preexisting_particle_file_name, missing_columns));
             }
-            else {
-                SendInfo("Warning: You must specify all parameters in the input star file\nIgnoring the input star file.\nQuit, or continue by entering manual parameters.\n");
+
+            wanted_parameters_are_present = true;
+
+            kV                   = input_star_file.ReturnMicroscopekV(0);
+            spherical_aberration = input_star_file.ReturnMicroscopeCs(0);
+
+            float max_exposure, mean_phase_shift, mean_beam_tilt_x(0.f), mean_beam_tilt_y(0.f);
+            mean_defocus     = 0.f;
+            mean_phase_shift = 0.f;
+            number_of_frames = 1;
+            // Assuming this is constant for all particles and frames FIXME
+            dose_per_frame = input_star_file.ReturnTotalExposure(0) - input_star_file.ReturnPreExposure(0);
+            // tmp override for testing FIXME
+            dose_per_frame         = 1;
+            current_total_exposure = 1;
+            pre_exposure           = 1;
+            for ( int counter = 0; counter < number_preexisting_particles; counter++ ) {
+                mean_defocus += 0.5f * (input_star_file.ReturnDefocus1(counter) + input_star_file.ReturnDefocus2(counter));
+                number_of_frames = std::max(number_of_frames, float(input_star_file.ReturnParticleGroup(counter))); // FIXME, why is number of frames a float, prob a bad idea
+                mean_beam_tilt_x += input_star_file.ReturnBeamTiltX(counter);
+                mean_beam_tilt_y += input_star_file.ReturnBeamTiltY(counter);
             }
+            mean_defocus /= number_preexisting_particles;
+            beam_tilt_x      = mean_beam_tilt_x / number_preexisting_particles;
+            beam_tilt_y      = mean_beam_tilt_y / number_preexisting_particles;
+            dose_rate        = 3.0f; // FIXME this is not currently in the parameter file
+            output_star_file = input_star_file; // we may change some of the parameters or save frames
         }
 
         if ( ! wanted_parameters_are_present ) {
@@ -1810,7 +1832,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 // TODO the edges should be a problem here, but maybe it is good to subtract the mean, exposure filter, then add back the mean around the edges? Can test with solvent off.
 
                 if ( SAVE_PHASE_GRATING ) {
-                    std::string fileNameOUT = "with_phaseGrating_" + std::to_string(iSlab) + this->output_filename;
+                    std::string fileNameOUT = PrefixedOutputFilename("with_phaseGrating_" + std::to_string(iSlab));
                     MRCFile     mrc_out(fileNameOUT, true);
                     scattering_potential[iSlab].WriteSlices(&mrc_out, 1, 1);
                     mrc_out.SetPixelSize(this->wanted_pixel_size);
@@ -1867,10 +1889,10 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                         std::string fileNameOUT;
                         if ( iSlab < 9 ) {
-                            fileNameOUT = "withDoseFilter_phaseGrating_0" + std::to_string(iSlab) + this->output_filename;
+                            fileNameOUT = PrefixedOutputFilename("withDoseFilter_phaseGrating_0" + std::to_string(iSlab));
                         }
                         else {
-                            fileNameOUT = "withDoseFilter_phaseGrating_" + std::to_string(iSlab) + this->output_filename;
+                            fileNameOUT = PrefixedOutputFilename("withDoseFilter_phaseGrating_" + std::to_string(iSlab));
                         }
 
                         MRCFile mrc_out(fileNameOUT, true);
@@ -1927,10 +1949,10 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                         std::string fileNameOUT;
                         if ( iSlab < 9 ) {
-                            fileNameOUT = "withWater_phaseGrating_0" + std::to_string(iSlab) + this->output_filename;
+                            fileNameOUT = PrefixedOutputFilename("withWater_phaseGrating_0" + std::to_string(iSlab));
                         }
                         else {
-                            fileNameOUT = "withWater_phaseGrating_" + std::to_string(iSlab) + this->output_filename;
+                            fileNameOUT = PrefixedOutputFilename("withWater_phaseGrating_" + std::to_string(iSlab));
                         }
 
                         MRCFile mrc_out(fileNameOUT, true);
@@ -1969,7 +1991,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             } // end loop nSlabs
 
             if ( DO_CROSSHAIR ) {
-                std::string fileNameOUT = "crosshair" + this->output_filename;
+                std::string fileNameOUT = PrefixedOutputFilename("crosshair");
                 MRCFile     mrc_out(fileNameOUT, true);
                 coords.PadToWantedSize(&cross_hair, wanted_output_size);
                 EmpiricalDistribution<double> my_dist = cross_hair.ReturnDistributionOfRealValues( );
@@ -2150,7 +2172,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                 timer.lap("Propagate WaveFunc");
                 if ( SAVE_PROBABILITY_WAVE && iLoop < 1 ) {
-                    std::string fileNameOUT = "withProbabilityWave_" + std::to_string(iFrame) + this->output_filename;
+                    std::string fileNameOUT = PrefixedOutputFilename("withProbabilityWave_" + std::to_string(iFrame));
                     MRCFile     mrc_out(fileNameOUT, true);
                     img_frame[0].WriteSlices(&mrc_out, 1, 1);
                     mrc_out.SetPixelSize(this->wanted_pixel_size);
@@ -2168,7 +2190,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
 
                 if ( DO_APPLY_DQE && is_image_loop ) {
                     if ( SAVE_WITH_DQE ) {
-                        std::string fileNameOUT = "withOUT_DQE_" + std::to_string(iFrame) + this->output_filename;
+                        std::string fileNameOUT = PrefixedOutputFilename("withOUT_DQE_" + std::to_string(iFrame));
                         MRCFile     mrc_out(fileNameOUT, true);
                         img_frame[0].WriteSlices(&mrc_out, 1, 1);
                         mrc_out.SetPixelSize(this->wanted_pixel_size);
@@ -2180,7 +2202,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                     timer.lap("DQE");
 
                     if ( SAVE_WITH_DQE ) {
-                        std::string fileNameOUT = "withDQE_" + std::to_string(iFrame) + this->output_filename;
+                        std::string fileNameOUT = PrefixedOutputFilename("withDQE_" + std::to_string(iFrame));
                         MRCFile     mrc_out(fileNameOUT, true);
                         img_frame[0].WriteSlices(&mrc_out, 1, 1);
                         mrc_out.SetPixelSize(this->wanted_pixel_size);
@@ -2227,7 +2249,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             }
             if ( DO_PHASE_PLATE ) {
 
-                std::string fileNameOUT = "phaseGrating_" + this->output_filename;
+                std::string fileNameOUT = PrefixedOutputFilename("phaseGrating_");
                 MRCFile     mrc_out(fileNameOUT, true);
                 coords.PadToWantedSize(&sum_phase, wanted_output_size);
                 EmpiricalDistribution<double> phase_shift_distribution = sum_phase.ReturnDistributionOfRealValues( );
@@ -2238,7 +2260,7 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
                 mrc_out.SetPixelSize(this->wanted_pixel_size);
                 mrc_out.CloseFile( );
 
-                std::string fileNameOUT2 = "detector_wavefunction2_" + this->output_filename;
+                std::string fileNameOUT2 = PrefixedOutputFilename("detector_wavefunction2_");
                 MRCFile     mrc_out2(fileNameOUT2, true);
                 coords.PadToWantedSize(&sum_detector, wanted_output_size);
                 sum_detector.WriteSlices(&mrc_out2, 1, 1);
@@ -2282,7 +2304,30 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
             parameters.total_exposure                     = current_total_exposure;
 
             if ( (ONLY_SAVE_SUMS && iFrame < 1) || (! ONLY_SAVE_SUMS) ) {
-                output_star_file.all_parameters.Add(parameters);
+                if ( use_existing_params && make_particle_stack == 0 ) {
+                    // A micrograph holding a field of particles placed from the input star file: write one line per particle.
+                    // Orientation, in-plane position and the defocus values (which set the particle's z in the specimen relative to
+                    // the mean, see PDB::Init) are the input values; the imaging parameters are those applied to the micrograph.
+                    // Lines are numbered by particle, and every particle of a frame carries that frame's exposure.
+                    for ( long iParticle = 0; iParticle < number_preexisting_particles; iParticle++ ) {
+                        cisTEMParameterLine particle_line = parameters;
+                        particle_line.position_in_stack   = iParticle + 1;
+                        particle_line.psi                 = input_star_file.ReturnPsi(iParticle);
+                        particle_line.theta               = input_star_file.ReturnTheta(iParticle);
+                        particle_line.phi                 = input_star_file.ReturnPhi(iParticle);
+                        particle_line.x_shift             = input_star_file.ReturnXShift(iParticle);
+                        particle_line.y_shift             = input_star_file.ReturnYShift(iParticle);
+                        particle_line.defocus_1           = input_star_file.ReturnDefocus1(iParticle);
+                        particle_line.defocus_2           = input_star_file.ReturnDefocus2(iParticle);
+                        particle_line.defocus_angle       = input_star_file.ReturnDefocusAngle(iParticle);
+                        particle_line.phase_shift         = input_star_file.ReturnPhaseShift(iParticle);
+                        particle_line.particle_group      = input_star_file.ReturnParticleGroup(iParticle);
+                        output_star_file.all_parameters.Add(particle_line);
+                    }
+                }
+                else {
+                    output_star_file.all_parameters.Add(parameters);
+                }
             }
 
             output_image_stack[iTilt * (int)number_of_frames + iFrame].CopyFrom(img_frame);
@@ -2394,14 +2439,13 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     bool    over_write = true;
     MRCFile mrc_out_final(this->output_filename, over_write);
 
-    // FIXME: This will not work if there is a path in the filename.
-    std::string fileNameRefSum = "perfRef_" + this->output_filename;
+    std::string fileNameRefSum = PrefixedOutputFilename("perfRef_");
     MRCFile     mrc_ref_final;
     if ( SAVE_REF ) {
         mrc_ref_final.OpenFile(fileNameRefSum, over_write);
     }
 
-    std::string fileNameREF = "ref_" + this->output_filename;
+    std::string fileNameREF = PrefixedOutputFilename("ref_");
 
     if ( DO_PRINT ) {
         wxPrintf("\n\nnumber_of_images %d N_FRAMES %d\n\n", number_of_images, myroundint(this->number_of_frames));
@@ -2541,6 +2585,11 @@ void SimulateApp::probability_density_2d(PDB* pdb_ensemble, int time_step) {
     // TODO what about different pixel sizes?
     mrc_out_final.SetPixelSize(this->wanted_pixel_size);
     mrc_out_final.CloseFile( );
+
+    if ( SAVE_REF ) {
+        mrc_ref_final.SetPixelSize(this->wanted_pixel_size);
+        mrc_ref_final.CloseFile( );
+    }
 
     //    this->parameter_file.Close();
 

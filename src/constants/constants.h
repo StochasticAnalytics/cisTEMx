@@ -225,6 +225,32 @@ enum Enum : int { ReturnSumSquareModulusComplexValues,
 
 } // namespace gpu
 
+// Process exit codes for a networked worker. This is the ONLY thing a batch system ever
+// learns about why a worker stopped: the condor shim exec()s the worker binary, so this
+// code becomes the job's ExitCode in the job event log and in condor_history.
+//
+// Until 2026-08-26 every path reported 0 - MyApp::OnExit returns 0, and the explicit
+// worker exits were exit(0) - so a worker whose master vanished was indistinguishable
+// from one that finished its work. That makes post-hoc forensics on a run impossible and
+// rules out any exit-driven submit policy (on_exit_hold, max_retries, on_exit_remove),
+// because there is no signal to write the policy against.
+//
+// Keep 0 meaning EXACTLY "did the work it was given, and was told to stop". Everything
+// else gets its own code. Values start at 10 to stay clear of the shell/signal
+// conventions (126, 127, 128+N) and of the historical exit(-1) sites, which surface as
+// 255.
+namespace exit_code {
+
+// Set with exit() rather than through ExitMainLoop( ), which hardcodes a return of 0 in
+// wxAppConsoleBase and so cannot carry a status. This matches what HandleSocketTimeToDie
+// has always done for the success case.
+constexpr int success = 0; // told to die by the master, after its work was done
+
+constexpr int master_disconnected = 10; // the master's socket dropped mid-run
+constexpr int reconnect_failed    = 11; // gave up re-establishing the controller/master link
+
+} // namespace exit_code
+
 } // namespace cistem
 
 #endif

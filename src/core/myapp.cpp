@@ -406,8 +406,15 @@ void MyApp::OnZombieTimer(wxTimerEvent& event) {
     if ( i_am_a_zombie == true ) {
         number_of_failed_connections++;
 
-        if ( number_of_failed_connections >= 5 )
+        // Note this used to call ExitMainLoop( ) and then fall straight through into
+        // another reconnect attempt below - the give-up was decided and then ignored.
+        // Exit here, and non-zero, so the batch system records a failed worker rather
+        // than the 0 that falling out of the event loop produces.
+        if ( number_of_failed_connections >= 5 ) {
+            wxPrintf("Worker: giving up after %i failed connection attempts.\n", number_of_failed_connections);
             ExitMainLoop( );
+            exit(cistem::exit_code::reconnect_failed);
+        }
 
         if ( connected_to_the_master == true ) {
             master_socket->Close( );
@@ -424,6 +431,7 @@ void MyApp::OnZombieTimer(wxTimerEvent& event) {
                 master_socket->Close( );
                 MyDebugPrint(" JOB : Failed ! Unable to connect\n");
                 ExitMainLoop( );
+                exit(cistem::exit_code::reconnect_failed);
             }
 
             if ( i_am_the_master == false )
@@ -444,6 +452,7 @@ void MyApp::OnZombieTimer(wxTimerEvent& event) {
                 controller_socket->Close( );
                 MyDebugPrint(" JOB : Failed ! Unable to connect\n");
                 ExitMainLoop( );
+                exit(cistem::exit_code::reconnect_failed);
             }
         }
         // once again, we are aparently connected, but this can be a lie as a certain number of connections appear to just be accepted by the operating
@@ -1556,8 +1565,13 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
 
         if ( work_thread != NULL )
             work_thread->Kill( );
+
+        // Exit NON-zero: this is a failure, and the exit code is the only thing the batch
+        // system ever learns about it. Falling out through ExitMainLoop( ) reported 0 -
+        // identical to a worker that finished its work - so every abnormal worker death in
+        // a run's condor history read as a success.
         ExitMainLoop( );
-        return;
+        exit(cistem::exit_code::master_disconnected);
     }
 }
 

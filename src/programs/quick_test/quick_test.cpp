@@ -46,6 +46,12 @@ struct PeakSamplingGeneratorParams {
     float    pixel_size         = 1.0f; // A
     wxString seed_prefix        = "";
     bool     first_image_stages = false;
+    // Neighbor-pair mode (dense/overlapping follow-on, 2026-08-26): when > 0, every particle gets a
+    // second identical (identity-orientation) particle pasted at exactly this centre-to-centre
+    // distance in pixels, azimuth uniform per pair from a SEPARATE RNG stream (_neighbor), so with
+    // an unchanged seed prefix the primary geometry and both noise streams are bit-identical to a
+    // no-neighbor batch: the difference image is exactly the CTF-filtered neighbor density.
+    float neighbor_distance = 0.0f;
 };
 
 class
@@ -93,6 +99,7 @@ void QuickTestApp::AddCommandLineOptions( ) {
     command_line_parser.AddLongOption("gen-pixel-size", "Pixel size in Angstroms (written to the MRC headers, used for the CTF). Default 1.0.", wxCMD_LINE_VAL_DOUBLE);
     command_line_parser.AddLongOption("gen-seed-prefix", "String prepended to every RNG seed (seed = prefix + image name + stage suffix). Default empty.", wxCMD_LINE_VAL_STRING);
     command_line_parser.AddLongSwitch("gen-first-image-stages", "For image 000 also write img_000_stages.mrc (6-slice stack) and img_000_points.txt (IMOD point2model input).");
+    command_line_parser.AddLongOption("gen-neighbor-distance", "If > 0: paste a second particle per cell at exactly this centre-to-centre distance in pixels (azimuth uniform, own _neighbor RNG stream; primary geometry and noise unchanged). Default 0 (off).", wxCMD_LINE_VAL_DOUBLE);
 }
 
 // override the DoInteractiveUserInput
@@ -172,6 +179,12 @@ bool QuickTestApp::ReadPeakSamplingGeneratorOptions(PeakSamplingGeneratorParams&
     if ( command_line_parser.Found("gen-seed-prefix", &temp_string) )
         p.seed_prefix = temp_string;
     p.first_image_stages = command_line_parser.FoundSwitch("gen-first-image-stages");
+    if ( command_line_parser.Found("gen-neighbor-distance", &temp_double) )
+        p.neighbor_distance = float(temp_double);
+    if ( p.neighbor_distance < 0.0f ) {
+        wxPrintf("Error: --gen-neighbor-distance must be >= 0 (got %f).\n", p.neighbor_distance);
+        return false;
+    }
 
     if ( p.n_images < 1 || p.image_size < 2 || p.cells_per_side < 1 || p.cell_size < 1 || p.jitter < 0 ) {
         wxPrintf("Error: n_images, image_size, cells_per_side and cell_size must be positive and jitter >= 0.\n");
@@ -213,6 +226,9 @@ bool QuickTestApp::RunPeakSamplingImageGenerator( ) {
     // boxes cannot overlap when that separation is >= box_size. For the defaults 512 - 128 = 384 = box:
     // boxes touch, no overlap. The outermost centre is cell_size/2 - jitter from the image edge, so the
     // box stays inside the image when cell_size/2 - jitter - box_size/2 >= 0 (defaults: 256-64-192 = 0).
+    // In neighbor-pair mode these checks still govern the PRIMARY layout only: the neighbor of a
+    // pair overlaps its primary's box by construction (that is the point), and the neighbor's own
+    // inside-image guarantee is the azimuth redraw in the paste loop below.
     const bool boxes_cannot_overlap = (p.cell_size - 2 * p.jitter) >= box_size;
     const bool boxes_inside_image   = (p.cell_size / 2 - p.jitter - box_size / 2) >= 0;
     MyDebugAssertTrue(boxes_cannot_overlap, "Projection boxes can overlap: cell %i - 2*jitter %i < box %i", p.cell_size, p.jitter, box_size);
@@ -329,6 +345,9 @@ bool QuickTestApp::RunPeakSamplingImageGenerator( ) {
         fprintf(fp, "pixel_size %.6f\n", p.pixel_size);
         fprintf(fp, "seed_prefix %s\n", p.seed_prefix.ToStdString( ).c_str( ));
         fprintf(fp, "first_image_stages %i\n", int(p.first_image_stages));
+        fprintf(fp, "neighbor_distance %.3f\n", p.neighbor_distance);
+        if ( p.neighbor_distance > 0.0f )
+            fprintf(fp, "# Neighbor-pair mode: every particle has a second identical identity-orientation particle at exactly neighbor_distance px centre-to-centre, azimuth uniform per pair from seed <prefix><image>_neighbor (redrawn until its box fits inside the image; redraw count recorded). Primary geometry and both noise streams are bit-identical to a batch generated without neighbors at the same seed prefix. Neighbors listed in img_<i>_neighbors.txt; the truth file lists primaries only.\n");
         fprintf(fp, "clean_box_variance_before_scaling %.8e\n", clean_box_variance);
         fprintf(fp, "pre_scale %.8e\n", pre_scale);
         fprintf(fp, "post_ctf_std_of_unit_variance_clean_box %.8e\n", post_ctf_std);
@@ -390,6 +409,50 @@ bool QuickTestApp::RunPeakSamplingImageGenerator( ) {
             }
         }
 
+        // ---- neighbor pairs (dense/overlapping mode) --------------------------------------------
+        // Pasted AFTER the full primary loop so the _geometry stream is consumed exactly as in a
+        // no-neighbor batch. The neighbor's true centre = primary true centre + distance * (cos a,
+        // sin a); its integer paste position and sub-pixel shift follow by rounding, so the
+        // centre-to-centre distance is exact. Azimuth is redrawn until the neighbor's box lies
+        // fully inside the image (biases azimuth inward for edge cells only; count recorded).
+        std::vector<int>   nb_int_x(n_particles), nb_int_y(n_particles), nb_redraws(n_particles);
+        std::vector<float> nb_dx(n_particles), nb_dy(n_particles), nb_azimuth(n_particles);
+        if ( p.neighbor_distance > 0.0f ) {
+            RandomNumberGenerator rng_neighbor(seed_base + "_neighbor");
+            const int             lo = box_size / 2;
+            const int             hi = p.image_size - box_size / 2;
+            for ( int particle = 0; particle < n_particles; particle++ ) {
+                const double true_x  = double(int_x[particle]) + double(dx[particle]);
+                const double true_y  = double(int_y[particle]) + double(dy[particle]);
+                float        azimuth = 0.0f;
+                int          nix = 0, niy = 0, attempts = 0;
+                double       ntx = 0.0, nty = 0.0;
+                while ( true ) {
+                    attempts++;
+                    azimuth = rng_neighbor.GetUniformRandomSTD<float>(0.0f, 2.0f * PIf);
+                    ntx     = true_x + double(p.neighbor_distance) * cos(double(azimuth));
+                    nty     = true_y + double(p.neighbor_distance) * sin(double(azimuth));
+                    nix     = int(lround(ntx));
+                    niy     = int(lround(nty));
+                    if ( nix >= lo && nix <= hi && niy >= lo && niy <= hi )
+                        break;
+                    if ( attempts >= 1000 ) {
+                        SendErrorAndCrash(wxString::Format("Neighbor placement failed after %i azimuth draws (particle %i, image %s).", attempts, particle, image_name));
+                        return false;
+                    }
+                }
+                nb_int_x[particle]   = nix;
+                nb_int_y[particle]   = niy;
+                nb_dx[particle]      = float(ntx - double(nix));
+                nb_dy[particle]      = float(nty - double(niy));
+                nb_azimuth[particle] = azimuth;
+                nb_redraws[particle] = attempts - 1;
+
+                make_projection(nb_dx[particle], nb_dy[particle], prj);
+                full.InsertOtherImageAtSpecifiedPosition(&prj, nix - image_centre, niy - image_centre, 0);
+            }
+        }
+
         // ---- noise chain (design section 2), once at full sampling ----------------------------
         full.MultiplyByConstant(pre_scale);
         if ( capture_stages )
@@ -428,6 +491,23 @@ bool QuickTestApp::RunPeakSamplingImageGenerator( ) {
             fclose(fp);
         }
 
+        if ( p.neighbor_distance > 0.0f ) {
+            FILE* fp = fopen((out + image_name + "_neighbors.txt").ToStdString( ).c_str( ), "w");
+            if ( fp == NULL ) {
+                SendErrorAndCrash(wxString::Format("Could not open %s_neighbors.txt for writing.", image_name));
+                return false;
+            }
+            fprintf(fp, "# %s neighbors: one per primary, centre-to-centre distance %.3f px from the primary's TRUE centre, azimuth uniform (redrawn until the box fits inside the image). Same coordinate conventions as the truth file.\n",
+                    image_name.ToStdString( ).c_str( ), p.neighbor_distance);
+            fprintf(fp, "# primary_id int_x int_y dx dy true_x true_y azimuth_rad redraws\n");
+            for ( int particle = 0; particle < n_particles; particle++ ) {
+                fprintf(fp, "%i %i %i %.6f %.6f %.6f %.6f %.6f %i\n", particle, nb_int_x[particle], nb_int_y[particle],
+                        nb_dx[particle], nb_dy[particle], float(nb_int_x[particle]) + nb_dx[particle], float(nb_int_y[particle]) + nb_dy[particle],
+                        nb_azimuth[particle], nb_redraws[particle]);
+            }
+            fclose(fp);
+        }
+
         if ( capture_stages ) {
             // Stage stack: every slice must share the image size, so the two box-size stages are pasted
             // (additively onto zeros) at the image centre with the same InsertOtherImage convention.
@@ -461,7 +541,10 @@ bool QuickTestApp::RunPeakSamplingImageGenerator( ) {
             fclose(fp);
         }
 
-        wxPrintf("Wrote %s (%i particles)\n", image_name, n_particles);
+        if ( p.neighbor_distance > 0.0f )
+            wxPrintf("Wrote %s (%i particles + %i neighbors at %.1f px)\n", image_name, n_particles, n_particles, p.neighbor_distance);
+        else
+            wxPrintf("Wrote %s (%i particles)\n", image_name, n_particles);
     }
 
     // Q (design section 3, continuity CC of image 000 against the prior harness) is NOT implemented

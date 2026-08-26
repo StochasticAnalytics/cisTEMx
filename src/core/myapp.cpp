@@ -40,6 +40,13 @@ bool MyApp::OnInit( ) {
     currently_running_a_job   = false;
     i_am_a_non_compute_leader = false;
 
+    // i_am_the_master was never initialized anywhere: the only assignment in this file is
+    // "= true" in HandleSocketYouAreTheMaster, so until a process is elected master this
+    // read indeterminate memory. It happens to work because a fresh heap is usually zero,
+    // but every "am I the master?" branch in this file was resting on that. Same bug class
+    // as the work_thread one above.
+    i_am_the_master = false;
+
     time_of_last_queue_send        = 0;
     time_of_last_master_queue_send = 0;
     number_of_results_sent         = 0;
@@ -47,6 +54,10 @@ bool MyApp::OnInit( ) {
     total_milliseconds_spent_on_threads = 0;
 
     socket_to_worker_job_pointer_hash.clear( );
+
+    jobs_to_redispatch.clear( );
+    job_dispatch_attempts.clear( );
+    max_job_redispatch_tries = ReturnMaxJobRedispatchTries( );
 
     inter_thread_message_queue.Post(0);
 
@@ -233,6 +244,64 @@ void MyApp::AddCommandLineOptions( ) {
     return;
 }
 
+// How many times may a single job be re-sent after its first attempt?
+// CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES, default 1. Zero disables
+// re-dispatch entirely (pre-2026-08 behaviour: an orphaned job is lost and the
+// run can never reach N of N). Negative or unparseable values fall back to the
+// default rather than becoming an unbounded retry loop.
+long MyApp::ReturnMaxJobRedispatchTries( ) {
+    const long default_tries = 1;
+    // Bounded above as well as below. Without a ceiling a single env var re-enables the
+    // unbounded retry loop this exists to prevent, and max + 1 (used in the logs and the
+    // budget arithmetic) is signed overflow at LONG_MAX. There is no real workflow that
+    // wants one job attempted more times than this.
+    const long  maximum_tries = 1000;
+    const char* from_env      = getenv("CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES");
+
+    if ( from_env == NULL )
+        return default_tries;
+
+    long     parsed_value;
+    wxString value_as_string(from_env);
+
+    if ( value_as_string.Trim( ).Trim(false).ToLong(&parsed_value) == false || parsed_value < 0 ) {
+        wxPrintf("Warning: CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = '%s' is not a non-negative integer - using the default of %li\n", from_env, default_tries);
+        return default_tries;
+    }
+
+    if ( parsed_value > maximum_tries ) {
+        wxPrintf("Warning: CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = '%s' exceeds the maximum of %li - using %li\n", from_env, maximum_tries, maximum_tries);
+        return maximum_tries;
+    }
+
+    return parsed_value;
+}
+
+// Count one dispatch of job_index and return the resulting attempt number (1 on the
+// first dispatch), or -1 if job_index is not a job in the current package.
+//
+// -1, not 1. Returning 1 for an unaccountable index looks conservative and is the exact
+// opposite: the counter never advances, so "attempts <= max" stays true forever and the
+// cap becomes an unbounded retry loop - the failure this whole mechanism exists to
+// prevent. Callers must treat a negative as "do not retry": an index we cannot account
+// for is precisely where a runaway would start, so it fails closed.
+int MyApp::RecordJobDispatchAttempt(int job_index) {
+    if ( job_index < 0 || job_index >= int(job_dispatch_attempts.size( )) )
+        return -1;
+
+    job_dispatch_attempts[job_index]++;
+    return job_dispatch_attempts[job_index];
+}
+
+// How many times has job_index been dispatched so far? -1 if it is not a job in the
+// current package; see RecordJobDispatchAttempt for why that must fail closed.
+int MyApp::ReturnJobDispatchAttempts(int job_index) {
+    if ( job_index < 0 || job_index >= int(job_dispatch_attempts.size( )) )
+        return -1;
+
+    return job_dispatch_attempts[job_index];
+}
+
 void MyApp::SendNextJobTo(wxSocketBase* socket) {
     // Jobs orphaned by a worker that died mid-flight are re-issued first: without this a
     // death after full dispatch loses the job forever and the run can never finish (the
@@ -241,6 +310,26 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
     if ( ! jobs_to_redispatch.empty( ) ) {
         RunJob* orphaned_job = jobs_to_redispatch.back( );
         jobs_to_redispatch.pop_back( );
+
+        // Count this attempt and say so: a retried job that keeps coming back is
+        // the signature of a poison job, and the log is how that gets noticed.
+        // job_number IS the index into the package (JobPackage::AddJob sets
+        // jobs[i].job_number = i), so use it rather than subtracting pointers - that
+        // subtraction is only defined while the pointer is still inside this package's
+        // array, which is not something this code can promise.
+        const int attempts_for_this_job = RecordJobDispatchAttempt(orphaned_job->job_number);
+
+        if ( attempts_for_this_job > 0 ) {
+            SocketSendInfo(wxString::Format("Re-dispatching job %i (attempt %i of %li) after a worker was lost.",
+                                            orphaned_job->job_number, attempts_for_this_job, max_job_redispatch_tries + 1));
+        }
+        else {
+            // HandleSocketDisconnect refuses to queue a job it cannot account for, so
+            // this should be unreachable; say so loudly rather than retry uncounted.
+            SocketSendError(wxString::Format("Error: Re-dispatching job %i, but it has no entry in the attempt table - its retries are NOT being counted.",
+                                             orphaned_job->job_number));
+        }
+
         orphaned_job->SendJob(socket);
         socket_to_worker_job_pointer_hash[socket] = orphaned_job;
         return;
@@ -252,6 +341,9 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
         // See RunJob::SendJob() Doxygen for encoding order specification
         current_job_package.jobs[number_of_dispatched_jobs].SendJob(socket);
         socket_to_worker_job_pointer_hash[socket] = &current_job_package.jobs[number_of_dispatched_jobs];
+
+        RecordJobDispatchAttempt(int(number_of_dispatched_jobs));
+
         number_of_dispatched_jobs++;
     }
     else {
@@ -399,6 +491,22 @@ void MyApp::OnThreadEnding(wxThreadEvent& my_event) {
     SendAllResultsFromResultQueue( );
 
     work_thread = NULL;
+
+    // NOTE (2026-08-26): a previous version of this handler made a networked worker call
+    // ExitMainLoop( ) here, on the premise that the calculation thread is created once and
+    // never recreated, so a worker whose thread ended is permanently inert. That premise is
+    // wrong in two ways and the code was withdrawn:
+    //
+    //   - HandleSocketYouAreAWorker recreates the thread behind "if ( work_thread == NULL )",
+    //     which is exactly the value this function just wrote. A worker that reconnects on a
+    //     zombie lap therefore recovers on its own, and exiting here destroys that recovery.
+    //   - The thread does not end only when told to die. CalculateThread::Entry also breaks
+    //     out on an idle timeout (job_wait_time, 360 s for match_template), so any master
+    //     stall longer than that would have killed a healthy, connected worker.
+    //
+    // The real problem it was aimed at - a worker sitting inert while holding a GPU slot -
+    // is real and still open. It needs a fix that distinguishes "told to die" from "timed
+    // out while still connected", not an unconditional exit.
 }
 
 void MyApp::OnThreadSendError(wxThreadEvent& my_event) {
@@ -748,6 +856,16 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
 
     current_job_package = *received_package;
     delete received_package;
+
+    // Per-job dispatch counters for orphaned-job recovery (see SendNextJobTo and
+    // HandleSocketDisconnect). Sized here because this is where the master first learns
+    // how many jobs the package holds. This is sizing, not a reset: the controller elects
+    // a master exactly once per process (guix_job_control's have_assigned_master is set
+    // true and never cleared), so this handler runs once and there is no stale state to
+    // clear. Anything that makes it re-entrant has a much bigger problem to solve first -
+    // the assignment above delete[]s the old jobs array, which dangles every RunJob* in
+    // socket_to_worker_job_pointer_hash and jobs_to_redispatch.
+    job_dispatch_attempts.assign(current_job_package.number_of_jobs, 0);
 
     // we got real communication, so we are not a zombie
 
@@ -1354,9 +1472,37 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         // run hung with N-1 of N results recorded. Queue the orphaned job for re-dispatch
         // so the next worker that asks (including a late straggler) picks it up.
         if ( disconnected_worker_had_a_job && socket_to_worker_job_pointer_hash[connected_socket]->has_been_run == false ) {
-            SocketSendError("Error: A worker has disconnected with an unfinished job; it will be re-dispatched.");
-            SocketSendInfo("The disconnected worker was running a job with the following arguments:\n" + socket_to_worker_job_pointer_hash[connected_socket]->PrintAllArgumentsTowxString( ));
-            jobs_to_redispatch.push_back(socket_to_worker_job_pointer_hash[connected_socket]);
+            RunJob*   orphaned_job    = socket_to_worker_job_pointer_hash[connected_socket];
+            const int attempts_so_far = ReturnJobDispatchAttempts(orphaned_job->job_number);
+
+            SocketSendInfo("The disconnected worker was running a job with the following arguments:\n" + orphaned_job->PrintAllArgumentsTowxString( ));
+
+            // Re-dispatch is capped. A job that always kills its worker (a pathological
+            // pixel producing NaNs that trips an assert, say) would otherwise be handed to
+            // worker after worker forever. Everything below counts ATTEMPTS, not retries:
+            // attempts_so_far is how many times this job has been sent out, and the budget
+            // is max_job_redispatch_tries + 1 attempts.
+            if ( attempts_so_far < 0 ) {
+                SocketSendError(wxString::Format("Error: A worker has disconnected with unfinished job %i, but that job has no entry in this package's attempt table, so its retries could not be bounded. It will NOT be re-dispatched.",
+                                                 orphaned_job->job_number));
+            }
+            else if ( attempts_so_far <= max_job_redispatch_tries ) {
+                SocketSendError(wxString::Format("Error: A worker has disconnected with unfinished job %i on attempt %i of %li; it will be re-dispatched.",
+                                                 orphaned_job->job_number, attempts_so_far, max_job_redispatch_tries + 1));
+                jobs_to_redispatch.push_back(orphaned_job);
+            }
+            else {
+                // Deliberately does NOT say the run has failed: nothing here fails it. The
+                // all-done gate needs number_of_finished_jobs == number_of_jobs, so an
+                // abandoned job leaves the master waiting in its event loop indefinitely.
+                // Say what is actually true and what the operator has to do about it.
+                // Hedged on purpose: a worker falsely declared dead can still deliver this
+                // job's result later (see the duplicate-result guard in
+                // HandleSocketJobResult), in which case the run does complete.
+                SocketSendError(wxString::Format("Error: Job %i has now failed on all %li permitted attempt(s) (CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = %li) and will not be re-dispatched. Unless a result for it is still in flight from a worker wrongly presumed dead, this run will never reach %i of %i finished jobs and will have to be stopped by hand.",
+                                                 orphaned_job->job_number, max_job_redispatch_tries + 1, max_job_redispatch_tries,
+                                                 current_job_package.number_of_jobs, current_job_package.number_of_jobs));
+            }
         }
         else if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
             SocketSendError("Error: A worker has disconnected before all jobs are finished.");

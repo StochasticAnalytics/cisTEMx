@@ -197,6 +197,27 @@ class
     // death after full dispatch no longer loses the job forever and wedges the run.
     std::vector<RunJob*> jobs_to_redispatch;
 
+    // Re-dispatch has to be bounded: a job that always kills its worker
+    // (pathological pixel -> NaN -> assert) would otherwise be handed to worker
+    // after worker forever. job_dispatch_attempts counts attempts per job (sized
+    // when the master receives its package) and max_job_redispatch_tries caps how
+    // many times one job may be re-sent after its first attempt, so the budget is
+    // max_job_redispatch_tries + 1 attempts.
+    // CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES, default 1 (=> at most 2
+    // attempts per job); 0 disables re-dispatch entirely; clamped to 1000 above.
+    //
+    // At the cap the master stops re-dispatching and says so, but note what that
+    // does NOT do: nothing fails the run. The all-done gate needs
+    // number_of_finished_jobs == number_of_jobs, so an abandoned job leaves the
+    // master waiting in its event loop until someone stops it. Bounding the retry
+    // is not the same as terminating the run, and only the first is implemented.
+    std::vector<int> job_dispatch_attempts;
+    long             max_job_redispatch_tries;
+
+    long ReturnMaxJobRedispatchTries( );
+    int  RecordJobDispatchAttempt(int job_index);
+    int  ReturnJobDispatchAttempts(int job_index);
+
     wxCmdLineParser command_line_parser;
 
     virtual bool DoCalculation( ) = 0;

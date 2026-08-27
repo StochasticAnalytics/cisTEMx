@@ -1054,6 +1054,15 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         socket_counter--;
                                     }
                                 }
+                                else if ( memcmp(socket_input_buffer, socket_liveness_ping, SOCKET_CODE_SIZE) == 0 ) {
+                                    // No payload. Answered from the MAIN thread (via the handler), so a
+                                    // pong proves the peer's event loop is alive, not just its kernel.
+                                    parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketLivenessPing, parent_pointer, monitored_sockets[socket_counter]));
+                                }
+                                else if ( memcmp(socket_input_buffer, socket_liveness_pong, SOCKET_CODE_SIZE) == 0 ) {
+                                    // No payload.
+                                    parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketLivenessPong, parent_pointer, monitored_sockets[socket_counter]));
+                                }
                                 else {
                                     // An unrecognized code means this socket's byte stream has lost framing:
                                     // we are reading payload bytes as a message code. Continuing to read

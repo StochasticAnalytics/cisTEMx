@@ -56,6 +56,11 @@ bool MyApp::OnInit( ) {
 
     socket_to_worker_job_pointer_hash.clear( );
 
+    worker_liveness_timer = NULL;
+    liveness_ping_sent_at_ms.clear( );
+    number_of_abandoned_jobs = 0;
+    run_unfinishable_strikes = 0;
+
     jobs_to_redispatch.clear( );
     job_dispatch_attempts.clear( );
     max_job_redispatch_tries = ReturnMaxJobRedispatchTries( );
@@ -278,6 +283,152 @@ long MyApp::ReturnMaxJobRedispatchTries( ) {
     return parsed_value;
 }
 
+// CISTEM_EXPERIMENTAL_WORKER_LIVENESS_TIMEOUT: seconds a job-holding worker may leave a
+// liveness ping unanswered before the master presumes it dead and releases its job.
+// Default 900 s - generous against every stall actually observed (the worst master merge
+// backlog measured is ~6 minutes, and master-side stalls delay the ping and the deadline
+// check identically, so they cannot false-positive). 0 disables the sweep entirely.
+long MyApp::ReturnWorkerLivenessTimeoutSeconds( ) {
+    const long  default_seconds = 900;
+    const long  maximum_seconds = 86400;
+    const char* from_env        = getenv("CISTEM_EXPERIMENTAL_WORKER_LIVENESS_TIMEOUT");
+
+    if ( from_env == NULL )
+        return default_seconds;
+
+    long     parsed_value;
+    wxString value_as_string(from_env);
+
+    if ( value_as_string.Trim( ).Trim(false).ToLong(&parsed_value) == false || parsed_value < 0 ) {
+        wxPrintf("Warning: CISTEM_EXPERIMENTAL_WORKER_LIVENESS_TIMEOUT = '%s' is not a non-negative integer - using the default of %li\n", from_env, default_seconds);
+        return default_seconds;
+    }
+
+    if ( parsed_value > maximum_seconds ) {
+        wxPrintf("Warning: CISTEM_EXPERIMENTAL_WORKER_LIVENESS_TIMEOUT = '%s' exceeds the maximum of %li - using %li\n", from_env, maximum_seconds, maximum_seconds);
+        return maximum_seconds;
+    }
+
+    return parsed_value;
+}
+
+// Any process that is pinged answers from its MAIN thread (the monitor thread dispatches
+// here via CallAfter), so a pong proves the process exists AND its event loop is alive. A
+// worker whose calculation thread is busy computing still answers immediately.
+void MyApp::HandleSocketLivenessPing(wxSocketBase* connected_socket) {
+    WriteToSocket(connected_socket, socket_liveness_pong, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+}
+
+void MyApp::HandleSocketLivenessPong(wxSocketBase* connected_socket) {
+    liveness_ping_sent_at_ms.erase(connected_socket);
+}
+
+// Master only, every 3 minutes: (1) ping every socket that holds a job and presume dead
+// any that has not answered within the liveness timeout - a worker that died behind a
+// broken tunnel leaves the master's socket half-open forever, because the master only
+// ever reads from a busy worker and a socket that is never written to never errors. The
+// presumed-dead socket goes through HandleSocketDisconnect, so its job is released into
+// the normal orphan/re-dispatch machinery. (2) Check whether the run can still finish at
+// all, and end it loudly if not (see FailRunAsUnfinishable).
+void MyApp::OnWorkerLivenessTimer(wxTimerEvent& event) {
+    const long timeout_seconds = ReturnWorkerLivenessTimeoutSeconds( );
+
+    if ( timeout_seconds > 0 ) {
+        const long now_ms = long(wxGetLocalTimeMillis( ).GetValue( ));
+
+        // Collect first: HandleSocketDisconnect mutates the hash this iterates.
+        std::vector<wxSocketBase*> presumed_dead;
+
+        for ( SocketJobPointerHash::iterator hash_entry = socket_to_worker_job_pointer_hash.begin( ); hash_entry != socket_to_worker_job_pointer_hash.end( ); ++hash_entry ) {
+            wxSocketBase* worker_socket = hash_entry->first;
+
+            if ( worker_socket == NULL )
+                continue;
+
+            // A socket the OS already knows is dead does not need the full ping timeout -
+            // and writing a ping to it would just spray write errors into the log.
+            if ( worker_socket->IsConnected( ) == false ) {
+                presumed_dead.push_back(worker_socket);
+                continue;
+            }
+
+            auto ping_entry = liveness_ping_sent_at_ms.find(worker_socket);
+
+            if ( ping_entry == liveness_ping_sent_at_ms.end( ) ) {
+                liveness_ping_sent_at_ms[worker_socket] = now_ms;
+                WriteToSocket(worker_socket, socket_liveness_ping, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+            }
+            else if ( now_ms - ping_entry->second > timeout_seconds * 1000 ) {
+                presumed_dead.push_back(worker_socket);
+            }
+        }
+
+        for ( wxSocketBase* dead_socket : presumed_dead ) {
+            SocketSendError(wxString::Format("Error: a worker holding a job has not answered a liveness ping for over %li seconds - presuming it dead and releasing its job.", timeout_seconds));
+            liveness_ping_sent_at_ms.erase(dead_socket);
+            HandleSocketDisconnect(dead_socket);
+        }
+    }
+
+    // Can this run still finish? Two ways it provably cannot:
+    //   (1) every job not yet finished has been abandoned at the re-dispatch cap;
+    //   (2) all jobs are dispatched, no worker is connected (so no one will ever ask for
+    //       a re-dispatch), nothing is queued for merge, and the finish gate is short.
+    // Both must hold on two consecutive ticks (>= 3 minutes apart) before acting, so an
+    // in-flight late result or a straggler connection gets a grace window.
+    bool run_is_unfinishable = false;
+
+    if ( number_of_abandoned_jobs > 0 && number_of_finished_jobs + number_of_abandoned_jobs >= current_job_package.number_of_jobs )
+        run_is_unfinishable = true;
+    else if ( current_job_package.number_of_jobs > 0 &&
+              number_of_dispatched_jobs >= current_job_package.number_of_jobs &&
+              worker_socket_pointers.GetCount( ) == 0 &&
+              number_of_finished_jobs < current_job_package.number_of_jobs &&
+              queued_result_payload_count.load( ) == 0 )
+        run_is_unfinishable = true;
+
+    if ( run_is_unfinishable == true ) {
+        run_unfinishable_strikes++;
+        if ( run_unfinishable_strikes >= 2 )
+            FailRunAsUnfinishable(wxString::Format("%li of %i jobs are finished, %li are permanently abandoned, and %i workers remain - no path to completion exists.",
+                                                   number_of_finished_jobs, current_job_package.number_of_jobs, number_of_abandoned_jobs, int(worker_socket_pointers.GetCount( ))));
+    }
+    else {
+        run_unfinishable_strikes = 0;
+    }
+}
+
+// The all-done gate needs number_of_finished_jobs == number_of_jobs; when that has become
+// unreachable the old behavior was to wait in the event loop forever, holding the fleet
+// and its GPU slots until someone killed the run by hand (2026-08-27: an hour, 22 slots).
+// End it instead: tell everyone to die, tear down, and exit with a code that says why.
+void MyApp::FailRunAsUnfinishable(wxString reason) {
+    SocketSendError("Error: this run can no longer finish - shutting it down. " + reason);
+    wxPrintf("MASTER: run is unfinishable - shutting down. %s\n", reason);
+
+    for ( int counter = 0; counter < worker_socket_pointers.GetCount( ); counter++ ) {
+        if ( worker_socket_pointers[counter] == NULL )
+            continue;
+        WriteToSocket(worker_socket_pointers[counter], socket_time_to_die, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+        StopMonitoringAndDestroySocket(worker_socket_pointers[counter]);
+    }
+    worker_socket_pointers.Clear( );
+
+    if ( controller_socket != NULL ) {
+        StopMonitoringAndDestroySocket(controller_socket);
+        controller_socket = NULL;
+    }
+
+    ShutDownServer( );
+    ShutDownSocketMonitor( );
+
+    if ( work_thread != NULL )
+        work_thread->Kill( );
+
+    ExitMainLoop( );
+    exit(cistem::exit_code::run_unfinishable);
+}
+
 // Count one dispatch of job_index and return the resulting attempt number (1 on the
 // first dispatch), or -1 if job_index is not a job in the current package.
 //
@@ -333,6 +484,10 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
 
         orphaned_job->SendJob(socket);
         socket_to_worker_job_pointer_hash[socket] = orphaned_job;
+        // The worker just asked for work: that is proof of life, so clear any outstanding
+        // liveness ping. This also prevents a recycled socket address inheriting a stale
+        // ping timestamp from a previous worker and being presumed dead on arrival.
+        liveness_ping_sent_at_ms.erase(socket);
         return;
     }
 
@@ -342,6 +497,9 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
         // See RunJob::SendJob() Doxygen for encoding order specification
         current_job_package.jobs[number_of_dispatched_jobs].SendJob(socket);
         socket_to_worker_job_pointer_hash[socket] = &current_job_package.jobs[number_of_dispatched_jobs];
+        // Proof of life + guards against a recycled socket address inheriting a stale
+        // ping timestamp (see the re-dispatch branch above).
+        liveness_ping_sent_at_ms.erase(socket);
 
         RecordJobDispatchAttempt(int(number_of_dispatched_jobs));
 
@@ -354,6 +512,7 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
 
         // Remember that this socket doesn't have a job anymore
         socket_to_worker_job_pointer_hash.erase(socket);
+        liveness_ping_sent_at_ms.erase(socket);
     }
 }
 
@@ -497,26 +656,78 @@ void MyApp::OnThreadComplete(wxThreadEvent& my_event) {
     my_result.SendToSocket(master_socket);
 }
 
+// Create and start the calculation thread if there is not one already. Deliberately does
+// NOT touch the stopwatch: on a re-arm (a job arriving after the previous thread idled
+// out) the worker-lifetime clock keeps running from the original start, so the timing the
+// worker eventually reports stays a lifetime figure. Returns false, with work_thread back
+// at NULL, if the thread could not be created - the caller decides how fatal that is.
+bool MyApp::EnsureWorkThreadIsRunning( ) {
+    if ( work_thread != NULL )
+        return true;
+
+    work_thread = new CalculateThread(this, GetMaxJobWaitTimeInSeconds( ));
+
+    if ( work_thread->Run( ) != wxTHREAD_NO_ERROR ) {
+        MyPrintWithDetails("Can't create the thread!");
+        delete work_thread;
+        work_thread = NULL;
+        return false;
+    }
+
+    return true;
+}
+
 void MyApp::OnThreadEnding(wxThreadEvent& my_event) {
     SendAllResultsFromResultQueue( );
 
     work_thread = NULL;
 
-    // NOTE (2026-08-26): a previous version of this handler made a networked worker call
-    // ExitMainLoop( ) here, on the premise that the calculation thread is created once and
-    // never recreated, so a worker whose thread ended is permanently inert. That premise is
-    // wrong in two ways and the code was withdrawn:
-    //
-    //   - HandleSocketYouAreAWorker recreates the thread behind "if ( work_thread == NULL )",
-    //     which is exactly the value this function just wrote. A worker that reconnects on a
-    //     zombie lap therefore recovers on its own, and exiting here destroys that recovery.
-    //   - The thread does not end only when told to die. CalculateThread::Entry also breaks
-    //     out on an idle timeout (job_wait_time, 360 s for match_template), so any master
-    //     stall longer than that would have killed a healthy, connected worker.
-    //
-    // The real problem it was aimed at - a worker sitting inert while holding a GPU slot -
-    // is real and still open. It needs a fix that distinguishes "told to die" from "timed
-    // out while still connected", not an unconditional exit.
+    // This handler only ever runs for a thread that broke out of its loop on the idle
+    // timeout (job_wait_time): both told-to-die paths (HandleSocketTimeToDie, worker-side
+    // HandleSocketDisconnect) exit the process before this event could be processed.
+
+    // A job can arrive in the gap between the thread deciding to end and this handler
+    // running: HandleSocketReadyToSendSingleJob sets thread_next_action and both it and
+    // this handler run on the main thread, but the job's event can be queued first. If
+    // that happened the flag is set with no thread left to read it, and the job is
+    // silently swallowed - the master's books say assigned, this process never runs it,
+    // and the run wedges one result short (observed 2026-08-27: run nbryBR5B5GseKMFp
+    // stuck at 57 of 58 chunks of its final image). Re-arm instead of exiting.
+    bool have_pending_job = false;
+    {
+        wxMutexLocker lock(job_lock);
+        if ( lock.IsOk( ) == true )
+            have_pending_job = (thread_next_action == THREAD_START_NEXT_JOB);
+    }
+
+    if ( have_pending_job == true ) {
+        if ( EnsureWorkThreadIsRunning( ) == false ) {
+            SocketSendError("Error: worker has a pending job but cannot recreate its calculation thread - exiting so the job is re-dispatched.");
+            exit(cistem::exit_code::thread_creation_failed);
+        }
+        return;
+    }
+
+    // No job pending: this process has nothing to do and no thread to ever ask for more.
+    // A networked worker that lingers here is a connected-but-useless husk that holds its
+    // batch slot (and GPU) until the run ends or someone kills it - 22 of them held slots
+    // for an hour on 2026-08-27. Exit and release the slot instead. Send the thread
+    // timing first, exactly like the told-to-die path, so the master's bookkeeping
+    // (worker_socket_pointers erase + timing tally) treats this as an orderly departure
+    // rather than a mid-run death, and the GUI is not spammed with false errors.
+    if ( is_running_locally == false && i_am_the_master == false ) {
+        wxPrintf("Worker: calculation thread idled out with no job pending - exiting to release this slot.\n");
+
+        if ( master_socket != NULL && master_socket->IsConnected( ) == true ) {
+            long milliseconds_spent_by_thread = stopwatch.Time( );
+            WriteToSocket(master_socket, socket_send_thread_timing, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+            WriteToSocket(master_socket, &milliseconds_spent_by_thread, sizeof(long), true, "SendMillisecondsSpentByThread", FUNCTION_DETAILS_AS_WXSTRING);
+            StopMonitoringAndDestroySocket(master_socket);
+        }
+
+        ShutDownSocketMonitor( );
+        exit(cistem::exit_code::idle_worker_timeout);
+    }
 }
 
 void MyApp::OnThreadSendError(wxThreadEvent& my_event) {
@@ -945,6 +1156,17 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
 
     Bind(wxEVT_TIMER, wxTimerEventHandler(MyApp::OnMasterQueueTimer), this, 3);
 
+    // Periodic liveness sweep over job-holding workers, and the run-unfinishable check.
+    // Recurring, master-lifetime: during a long main-thread stall (a merge backlog) the
+    // tick events just queue up and are processed - with correct arithmetic - when the
+    // stall clears, so a stalled master cannot false-positive its own workers. Guarded so
+    // a re-entered master handler cannot double-Bind or leak a second timer.
+    if ( worker_liveness_timer == NULL ) {
+        Bind(wxEVT_TIMER, wxTimerEventHandler(MyApp::OnWorkerLivenessTimer), this, 4);
+        worker_liveness_timer = new wxTimer(this, 4);
+        worker_liveness_timer->Start(180000); // 3 minutes
+    }
+
     my_port        = ReturnServerPort( );
     my_port_string = ReturnServerPortString( );
 
@@ -1098,14 +1320,8 @@ void MyApp::HandleSocketYouAreAWorker(wxSocketBase* connected_socket, wxString m
     // all counting down the same idle timeout and printing their own exit spam)
     if ( work_thread == NULL ) {
         stopwatch.Start( );
-        work_thread = new CalculateThread(this, GetMaxJobWaitTimeInSeconds( ));
-
-        if ( work_thread->Run( ) != wxTHREAD_NO_ERROR ) {
-            MyPrintWithDetails("Can't create the thread!");
-            delete work_thread;
-            work_thread = NULL;
+        if ( EnsureWorkThreadIsRunning( ) == false )
             ExitMainLoop( );
-        }
     }
 
     // we are apparently connected again, but this can be a lie = a certain number of connections appear to just be accepted by the operating
@@ -1408,11 +1624,31 @@ void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long re
     StopMonitoringAndDestroySocket(connected_socket);
     //connected_socket->Destroy();
 
+    // A worker departing on its idle timeout (exit_code::idle_worker_timeout) can cross
+    // in flight with a job this master just dispatched to it: the worker sends its timing
+    // and exits without ever seeing the job. Erasing the hash entry below would then lose
+    // that job with no recovery, so re-queue it first, exactly as a mid-run death would.
+    if ( socket_to_worker_job_pointer_hash.count(connected_socket) != 0 && socket_to_worker_job_pointer_hash[connected_socket] != NULL &&
+         socket_to_worker_job_pointer_hash[connected_socket]->has_been_run == false ) {
+        RunJob*   orphaned_job    = socket_to_worker_job_pointer_hash[connected_socket];
+        const int attempts_so_far = ReturnJobDispatchAttempts(orphaned_job->job_number);
+
+        if ( attempts_so_far >= 0 && attempts_so_far <= max_job_redispatch_tries ) {
+            SocketSendInfo(wxString::Format("A worker departed (idle timeout) just as job %i was dispatched to it; the job has been re-queued.", orphaned_job->job_number));
+            jobs_to_redispatch.push_back(orphaned_job);
+        }
+        else {
+            number_of_abandoned_jobs++;
+            SocketSendError(wxString::Format("Error: Job %i was in flight to a departing worker and its retry budget is exhausted - it is abandoned.", orphaned_job->job_number));
+        }
+    }
+
     // This worker is done and its socket is going away: forget it, so the controller-disconnect /
     // time-to-die loops do not write to a destroyed socket, and the disconnect the monitor thread
     // may still deliver for it (the worker closes right after sending its timing) is not treated
     // as a worker dying mid-run.
     socket_to_worker_job_pointer_hash.erase(connected_socket);
+    liveness_ping_sent_at_ms.erase(connected_socket);
     // Guard the Remove: during a mass teardown (GUI kill mid-run) or a stale-pointer
     // disconnect, this handler can fire for a socket the disconnect path already removed
     // (or that IfSocketIsAKeySocketSetItToNull NULLed in place); an unguarded Remove then
@@ -1539,10 +1775,21 @@ void MyApp::HandleSocketReadyToSendSingleJob(wxSocketBase* connected_socket, Run
     my_current_job = *received_job;
     delete received_job;
 
+    // The calculation thread may have idled out (job_wait_time) while this job's request
+    // was queued behind a busy master - the answer can arrive minutes after it was asked
+    // for. Setting the flag with no thread to read it silently swallows the job: the
+    // master's books say assigned, this process never runs it, and the run wedges one
+    // result short (observed 2026-08-27: run nbryBR5B5GseKMFp stuck at 57 of 58 chunks
+    // of its final image behind a ~6 minute merge backlog). Re-arm the thread first.
+    if ( EnsureWorkThreadIsRunning( ) == false ) {
+        SocketSendError("Error: worker received a job but cannot create a calculation thread to run it - exiting so the job is re-dispatched.");
+        exit(cistem::exit_code::thread_creation_failed);
+    }
+
     wxMutexLocker* lock = new wxMutexLocker(job_lock);
 
     if ( lock->IsOk( ) == true ) {
-        MyDebugAssertFalse(thread_next_action = THREAD_START_NEXT_JOB, "Thread action is already start job");
+        MyDebugAssertFalse(thread_next_action == THREAD_START_NEXT_JOB, "Thread action is already start job");
         thread_next_action = THREAD_START_NEXT_JOB;
     }
     else {
@@ -1620,14 +1867,15 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
                 jobs_to_redispatch.push_back(orphaned_job);
             }
             else {
-                // Deliberately does NOT say the run has failed: nothing here fails it. The
-                // all-done gate needs number_of_finished_jobs == number_of_jobs, so an
-                // abandoned job leaves the master waiting in its event loop indefinitely.
-                // Say what is actually true and what the operator has to do about it.
-                // Hedged on purpose: a worker falsely declared dead can still deliver this
-                // job's result later (see the duplicate-result guard in
-                // HandleSocketJobResult), in which case the run does complete.
-                SocketSendError(wxString::Format("Error: Job %i has now failed on all %li permitted attempt(s) (CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = %li) and will not be re-dispatched. Unless a result for it is still in flight from a worker wrongly presumed dead, this run will never reach %i of %i finished jobs and will have to be stopped by hand.",
+                // The job is now permanently abandoned. Count it: when every remaining job
+                // is abandoned, the liveness tick's unfinishable check fails the run loudly
+                // (FailRunAsUnfinishable) instead of leaving the master waiting in its
+                // event loop to be killed by hand. The two-tick grace there is also the
+                // hedge for a worker falsely declared dead whose result is still in flight
+                // (see the duplicate-result guard in HandleSocketJobResult) - if it lands,
+                // the run completes normally.
+                number_of_abandoned_jobs++;
+                SocketSendError(wxString::Format("Error: Job %i has now failed on all %li permitted attempt(s) (CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = %li) and will not be re-dispatched. Unless a result for it is still in flight from a worker wrongly presumed dead, this run cannot reach %i of %i finished jobs, and the master will shut the run down.",
                                                  orphaned_job->job_number, max_job_redispatch_tries + 1, max_job_redispatch_tries,
                                                  current_job_package.number_of_jobs, current_job_package.number_of_jobs));
             }
@@ -1638,6 +1886,7 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         }
 
         socket_to_worker_job_pointer_hash.erase(connected_socket);
+        liveness_ping_sent_at_ms.erase(connected_socket);
         // Remove the entry as well as destroying the socket: a stale pointer left in the
         // array aliases future sockets malloc'd at the recycled address (watchdog probes
         // then masquerade as this dead worker, one false disconnect per probe).

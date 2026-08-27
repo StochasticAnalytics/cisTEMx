@@ -26,5 +26,12 @@ const unsigned char socket_result_with_image_to_write[]  = "=z4-Y8Ge?vEjh`H^";
 const unsigned char socket_program_defined_result[]      = "e}w<S9hm<3L6Dr+V";
 const unsigned char socket_send_thread_timing[]          = "Kq04etrq1fO2QV4d";
 const unsigned char socket_template_match_result_ready[] = "EP927e$*cQ^egWq'";
+// Liveness probe pair (2026-08-27): the master pings sockets holding a job; the peer's
+// main thread answers with a pong. No payload follows either code. Both sides of a run
+// ship in the same image, so there is no old/new mixing to worry about; an old binary
+// that somehow received one would hit the unknown-code branch and drop the socket, which
+// for a liveness check is the correct outcome anyway.
+const unsigned char socket_liveness_ping[] = "Lv?9V+wQ2@xR-e5N";
+const unsigned char socket_liveness_pong[] = "qN4&yZ8_uT!fB^0c";
 
 #endif

@@ -1,3 +1,5 @@
+#include <unordered_map>
+
 WX_DEFINE_ARRAY_PTR(wxSocketBase*, ArrayOfSocketBasePointers);
 WX_DECLARE_HASH_MAP(wxSocketBase*, RunJob*, wxPointerHash, wxPointerEqual, SocketJobPointerHash);
 
@@ -98,9 +100,14 @@ class
     wxTimer* master_queue_timer;
     bool     master_queue_timer_set;
 
+    // Master only: periodic liveness sweep over sockets holding a job (see
+    // OnWorkerLivenessTimer). Also hosts the run-unfinishable check.
+    wxTimer* worker_liveness_timer;
+
     void OnQueueTimer(wxTimerEvent& event);
     void OnMasterQueueTimer(wxTimerEvent& event);
     void OnZombieTimer(wxTimerEvent& event);
+    void OnWorkerLivenessTimer(wxTimerEvent& event);
 
     virtual float GetMaxJobWaitTimeInSeconds( ) { return 30.0f; }
 
@@ -134,6 +141,8 @@ class
     void HandleSocketYouAreConnected(wxSocketBase* connected_socket);
     void HandleSocketReadyToSendSingleJob(wxSocketBase* connected_socket, RunJob* received_job);
     void HandleSocketDisconnect(wxSocketBase* connected_socket);
+    void HandleSocketLivenessPing(wxSocketBase* connected_socket);
+    void HandleSocketLivenessPong(wxSocketBase* connected_socket);
 
     void IfSocketIsAKeySocketSetItToNull(wxSocketBase* socket_to_check);
 
@@ -206,17 +215,42 @@ class
     // CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES, default 1 (=> at most 2
     // attempts per job); 0 disables re-dispatch entirely; clamped to 1000 above.
     //
-    // At the cap the master stops re-dispatching and says so, but note what that
-    // does NOT do: nothing fails the run. The all-done gate needs
-    // number_of_finished_jobs == number_of_jobs, so an abandoned job leaves the
-    // master waiting in its event loop until someone stops it. Bounding the retry
-    // is not the same as terminating the run, and only the first is implemented.
+    // At the cap the master stops re-dispatching, counts the job in
+    // number_of_abandoned_jobs, and says so. Once every remaining job is abandoned
+    // the liveness tick's unfinishable check ends the run via FailRunAsUnfinishable
+    // (exit_code::run_unfinishable) - it no longer waits in the event loop to be
+    // stopped by hand.
     std::vector<int> job_dispatch_attempts;
     long             max_job_redispatch_tries;
 
     long ReturnMaxJobRedispatchTries( );
     int  RecordJobDispatchAttempt(int job_index);
     int  ReturnJobDispatchAttempts(int job_index);
+
+    // Master only: liveness of workers holding a job. A worker that dies behind a broken
+    // tunnel can leave the master's end of the socket half-open forever - the master only
+    // ever READS from a busy worker, so nothing notices, the job stays assigned to a
+    // ghost, and the run wedges (2026-08-27). The liveness timer pings every job-holding
+    // socket; the worker's MAIN thread answers (compute runs on the calculation thread),
+    // so a pong proves the far process and its event loop are alive. A socket whose ping
+    // goes unanswered past the timeout is presumed dead and fed to HandleSocketDisconnect,
+    // which releases its job through the normal orphan/re-dispatch machinery.
+    // liveness_ping_sent_at_ms holds the send time of the oldest UNanswered ping per
+    // socket (erased on pong, on normal completion, and on disconnect).
+    std::unordered_map<wxSocketBase*, long> liveness_ping_sent_at_ms;
+
+    long ReturnWorkerLivenessTimeoutSeconds( );
+
+    // Jobs abandoned at the re-dispatch cap. When every remaining job is abandoned - or
+    // the fleet has fully drained with nothing in flight - the run can never reach
+    // all-jobs-finished, and FailRunAsUnfinishable ends it loudly instead of leaving the
+    // master waiting in its event loop to be killed by hand (how 2026-08-27 ended).
+    long number_of_abandoned_jobs;
+    int  run_unfinishable_strikes;
+
+    void FailRunAsUnfinishable(wxString reason);
+
+    bool EnsureWorkThreadIsRunning( );
 
     wxCmdLineParser command_line_parser;
 

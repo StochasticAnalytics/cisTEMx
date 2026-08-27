@@ -249,6 +249,20 @@ constexpr int success = 0; // told to die by the master, after its work was done
 constexpr int master_disconnected = 10; // the master's socket dropped mid-run
 constexpr int reconnect_failed    = 11; // gave up re-establishing the controller/master link
 
+// A worker whose calculation thread idled out (job_wait_time) with no job pending exits
+// with this code instead of lingering as a connected-but-useless process holding a slot
+// (observed 2026-08-27: 22 such workers held GPU slots for an hour after a run wedged).
+constexpr int idle_worker_timeout = 12;
+
+// The master determined the run can never reach all-jobs-finished (every remaining job
+// abandoned at the retry cap, or no workers left and nothing in flight) and shut the run
+// down instead of waiting in its event loop to be killed by hand.
+constexpr int run_unfinishable = 13;
+
+// A worker had a job in hand (or pending) but could not create the calculation thread to
+// run it; it exits so the master's disconnect handling re-dispatches the job.
+constexpr int thread_creation_failed = 14;
+
 } // namespace exit_code
 
 } // namespace cistem

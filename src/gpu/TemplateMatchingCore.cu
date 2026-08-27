@@ -429,6 +429,12 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
     my_dist->MakeHostWaitOnTmEmpricalDist_Stream( );
     projection_queue.RecordProjectionReadyBlockingHost_Event(current_projection_idx, cudaStreamPerThread);
 
+    // Orientations searched since the last progress result was queued; one 1-float
+    // JobResult per orientation floods the master's relay queue (2026-08-28 cascade),
+    // so batches of orientations_per_progress_result are reported instead, with the
+    // count carried in the result value and the remainder flushed after the loop.
+    int orientations_since_progress_result = 0;
+
     for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
 
         if ( current_search_position % 10 == 0 ) {
@@ -620,10 +626,14 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
                 }
             }
             else {
-                temp_float             = current_correlation_position;
-                JobResult* temp_result = new JobResult;
-                temp_result->SetResult(1, &temp_float);
-                parent_pointer->AddJobToResultQueue(temp_result);
+                orientations_since_progress_result++;
+                if ( orientations_since_progress_result >= cistem::match_template::orientations_per_progress_result ) {
+                    temp_float             = orientations_since_progress_result;
+                    JobResult* temp_result = new JobResult;
+                    temp_result->SetResult(1, &temp_float);
+                    parent_pointer->AddJobToResultQueue(temp_result);
+                    orientations_since_progress_result = 0;
+                }
             }
         } // loop over psi angles
 
@@ -632,6 +642,16 @@ void TemplateMatchingCore::RunInnerLoop(Image& projection_filter,
             UpdateSecondaryPeaks( );
 
     } // end of outer loop euler sphere position
+
+    // Report the orientations that did not fill a complete batch, so the GUI's running
+    // total still sums exactly to the number of orientations this chunk searched.
+    if ( is_running_locally == false && orientations_since_progress_result > 0 ) {
+        temp_float             = orientations_since_progress_result;
+        JobResult* temp_result = new JobResult;
+        temp_result->SetResult(1, &temp_float);
+        parent_pointer->AddJobToResultQueue(temp_result);
+        orientations_since_progress_result = 0;
+    }
 
     projection_queue.PrintTimes( );
 

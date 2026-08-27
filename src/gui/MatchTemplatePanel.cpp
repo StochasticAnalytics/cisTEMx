@@ -1656,9 +1656,19 @@ void MatchTemplatePanel::ProcessResult(JobResult* result_to_process) // this wil
     wxString bitmap_string;
     wxString plot_string;
 
-    number_of_received_results++;
+    // Since 2026-08-28 each progress result carries the number of searched orientations
+    // it represents in result_data[0] (workers batch cistem::match_template::
+    // orientations_per_progress_result orientations per result to keep the master's
+    // relay queue shallow), so add the carried count rather than counting messages -
+    // the running total still sums exactly to expected_number_of_results.
+    const bool is_first_result = (number_of_received_results == 0);
 
-    if ( number_of_received_results == 1 ) {
+    long orientations_in_this_result = 1;
+    if ( result_to_process->result_size == 1 && result_to_process->result_data[0] >= 1.0f )
+        orientations_in_this_result = long(result_to_process->result_data[0] + 0.5f);
+    number_of_received_results += orientations_in_this_result;
+
+    if ( is_first_result ) {
         current_job_starttime = current_time;
         time_of_last_update   = 0;
     }

@@ -1474,6 +1474,19 @@ void MyApp::HandleSocketJobResultQueue(wxSocketBase* connected_socket, ArrayofJo
         master_queue_timer     = new wxTimer(this, 3);
         master_queue_timer->StartOnce(1000);
     }
+    else {
+        // The armed timer starves whenever pending events arrive faster than the main
+        // thread consumes them (same guard as HandleSocketResultWithImageToWrite, whose
+        // comment documents the starvation). This path had no guard, and on 2026-08-28
+        // the drain never ran once a 26 s stall flooded the pending queue: the relay
+        // queue grew to 47 million one-float results, every 4096th append re-copied a
+        // ~370 MB pointer array, and the copy tax starved dispatch until the fleet
+        // idle-timed out. Draining inline whenever the last send is older than 2 s
+        // bounds the queue to a few seconds of arrivals no matter what the timer does.
+        if ( time(NULL) - time_of_last_master_queue_send > 2 ) {
+            MasterSendIntenalQueue( );
+        }
+    }
 }
 
 void MyApp::HandleSocketResultWithImageToWrite(wxSocketBase* connected_socket, wxString filename_to_write_to, int position_in_stack) {

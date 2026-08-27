@@ -46,6 +46,14 @@ constexpr float histogram_step               = (histogram_max - histogram_min) /
 constexpr float histogram_step_inverse       = float(histogram_number_of_points) / (histogram_max - histogram_min);
 constexpr float histogram_first_bin_midpoint = histogram_min + (histogram_step / 2.0f); // start position
 
+// Number of searched orientations represented by one progress JobResult sent from a
+// worker toward the GUI. One result per orientation (the behaviour until 2026-08-28)
+// floods the master's relay queue at thousands of tiny results per second and fed the
+// relay-queue cascade; each progress result now carries the orientation count it
+// represents in result_data[0] and the GUI sums the counts, so progress totals stay
+// exact against expected_number_of_results.
+constexpr int orientations_per_progress_result = 100;
+
 // Values for data that are passed around in the results.
 constexpr int   number_of_output_images     = 8; //mip, psi, theta, phi, pixel, defocus, sums, sqsums (scaled mip is not sent out)
 constexpr int   MAX_ALLOWED_NUMBER_OF_PEAKS = 1000; // An error will be thrown and job aborted if this number of peaks is exceeded in the make template results block

@@ -1418,6 +1418,10 @@ bool MatchTemplateApp::DoCalculation( ) {
             }
             else { // CPU execution path (serial within this function call)
                 profile_timing.start("RunInnerLoop cpu");
+                // Orientations searched since the last progress result; one result per
+                // orientation floods the master's relay queue (2026-08-28 cascade), so
+                // report batches carrying their count, remainder flushed after the loop.
+                int orientations_since_progress_result = 0;
                 // Loop over Euler search positions
                 for ( current_search_position = first_search_position; current_search_position <= last_search_position; current_search_position++ ) {
                     //loop over each in-plane rotation angle (psi)
@@ -1522,14 +1526,24 @@ bool MatchTemplateApp::DoCalculation( ) {
                         actual_number_of_angles_searched++;
 
                         if ( is_running_locally == false ) {
-
-                            // Currently there is no subsampling in the CPU implementation
-                            temp_float             = current_correlation_position;
-                            JobResult* temp_result = new JobResult;
-                            temp_result->SetResult(1, &temp_float);
-                            AddJobToResultQueue(temp_result);
+                            orientations_since_progress_result++;
+                            if ( orientations_since_progress_result >= cistem::match_template::orientations_per_progress_result ) {
+                                temp_float             = orientations_since_progress_result;
+                                JobResult* temp_result = new JobResult;
+                                temp_result->SetResult(1, &temp_float);
+                                AddJobToResultQueue(temp_result);
+                                orientations_since_progress_result = 0;
+                            }
                         }
                     }
+                }
+                if ( is_running_locally == false && orientations_since_progress_result > 0 ) {
+                    // Report the orientations that did not fill a complete batch, so the
+                    // GUI's running total sums exactly to the orientations searched.
+                    temp_float             = orientations_since_progress_result;
+                    JobResult* temp_result = new JobResult;
+                    temp_result->SetResult(1, &temp_float);
+                    AddJobToResultQueue(temp_result);
                 }
                 profile_timing.lap("RunInnerLoop cpu");
             } // if/else on use_gpu for inner loop

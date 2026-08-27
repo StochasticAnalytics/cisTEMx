@@ -1589,39 +1589,8 @@ static bool ReturnCgroupMemoryCurrentAndLimit(long& current_bytes, long& limit_b
     return true;
 }
 
-// Millisecond stall read from the named environment variable, for reproducing the
-// relay-queue cascade on demand (fault injection, 2026-08-28). 0 or unset = disabled;
-// capped at 60000 so a typo cannot park a run for minutes per event.
-static long ReturnExperimentalStallMilliseconds(const char* variable_name) {
-    const char* value_text = getenv(variable_name);
-    if ( value_text == NULL )
-        return 0;
-    long value_ms = atol(value_text);
-    if ( value_ms < 0 )
-        value_ms = 0;
-    if ( value_ms > 60000 )
-        value_ms = 60000;
-    return value_ms;
-}
-
 void MyApp::HandleSocketProgramDefinedResult(wxSocketBase* connected_socket, float* data_array, int size_of_data_array, int result_number, int number_of_expected_results) {
     const wxLongLong merge_start_ms = wxGetLocalTimeMillis( );
-
-    // Fault injection: hold the master's main thread per merged payload, imitating the
-    // multi-second merge spikes seen in production logs. Placed after merge_start_ms is
-    // taken so the DIAG line reports the stall it injected. While this thread sleeps,
-    // worker result batches pile up as pending events and the relay queue cannot drain -
-    // if the cascade hypothesis is right, enough stall here should lift the relay-queue
-    // floor off zero and reproduce the runaway deterministically.
-    static const long master_merge_stall_ms = ReturnExperimentalStallMilliseconds("CISTEM_EXPERIMENTAL_STALL_MASTER_MERGE_MS");
-    if ( master_merge_stall_ms > 0 ) {
-        static bool stall_announced = false;
-        if ( stall_announced == false ) {
-            wxPrintf("EXPERIMENTAL: injecting %li ms stall per merged payload (CISTEM_EXPERIMENTAL_STALL_MASTER_MERGE_MS)\n", master_merge_stall_ms);
-            stall_announced = true;
-        }
-        wxMilliSleep(master_merge_stall_ms);
-    }
 
     MasterHandleProgramDefinedResult(data_array, size_of_data_array, result_number, number_of_expected_results);
     delete[] data_array;

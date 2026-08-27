@@ -1137,38 +1137,7 @@ void JobControlApp::HandleSocketJobResult(wxSocketBase* connected_socket, JobRes
     delete received_result;
 }
 
-// Millisecond stall read from the named environment variable, for reproducing the
-// relay-queue cascade on demand (fault injection, 2026-08-28). 0 or unset = disabled;
-// capped at 60000 so a typo cannot park a run for minutes per event.
-static long ReturnExperimentalStallMilliseconds(const char* variable_name) {
-    const char* value_text = getenv(variable_name);
-    if ( value_text == NULL )
-        return 0;
-    long value_ms = atol(value_text);
-    if ( value_ms < 0 )
-        value_ms = 0;
-    if ( value_ms > 60000 )
-        value_ms = 60000;
-    return value_ms;
-}
-
 void JobControlApp::HandleSocketJobResultQueue(wxSocketBase* connected_socket, ArrayofJobResults* received_queue) {
-    // Fault injection: hold this process's main thread per relayed result batch,
-    // imitating a slow GUI consumer (e.g. project database writes on a struggling
-    // disk). Note the expected failure order: because the socket monitor thread keeps
-    // reading the master's sends and queueing them as pending events, this stall first
-    // balloons THIS process's memory (the observed job-control death), and pushes back
-    // on the master only once memory pressure slows the reader.
-    static const long relay_stall_ms = ReturnExperimentalStallMilliseconds("CISTEM_EXPERIMENTAL_STALL_JC_RELAY_MS");
-    if ( relay_stall_ms > 0 ) {
-        static bool stall_announced = false;
-        if ( stall_announced == false ) {
-            wxPrintf("EXPERIMENTAL: injecting %li ms stall per relayed result batch (CISTEM_EXPERIMENTAL_STALL_JC_RELAY_MS)\n", relay_stall_ms);
-            stall_announced = true;
-        }
-        wxMilliSleep(relay_stall_ms);
-    }
-
     // pass it on and delete..
 
     SendJobResultQueue(*received_queue);

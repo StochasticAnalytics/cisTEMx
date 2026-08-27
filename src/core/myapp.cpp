@@ -1611,11 +1611,17 @@ void MyApp::HandleSocketProgramDefinedResult(wxSocketBase* connected_socket, flo
     if ( ReturnCgroupMemoryCurrentAndLimit(cgroup_current, cgroup_limit) == true )
         cgroup_report = wxString::Format("%.2f/%.2f GB", double(cgroup_current) / 1073741824.0, double(cgroup_limit) / 1073741824.0);
 
-    wxPrintf("MASTER DIAG %s | result for image %i (payload %.0f MB) merged in %li ms | backlog %i payloads / %.2f GB | rss %.2f GB | cgroup %s\n",
+    // master_job_queue.GetCount( ) is a plain member read on this thread (the main
+    // thread owns the queue), added to test the 2026-08-27 diagnosis that the queue
+    // never drains: if this number climbs monotonically into the millions while the
+    // GUI progress bar is stale, the relay timer is starved and the queue is the
+    // structure behind the observed 32 KB-step reallocation churn.
+    wxPrintf("MASTER DIAG %s | result for image %i (payload %.0f MB) merged in %li ms | backlog %i payloads / %.2f GB | relay queue %li results | rss %.2f GB | cgroup %s\n",
              wxDateTime::Now( ).FormatISOTime( ), result_number,
              double(long(size_of_data_array) * long(sizeof(float))) / 1048576.0,
              merge_milliseconds,
              queued_result_payload_count.load( ), double(queued_result_payload_bytes.load( )) / 1073741824.0,
+             long(master_job_queue.GetCount( )),
              double(ReturnOwnResidentSetBytes( )) / 1073741824.0, cgroup_report);
 }
 

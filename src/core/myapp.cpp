@@ -1,5 +1,6 @@
 #include "core_headers.h"
 #include <wx/evtloop.h>
+#include <unistd.h> // sysconf, for the RSS diagnostics in HandleSocketProgramDefinedResult
 
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_COMPLETED, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_ENDING, wxThreadEvent);
@@ -637,6 +638,15 @@ void MyApp::SendIntermediateResultQueue(ArrayofJobResults& queue_to_send) {
 }
 
 void MyApp::SocketSendError(wxString error_to_send) {
+    // The master also mirrors to stdout, which the on-disk job_control log captures.
+    // Without this, every master-side decision reported through here (worker deaths,
+    // job re-dispatches, the retry-cap give-up) exists only as transient text in the
+    // GUI panel - during the 2026-08-26 OOM post-mortem there was no on-disk record of
+    // any of it. Workers are not mirrored: their stdout is streamed per-job condor
+    // output, where these messages would be duplicates of what the master reports.
+    if ( i_am_the_master == true )
+        wxPrintf("MASTER %s | %s\n", wxDateTime::Now( ).FormatISOTime( ), error_to_send);
+
     // send the error message flag
 
     if ( is_running_locally == false ) {
@@ -646,6 +656,10 @@ void MyApp::SocketSendError(wxString error_to_send) {
 }
 
 void MyApp::SocketSendInfo(wxString info_to_send) {
+    // See SocketSendError above for why the master mirrors to stdout.
+    if ( i_am_the_master == true )
+        wxPrintf("MASTER %s | %s\n", wxDateTime::Now( ).FormatISOTime( ), info_to_send);
+
     // send the info message flag
 
     if ( is_running_locally == false ) {
@@ -1279,9 +1293,114 @@ void MyApp::HandleSocketResultWithImageToWrite(wxSocketBase* connected_socket, w
     }
 }
 
+// This process's resident set size in bytes, from /proc/self/statm. 0 if unreadable
+// (non-Linux, or /proc unavailable) - callers print it as best-effort diagnostics only.
+static long ReturnOwnResidentSetBytes( ) {
+    long  size_pages     = 0;
+    long  resident_pages = 0;
+    FILE* statm          = fopen("/proc/self/statm", "r");
+    if ( statm == NULL )
+        return 0;
+    if ( fscanf(statm, "%ld %ld", &size_pages, &resident_pages) != 2 )
+        resident_pages = 0;
+    fclose(statm);
+    return resident_pages * sysconf(_SC_PAGESIZE);
+}
+
+// The tightest memory limit over this process's cgroup-v2 ancestry, and the usage
+// charged at that same level. This is what the kernel's OOM killer actually enforces:
+// on a shared login node the binding limit is typically the per-user slice, shared with
+// every other process of the same user - so a process can be killed at an RSS well
+// below the limit because its siblings hold the rest. Returns false if nothing was
+// readable (non-Linux, cgroup v1, no limit set anywhere).
+static bool ReturnCgroupMemoryCurrentAndLimit(long& current_bytes, long& limit_bytes) {
+    char  cgroup_path[1024] = "";
+    FILE* self_cgroup       = fopen("/proc/self/cgroup", "r");
+    if ( self_cgroup == NULL )
+        return false;
+
+    char line[1024];
+    while ( fgets(line, sizeof(line), self_cgroup) != NULL ) {
+        if ( strncmp(line, "0::", 3) == 0 ) {
+            strncpy(cgroup_path, line + 3, sizeof(cgroup_path) - 1);
+            cgroup_path[strcspn(cgroup_path, "\n")] = '\0';
+            break;
+        }
+    }
+    fclose(self_cgroup);
+    if ( cgroup_path[0] == '\0' )
+        return false;
+
+    // Walk from our own cgroup up toward the root, keeping the smallest numeric
+    // memory.max seen and the memory.current charged at that same level.
+    bool           found_a_limit = false;
+    long           best_limit    = 0;
+    long           best_current  = 0;
+    const wxString cgroup_root   = "/sys/fs/cgroup";
+    wxString       walk_path     = cgroup_root + wxString::FromUTF8(cgroup_path);
+
+    while ( walk_path.Length( ) > cgroup_root.Length( ) ) {
+        long  level_limit = -1;
+        FILE* max_file    = fopen((walk_path + "/memory.max").ToUTF8( ).data( ), "r");
+        if ( max_file != NULL ) {
+            char max_text[64] = "";
+            if ( fgets(max_text, sizeof(max_text), max_file) != NULL && strncmp(max_text, "max", 3) != 0 )
+                level_limit = atol(max_text);
+            fclose(max_file);
+        }
+
+        if ( level_limit > 0 && (found_a_limit == false || level_limit < best_limit) ) {
+            long  level_current = 0;
+            FILE* current_file  = fopen((walk_path + "/memory.current").ToUTF8( ).data( ), "r");
+            if ( current_file != NULL ) {
+                char current_text[64] = "";
+                if ( fgets(current_text, sizeof(current_text), current_file) != NULL )
+                    level_current = atol(current_text);
+                fclose(current_file);
+            }
+            found_a_limit = true;
+            best_limit    = level_limit;
+            best_current  = level_current;
+        }
+
+        walk_path = walk_path.BeforeLast('/');
+    }
+
+    if ( found_a_limit == false )
+        return false;
+    current_bytes = best_current;
+    limit_bytes   = best_limit;
+    return true;
+}
+
 void MyApp::HandleSocketProgramDefinedResult(wxSocketBase* connected_socket, float* data_array, int size_of_data_array, int result_number, int number_of_expected_results) {
+    const wxLongLong merge_start_ms = wxGetLocalTimeMillis( );
+
     MasterHandleProgramDefinedResult(data_array, size_of_data_array, result_number, number_of_expected_results);
     delete[] data_array;
+
+    queued_result_payload_count.fetch_sub(1);
+    queued_result_payload_bytes.fetch_sub(long(size_of_data_array) * long(sizeof(float)));
+
+    // One diagnostic line per merged payload, to stdout so it lands in the on-disk
+    // job_control log. Written AFTER this payload is consumed, so "backlog" is what is
+    // still queued behind it. This is the line that was missing on 2026-08-26, when the
+    // leader was OOM-killed at 7.6 GB against the 8 GB per-user cgroup with a deep
+    // unread-payload backlog and no record of merge times, memory, or queue depth in
+    // any log.
+    const long merge_milliseconds = (wxGetLocalTimeMillis( ) - merge_start_ms).ToLong( );
+    long       cgroup_current     = 0;
+    long       cgroup_limit       = 0;
+    wxString   cgroup_report      = "n/a";
+    if ( ReturnCgroupMemoryCurrentAndLimit(cgroup_current, cgroup_limit) == true )
+        cgroup_report = wxString::Format("%.2f/%.2f GB", double(cgroup_current) / 1073741824.0, double(cgroup_limit) / 1073741824.0);
+
+    wxPrintf("MASTER DIAG %s | result for image %i (payload %.0f MB) merged in %li ms | backlog %i payloads / %.2f GB | rss %.2f GB | cgroup %s\n",
+             wxDateTime::Now( ).FormatISOTime( ), result_number,
+             double(long(size_of_data_array) * long(sizeof(float))) / 1048576.0,
+             merge_milliseconds,
+             queued_result_payload_count.load( ), double(queued_result_payload_bytes.load( )) / 1073741824.0,
+             double(ReturnOwnResidentSetBytes( )) / 1073741824.0, cgroup_report);
 }
 
 void MyApp::HandleSocketSendThreadTiming(wxSocketBase* connected_socket, long received_timing_in_milliseconds) {

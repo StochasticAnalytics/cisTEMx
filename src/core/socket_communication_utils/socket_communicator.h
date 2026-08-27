@@ -1,3 +1,5 @@
+#include <atomic>
+
 class SocketServerThread;
 class SocketClientMonitorThread;
 
@@ -26,6 +28,17 @@ class SocketCommunicator {
     wxMutex remove_sockets_and_destroy_mutex;
 
     wxEvtHandler* brother_event_handler; // THIS MUST BE SET IN THE CONTRUCTOR OF INHERITED CLASSES!!!
+
+    // Program-defined-result pipeline backlog (master side). The monitor thread reads each
+    // result payload into a heap buffer and CallAfter()s the raw pointer to the main
+    // thread, which frees it only after merging - so while the main thread is busy,
+    // payloads accumulate with no bound and no backpressure. On 2026-08-26 that backlog is
+    // the leading suspect for a leader OOM-killed at 7.6 GB against ap2002's 8 GB per-user
+    // cgroup, with nothing in any log to show for it. These counters make the approach to
+    // that cliff visible while it is happening. Incremented on the monitor thread at
+    // allocation, decremented on the main thread at delete[] - hence atomic.
+    std::atomic<int>  queued_result_payload_count{0};
+    std::atomic<long> queued_result_payload_bytes{0};
 
     unsigned char current_job_code[SOCKET_CODE_SIZE];
 

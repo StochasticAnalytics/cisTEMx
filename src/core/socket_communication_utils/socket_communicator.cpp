@@ -996,11 +996,15 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                         // consumed it yet. Handler calls delete[] after processing.
                                         // TODO: consider std::unique_ptr with custom release in CallAfter bind.
                                         data_array = new float[size_of_data_array];
+                                        parent_pointer->queued_result_payload_count.fetch_add(1);
+                                        parent_pointer->queued_result_payload_bytes.fetch_add(long(size_of_data_array) * long(sizeof(float)));
 
                                         if ( ReadFromSocket(monitored_sockets[socket_counter], data_array, size_of_data_array * sizeof(float), true, "SendProgramDefinedResultArrayFromWorkerToMaster", FUNCTION_DETAILS_AS_WXSTRING) == true ) {
                                             parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketProgramDefinedResult, parent_pointer, monitored_sockets[socket_counter], data_array, size_of_data_array, result_number, number_of_expected_results));
                                         }
                                         else {
+                                            parent_pointer->queued_result_payload_count.fetch_sub(1);
+                                            parent_pointer->queued_result_payload_bytes.fetch_sub(long(size_of_data_array) * long(sizeof(float)));
                                             delete[] data_array;
                                             // socket is not ok.. pass on a message to the handler and remove it..
                                             parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));

@@ -246,9 +246,8 @@ namespace exit_code {
 // has always done for the success case.
 constexpr int success = 0; // told to die by the master, after its work was done
 
-constexpr int master_disconnected   = 10; // the master's socket dropped mid-run
-constexpr int reconnect_failed      = 11; // gave up re-establishing the controller/master link
-constexpr int thread_restart_failed = 12; // could not rebuild the calculation thread
+constexpr int master_disconnected = 10; // the master's socket dropped mid-run
+constexpr int reconnect_failed    = 11; // gave up re-establishing the controller/master link
 
 } // namespace exit_code
 

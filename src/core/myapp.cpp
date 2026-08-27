@@ -501,63 +501,21 @@ void MyApp::OnThreadEnding(wxThreadEvent& my_event) {
 
     work_thread = NULL;
 
-    // CalculateThread::Entry has exactly two ways out: THREAD_DIE, and the idle timeout.
-    // THREAD_DIE is only ever set by HandleSocketTimeToDie, which exits the process itself,
-    // so a worker arriving here with a live master connection got here on the TIMEOUT - and
-    // the timeout ends the THREAD, not the worker. That leaves it inert rather than
-    // finished:
+    // NOTE (2026-08-26): a previous version of this handler made a networked worker call
+    // ExitMainLoop( ) here, on the premise that the calculation thread is created once and
+    // never recreated, so a worker whose thread ended is permanently inert. That premise is
+    // wrong in two ways and the code was withdrawn:
     //
-    //   - the only place a worker asks the master for work is OnThreadComplete, which runs
-    //     off MYTHREAD_COMPLETED, queued only after DoCalculation returns. The timeout takes
-    //     the other exit, so this worker will never ask again;
-    //   - the master only sends socket_time_to_die from SendNextJobTo, i.e. in reply to that
-    //     request, so it will never be told to die either;
-    //   - its socket stays open, so the master goes on counting it as a live worker, and a
-    //     job handed to it is armed by HandleSocketReadyToSendSingleJob for a thread that no
-    //     longer exists, then silently never runs.
+    //   - HandleSocketYouAreAWorker recreates the thread behind "if ( work_thread == NULL )",
+    //     which is exactly the value this function just wrote. A worker that reconnects on a
+    //     zombie lap therefore recovers on its own, and exiting here destroys that recovery.
+    //   - The thread does not end only when told to die. CalculateThread::Entry also breaks
+    //     out on an idle timeout (job_wait_time, 360 s for match_template), so any master
+    //     stall longer than that would have killed a healthy, connected worker.
     //
-    // One worker was observed holding a GPU for 34 minutes in that state. So re-arm rather
-    // than rot: rebuild the thread and ask for work with an empty result (job_number -1,
-    // which HandleSocketSendNextJob already steps over). The master then either hands out a
-    // job - including an orphan queued for re-dispatch - or answers socket_time_to_die,
-    // which exits through the existing path and releases the slot. Those are the two
-    // outcomes this should always have had, and it needs no new message types.
-    //
-    // Deliberately NOT an unconditional ExitMainLoop( ): a worker whose master link is down
-    // is in the zombie/reconnect cycle, where HandleSocketYouAreAWorker rebuilds the thread
-    // behind "if ( work_thread == NULL )" - the value written just above. Exiting here would
-    // destroy that recovery.
-    //
-    // The master's own calculation thread is left alone. A computing master whose self-worker
-    // times out is inert in the same way but cannot be recovered by this route (it never
-    // disconnects from itself); that is a separate, still-open problem.
-    if ( i_am_the_master == true || is_running_locally == true )
-        return;
-
-    if ( master_socket == NULL || master_socket->IsConnected( ) == false )
-        return; // the reconnect path owns this worker and rebuilds the thread itself
-
-    wxPrintf("Worker: calculation thread timed out after %.0f s - rebuilding it and asking the master for work.\n", GetMaxJobWaitTimeInSeconds( ));
-
-    // The stopwatch is deliberately NOT restarted. It accumulates this worker's total thread
-    // time and is reported to the master at time-to-die; restarting it here would silently
-    // under-report every worker that ever timed out.
-    work_thread = new CalculateThread(this, GetMaxJobWaitTimeInSeconds( ));
-
-    if ( work_thread->Run( ) != wxTHREAD_NO_ERROR ) {
-        MyPrintWithDetails("Can't recreate the calculation thread!");
-        delete work_thread;
-        work_thread = NULL;
-        ExitMainLoop( );
-        exit(cistem::exit_code::thread_restart_failed);
-    }
-
-    // An empty JobResult is job_number -1 / result_size 0 by construction, which is the
-    // "no result attached" form the master's handler expects.
-    JobResult no_result_to_report;
-
-    WriteToSocket(master_socket, socket_send_next_job, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
-    no_result_to_report.SendToSocket(master_socket);
+    // The real problem it was aimed at - a worker sitting inert while holding a GPU slot -
+    // is real and still open. It needs a fix that distinguishes "told to die" from "timed
+    // out while still connected", not an unconditional exit.
 }
 
 void MyApp::OnThreadSendError(wxThreadEvent& my_event) {

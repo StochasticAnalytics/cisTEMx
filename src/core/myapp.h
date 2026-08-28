@@ -104,10 +104,19 @@ class
     // OnWorkerLivenessTimer). Also hosts the run-unfinishable check.
     wxTimer* worker_liveness_timer;
 
+    // Worker only: 1 s poll of the flag the SIGUSR1/SIGTERM handler sets (a signal handler
+    // may do nothing beyond storing a flag). See InstallWorkerSignalHandlers and
+    // OnVacateSignalTimer.
+    wxTimer* vacate_signal_timer;
+    bool     vacate_notice_sent;
+    int      seconds_since_vacate_notice;
+
     void OnQueueTimer(wxTimerEvent& event);
     void OnMasterQueueTimer(wxTimerEvent& event);
     void OnZombieTimer(wxTimerEvent& event);
     void OnWorkerLivenessTimer(wxTimerEvent& event);
+    void OnVacateSignalTimer(wxTimerEvent& event);
+    void InstallWorkerSignalHandlers( );
 
     virtual float GetMaxJobWaitTimeInSeconds( ) { return 30.0f; }
 
@@ -143,6 +152,7 @@ class
     void HandleSocketDisconnect(wxSocketBase* connected_socket);
     void HandleSocketLivenessPing(wxSocketBase* connected_socket);
     void HandleSocketLivenessPong(wxSocketBase* connected_socket);
+    void HandleSocketWorkerVacated(wxSocketBase* connected_socket, int signal_number);
 
     void IfSocketIsAKeySocketSetItToNull(wxSocketBase* socket_to_check);
 
@@ -223,7 +233,29 @@ class
     std::vector<int> job_dispatch_attempts;
     long             max_job_redispatch_tries;
 
+    // Two loss budgets per job, by cause (2026-08-28). A worker that reports the batch
+    // system's graceful-shutdown signal (SIGUSR1: a vacate, hold or remove - nothing the
+    // job did) is charged to job_eviction_losses, capped by
+    // max_job_eviction_redispatches (CISTEM_EXPERIMENTAL_EVICTED_WORKER_RESUBMIT_TRIES,
+    // default 5: a job survives five evictions and is abandoned on the sixth). Every
+    // other loss - a socket that simply dropped, a liveness timeout, a worker reporting
+    // SIGTERM - is charged to job_failure_losses, capped by max_job_redispatch_tries as
+    // before (default 1: abandoned on the second). Before the split an eviction cost the
+    // same one-of-two attempts a crash did, so a run on backfill slots (where reclaim is
+    // routine) sat one unlucky eviction from being unfinishable (jobs 63 and 65 of run
+    // aZFNMlb6qZHaECfI, 2026-08-27, both completed on their last permitted attempt).
+    std::vector<int> job_failure_losses;
+    std::vector<int> job_eviction_losses;
+    long             max_job_eviction_redispatches;
+
+    enum class WorkerLossCause { socket_dropped,
+                                 vacated_by_batch_system,
+                                 terminated_by_signal };
+
+    long ReturnBoundedLongFromEnvironment(const char* variable_name, long default_value, long maximum_value);
     long ReturnMaxJobRedispatchTries( );
+    long ReturnMaxJobEvictionRedispatches( );
+    void HandleWorkerLoss(wxSocketBase* lost_socket, WorkerLossCause cause, int signal_number);
     int  RecordJobDispatchAttempt(int job_index);
     int  ReturnJobDispatchAttempts(int job_index);
 

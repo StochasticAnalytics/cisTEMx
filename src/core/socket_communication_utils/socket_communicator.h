@@ -115,6 +115,8 @@ class SocketCommunicator {
 
     virtual void HandleSocketLivenessPong(wxSocketBase* connected_socket) { wxPrintf("Warning:: Unhandled Socket Message (HandleSocketLivenessPong)\n"); }
 
+    virtual void HandleSocketWorkerVacated(wxSocketBase* connected_socket, int signal_number) { wxPrintf("Warning:: Unhandled Socket Message (HandleSocketWorkerVacated)\n"); }
+
     virtual void HandleSocketTemplateMatchResultReady(wxSocketBase* connected_socket, int& image_number, float& high_res_limit_used, float& threshold_used, ArrayOfTemplateMatchFoundPeakInfos& peak_infos, ArrayOfTemplateMatchFoundPeakInfos& peak_changes) { wxPrintf("Warning:: Unhandled Socket Message (HandleSocketTemplateMatchResultReady)\n"); }
 };
 

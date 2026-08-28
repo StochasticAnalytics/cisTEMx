@@ -1045,6 +1045,9 @@ wxString StringFromSocketCode(unsigned char* socket_input_buffer) {
     if ( memcmp(socket_input_buffer, socket_time_to_die, SOCKET_CODE_SIZE) == 0 ) {
         return "socket_time_to_die";
     }
+    if ( memcmp(socket_input_buffer, socket_worker_vacated, SOCKET_CODE_SIZE) == 0 ) {
+        return "socket_worker_vacated";
+    }
     if ( memcmp(socket_input_buffer, socket_ready_to_send_single_job, SOCKET_CODE_SIZE) == 0 ) {
         return "socket_ready_to_send_single_job";
     }

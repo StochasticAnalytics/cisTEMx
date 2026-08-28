@@ -1063,6 +1063,21 @@ wxThread::ExitCode SocketClientMonitorThread::Entry( ) {
                                     // No payload.
                                     parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketLivenessPong, parent_pointer, monitored_sockets[socket_counter]));
                                 }
+                                else if ( memcmp(socket_input_buffer, socket_worker_vacated, SOCKET_CODE_SIZE) == 0 ) {
+                                    // Payload: the signal number the worker caught (see socket_codes.h).
+                                    int caught_signal_number;
+
+                                    if ( ReadFromSocket(monitored_sockets[socket_counter], &caught_signal_number, sizeof(int), true, "ReceiveWorkerVacatedSignalNumber", FUNCTION_DETAILS_AS_WXSTRING) == true ) {
+                                        parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketWorkerVacated, parent_pointer, monitored_sockets[socket_counter], caught_signal_number));
+                                    }
+                                    else {
+                                        // socket is not ok.. pass on a message to the handler and remove it..
+                                        parent_pointer->brother_event_handler->CallAfter(std::bind(&SocketCommunicator::HandleSocketDisconnect, parent_pointer, monitored_sockets[socket_counter]));
+                                        detached_sockets.Add(monitored_sockets[socket_counter]);
+                                        monitored_sockets.RemoveAt(socket_counter);
+                                        socket_counter--;
+                                    }
+                                }
                                 else {
                                     // An unrecognized code means this socket's byte stream has lost framing:
                                     // we are reading payload bytes as a message code. Continuing to read

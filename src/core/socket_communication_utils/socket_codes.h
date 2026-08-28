@@ -33,5 +33,14 @@ const unsigned char socket_template_match_result_ready[] = "EP927e$*cQ^egWq'";
 // for a liveness check is the correct outcome anyway.
 const unsigned char socket_liveness_ping[] = "Lv?9V+wQ2@xR-e5N";
 const unsigned char socket_liveness_pong[] = "qN4&yZ8_uT!fB^0c";
+// Worker -> master (2026-08-28): "a signal is taking me down". Payload: one int, the
+// signal number the worker caught. The cisTEM condor submit files set kill_sig = SIGUSR1
+// (and must NOT set remove_kill_sig: condor_starter's OsProc::ShutdownGraceful uses the
+// remove signal for EVERY graceful shutdown when it is defined), so anything condor takes
+// down gracefully - a vacate, a hold, a condor_rm - arrives as SIGUSR1, while a hand kill
+// or a wrapper timeout arrives as SIGTERM. The master charges the lost job to the eviction
+// budget or the failure budget accordingly (MyApp::HandleWorkerLoss). Sent from the worker's MAIN thread by its
+// signal-poll timer; the worker then waits for the master to close the socket.
+const unsigned char socket_worker_vacated[] = "Vc!7pQ2m#Rw9-Ue3";
 
 #endif

@@ -1,6 +1,7 @@
 #include "core_headers.h"
 #include <wx/evtloop.h>
 #include <unistd.h> // sysconf, for the RSS diagnostics in HandleSocketProgramDefinedResult
+#include <csignal> // the worker's SIGUSR1/SIGTERM handler (InstallWorkerSignalHandlers)
 
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_COMPLETED, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_COMMAND_MYTHREAD_ENDING, wxThreadEvent);
@@ -63,7 +64,14 @@ bool MyApp::OnInit( ) {
 
     jobs_to_redispatch.clear( );
     job_dispatch_attempts.clear( );
-    max_job_redispatch_tries = ReturnMaxJobRedispatchTries( );
+    job_failure_losses.clear( );
+    job_eviction_losses.clear( );
+    max_job_redispatch_tries      = ReturnMaxJobRedispatchTries( );
+    max_job_eviction_redispatches = ReturnMaxJobEvictionRedispatches( );
+
+    vacate_signal_timer         = NULL;
+    vacate_notice_sent          = false;
+    seconds_since_vacate_notice = 0;
 
     inter_thread_message_queue.Post(0);
 
@@ -256,28 +264,40 @@ void MyApp::AddCommandLineOptions( ) {
 // run can never reach N of N). Negative or unparseable values fall back to the
 // default rather than becoming an unbounded retry loop.
 long MyApp::ReturnMaxJobRedispatchTries( ) {
-    const long default_tries = 1;
     // Bounded above as well as below. Without a ceiling a single env var re-enables the
     // unbounded retry loop this exists to prevent, and max + 1 (used in the logs and the
     // budget arithmetic) is signed overflow at LONG_MAX. There is no real workflow that
     // wants one job attempted more times than this.
-    const long  maximum_tries = 1000;
-    const char* from_env      = getenv("CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES");
+    return ReturnBoundedLongFromEnvironment("CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES", 1, 1000);
+}
+
+// How many times may a job be re-sent after a worker reports the batch system's vacate
+// signal (SIGUSR1)? CISTEM_EXPERIMENTAL_EVICTED_WORKER_RESUBMIT_TRIES, default 5. Separate
+// from the failure budget above because an eviction says nothing about the job: the pool
+// reclaimed the slot. Same bounds and fallback rules.
+long MyApp::ReturnMaxJobEvictionRedispatches( ) {
+    return ReturnBoundedLongFromEnvironment("CISTEM_EXPERIMENTAL_EVICTED_WORKER_RESUBMIT_TRIES", 5, 1000);
+}
+
+// Non-negative integer from the environment, clamped to [0, maximum_value]; unset,
+// negative or unparseable values fall back to default_value with a printed warning.
+long MyApp::ReturnBoundedLongFromEnvironment(const char* variable_name, long default_value, long maximum_value) {
+    const char* from_env = getenv(variable_name);
 
     if ( from_env == NULL )
-        return default_tries;
+        return default_value;
 
     long     parsed_value;
     wxString value_as_string(from_env);
 
     if ( value_as_string.Trim( ).Trim(false).ToLong(&parsed_value) == false || parsed_value < 0 ) {
-        wxPrintf("Warning: CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = '%s' is not a non-negative integer - using the default of %li\n", from_env, default_tries);
-        return default_tries;
+        wxPrintf("Warning: %s = '%s' is not a non-negative integer - using the default of %li\n", variable_name, from_env, default_value);
+        return default_value;
     }
 
-    if ( parsed_value > maximum_tries ) {
-        wxPrintf("Warning: CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = '%s' exceeds the maximum of %li - using %li\n", from_env, maximum_tries, maximum_tries);
-        return maximum_tries;
+    if ( parsed_value > maximum_value ) {
+        wxPrintf("Warning: %s = '%s' exceeds the maximum of %li - using %li\n", variable_name, from_env, maximum_value, maximum_value);
+        return maximum_value;
     }
 
     return parsed_value;
@@ -472,8 +492,10 @@ void MyApp::SendNextJobTo(wxSocketBase* socket) {
         const int attempts_for_this_job = RecordJobDispatchAttempt(orphaned_job->job_number);
 
         if ( attempts_for_this_job > 0 ) {
-            SocketSendInfo(wxString::Format("Re-dispatching job %i (attempt %i of %li) after a worker was lost.",
-                                            orphaned_job->job_number, attempts_for_this_job, max_job_redispatch_tries + 1));
+            SocketSendInfo(wxString::Format("Re-dispatching job %i (dispatch %i; lost to %i worker failure(s) of %li tolerated and %i eviction(s) of %li tolerated) after a worker was lost.",
+                                            orphaned_job->job_number, attempts_for_this_job,
+                                            job_failure_losses[orphaned_job->job_number], max_job_redispatch_tries,
+                                            job_eviction_losses[orphaned_job->job_number], max_job_eviction_redispatches));
         }
         else {
             // HandleSocketDisconnect refuses to queue a job it cannot account for, so
@@ -560,6 +582,72 @@ void MyApp::SendAllJobsFinished( ) {
 
     WriteToSocket(controller_socket, socket_all_jobs_finished, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
     WriteToSocket(controller_socket, &total_milliseconds_spent_on_threads, sizeof(long), true, "SendTotalMillisecondsSpentOnThreads", FUNCTION_DETAILS_AS_WXSTRING);
+}
+
+// Set by the worker's signal handler, read by OnVacateSignalTimer on the main thread. A
+// signal handler may safely do nothing beyond storing to a volatile sig_atomic_t.
+static volatile sig_atomic_t caught_batch_system_signal = 0;
+
+static void RecordBatchSystemSignal(int signal_number) {
+    caught_batch_system_signal = signal_number;
+}
+
+// Networked workers only (called once, when the worker is bound to its master). condor's
+// vacate delivers kill_sig - SIGUSR1 in the cisTEM submit files - then waits
+// MachineMaxVacateTime (10 minutes on the CHTC GPU nodes measured 2026-08-28) before
+// SIGKILL (condor_rm and condor_hold deliver the same signal - see socket_codes.h); a hand
+// kill or a wrapper timeout delivers SIGTERM. With the default disposition the
+// worker simply died (exit 143) and the master saw a socket drop it could not tell from a
+// crash, so every eviction cost the job one of its two attempts. Catching both signals
+// and reporting which one arrived lets the master budget the loss by cause. SA_RESTART:
+// the socket reads/writes in flight resume instead of failing with EINTR.
+void MyApp::InstallWorkerSignalHandlers( ) {
+    struct sigaction action;
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = RecordBatchSystemSignal;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESTART;
+    sigaction(SIGUSR1, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
+
+    Bind(wxEVT_TIMER, wxTimerEventHandler(MyApp::OnVacateSignalTimer), this, 5);
+    vacate_signal_timer = new wxTimer(this, 5);
+    vacate_signal_timer->Start(1000);
+}
+
+// Worker main thread, every second: report a caught signal to the master once, then wait
+// for the master to close the socket - its close proves the notice was consumed and the
+// job re-queued (HandleWorkerLoss re-queues before it destroys the socket) - and exit
+// through the disconnect path with exit_code::vacated_by_batch_system. The wait is capped
+// so a stalled master cannot hold this slot past the vacate grace.
+void MyApp::OnVacateSignalTimer(wxTimerEvent& event) {
+    int signal_number = int(caught_batch_system_signal);
+
+    if ( signal_number == 0 )
+        return;
+
+    if ( vacate_notice_sent == false ) {
+        vacate_notice_sent = true;
+        wxPrintf("Worker: caught signal %i (%s) - telling the master and exiting to release this slot.\n",
+                 signal_number, signal_number == SIGUSR1 ? "SIGUSR1, the batch system's graceful-shutdown signal" : "SIGTERM");
+
+        if ( master_socket != NULL && master_socket->IsConnected( ) == true ) {
+            WriteToSocket(master_socket, socket_worker_vacated, SOCKET_CODE_SIZE, true, "SendSocketJobType", FUNCTION_DETAILS_AS_WXSTRING);
+            WriteToSocket(master_socket, &signal_number, sizeof(int), true, "SendWorkerVacatedSignalNumber", FUNCTION_DETAILS_AS_WXSTRING);
+            return; // the master's close arrives as a disconnect - see HandleSocketDisconnect
+        }
+
+        // No master to tell (already cut off): nothing to hand back, just go.
+        ExitMainLoop( );
+        exit(cistem::exit_code::vacated_by_batch_system);
+    }
+
+    seconds_since_vacate_notice++;
+    if ( seconds_since_vacate_notice >= 60 ) {
+        wxPrintf("Worker: the master has not closed the socket %i s after the vacate notice - exiting anyway.\n", seconds_since_vacate_notice);
+        ExitMainLoop( );
+        exit(cistem::exit_code::vacated_by_batch_system);
+    }
 }
 
 void MyApp::OnZombieTimer(wxTimerEvent& event) {
@@ -1100,6 +1188,8 @@ void MyApp::HandleSocketYouAreTheMaster(wxSocketBase* connected_socket, JobPacka
     // the assignment above delete[]s the old jobs array, which dangles every RunJob* in
     // socket_to_worker_job_pointer_hash and jobs_to_redispatch.
     job_dispatch_attempts.assign(current_job_package.number_of_jobs, 0);
+    job_failure_losses.assign(current_job_package.number_of_jobs, 0);
+    job_eviction_losses.assign(current_job_package.number_of_jobs, 0);
 
     // we got real communication, so we are not a zombie
 
@@ -1323,6 +1413,11 @@ void MyApp::HandleSocketYouAreAWorker(wxSocketBase* connected_socket, wxString m
         if ( EnsureWorkThreadIsRunning( ) == false )
             ExitMainLoop( );
     }
+
+    // From here on this process may hold a job, so a vacate signal has something to hand
+    // back. Once: this handler re-runs on every zombie reconnect cycle.
+    if ( vacate_signal_timer == NULL )
+        InstallWorkerSignalHandlers( );
 
     // we are apparently connected again, but this can be a lie = a certain number of connections appear to just be accepted by the operating
     // system - if the port if valid.  So if we don't get any events from this socket with 30 seconds, we are going to assume something
@@ -1846,103 +1941,8 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
     }
     else if ( i_am_the_master == true && connected_socket != master_socket ) // a worker died..
     {
-        // A socket that never identified itself with the job code was never a worker - it is
-        // a port-liveness probe (the condor shim's tunnel watchdog re-verifies the forwarded
-        // master ports every few seconds by connecting and closing). Destroy it quietly:
-        // reporting it as a dead worker spams the GUI with a false error per probe.
-        if ( worker_socket_pointers.Index(connected_socket) == wxNOT_FOUND ) {
-            StopMonitoringAndDestroySocket(connected_socket);
-            return;
-        }
-
-        // The hash only holds sockets with a job currently assigned: operator[] on a socket
-        // that never requested a job (or whose entry was erased when it was told to die)
-        // would insert a NULL and the print below would crash the master.
-        const bool disconnected_worker_had_a_job = (socket_to_worker_job_pointer_hash.count(connected_socket) != 0 && socket_to_worker_job_pointer_hash[connected_socket] != NULL);
-
-        // Report EVERY death that takes an unfinished job with it - the old guard
-        // (number_of_dispatched_jobs < number_of_jobs) made a death AFTER full dispatch,
-        // i.e. exactly the endgame case, silent: the job vanished with no message and the
-        // run hung with N-1 of N results recorded. Queue the orphaned job for re-dispatch
-        // so the next worker that asks (including a late straggler) picks it up.
-        if ( disconnected_worker_had_a_job && socket_to_worker_job_pointer_hash[connected_socket]->has_been_run == false ) {
-            RunJob*   orphaned_job    = socket_to_worker_job_pointer_hash[connected_socket];
-            const int attempts_so_far = ReturnJobDispatchAttempts(orphaned_job->job_number);
-
-            SocketSendInfo("The disconnected worker was running a job with the following arguments:\n" + orphaned_job->PrintAllArgumentsTowxString( ));
-
-            // Re-dispatch is capped. A job that always kills its worker (a pathological
-            // pixel producing NaNs that trips an assert, say) would otherwise be handed to
-            // worker after worker forever. Everything below counts ATTEMPTS, not retries:
-            // attempts_so_far is how many times this job has been sent out, and the budget
-            // is max_job_redispatch_tries + 1 attempts.
-            if ( attempts_so_far < 0 ) {
-                SocketSendError(wxString::Format("Error: A worker has disconnected with unfinished job %i, but that job has no entry in this package's attempt table, so its retries could not be bounded. It will NOT be re-dispatched.",
-                                                 orphaned_job->job_number));
-            }
-            else if ( attempts_so_far <= max_job_redispatch_tries ) {
-                SocketSendError(wxString::Format("Error: A worker has disconnected with unfinished job %i on attempt %i of %li; it will be re-dispatched.",
-                                                 orphaned_job->job_number, attempts_so_far, max_job_redispatch_tries + 1));
-                jobs_to_redispatch.push_back(orphaned_job);
-            }
-            else {
-                // The job is now permanently abandoned. Count it: when every remaining job
-                // is abandoned, the liveness tick's unfinishable check fails the run loudly
-                // (FailRunAsUnfinishable) instead of leaving the master waiting in its
-                // event loop to be killed by hand. The two-tick grace there is also the
-                // hedge for a worker falsely declared dead whose result is still in flight
-                // (see the duplicate-result guard in HandleSocketJobResult) - if it lands,
-                // the run completes normally.
-                number_of_abandoned_jobs++;
-                SocketSendError(wxString::Format("Error: Job %i has now failed on all %li permitted attempt(s) (CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = %li) and will not be re-dispatched. Unless a result for it is still in flight from a worker wrongly presumed dead, this run cannot reach %i of %i finished jobs, and the master will shut the run down.",
-                                                 orphaned_job->job_number, max_job_redispatch_tries + 1, max_job_redispatch_tries,
-                                                 current_job_package.number_of_jobs, current_job_package.number_of_jobs));
-            }
-        }
-        else if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
-            SocketSendError("Error: A worker has disconnected before all jobs are finished.");
-            SocketSendInfo("The disconnected worker had no job assigned.");
-        }
-
-        socket_to_worker_job_pointer_hash.erase(connected_socket);
-        liveness_ping_sent_at_ms.erase(connected_socket);
-        // Remove the entry as well as destroying the socket: a stale pointer left in the
-        // array aliases future sockets malloc'd at the recycled address (watchdog probes
-        // then masquerade as this dead worker, one false disconnect per probe).
-        worker_socket_pointers.Remove(connected_socket);
-        StopMonitoringAndDestroySocket(connected_socket);
-
-        SendLiveWorkerCountToController( );
-
-        // This worker is gone and will never send its thread timing, so it must not stay
-        // counted by the all-done gate (number_of_timing_results_received ==
-        // max_number_of_connected_workers). Workers that FINISHED were already erased from
-        // worker_socket_pointers in HandleSocketSendThreadTiming, so this branch only sees
-        // genuinely unfinished deaths - e.g. an idle-queue straggler that condor matches
-        // after the work is done, which connects and dies at the handshake. Without the
-        // decrement one such death wedges the run at the finish line: all results are in,
-        // but the gate arithmetic is permanently one short and socket_all_jobs_finished is
-        // never sent (observed 2026-08-23: 58/58 images done, 4 straggler EOF-deaths, GUI
-        // meter frozen). Decrement and re-evaluate the gate here, since this death may be
-        // exactly what completes it.
-        max_number_of_connected_workers--;
-        if ( number_of_finished_jobs == current_job_package.number_of_jobs && number_of_timing_results_received == max_number_of_connected_workers ) {
-            SendAllJobsFinished( );
-
-            if ( current_job_package.ReturnNumberOfJobsRemaining( ) != 0 ) {
-                SocketSendError("All jobs should be finished, but job package is not empty.");
-            }
-
-            // time to die! (mirrors the gate sites in HandleSocketSendNextJob / HandleSocketSendThreadTiming)
-            ShutDownServer( );
-            ShutDownSocketMonitor( );
-
-            if ( work_thread != NULL )
-                work_thread->Kill( );
-
-            ExitMainLoop( );
-            return;
-        }
+        HandleWorkerLoss(connected_socket, WorkerLossCause::socket_dropped, 0);
+        return;
     }
     else // i am a worker and the master died.. time to die
     {
@@ -1958,7 +1958,169 @@ void MyApp::HandleSocketDisconnect(wxSocketBase* connected_socket) {
         // identical to a worker that finished its work - so every abnormal worker death in
         // a run's condor history read as a success.
         ExitMainLoop( );
+
+        // The master closes our socket after consuming a vacate notice: that is the orderly
+        // end of a vacated worker (see OnVacateSignalTimer), not a lost master.
+        if ( vacate_notice_sent == true )
+            exit(cistem::exit_code::vacated_by_batch_system);
+
         exit(cistem::exit_code::master_disconnected);
+    }
+}
+
+// Master: a worker's main thread reports that it caught a signal (the payload) and is
+// about to exit. Its job goes through the same loss machinery as a socket drop, budgeted
+// by cause; HandleWorkerLoss destroys the socket, and that close is what the worker waits
+// for before exiting.
+void MyApp::HandleSocketWorkerVacated(wxSocketBase* connected_socket, int signal_number) {
+    if ( i_am_the_master == false ) {
+        wxPrintf("Warning: socket_worker_vacated (signal %i) received by a process that is not the master - ignoring it.\n", signal_number);
+        return;
+    }
+
+    if ( signal_number == SIGUSR1 )
+        HandleWorkerLoss(connected_socket, WorkerLossCause::vacated_by_batch_system, signal_number);
+    else
+        HandleWorkerLoss(connected_socket, WorkerLossCause::terminated_by_signal, signal_number);
+}
+
+// Master: a worker is gone or about to be - its socket dropped, a liveness ping timed out,
+// or it reported a signal. Release its job into the re-dispatch machinery, charged to the
+// eviction budget (vacate signal) or the failure budget (everything else) - see the
+// job_failure_losses / job_eviction_losses comment in myapp.h - and do the bookkeeping
+// that keeps the all-done gate honest.
+void MyApp::HandleWorkerLoss(wxSocketBase* lost_socket, WorkerLossCause cause, int signal_number) {
+    // A socket that never identified itself with the job code was never a worker - it is
+    // a port-liveness probe (the condor shim's tunnel watchdog re-verifies the forwarded
+    // master ports every few seconds by connecting and closing). Destroy it quietly:
+    // reporting it as a dead worker spams the GUI with a false error per probe.
+    if ( worker_socket_pointers.Index(lost_socket) == wxNOT_FOUND ) {
+        StopMonitoringAndDestroySocket(lost_socket);
+        return;
+    }
+
+    wxString how_it_was_lost;
+    switch ( cause ) {
+        case WorkerLossCause::vacated_by_batch_system:
+            how_it_was_lost = wxString::Format("was vacated by the batch system (signal %i: the pool reclaimed its slot)", signal_number);
+            break;
+        case WorkerLossCause::terminated_by_signal:
+            how_it_was_lost = wxString::Format("was terminated by signal %i", signal_number);
+            break;
+        default:
+            how_it_was_lost = "has disconnected";
+            break;
+    }
+
+    // The hash only holds sockets with a job currently assigned: operator[] on a socket
+    // that never requested a job (or whose entry was erased when it was told to die)
+    // would insert a NULL and the print below would crash the master.
+    const bool lost_worker_had_a_job = (socket_to_worker_job_pointer_hash.count(lost_socket) != 0 && socket_to_worker_job_pointer_hash[lost_socket] != NULL);
+
+    // Report EVERY loss that takes an unfinished job with it - the old guard
+    // (number_of_dispatched_jobs < number_of_jobs) made a death AFTER full dispatch,
+    // i.e. exactly the endgame case, silent: the job vanished with no message and the
+    // run hung with N-1 of N results recorded. Queue the orphaned job for re-dispatch
+    // so the next worker that asks (including a late straggler) picks it up.
+    if ( lost_worker_had_a_job && socket_to_worker_job_pointer_hash[lost_socket]->has_been_run == false ) {
+        RunJob*   orphaned_job = socket_to_worker_job_pointer_hash[lost_socket];
+        const int job_index    = orphaned_job->job_number;
+
+        SocketSendInfo(wxString::Format("The worker that %s was running job %i with the following arguments:\n", how_it_was_lost, job_index) + orphaned_job->PrintAllArgumentsTowxString( ));
+
+        // Re-dispatch is capped. A job that always kills its worker (a pathological pixel
+        // producing NaNs that trips an assert, say) would otherwise be handed to worker
+        // after worker forever. An index outside the loss tables fails closed (see
+        // RecordJobDispatchAttempt for why): it is precisely where a runaway would start.
+        if ( job_index < 0 || job_index >= int(job_failure_losses.size( )) || job_index >= int(job_eviction_losses.size( )) ) {
+            SocketSendError(wxString::Format("Error: A worker %s with unfinished job %i, but that job has no entry in this package's loss tables, so its retries could not be bounded. It will NOT be re-dispatched.",
+                                             how_it_was_lost, job_index));
+        }
+        else if ( cause == WorkerLossCause::vacated_by_batch_system ) {
+            job_eviction_losses[job_index]++;
+
+            if ( job_eviction_losses[job_index] <= max_job_eviction_redispatches ) {
+                // Info, not error: nothing went wrong with the job or the worker.
+                SocketSendInfo(wxString::Format("A worker %s while running job %i (eviction %i of %li tolerated for one job); the job will be re-dispatched.",
+                                                how_it_was_lost, job_index, job_eviction_losses[job_index], max_job_eviction_redispatches));
+                jobs_to_redispatch.push_back(orphaned_job);
+            }
+            else {
+                number_of_abandoned_jobs++;
+                SocketSendError(wxString::Format("Error: Job %i has now been evicted %i times, more than the %li tolerated (CISTEM_EXPERIMENTAL_EVICTED_WORKER_RESUBMIT_TRIES = %li), and will not be re-dispatched. Unless a result for it is still in flight, this run cannot reach %i of %i finished jobs, and the master will shut the run down.",
+                                                 job_index, job_eviction_losses[job_index], max_job_eviction_redispatches, max_job_eviction_redispatches,
+                                                 current_job_package.number_of_jobs, current_job_package.number_of_jobs));
+            }
+        }
+        else {
+            job_failure_losses[job_index]++;
+
+            if ( job_failure_losses[job_index] <= max_job_redispatch_tries ) {
+                SocketSendError(wxString::Format("Error: A worker %s with unfinished job %i (worker failure %i of %li tolerated for one job); it will be re-dispatched.",
+                                                 how_it_was_lost, job_index, job_failure_losses[job_index], max_job_redispatch_tries));
+                jobs_to_redispatch.push_back(orphaned_job);
+            }
+            else {
+                // The job is now permanently abandoned. Count it: when every remaining job
+                // is abandoned, the liveness tick's unfinishable check fails the run loudly
+                // (FailRunAsUnfinishable) instead of leaving the master waiting in its
+                // event loop to be killed by hand. The two-tick grace there is also the
+                // hedge for a worker falsely declared dead whose result is still in flight
+                // (see the duplicate-result guard in HandleSocketJobResult) - if it lands,
+                // the run completes normally.
+                number_of_abandoned_jobs++;
+                SocketSendError(wxString::Format("Error: Job %i has now been lost to worker failures %i times, more than the %li tolerated (CISTEM_EXPERIMENTAL_FAILED_WORKER_RESUBMIT_TRIES = %li), and will not be re-dispatched. Unless a result for it is still in flight from a worker wrongly presumed dead, this run cannot reach %i of %i finished jobs, and the master will shut the run down.",
+                                                 job_index, job_failure_losses[job_index], max_job_redispatch_tries, max_job_redispatch_tries,
+                                                 current_job_package.number_of_jobs, current_job_package.number_of_jobs));
+            }
+        }
+    }
+    else if ( cause == WorkerLossCause::vacated_by_batch_system ) {
+        SocketSendInfo(wxString::Format("A worker %s; it had no job assigned.", how_it_was_lost));
+    }
+    else if ( number_of_dispatched_jobs < current_job_package.number_of_jobs ) {
+        SocketSendError(wxString::Format("Error: A worker %s before all jobs are finished.", how_it_was_lost));
+        SocketSendInfo("The lost worker had no job assigned.");
+    }
+
+    socket_to_worker_job_pointer_hash.erase(lost_socket);
+    liveness_ping_sent_at_ms.erase(lost_socket);
+    // Remove the entry as well as destroying the socket: a stale pointer left in the
+    // array aliases future sockets malloc'd at the recycled address (watchdog probes
+    // then masquerade as this dead worker, one false disconnect per probe).
+    worker_socket_pointers.Remove(lost_socket);
+    StopMonitoringAndDestroySocket(lost_socket);
+
+    SendLiveWorkerCountToController( );
+
+    // This worker is gone and will never send its thread timing, so it must not stay
+    // counted by the all-done gate (number_of_timing_results_received ==
+    // max_number_of_connected_workers). Workers that FINISHED were already erased from
+    // worker_socket_pointers in HandleSocketSendThreadTiming, so this only sees
+    // genuinely unfinished departures - e.g. an idle-queue straggler that condor matches
+    // after the work is done, which connects and dies at the handshake. Without the
+    // decrement one such death wedges the run at the finish line: all results are in,
+    // but the gate arithmetic is permanently one short and socket_all_jobs_finished is
+    // never sent (observed 2026-08-23: 58/58 images done, 4 straggler EOF-deaths, GUI
+    // meter frozen). Decrement and re-evaluate the gate here, since this departure may be
+    // exactly what completes it.
+    max_number_of_connected_workers--;
+    if ( number_of_finished_jobs == current_job_package.number_of_jobs && number_of_timing_results_received == max_number_of_connected_workers ) {
+        SendAllJobsFinished( );
+
+        if ( current_job_package.ReturnNumberOfJobsRemaining( ) != 0 ) {
+            SocketSendError("All jobs should be finished, but job package is not empty.");
+        }
+
+        // time to die! (mirrors the gate sites in HandleSocketSendNextJob / HandleSocketSendThreadTiming)
+        ShutDownServer( );
+        ShutDownSocketMonitor( );
+
+        if ( work_thread != NULL )
+            work_thread->Kill( );
+
+        ExitMainLoop( );
+        return;
     }
 }
 

@@ -271,6 +271,12 @@ constexpr int run_unfinishable = 13;
 // run it; it exits so the master's disconnect handling re-dispatches the job.
 constexpr int thread_creation_failed = 14;
 
+// A networked worker caught the batch system's vacate signal (condor kill_sig, SIGUSR1 in
+// the cisTEM submit files) or a SIGTERM, reported which to the master, and exited so the
+// slot is released promptly. The master re-queues the job it held, charged to the eviction
+// or the failure budget by signal (MyApp::HandleWorkerLoss).
+constexpr int vacated_by_batch_system = 15;
+
 } // namespace exit_code
 
 } // namespace cistem
